@@ -1,26 +1,150 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
+/* ---------- Brand + sistema ---------- */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --c-gray:#4B4D4B;
+  --c-green:#B3D334;
+  --c-blue:#39A0E0;
+  color-scheme: light;
 }
+.dark:root { color-scheme: dark; }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  html, body { @apply h-full; }
+  body {
+    @apply min-h-screen bg-white text-slate-900 antialiased
+           dark:bg-slate-950 dark:text-slate-100;
+    font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+      Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans",
+      "Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji";
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ---------- COMPONENTES ---------- */
+@layer components {
+  .page-wrap{
+    @apply min-h-screen bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100;
+  }
+
+  .bg-grid{
+    background-image: radial-gradient(circle at 1px 1px, rgba(2,6,23,.05) 1px, transparent 0);
+    background-size: 22px 22px;
+  }
+  .dark .bg-grid{
+    background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,.06) 1px, transparent 0);
+  }
+
+  .hero-beam{
+    position:absolute; inset:-20% -10% auto -10%; height:40vh;
+    background:conic-gradient(from 180deg at 50% 50%, rgba(57,160,224,.18), transparent 45%, rgba(179,211,52,.15));
+    filter:blur(24px); animation:rotateBeam 22s linear infinite;
+  }
+  .dark .hero-beam{
+    background:conic-gradient(from 180deg at 50% 50%, rgba(56,189,248,.16), transparent 45%, rgba(134,239,172,.12));
+    filter:blur(28px);
+  }
+
+  .card-pro{
+    position:relative; overflow:hidden; border-radius:1rem;
+    border:1px solid #e2e8f0; background:#fff;
+    box-shadow:0 20px 25px -5px rgba(30,41,59,0.10), 0 8px 10px -6px rgba(30,41,59,0.10);
+  }
+  .dark .card-pro{
+    border-color:#334155; background:#0B1220;
+    box-shadow:0 20px 25px -5px rgba(0,0,0,.35), 0 8px 10px -6px rgba(0,0,0,.30);
+  }
+  .card-pro::before{
+    content:""; position:absolute; inset:0 auto auto 0; height:3px; width:100%;
+    background:linear-gradient(90deg, var(--c-blue), #93c5fd, #bae6fd, var(--c-green));
+    animation:slideBar 5s linear infinite; opacity:.7;
+  }
+  .dark .card-pro::before{ opacity:.45; }
+
+  .pane{
+    border-radius:.75rem; border:1px solid #e2e8f0; background:#fff; padding:1rem;
+    box-shadow:0 1px 2px rgba(30,41,59,.05);
+  }
+  .dark .pane{
+    border-color:#334155; background:#0B1220; box-shadow:0 1px 2px rgba(0,0,0,.35);
+  }
+
+  .btn-primary{
+    @apply inline-flex w-full items-center justify-center gap-2 rounded-xl font-semibold text-white transition;
+    padding:.75rem 1rem;
+    background:#0284c7;
+    box-shadow:0 10px 15px -3px rgba(2,132,199,.10), 0 4px 6px -4px rgba(2,132,199,.10);
+  }
+  .btn-primary:hover{ background:#0369a1; }
+  .btn-primary:focus-visible{ outline:none; box-shadow:0 0 0 4px rgba(14,165,233,.30); }
+  .btn-primary:disabled{ opacity:.6; cursor:not-allowed; }
+  .dark .btn-primary{ background:#0ea5e9; }
+  .dark .btn-primary:hover{ background:#0284c7; }
+  .dark .btn-primary:focus-visible{ box-shadow:0 0 0 4px rgba(2,132,199,.35); }
+
+  .input{
+    width:100%; border-radius:.75rem; background:#fff; border:1px solid #cbd5e1;
+    padding:.75rem .875rem; color:#0f172a; transition:all .2s;
+  }
+  .input::placeholder{ color:transparent; }
+  .input:focus-visible{
+    outline:none; border-color:#0284c7; box-shadow:0 0 0 4px rgba(14,165,233,.20);
+  }
+  .input.error{ border-color:#ef4444; box-shadow:0 0 0 4px rgba(239,68,68,.15); }
+  .dark .input{
+    background:#0B1220; color:#e2e8f0; border-color:#334155;
+  }
+  .dark .input:focus-visible{
+    border-color:#38bdf8; box-shadow:0 0 0 4px rgba(56,189,248,.25);
+  }
+
+  /* Floating labels */
+  .fld{ position:relative; }
+  .lbl{
+    pointer-events:none; position:absolute; left:.875rem; top:50%; transform:translateY(-50%);
+    color:#64748b; font-size:.875rem; transition:all .2s;
+  }
+  .peer:focus ~ .lbl,
+  .peer:not(:placeholder-shown) ~ .lbl{
+    top:-.625rem; left:.5rem; font-size:.75rem; padding:0 .25rem; background:#fff; color:#0284c7;
+  }
+  .dark .peer:focus ~ .lbl,
+  .dark .peer:not(:placeholder-shown) ~ .lbl{
+    background:#0B1220; color:#38bdf8;
+  }
+
+  /* Loader superior (visible cuando existe el div) */
+  .top-loader{
+    position:absolute; top:0; left:0; right:0; height:3px; z-index:10; pointer-events:none;
+    background:linear-gradient(90deg, var(--c-blue), #60a5fa, var(--c-green));
+    background-size:200% 100%; animation:loader 1s linear infinite;
+  }
+  .dark .top-loader{
+    background:linear-gradient(90deg, #38bdf8, #0ea5e9, #22c55e);
+  }
+
+  /* Mini métricas */
+  .kpi{
+    border-radius:.75rem; border:1px solid #e2e8f0; background:#fff; padding:.75rem 1rem;
+    box-shadow:0 1px 2px rgba(30,41,59,.05);
+  }
+  .dark .kpi{
+    border-color:#334155; background:#0B1220; box-shadow:0 1px 2px rgba(0,0,0,.35);
+  }
+}
+
+/* ---------- ANIMACIONES ---------- */
+@keyframes rotateBeam{ to{ transform:rotate(360deg); } }
+@keyframes slideBar{ 0%{background-position:0 0;} 100%{background-position:200% 0;} }
+@keyframes loader{ 0%{background-position:0 0;} 100%{background-position:200% 0;} }
+@keyframes fadeUp{ from{opacity:0; transform:translateY(8px) scale(.98);} to{opacity:1; transform:translateY(0) scale(1);} }
+@keyframes shakeX{ 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
+
+.reveal{ animation:fadeUp .45s ease-out both; animation-delay:var(--d,0s); }
+.shake{ animation:shakeX .34s ease-in-out; }
+
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce){
+  .reveal, .hero-beam{ animation:none !important; }
 }
