@@ -40,7 +40,7 @@ export default function LoginScreen() {
           <h1
             className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl bg-gradient-to-r from-sky-600 via-cyan-500 to-emerald-600 bg-clip-text text-transparent"
           >
-            Operación ferroviaria sin fricción
+            Operación ferroviaria 
           </h1>
 
           <p className="mt-3 text-slate-600 dark:text-slate-300">

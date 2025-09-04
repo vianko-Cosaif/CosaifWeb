@@ -17,7 +17,7 @@ import {
 
 export type Rol = "ADMINISTRADOR" | "COORDINADOR" | "CLIENTE";
 export interface SidebarMenuProps {
-  rol: Rol;
+  rol: Rol | string; // acepta strings sueltos tipo "ADMIN", "SUPERVISOR", etc.
   nombre?: string;
   empresa?: string;
   version?: string;
@@ -50,6 +50,15 @@ const ROLE_ICON: Record<Rol, React.ReactNode> = {
   COORDINADOR: <Train className="h-4 w-4" />,
   CLIENTE: <Building2 className="h-4 w-4" />,
 };
+
+/* ===== Normalizador de rol ===== */
+function normalizeRole(r?: string): Rol {
+  const s = (r || "").toUpperCase().trim();
+  if (s === "ADMINISTRADOR" || s === "ADMIN") return "ADMINISTRADOR";
+  if (s === "COORDINADOR" || s === "COOORDINADOR" || s === "COORD") return "COORDINADOR";
+  // cualquier otro (SUPERVISOR, OPERADOR, vacío, etc.) cae a CLIENTE
+  return "CLIENTE";
+}
 
 /* ===== Utils ===== */
 function useMediaQuery(q: string) {
@@ -120,27 +129,31 @@ export default function SidebarMenu({
 
   useBodyScrollLock(mobileOpen && !isDesktop);
 
-  // Clamp responsivo: evita barras ridículas y respeta viewport
+  // rol normalizado + tema seguro
+  const normRol = useMemo<Rol>(() => normalizeRole(rol as string), [rol]);
+  const theme = useMemo(() => ROLE_THEME[normRol] ?? ROLE_THEME.CLIENTE, [normRol]);
+
+  // Clamp responsivo
   const openW = useMemo(() => Math.round(Math.min(Math.max(expandedWidth, 240), 420)), [expandedWidth]);
   const colW = useMemo(() => Math.round(Math.min(Math.max(collapsedWidth, 64), 104)), [collapsedWidth]);
 
-  const theme = ROLE_THEME[rol];
   const asideId = "sidebar-mobile";
-  const BASE = "/cliente"; // este menú vive en el área cliente
+  const BASE = "/cliente";
 
   // Rutas por item
   const NAV = useMemo(
     () => ([
       { id: "Movimientos", label: "Movimientos", href: `${BASE}/movimientos`, icon: <Train className="h-5 w-5" />, show: true },
-      { id: "Usuario", label: "Usuarios", href: `${BASE}/usuarios`, icon: <Users className="h-5 w-5" />, show: rol !== "CLIENTE" },
-      { id: "Localidad", label: "Localidad y Vías", href: `${BASE}/localidad`, icon: <MapPinned className="h-5 w-5" />, show: rol !== "CLIENTE" },
+      { id: "Usuario", label: "Usuarios", href: `${BASE}/usuarios`, icon: <Users className="h-5 w-5" />, show: normRol !== "CLIENTE" },
+      { id: "Localidad", label: "Localidad y Vías", href: `${BASE}/localidad`, icon: <MapPinned className="h-5 w-5" />, show: normRol !== "CLIENTE" },
       { id: "Incidente", label: "Registro de Incidentes", href: `/incidentes`, icon: <TriangleAlert className="h-5 w-5" />, show: true },
-      { id: "Terminal", label: "Terminal", href: `${BASE}/terminal`, icon: <Terminal className="h-5 w-5" />, show: rol !== "CLIENTE" },
+      { id: "Terminal", label: "Terminal", href: `${BASE}/terminal`, icon: <Terminal className="h-5 w-5" />, show: normRol !== "CLIENTE" },
     ].filter(i => i.show)),
-    [rol]
+    [normRol]
   );
 
   const vars: React.CSSProperties = {
+    // siempre existen por el fallback de theme
     "--sb-bg": theme.bg, "--sb-text": theme.text, "--sb-accent": theme.accent, "--sb-border": theme.border,
     "--sb-glass": theme.glass, "--sb-role-bg": theme.roleBg, "--sb-role-border": theme.roleBorder, "--sb-role-text": theme.roleText,
     "--sbw-open": `${openW}px`, "--sbw-collapsed": `${colW}px`,
@@ -220,7 +233,7 @@ export default function SidebarMenu({
             className="mx-4 mt-3 rounded-full border px-3 py-1 text-xs"
             style={{ background: "var(--sb-role-bg)", borderColor: "var(--sb-role-border)", color: "var(--sb-role-text)" }}
           >
-            <span className="inline-flex items-center gap-2">{ROLE_ICON[rol]} {rol}</span>
+            <span className="inline-flex items-center gap-2">{ROLE_ICON[normRol]} {normRol}</span>
           </div>
         )}
 
@@ -320,7 +333,7 @@ export default function SidebarMenu({
           mobileOpen ? "translate-x-0" : "-translate-x-full",
         ].join(" ")}
       >
-        <div className="flex h-full w-[min(92vw,360px)] flex-col" style={{ background: "var(--sb-bg)" }}>
+        <div className="flex h-full w：[min(92vw,360px)] flex-col" style={{ background: "var(--sb-bg)" }}>
           <div className="flex items-center gap-2 border-b px-4 py-4" style={{ borderColor: "var(--sb-border)", paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
             <Home className="h-5 w-5" />
             <div className="flex-1">
@@ -357,7 +370,7 @@ export default function SidebarMenu({
             className="mx-4 mt-3 rounded-full border px-3 py-1 text-xs"
             style={{ background: "var(--sb-role-bg)", borderColor: "var(--sb-role-border)", color: "var(--sb-role-text)" }}
           >
-            <span className="inline-flex items-center gap-2">{ROLE_ICON[rol]} {rol}</span>
+            <span className="inline-flex items-center gap-2">{ROLE_ICON[normRol]} {normRol}</span>
           </div>
 
           <nav className="mt-3 flex-1 overflow-y-auto px-2" role="navigation" aria-label="Navegación principal">
