@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export type IncidenteRow = {
   id?: number | string;
   fecha?: string;

@@ -89,7 +89,7 @@ $rust: #8b5e34;
   &::after {
     content: "";
     position: absolute;
-    bottom: 12.6rem;
+    bottom: 19.6rem;
     height: 20rem;
     width: 100%;
     background: linear-gradient(color.scale(black,$lightness:20%), black 20%);
@@ -104,10 +104,10 @@ $rust: #8b5e34;
   position: absolute;
   left: 0; right: 0;
   bottom: 10rem;
-  height: 2.6rem;
+  height: 2.9rem;
   z-index: 0;
-  border-top: .3rem solid white;
-  border-bottom: .3rem solid white;
+  border-top: .7rem solid white;
+  border-bottom: .9rem solid white;
   background:
     linear-gradient(55deg, transparent 46%, white 46% 54%, transparent 54%) left/1.6rem 2.2rem,
     linear-gradient(-55deg, transparent 46%, white 46% 54%, transparent 54%) left/1.6rem 2.2rem;

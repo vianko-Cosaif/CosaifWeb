@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-const API_URL = process.env.API_URL!;                         // ej: http://192.168.100.30:8080
+const API_URL = process.env.API_URL!;                     
 const TOKEN_COOKIE = process.env.JWT_COOKIE_NAME ?? "token";
 
 export const dynamic = "force-dynamic";

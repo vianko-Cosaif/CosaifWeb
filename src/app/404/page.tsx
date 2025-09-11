@@ -34,11 +34,11 @@ export default function NotFound() {
       {/* Nubes sutiles en la parte alta */}
       <div aria-hidden style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none" }}>
         {Array.from({ length: 6 }).map((_, i) => {
-          const top = 5 + Math.random() * 25; // 5–30%
-          const left = Math.random() * 100;
-          const w = 120 + Math.random() * 160; // ancho
-          const h = 30 + Math.random() * 30; // alto
-          const dur = 14 + Math.random() * 10; // duración
+          const top = 5 + Math.random() * 90; // 5–30%
+          const left = Math.random() * 1000;
+          const w = 120 + Math.random() * 2400; // ancho
+          const h = 30 + Math.random() * 800; // alto
+          const dur = 14 + Math.random() * 89; // duración
           return (
             <span
               key={i}
@@ -51,8 +51,8 @@ export default function NotFound() {
                 borderRadius: "999px",
                 background: "linear-gradient(to right, rgba(255,255,255,.55), rgba(255,255,255,.25))",
                 filter: "blur(1px)",
-                opacity: 0.9,
-                animation: `drift ${dur}s ease-in-out ${i * 0.6}s infinite alternate`,
+      
+                animation: `drift ${dur}s ease-in-out ${i * 3}s infinite alternate`,
               }}
             />
           );

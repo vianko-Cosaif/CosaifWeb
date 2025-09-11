@@ -10,8 +10,12 @@ const devOrigins = (process.env.ALLOWED_DEV_ORIGINS ?? "")
 const nextConfig: NextConfig = {
   poweredByHeader: false,
 
-  // Solo define experimental si hay orígenes
-  ...(devOrigins.length ? { experimental: { allowedDevOrigins: devOrigins } } : {}),
+  // 👇 hace visible API_URL en el cliente como NEXT_PUBLIC_API_URL
+  env: {
+    NEXT_PUBLIC_API_URL: process.env.API_URL,
+  },
+
+  // allowedDevOrigins is not a valid Next.js experimental config, so it has been removed
 
   async headers() {
     return [
@@ -29,9 +33,6 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-
-  // ⛔️ Sin rewrites: /xapi/* lo maneja src/app/xapi/[...path]/route.ts
-  // async rewrites() { return []; },
 };
 
 export default nextConfig;

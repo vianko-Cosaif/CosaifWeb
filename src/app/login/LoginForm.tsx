@@ -11,8 +11,8 @@ const DEST: Record<string, string> = {
   COORDINADOR: "/coordinador",
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "/xapi";
-const LOGIN_PATH = "/usuarios/login";
+const API_BASE ="/bff";
+const LOGIN_PATH = "/login";
 
 export default function LoginForm() {
   const [show, setShow] = useState(false);
