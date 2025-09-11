@@ -109,7 +109,7 @@ function useVisibleInterval(cb: () => void, ms: number | null) {
 
 /* ===== Componente ===== */
 export default function MovimientosPanel({
-  apiBase = "/xapi",
+  apiBase = "/bff",
   empresas = [],
   localidades = [],
   defaultEmpresaId = null,
@@ -125,7 +125,6 @@ export default function MovimientosPanel({
   const cookieRole = (getCookie("role") || (userMeta as any)?.rol || role || "CLIENTE").toString();
   const roleUp = cookieRole.toUpperCase();
   const isClient = roleUp === "CLIENTE";
-  const token = getCookie("token");
   const cookieLocId = Number(getCookie("locId") || "") || null;
 
   // filtros (CLIENTE bloqueado en empresa + localidad)
@@ -146,8 +145,6 @@ export default function MovimientosPanel({
     async function loadCombos() {
       try {
         const headers: HeadersInit = {};
-        if (token) headers["Authorization"] = `Bearer ${token}`;
-
         if (!empresas.length) {
           const r = await fetch(`${apiBase}/empresas`, {
             cache: "no-store",
@@ -177,7 +174,7 @@ export default function MovimientosPanel({
     return () => {
       ignore = true;
     };
-  }, [apiBase, empresas.length, localidades.length, token]);
+  }, [apiBase, empresas.length, localidades.length]);
 
   // derivar empresaId del CLIENTE
   useEffect(() => {
@@ -199,6 +196,27 @@ export default function MovimientosPanel({
     } catch {}
   }, [isClient, empId, empOpts, (userMeta as any)?.empresa?.nombre]);
 
+  // nombre de localidad (para el input bloqueado)
+  const [locName, setLocName] = useState<string>("");
+  useEffect(() => {
+    if (locId == null) { setLocName(""); return; }
+    const found = locOpts.find((o) => o.id === locId);
+    if (found) { setLocName(found.nombre); return; }
+    (async () => {
+      try {
+        const r = await fetch(`${apiBase}/localidades/${locId}`, { credentials: "include", cache: "no-store" });
+        if (r.ok) {
+          const d = await r.json();
+          setLocName(d?.nombre || String(locId));
+        } else {
+          setLocName(String(locId));
+        }
+      } catch {
+        setLocName(String(locId));
+      }
+    })();
+  }, [locId, locOpts, apiBase]);
+
   // paginación / datos
   const PAGE_SIZE = 50;
   const [page, setPage] = useState(1);
@@ -207,20 +225,6 @@ export default function MovimientosPanel({
   const [items, setItems] = useState<Movement[]>([]);
   const [total, setTotal] = useState(0);
 
-
-  const  Filtro_Base = "http://38.90.13.1"
-
-
-
-  const a = useState<booolean>(() => {
-    if("Actuales"){
-      
-    }
-  }
-
-
-)
-  
   // auto-refresh
   const [auto, setAuto] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
@@ -229,6 +233,11 @@ export default function MovimientosPanel({
   useEffect(() => {
     try { localStorage.setItem("mov:auto", auto ? "1" : "0"); } catch {}
   }, [auto]);
+
+  // CLIENTE no puede ver "Pasados"
+  useEffect(() => {
+    if (isClient && tab !== "Actuales") setTab("Actuales");
+  }, [isClient, tab]);
 
   const reqSeq = useRef(0);
   const load = useCallback(
@@ -239,22 +248,21 @@ export default function MovimientosPanel({
       showRefreshing ? setRefreshing(true) : setLoading(true);
       try {
         const headers: HeadersInit = { "Content-Type": "application/json" };
-        if (token) headers["Authorization"] = `Bearer ${token}`;
 
         let url = "";
-        const q = new URLSearchParams();
-        if (from) q.append("fechaInicio", from);
-        if (to) q.append("fechaFin", to);
-        q.append("page", String(page));
-        q.append("pageSize", String(PAGE_SIZE));
-        if (tab === "Pasados") q.append("finalizado", "true");
+        const qs = new URLSearchParams();
+        if (from) qs.append("fechaInicio", from);
+        if (to) qs.append("fechaFin", to);
+        qs.append("page", String(page));
+        qs.append("pageSize", String(PAGE_SIZE));
+        if (!isClient && tab === "Pasados") qs.append("finalizado", "true"); // clientes nunca ven pasados
 
         if (isClient) {
-          url = `${apiBase}/movimientos/empresa/${empId}${locId != null ? `/localidad/${locId}` : ""}?${q.toString()}`;
+          url = `${apiBase}/movimientos/empresa/${empId}${locId != null ? `/localidad/${locId}` : ""}?${qs.toString()}`;
         } else {
-          if (empId != null) q.append("empresaId", String(empId));
-          if (locId != null) q.append("localidadId", String(locId));
-          url = `${apiBase}/movimientos?${q.toString()}`;
+          if (empId != null) qs.append("empresaId", String(empId));
+          if (locId != null) qs.append("localidadId", String(locId));
+          url = `${apiBase}/movimientos?${qs.toString()}`;
         }
 
         const r = await fetch(url, { cache: "no-store", credentials: "include", headers });
@@ -305,7 +313,11 @@ export default function MovimientosPanel({
           ? rows.filter((r) => r.empresaId === empId && (locId == null || r.localidadId === locId))
           : rows;
 
-        const finalRows = tab === "Actuales" ? securedRows.filter((r) => !r.finalizado) : securedRows.filter((r) => r.finalizado);
+        const finalRows = isClient
+          ? securedRows.filter((r) => !r.finalizado) // clientes solo actuales
+          : tab === "Actuales"
+            ? securedRows.filter((r) => !r.finalizado)
+            : securedRows.filter((r) => r.finalizado);
 
         setItems(finalRows);
         setTotal(Number((data as any)?.total ?? finalRows.length));
@@ -317,7 +329,7 @@ export default function MovimientosPanel({
         setRefreshing(false);
       }
     },
-    [apiBase, empId, locId, from, to, page, tab, isClient, token, (userMeta as any)?.empresa?.nombre]
+    [apiBase, empId, locId, from, to, page, tab, isClient, userMeta]
   );
 
   useEffect(() => { load(false); }, [load]);
@@ -350,13 +362,15 @@ export default function MovimientosPanel({
     (!lockedLocalidad && locId != null) ||
     (!lockedEmpresa && empId != null);
 
+  const tabs: Array<"Actuales" | "Pasados"> = isClient ? ["Actuales"] : ["Actuales", "Pasados"];
+
   /* ===== Render ===== */
   return (
     <section className="w-full max-w-screen-2xl mx-auto px-3 sm:px-4 lg:px-6 space-y-3">
       {/* Toolbar */}
       <div className="pane sticky z-10 top-[max(0px,env(safe-area-inset-top))] flex flex-wrap items-center gap-2 backdrop-blur supports-[backdrop-filter]:bg-white/70 dark:supports-[backdrop-filter]:bg-slate-900/70">
         <div className="inline-flex rounded-lg border overflow-hidden">
-          {(["Actuales", "Pasados"] as const).map((t) => (
+          {tabs.map((t) => (
             <button
               key={t}
               type="button"
@@ -468,7 +482,7 @@ export default function MovimientosPanel({
           <div className="lg:col-span-2">
             <label className="mb-1 block text-xs text-slate-500">Localidad</label>
             {lockedLocalidad ? (
-              <input className="input min-h-10" value={locOpts.find((o) => o.id === locId)?.nombre ?? "Mi localidad"} disabled />
+              <input className="input min-h-10" value={locName || "—"} disabled />
             ) : (
               <select
                 className="input min-h-10"
@@ -515,7 +529,7 @@ export default function MovimientosPanel({
           </EmptyBox>
         ) : (
           filtered.map((m) => (
-            <article key={m.id} className="rounded-xl border bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-70">
+            <article key={m.id} className="rounded-xl border bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <h3 className="font-semibold text-base">#{m.id} · {m.localidadNombre ?? "—"}</h3>
                 <Badge
