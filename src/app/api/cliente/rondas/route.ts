@@ -1,31 +1,64 @@
-import { NextResponse } from "next/server";
+// app/api/cliente/rondas/route.ts
+import { NextResponse, NextRequest } from "next/server";
 import { cookies } from "next/headers";
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const loc = searchParams.get("localidadId");
-    if (!loc) return NextResponse.json([], { status: 200 });
+    const { searchParams, origin } = new URL(req.url);
+    const localidadId = searchParams.get("localidadId");
+    if (!localidadId) return NextResponse.json([], { status: 200 });
 
-    const API = process.env.API_URL; 
-    if (!API) return NextResponse.json([], { status: 200 });
-
-    // si tu backend requiere JWT:
     const name = process.env.JWT_COOKIE_NAME || "token";
     const cookieStore = await cookies();
     const token = cookieStore.get(name)?.value;
 
-    const url = `${API}/rondas/localidad/${loc}/estado/false`;
-    const r = await fetch(url, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      cache: "no-store",
-    });
+    // Reenviar TODAS las cookies (lo que espera el BFF)
+    const cookieHeader = cookieStore
+      .getAll()
+      .map((c) => `${c.name}=${encodeURIComponent(c.value)}`)
+      .join("; ");
 
-    if (!r.ok) return NextResponse.json([], { status: 200 });
-    const data = await r.json();
-    return NextResponse.json(data);
-  } catch (e) {
-    console.error("[cliente/rondas] error:", e);
+    const targets = [
+      `${origin}/bff/movimientos/rondas/localidad/${localidadId}/estado/false`,
+      `${origin}/bff/rondas/localidad/${localidadId}/estado/false`,
+    ];
+
+    for (const url of targets) {
+      console.log("[cliente/rondas] →", {
+        url,
+        hasToken: Boolean(token),
+        cookieLen: cookieHeader.length,
+      });
+
+      const r = await fetch(url, {
+        method: "GET",
+        // IMPORTANTE: reenviar cookies y, opcionalmente, Authorization
+        headers: {
+          ...(cookieHeader ? { cookie: cookieHeader } : {}),
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+          "user-agent": req.headers.get("user-agent") || "",
+          "x-forwarded-for": req.headers.get("x-forwarded-for") || "",
+        },
+        cache: "no-store",
+      });
+
+      const body = await r.text();
+      console.log("[cliente/rondas] backend:", r.status, r.statusText, "| body:", body.slice(0, 120));
+
+      if (r.ok) {
+        try {
+          const data = JSON.parse(body);
+          return NextResponse.json(data, { status: 200 });
+        } catch {
+          return NextResponse.json([], { status: 200 });
+        }
+      }
+    }
+
+    console.warn("[cliente/rondas] ningún path respondió OK");
+    return NextResponse.json([], { status: 200 });
+  } catch (err) {
+    console.error("[cliente/rondas] error:", err);
     return NextResponse.json([], { status: 200 });
   }
 }

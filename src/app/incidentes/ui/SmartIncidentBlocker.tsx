@@ -45,7 +45,7 @@ interface Props {
 }
 
 /* === CONSTANTS === */
-const PROXY = "/api/passthrough";
+const PROXY = "/bff";
 const INCIDENTES = `${PROXY}/incidentes`;
 const WINDOW_DURATION_MS = 10 * 60 * 1000;
 

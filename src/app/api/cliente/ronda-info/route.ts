@@ -1,21 +1,41 @@
-// app/api/cliente/ronda-info/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-export async function GET(req: Request) {
-  const API = process.env.API_URL!;
-  const { searchParams } = new URL(req.url);
-  const id = searchParams.get("id");
-  if (!id) return NextResponse.json({}, { status: 200 });
+export const dynamic = "force-dynamic";
 
-  const name = process.env.JWT_COOKIE_NAME || "token";
-  const token = (await cookies()).get(name)?.value;
-
-  const r = await fetch(`${API}/movimientos/ronda/${id}/info`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+async function fetchOne(base: URL, id: string, token?: string) {
+  const url = new URL(`/movimientos/ronda/${encodeURIComponent(id)}/info`, base);
+  const r = await fetch(url, {
     cache: "no-store",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
+  if (!r.ok) return null;
+  const data = await r.json().catch(() => ({}));
+  return [Number(id), data] as const;
+}
 
-  if (!r.ok) return NextResponse.json({}, { status: 200 });
-  return NextResponse.json(await r.json());
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const raw = searchParams.get("ids") ?? "";
+    const ids = raw.split(",").map(s => s.trim()).filter(Boolean);
+    if (ids.length === 0) return NextResponse.json({});
+
+    const token = cookies().get(process.env.JWT_COOKIE_NAME ?? "token")?.value;
+    const base = new URL("/bff", req.url);
+
+    const results = await Promise.allSettled(ids.map(id => fetchOne(base, id, token)));
+    const out: Record<number, unknown> = {};
+    for (const res of results) {
+      if (res.status === "fulfilled" && res.value) {
+        const [id, data] = res.value;
+        out[id] = data;
+      }
+    }
+    return NextResponse.json(out);
+  } catch (err) {
+    console.error("[rondas-info] error:", err);
+    // El componente ya hace fallback a /ronda-info si esto falla
+    return NextResponse.json({}, { status: 200 });
+  }
 }
