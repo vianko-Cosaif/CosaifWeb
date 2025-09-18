@@ -25,24 +25,44 @@ const codeFrom = (inf?: RondaInfo, fallbackId?: number) =>
   String(inf?.movimientoId ?? inf?.movimiento?.id ?? fallbackId ?? "—");
 
 async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const r = await fetch(url, { cache: "no-store", signal });
-  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-  return r.json();
+  console.log("[fetchJson] GET", url);
+  const r = await fetch(url, {
+    cache: "no-store",
+    credentials: "include",   // envía cookies (token) same-origin
+    mode: "same-origin",
+    signal,
+  });
+  console.log("[fetchJson] status", r.status, r.statusText);
+  if (!r.ok) {
+    const txt = await r.text().catch(() => "");
+    throw new Error(`${r.status} ${r.statusText} :: ${txt.slice(0, 200)}`);
+  }
+  const data = (await r.json()) as T;
+  console.log("[fetchJson] data", data);
+  return data;
 }
+
 async function loadInfoMap(ids: number[], signal?: AbortSignal): Promise<Record<number, RondaInfo>> {
+  console.log("[loadInfoMap] ids", ids);
   if (ids.length === 0) return {};
   const qs = encodeURIComponent(ids.join(","));
   try {
-    return await fetchJson<Record<number, RondaInfo>>(`/api/cliente/rondas-info?ids=${qs}`, signal);
-  } catch {
+    const bulk = await fetchJson<Record<number, RondaInfo>>(`/api/cliente/rondas-info?ids=${qs}`, signal);
+    if (!bulk || typeof bulk !== "object") throw new Error("bulk inválido");
+    console.log("[loadInfoMap] bulk ok", bulk);
+    return bulk;
+  } catch (e) {
+    console.warn("[loadInfoMap] bulk failed, fallback per-id", e);
     const entries = await Promise.allSettled(
       ids.map(async (id) => [id, await fetchJson<RondaInfo>(`/api/cliente/ronda-info?id=${id}`, signal)] as const)
     );
     const map: Record<number, RondaInfo> = {};
     for (const e of entries) if (e.status === "fulfilled") map[e.value[0]] = e.value[1];
+    console.log("[loadInfoMap] fallback map", map);
     return map;
   }
 }
+
 function useVisibleInterval(fn: () => void, delay: number | null, deps: React.DependencyList = []) {
   useEffect(() => {
     if (!delay) return;
@@ -133,6 +153,10 @@ export default function RailQueueBoard({
   const abortRef = useRef<AbortController | null>(null);
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  useEffect(() => {
+    console.log("[RailQueueBoard] mount localidadId:", localidadId);
+  }, [localidadId]);
+
   async function load(showRefreshing = false) {
     const mySeq = ++reqSeq.current;
     abortRef.current?.abort();
@@ -142,7 +166,11 @@ export default function RailQueueBoard({
     showRefreshing ? setRefreshing(true) : setLoading(true);
 
     try {
-      const data = await fetchJson<Ronda[]>(`/api/cliente/rondas?localidadId=${localidadId}`, ac.signal);
+      const url = `/api/cliente/rondas?localidadId=${localidadId}`;
+      console.log("[RailQueueBoard] fetching rondas:", url);
+      const data = await fetchJson<Ronda[]>(url, ac.signal);
+      console.log("[RailQueueBoard] rondas data:", data);
+
       data.sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden);
 
       const prev = prevIdsRef.current;
@@ -172,13 +200,15 @@ export default function RailQueueBoard({
       setItems(data);
 
       const ids = data.slice(0, nextCount + 1).map((x) => x.id);
+      console.log("[RailQueueBoard] ids para info:", ids);
       const map = await loadInfoMap(ids, ac.signal);
+      console.log("[RailQueueBoard] info map:", map);
+
       if (mySeq !== reqSeq.current) return;
       startTransition(() => setInfo(map));
       lastOkAt.current = Date.now();
     } catch (err) {
       if (mySeq === reqSeq.current) pushToast(online ? "Error al cargar datos" : "Sin conexión", "warning");
-      // eslint-disable-next-line no-console
       console.error("[RailQueueBoard] load error", err);
     } finally {
       if (mySeq === reqSeq.current) {
@@ -199,7 +229,9 @@ export default function RailQueueBoard({
     try {
       if (document.fullscreenElement) document.exitFullscreen();
       else boardRef.current?.requestFullscreen();
-    } catch {}
+    } catch (e) {
+      console.warn("[RailQueueBoard] fullscreen error", e);
+    }
   };
 
   // Keyboard shortcuts: r refresh, a auto, s sound, f fullscreen
@@ -401,8 +433,8 @@ export default function RailQueueBoard({
                     className="mt-6 rounded-lg bg-gradient-to-r from-sky-100 to-emerald-100 text-slate-900 p-4 border border-slate-200 dark:from-slate-800 dark:to-slate-800 dark:text-slate-100 dark:border-slate-700"
                   >
                     <p className="text-sm">
-                      Mover <b>{curInfo?.movimiento?.locomotora ?? "la unidad"}</b> desde {" "}
-                      <b>{curInfo?.movimiento?.viaOrigen?.nombre ?? "—"}</b> hacia {" "}
+                      Mover <b>{curInfo?.movimiento?.locomotora ?? "la unidad"}</b> desde{" "}
+                      <b>{curInfo?.movimiento?.viaOrigen?.nombre ?? "—"}</b> hacia{" "}
                       <b>{curInfo?.movimiento?.viaDestino?.nombre ?? "—"}</b>.
                     </p>
                   </motion.div>
