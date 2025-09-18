@@ -13,7 +13,7 @@ export default function Page() {
   return (
     
     <section className="mx-auto w-full max-w-7xl p-4 sm:p-6">
-      <MovimientosPanel apiBase="/xapi" allowCreate role="COORDINADOR" />
+      <MovimientosPanel apiBase="/bff" allowCreate role="COORDINADOR" />
     </section>
   );
 }
