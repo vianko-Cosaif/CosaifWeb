@@ -206,7 +206,7 @@ export default function IncidentModal({
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 bg-slate-50">
           <div className="space-y-3">
             {/* Descripción */}
-            <section className="rounded-lg border bg-white p-3 shadow-sm">
+            <section className="rounded-lg border bg-white p-3 shadow-sfm">
               <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-800">
                 <Info className="h-5 w-5 text-emerald-600" />
                 Descripción del Incidente
