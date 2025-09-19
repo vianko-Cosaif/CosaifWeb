@@ -1,7 +1,8 @@
 // src/app/cliente/page.tsx
 import { cookies } from "next/headers";
 import SelectLocalidad from "@/app/Components/cliente/SelectLocalidad";
-import {redirect} from "next/navigation";
+import { redirect } from "next/navigation";
+import ClientPageWrapper from "./ClientPageWrapper";
 
 export const dynamic = "force-dynamic";
 
@@ -17,13 +18,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<SP>
 
   const qLoc = Array.isArray(loc) ? loc[0] : loc;
   const localidadId = toInt(qLoc) ?? toInt(c.get("locId")?.value) ?? null;
-
-  const RailQueueBoard = (await import("./RailQueueBoard")).default;
+  const empresaId = toInt(c.get("empresaId")?.value) ?? null;
 
   return (
-    <section className="mx-auto w-full max-w-7xl p-4 sm:p-6">
-      {localidadId ? <RailQueueBoard localidadId={localidadId} /> : <SelectLocalidad />}
-    </section>
+    <ClientPageWrapper 
+      localidadId={localidadId} 
+      empresaId={empresaId}
+    />
   );
 }
 
