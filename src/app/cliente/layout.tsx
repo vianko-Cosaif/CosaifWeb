@@ -48,7 +48,7 @@ export default function ClienteLayout({ children }: { children: React.ReactNode 
         {/* Monitor de incidentes global para /cliente/* */}
         <IncidentMonitor
           apiBase="/bff"
-          intervalMs={5000}
+          intervalMs={60000}
           enabled={true}
           empresaId={empresaId}
           localidadId={Number(loc) || null}

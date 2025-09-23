@@ -20,7 +20,7 @@ interface IncidentMonitorProps {
 /* ================= Componente Principal ================= */
 export default function IncidentMonitor({
   apiBase = "/bff",
-  intervalMs = 5000, // 5 segundos
+  intervalMs = 60000, // 1 minuto
   enabled = true,
   empresaId = null,
   localidadId = null,
