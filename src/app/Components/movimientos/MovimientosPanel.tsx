@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -11,6 +12,8 @@ import {
   ChevronRight,
   Search,
   Plus,
+  WifiOff,
+  ArrowUpDown,
 } from "lucide-react";
 
 /* ===== Tipos ===== */
@@ -94,6 +97,17 @@ function getUserMeta() {
   }
 }
 
+/* Debounce para búsqueda */
+function useDebouncedValue<T>(value: T, delay = 250) {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setV(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+  return v;
+}
+
+/* Intervalo sólo si pestaña visible */
 function useVisibleInterval(cb: () => void, ms: number | null) {
   useEffect(() => {
     if (!ms) return;
@@ -137,6 +151,7 @@ export default function MovimientosPanel({
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [q, setQ] = useState("");
+  const qDeb = useDebouncedValue(q, 250);
   const [tab, setTab] = useState<"Actuales" | "Pasados">("Actuales");
 
   // combos
@@ -175,16 +190,13 @@ export default function MovimientosPanel({
       if (!ignore) setCombosReady(true);
     }
     loadCombos();
-    return () => {
-      ignore = true;
-    };
+    return () => { ignore = true; };
   }, [apiBase, empresas.length, localidades.length]);
 
   // derivar empresaId del CLIENTE
   useEffect(() => {
     if (!isClient || empId != null) return;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const name = ((userMeta as any)?.empresa?.nombre || "").toLowerCase().trim();
       if (!name) return;
 
@@ -223,46 +235,63 @@ export default function MovimientosPanel({
   }, [locId, locOpts, apiBase]);
 
   // paginación / datos
-  const PAGE_SIZE = 50;
+  const [pageSize, setPageSize] = useState<number>(() => {
+    if (typeof window === "undefined") return 50;
+    const saved = Number(localStorage.getItem("mov:pageSize") || 50);
+    return [25, 50, 100].includes(saved) ? saved : 50;
+  });
+  useEffect(() => { try { localStorage.setItem("mov:pageSize", String(pageSize)); } catch {} }, [pageSize]);
+
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [items, setItems] = useState<Movement[]>([]);
   const [total, setTotal] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   // auto-refresh
   const [auto, setAuto] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("mov:auto") !== "0";
   });
-  useEffect(() => {
-    try { localStorage.setItem("mov:auto", auto ? "1" : "0"); } catch {}
-  }, [auto]);
+  useEffect(() => { try { localStorage.setItem("mov:auto", auto ? "1" : "0"); } catch {} }, [auto]);
 
   // CLIENTE no puede ver "Pasados"
-  useEffect(() => {
-    if (isClient && tab !== "Actuales") setTab("Actuales");
-  }, [isClient, tab]);
+  useEffect(() => { if (isClient && tab !== "Actuales") setTab("Actuales"); }, [isClient, tab]);
 
+  // ordenamiento simple
+  const [sortBy, setSortBy] = useState<"id" | "fechaSolicitud" | "fechaInicio" | "fechaFin">("id");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const toggleSort = (k: typeof sortBy) => {
+    setSortBy((prev) => (prev === k ? prev : k));
+    setSortDir((prev) => (sortBy === k ? (prev === "asc" ? "desc" : "asc") : "desc"));
+  };
+
+  // carga con cancelación
   const reqSeq = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+
   const load = useCallback(
     async (showRefreshing = false) => {
       if (isClient && empId == null) return;
 
+      abortRef.current?.abort();
+      abortRef.current = new AbortController();
+
       const my = ++reqSeq.current;
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       showRefreshing ? setRefreshing(true) : setLoading(true);
+      setError(null);
       try {
         const headers: HeadersInit = { "Content-Type": "application/json" };
 
-        let url = "";
         const qs = new URLSearchParams();
         if (from) qs.append("fechaInicio", from);
         if (to) qs.append("fechaFin", to);
         qs.append("page", String(page));
-        qs.append("pageSize", String(PAGE_SIZE));
-        if (!isClient && tab === "Pasados") qs.append("finalizado", "true"); // clientes nunca ven pasados
+        qs.append("pageSize", String(pageSize));
+        if (!isClient && tab === "Pasados") qs.append("finalizado", "true");
 
+        let url = "";
         if (isClient) {
           url = `${apiBase}/movimientos/empresa/${empId}${locId != null ? `/localidad/${locId}` : ""}?${qs.toString()}`;
         } else {
@@ -271,13 +300,17 @@ export default function MovimientosPanel({
           url = `${apiBase}/movimientos?${qs.toString()}`;
         }
 
-        const r = await fetch(url, { cache: "no-store", credentials: "include", headers });
+        const r = await fetch(url, {
+          cache: "no-store",
+          credentials: "include",
+          headers,
+          signal: abortRef.current.signal,
+        });
         if (!r.ok) throw new Error(String(r.status));
         const data = await r.json();
         if (my !== reqSeq.current) return;
 
-        const raw = Array.isArray(data?.rows) ? data.rows : Array.isArray(data) ? data : [];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const raw = Array.isArray((data as any)?.rows) ? (data as any).rows : Array.isArray(data) ? data : [];
         const rows: Movement[] = raw.map((m: any): Movement => {
           const estadoCalc = m.estado ?? m.status ?? (m.finalizado ? "CONCLUIDO" : "PENDIENTE");
           const finalizadoCalc = m.finalizado ?? (String(estadoCalc).toUpperCase() === "CONCLUIDO");
@@ -298,7 +331,6 @@ export default function MovimientosPanel({
             operadorId: m.operadorId ?? null,
             maquinistaId: m.maquinistaId ?? null,
             empresaId: m.empresaId,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             empresaNombre: m.empresaNombre ?? m.empresa?.nombre ?? (userMeta as any)?.empresa?.nombre ?? undefined,
             fechaSolicitud: m.fechaSolicitud ?? m.createdAt ?? null,
             fechaInicio: m.fechaInicio ?? null,
@@ -321,40 +353,55 @@ export default function MovimientosPanel({
           ? rows.filter((r) => r.empresaId === empId && (locId == null || r.localidadId === locId))
           : rows;
 
-        const finalRows = isClient
-          ? securedRows.filter((r) => !r.finalizado) // clientes solo actuales
+        const baseRows = isClient
+          ? securedRows.filter((r) => !r.finalizado)
           : tab === "Actuales"
-            ? securedRows.filter((r) => !r.finalizado)
-            : securedRows.filter((r) => r.finalizado);
+          ? securedRows.filter((r) => !r.finalizado)
+          : securedRows.filter((r) => r.finalizado);
 
-        setItems(finalRows);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setTotal(Number((data as any)?.total ?? finalRows.length));
-      } catch {
+        setItems(baseRows);
+        setTotal(Number((data as any)?.total ?? baseRows.length));
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
         setItems([]);
         setTotal(0);
+        setError(e?.message || "Error al cargar datos");
       } finally {
         setLoading(false);
         setRefreshing(false);
       }
     },
-    [apiBase, empId, locId, from, to, page, tab, isClient, userMeta]
+    [apiBase, empId, locId, from, to, page, pageSize, tab, isClient, userMeta]
   );
 
   useEffect(() => { load(false); }, [load]);
   useVisibleInterval(() => auto && load(false), auto ? 20000 : null);
 
-  // búsqueda local
+  // búsqueda + ordenamiento local
   const filtered = useMemo(() => {
-    const qx = (q || "").trim().toLowerCase();
-    if (!qx) return items;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const qx = (qDeb || "").trim().toLowerCase();
     const hay = (s: any) => String(s ?? "").toLowerCase().includes(qx);
-    return items.filter((m) =>
-      hay(m.id) || hay(m.locomotora) || hay(m.empresaNombre) || hay(m.localidadNombre) ||
-      hay(m.viaOrigen) || hay(m.viaDestino) || hay(m.estado) || hay(m.tipoAccion) || hay(m.tipoMovimiento)
-    );
-  }, [items, q]);
+    let list = !qx
+      ? items
+      : items.filter((m) =>
+          hay(m.id) || hay(m.locomotora) || hay(m.empresaNombre) || hay(m.localidadNombre) ||
+          hay(m.viaOrigen) || hay(m.viaDestino) || hay(m.estado) || hay(m.tipoAccion) || hay(m.tipoMovimiento)
+        );
+
+    const getKey = (m: Movement) => {
+      if (sortBy === "id") return m.id;
+      const v = sortBy === "fechaSolicitud" ? m.fechaSolicitud : sortBy === "fechaInicio" ? m.fechaInicio : m.fechaFin;
+      return v ? new Date(v).getTime() : 0;
+    };
+    list = list.slice().sort((a, b) => {
+      const ka = getKey(a);
+      const kb = getKey(b);
+      const cmp = ka < kb ? -1 : ka > kb ? 1 : 0;
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+
+    return list;
+  }, [items, qDeb, sortBy, sortDir]);
 
   // detalle (bloqueado para CLIENTE)
   const [detail, setDetail] = useState<Movement | null>(null);
@@ -362,7 +409,7 @@ export default function MovimientosPanel({
 
   // badges / resets
   const tabBadges = useMemo(() => ({ Actuales: filtered.filter((x) => !x.finalizado).length }), [filtered]);
-  useEffect(() => { setPage(1); }, [empId, locId, from, to, tab]);
+  useEffect(() => { setPage(1); }, [empId, locId, from, to, tab, pageSize]);
 
   const lockedEmpresa = isClient;
   const lockedLocalidad = isClient;
@@ -373,6 +420,27 @@ export default function MovimientosPanel({
     (!lockedEmpresa && empId != null);
 
   const tabs: Array<"Actuales" | "Pasados"> = isClient ? ["Actuales"] : ["Actuales", "Pasados"];
+
+  // atajos: / busca, r refresh, a auto
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "/" && (e.target as HTMLElement)?.tagName !== "INPUT") {
+        e.preventDefault();
+        const el = document.getElementById("search-mov") as HTMLInputElement | null;
+        el?.focus();
+      }
+      if (e.key.toLowerCase() === "r" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        load(true);
+      }
+      if (e.key.toLowerCase() === "a" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        setAuto((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [load]);
 
   /* ===== Render ===== */
   return (
@@ -403,6 +471,7 @@ export default function MovimientosPanel({
           <div className="relative w-full sm:w-56 md:w-72">
             <Search className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input
+              id="search-mov"
               className="input pl-8 w-full text-sm md:text-base min-h-10"
               placeholder="Buscar…"
               value={q}
@@ -445,25 +514,47 @@ export default function MovimientosPanel({
         </div>
       </div>
 
+      {/* Error red */}
+      {error && (
+        <div className="pane flex items-center gap-2 rounded-lg border border-rose-300 bg-rose-50 p-2 text-sm text-rose-700 dark:border-rose-800 dark:bg-rose-900/20 dark:text-rose-200" role="status" aria-live="polite">
+          <WifiOff className="h-4 w-4" /> {error}
+          <button onClick={() => load(true)} className="ml-auto rounded-md border px-2 py-0.5 text-xs hover:bg-white/50 dark:hover:bg-slate-800">Reintentar</button>
+        </div>
+      )}
+
       {/* Filtros */}
       <div className="pane">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
             <Filter className="h-4 w-4" /> Filtros
           </div>
-          {showClear && (
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm md:text-[13px] hover:bg-slate-50 dark:hover:bg-slate-800"
-              onClick={() => {
-                if (!lockedEmpresa) setEmpId(null);
-                if (!lockedLocalidad) setLocId(null);
-                setFrom(""); setTo(""); setQ(""); setPage(1);
-              }}
-            >
-              <X className="h-4 w-4" /> Limpiar
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-slate-500">
+              Tamaño página
+              <select
+                className="ml-2 input min-h-8 py-1 text-xs"
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+              >
+                <option>25</option>
+                <option>50</option>
+                <option>100</option>
+              </select>
+            </label>
+            {showClear && (
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm md:text-[13px] hover:bg-slate-50 dark:hover:bg-slate-800"
+                onClick={() => {
+                  if (!lockedEmpresa) setEmpId(null);
+                  if (!lockedLocalidad) setLocId(null);
+                  setFrom(""); setTo(""); setQ(""); setPage(1);
+                }}
+              >
+                <X className="h-4 w-4" /> Limpiar
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
@@ -473,7 +564,6 @@ export default function MovimientosPanel({
             {lockedEmpresa ? (
               <input
                 className="input min-h-10"
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 value={empOpts.find((o) => o.id === empId)?.nombre ?? (userMeta as any)?.empresa?.nombre ?? "Mi empresa"}
                 disabled
               />
@@ -527,7 +617,7 @@ export default function MovimientosPanel({
       </div>
 
       {/* Tarjetas móvil */}
-      <div className="grid gap-3 md:hidden">
+      <div className="grid gap-3 md:hidden" aria-live="polite">
         {!mounted || loading ? (
           <CardSkeleton count={4} />
         ) : filtered.length === 0 ? (
@@ -602,23 +692,23 @@ export default function MovimientosPanel({
             <col className="hidden 2xl:table-column w-32" />
             <col className="hidden lg:table-column w-32" />
             <col className="hidden lg:table-column w-32" />
-            <col className="w-24" />
+            <col className="w-28" />
           </colgroup>
           <thead className="bg-slate-50 dark:bg-slate-800/60">
             <tr className="text-left">
-              <Th>ID</Th>
+              <Th onClick={() => toggleSort("id")} sortable sortBy={sortBy} selfKey="id" sortDir={sortDir}>ID</Th>
               <Th className="hidden lg:table-cell">Empresa</Th>
               <Th className="hidden lg:table-cell">Localidad</Th>
-              <Th>Locomotora</Th>
+              <Th onClick={() => toggleSort("id")} sortable sortBy={sortBy} selfKey="id" sortDir={sortDir}>Locomotora</Th>
               <Th>Vía Origen</Th>
               <Th>Vía Destino</Th>
               <Th className="hidden xl:table-cell">Acción</Th>
               <Th className="hidden xl:table-cell">Tipo mov.</Th>
               <Th>Prioridad</Th>
               <Th>Estado</Th>
-              <Th className="hidden 2xl:table-cell">Solicitud</Th>
-              <Th className="hidden lg:table-cell">Inicio</Th>
-              <Th className="hidden lg:table-cell">Fin</Th>
+              <Th onClick={() => toggleSort("fechaSolicitud")} sortable sortBy={sortBy} selfKey="fechaSolicitud" sortDir={sortDir} className="hidden 2xl:table-cell">Solicitud</Th>
+              <Th onClick={() => toggleSort("fechaInicio")} sortable sortBy={sortBy} selfKey="fechaInicio" sortDir={sortDir} className="hidden lg:table-cell">Inicio</Th>
+              <Th onClick={() => toggleSort("fechaFin")} sortable sortBy={sortBy} selfKey="fechaFin" sortDir={sortDir} className="hidden lg:table-cell">Fin</Th>
               {!isClient && <Th className="text-right">&nbsp;</Th>}
             </tr>
           </thead>
@@ -681,7 +771,7 @@ export default function MovimientosPanel({
 
       {/* Paginación */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-xs text-slate-500 dark:text-slate-400">
+        <div className="text-xs text-slate-500 dark:text-slate-400" aria-live="polite">
           {filtered.length} / {total} items
         </div>
         <div className="inline-flex flex-wrap items-center gap-2 self-end sm:self-auto">
@@ -697,7 +787,7 @@ export default function MovimientosPanel({
           <div className="text-sm tabular-nums">Página {page}</div>
           <button
             className="rounded-md border px-2 py-1 text-sm disabled:opacity-60"
-            disabled={filtered.length < PAGE_SIZE}
+            disabled={filtered.length < pageSize}
             onClick={() => setPage((p) => p + 1)}
             title="Siguiente"
             aria-label="Página siguiente"
@@ -778,16 +868,46 @@ export default function MovimientosPanel({
 }
 
 /* ===== Subcomponentes ===== */
-function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function Th({
+  children,
+  className = "",
+  sortable = false,
+  sortBy,
+  selfKey,
+  sortDir,
+  onClick,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  sortable?: boolean;
+  sortBy?: string;
+  selfKey?: string;
+  sortDir?: "asc" | "desc";
+  onClick?: () => void;
+}) {
+  const active = sortable && sortBy === selfKey;
   return (
-    <th className={clsx("px-3 py-2 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300", className)}>
-      {children}
+    <th
+      className={clsx(
+        "px-3 py-2 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300",
+        sortable && "cursor-pointer select-none",
+        className
+      )}
+      onClick={sortable ? onClick : undefined}
+      aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <span className="inline-flex items-center gap-1">
+        {children}
+        {sortable && <ArrowUpDown className={clsx("h-3.5 w-3.5", active && "text-sky-600")} />}
+      </span>
     </th>
   );
 }
+
 function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <td className={clsx("px-3 py-2 align-middle", className)}>{children}</td>;
 }
+
 function Badge({
   children,
   tone = "muted",
@@ -807,6 +927,7 @@ function Badge({
     </span>
   );
 }
+
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="rounded-md border bg-white p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
@@ -815,6 +936,7 @@ function Info({ label, value }: { label: string; value: React.ReactNode }) {
     </div>
   );
 }
+
 function InfoItem({ k, v, children }: { k: string; v?: React.ReactNode; children?: React.ReactNode }) {
   return (
     <div>
@@ -823,6 +945,7 @@ function InfoItem({ k, v, children }: { k: string; v?: React.ReactNode; children
     </div>
   );
 }
+
 function RowLoading() {
   return (
     <>
@@ -838,6 +961,7 @@ function RowLoading() {
     </>
   );
 }
+
 function CardSkeleton({ count = 4 }: { count?: number }) {
   return (
     <>
@@ -845,7 +969,7 @@ function CardSkeleton({ count = 4 }: { count?: number }) {
         <div key={i} className="h-28 rounded-xl border bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <div className="h-4 w-40 rounded bg-slate-200 dark:bg-slate-800" />
           <div className="mt-3 grid grid-cols-2 gap-3">
-            <div className="h-3.5 w-24 rounded bg-slate-200 dark:bg-slate-800" />
+            <div className="h-3.5 w-24 rounded bg-slate-2 00 dark:bg-slate-800" />
             <div className="h-3.5 w-24 rounded bg-slate-200 dark:bg-slate-800" />
           </div>
         </div>
@@ -853,6 +977,7 @@ function CardSkeleton({ count = 4 }: { count?: number }) {
     </>
   );
 }
+
 function EmptyBox({ text, children }: { text: string; children?: React.ReactNode }) {
   return (
     <div className="rounded-xl border bg-white p-8 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">

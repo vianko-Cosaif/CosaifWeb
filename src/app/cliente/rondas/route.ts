@@ -37,9 +37,10 @@ export async function GET(req: Request) {
       `${base}/movimientos/rondas?localidadId=${encodeURIComponent(loc)}&concluido=false`,
     ];
 
-    const token = cookies().get(process.env.JWT_COOKIE_NAME ?? "token")?.value;
+    const cookieStore = await cookies();
+    const token = cookieStore.get(process.env.JWT_COOKIE_NAME ?? "token")?.value;
 
-    let raw: any = [];
+    let raw: unknown = [];
     for (const u of urls) {
       console.log("[/api/cliente/rondas] → fetch", u);
       const r = await fetch(u, {

@@ -1,12 +1,16 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 
 /** ======= CONFIG ======= */
-const API_BASE = process.env.API_URL || "/xapi";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "/xapi";
 const SECC_BASE = `${API_BASE}/secciones/secciones`;
-const DRAFT_KEY = "movement_draft_v2";
+const DRAFT_KEY = "movement_draft_v3";
+const OUTBOX_KEY = "movement_outbox_v1";
 const DOUBLE_TAP_MS = 250;
+const FETCH_TIMEOUT_MS = 12000;
+const FLUSH_INTERVAL_MS = 15000;
 
 /** ======= TIPOS ======= */
 type Servicio = "Lavado" | "Torno" | "";
@@ -73,6 +77,15 @@ const baseInitialForm: MovementFormData = {
 /** ======= UTILS ======= */
 const clsx = (...xs: Array<string | false | null | undefined>) => xs.filter(Boolean).join(" ");
 const fmtLocalDateTime = (s?: string | null) => (s ? new Date(s).toLocaleString("es-MX") : "—");
+const pad2 = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+const toInputDT = (iso?: string) => {
+  const d = iso ? new Date(iso) : new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+};
+const fromInputDT = (v: string) => (v ? new Date(v).toISOString() : new Date().toISOString());
+
+const safeJSON = (t: string) => { try { return JSON.parse(t); } catch { return null; } };
+
 const getCookie = (name: string) => {
   if (typeof document === "undefined") return "";
   const m = document.cookie.match(new RegExp("(^|; )" + name + "=([^;]*)"));
@@ -82,33 +95,50 @@ const tokenHeader = (): HeadersInit => {
   const t = getCookie("token");
   return t ? { Authorization: `Bearer ${t}` } : {};
 };
-const fetchJSON = async (url: string, init: RequestInit = {}) => {
-  const initHeaders =
-    init.headers instanceof Headers
-      ? Object.fromEntries(init.headers.entries())
-      : (init.headers as Record<string, string>) || {};
-  const isGet = !init.method || init.method.toUpperCase() === "GET";
 
-  const res = await fetch(url, {
+const fetchWithTimeout = async (url: string, init: RequestInit = {}, timeoutMs = FETCH_TIMEOUT_MS) => {
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(to);
+  }
+};
+
+const fetchJSON = async (url: string, init: RequestInit = {}) => {
+  const isGet = !init.method || init.method.toUpperCase() === "GET";
+  const res = await fetchWithTimeout(url, {
     credentials: "include",
     cache: "no-store",
     ...init,
     headers: {
       ...(isGet ? {} : { "Content-Type": "application/json" }),
       Accept: "application/json",
-      ...initHeaders,
+      ...(init.headers as any),
       ...tokenHeader(),
     },
   });
-
-  if (!res.ok) throw new Error(`${res.status}`);
   const ct = res.headers.get("content-type") || "";
-  return ct.includes("application/json") ? res.json() : null;
+  const txt = await res.text().catch(() => "");
+  const body = ct.includes("application/json") && txt ? safeJSON(txt) : null;
+  if (!res.ok) throw new Error((body as any)?.message || (body as any)?.error || txt || `HTTP ${res.status}`);
+  return body;
 };
 
-/** ======= ESTILOS ======= */
+function useVisibleInterval(cb: () => void, ms: number | null) {
+  useEffect(() => {
+    if (!ms) return;
+    const id = window.setInterval(() => { if (document.visibilityState === "visible") cb(); }, ms);
+    const onVis = () => document.visibilityState === "visible" && cb();
+    document.addEventListener("visibilitychange", onVis);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", onVis); };
+  }, [cb, ms]);
+}
+
+/** ======= ESTILOS (mobile-first) ======= */
 const inputBase =
-  "w-full rounded-md border px-3 py-2 outline-none transition-colors " +
+  "w-full rounded-md border px-3 py-3 min-h-[48px] text-base sm:text-sm outline-none transition-colors " +
   "bg-white text-slate-900 placeholder-slate-400 border-slate-300 focus:border-sky-500 " +
   "dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500 dark:border-slate-700 dark:focus:border-sky-500";
 const chipBase = "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium";
@@ -119,6 +149,7 @@ export default function CrearMovimiento() {
   const [form, setForm] = useState<MovementFormData>(baseInitialForm);
   const [sending, setSending] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [banner, setBanner] = useState<string | null>(null);
 
   // data
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
@@ -135,17 +166,19 @@ export default function CrearMovimiento() {
   const [userCompanyName, setUserCompanyName] = useState("");
   const [user, setUser] = useState<{ id?: number; empresaId?: number | null; empresa?: { id?: number; nombre?: string } | null } | null>(null);
 
-  // UI
+  // UI / selección
   const [showFromOpts, setShowFromOpts] = useState(false);
   const [showToOpts, setShowToOpts] = useState(false);
   const lastTap = useRef<Record<string, number>>({});
-
-  // selección secciones
   const [fromSection, setFromSection] = useState<number | undefined>(undefined);
   const [toSection, setToSection] = useState<number | undefined>(undefined);
   const [locoLockedBy, setLocoLockedBy] = useState<{ movimientoId: number; viaId: number; numero: number } | null>(null);
 
-  /** helper: inicializar form según rol + cookies */
+  // online / outbox
+  const [online, setOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
+  const [pendingCount, setPendingCount] = useState<number>(0);
+
+  /** Init sesión + defaults */
   const initFormLocked = useCallback(() => {
     const roleCookie = String(getCookie("role") || "").trim().toUpperCase();
     if (roleCookie) setRol(roleCookie as Rol);
@@ -153,10 +186,7 @@ export default function CrearMovimiento() {
     const locCookie = Number(getCookie("locId") || NaN);
     const uRaw = typeof window !== "undefined" ? localStorage.getItem("user") : null;
     let u: any = null;
-    try {
-      u = uRaw ? JSON.parse(uRaw) : null;
-    } catch {}
-
+    try { u = uRaw ? JSON.parse(uRaw) : null; } catch {}
     setUser(u || null);
     setUserCompanyName(u?.empresa?.nombre || "");
 
@@ -171,13 +201,10 @@ export default function CrearMovimiento() {
     const isAdminOrCoord = ADMIN_OR_COORD.includes(roleCookie || String(u?.rol || u?.role || "").toUpperCase());
     const selectedLocalityId = isAdminOrCoord ? null : Number.isFinite(locCookie) ? locCookie : null;
 
-    setForm((prev) => ({
-      ...base,
-      selectedLocalityId: selectedLocalityId ?? prev.selectedLocalityId ?? null,
-    }));
+    setForm((prev) => ({ ...base, selectedLocalityId: selectedLocalityId ?? prev.selectedLocalityId ?? null }));
   }, [ADMIN_OR_COORD]);
 
-  /** IDs finales (para submit) */
+  /** IDs finales */
   const resolvedIds = useMemo(() => {
     const empresaId = Number(form.empresaId ?? user?.empresaId ?? user?.empresa?.id ?? NaN);
     const creadoPorId = Number(form.creadoPorId ?? user?.id ?? NaN);
@@ -185,34 +212,23 @@ export default function CrearMovimiento() {
     return { empresaId, creadoPorId, localidadId };
   }, [form.empresaId, form.creadoPorId, form.selectedLocalityId, user]);
 
-  /** cargar sesión/combos/draft */
+  /** Cargar combos + draft + outbox */
   useEffect(() => {
     initFormLocked();
-
     (async () => {
       try {
-        const [e, l] = await Promise.all([
-          fetchJSON(`${API_BASE}/empresas`).catch(() => []),
-          fetchJSON(`${API_BASE}/localidades`).catch(() => []),
-        ]);
+        const [e, l] = await Promise.all([fetchJSON(`${API_BASE}/empresas`).catch(() => []), fetchJSON(`${API_BASE}/localidades`).catch(() => [])]);
         const eList: Empresa[] = Array.isArray(e) ? e : [];
         const lList: Localidad[] = Array.isArray(l) ? l : [];
         setEmpresas(eList);
         setLocalidades(lList);
-
-        // Fallbacks por si no venían en el usuario/cookie
         setForm((p) => {
           let empresaId = p.empresaId ?? (user?.empresaId ?? user?.empresa?.id ?? null);
           if (!Number.isFinite(Number(empresaId)) && eList.length === 1) empresaId = eList[0].id;
-
           let localidadId = p.selectedLocalityId;
-          if (!Number.isFinite(Number(localidadId)) && !canManageAll && lList.length === 1) localidadId = lList[0].id;
-
-          return {
-            ...p,
-            empresaId: Number(empresaId) || p.empresaId,
-            selectedLocalityId: (Number(localidadId) || p.selectedLocalityId) ?? null,
-          };
+          const canAll = ADMIN_OR_COORD.includes(String(getCookie("role") || "").toUpperCase());
+          if (!Number.isFinite(Number(localidadId)) && !canAll && lList.length === 1) localidadId = lList[0].id;
+          return { ...p, empresaId: Number(empresaId) || p.empresaId, selectedLocalityId: (Number(localidadId) || p.selectedLocalityId) ?? null };
         });
       } catch {}
 
@@ -226,58 +242,80 @@ export default function CrearMovimiento() {
           setLocoLockedBy(d.locoLockedBy || null);
         }
       } catch {}
+
+      try {
+        const q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]");
+        setPendingCount(Array.isArray(q) ? q.length : 0);
+      } catch {}
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initFormLocked]);
 
-  /** reforzar bloqueo cuando cambie rol (cookie) */
+  /** Enforce cliente localidad fija si aplica */
   useEffect(() => {
     const roleCookie = String(getCookie("role") || "").trim().toUpperCase();
     if (roleCookie) setRol(roleCookie as Rol);
-
     if (!canManageAll) {
       const locCookie = Number(getCookie("locId") || NaN);
-      setForm((p) => ({
-        ...p,
-        selectedLocalityId: Number.isFinite(locCookie) ? locCookie : p.selectedLocalityId,
-      }));
+      setForm((p) => ({ ...p, selectedLocalityId: Number.isFinite(locCookie) ? locCookie : p.selectedLocalityId }));
     }
   }, [canManageAll]);
 
-  /** draft */
+  /** Draft autosave */
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const payload = { form, fromSection, toSection, locoLockedBy };
     if (draftTimer.current) clearTimeout(draftTimer.current);
-    draftTimer.current = setTimeout(() => {
-      try {
-        localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
-      } catch {}
-    }, 350);
-    return () => {
-      if (draftTimer.current) clearTimeout(draftTimer.current);
-    };
+    draftTimer.current = setTimeout(() => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(payload)); } catch {} }, 350);
+    return () => { if (draftTimer.current) clearTimeout(draftTimer.current); };
   }, [form, fromSection, toSection, locoLockedBy]);
 
-  /** vías por localidad */
+  /** Online + Outbox */
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []);
+  const flushOutbox = useCallback(async () => {
+    if (!online) return;
+    let q: any[] = [];
+    try { q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch {}
+    if (!Array.isArray(q) || q.length === 0) return;
+
+    const keep: any[] = [];
+    for (const item of q) {
+      try {
+        const res = await fetchWithTimeout(`${API_BASE}/movimientos`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json", Accept: "application/json", ...tokenHeader() },
+          body: JSON.stringify(item.payload),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      } catch { keep.push(item); }
+    }
+    localStorage.setItem(OUTBOX_KEY, JSON.stringify(keep));
+    setPendingCount(keep.length);
+    if (keep.length === 0) { setBanner("Todos los envíos pendientes fueron sincronizados."); setTimeout(() => setBanner(null), 2500); }
+  }, [online]);
+  useVisibleInterval(flushOutbox, online ? FLUSH_INTERVAL_MS : null);
+
+  /** Vías por localidad */
   useEffect(() => {
     (async () => {
-      if (!form.selectedLocalityId) {
-        setVias([]);
-        return;
-      }
+      if (!form.selectedLocalityId) { setVias([]); return; }
       try {
         const data = await fetchJSON(`${API_BASE}/vias/localidad/${form.selectedLocalityId}`);
         const list: Via[] = (data || []).map((v: any) => ({ id: v.id, nombre: v.nombre }));
         list.sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
         setVias(list);
-      } catch {
-        setVias([]);
-      }
+      } catch { setVias([]); }
     })();
   }, [form.selectedLocalityId]);
 
-  /** ====== ensureSections estable ====== */
+  /** Secciones por vía (caché) */
   const secLoadingRef = useRef<Record<number, boolean>>({});
   const ensureSections = useCallback(async (viaId: number) => {
     if (!viaId) return;
@@ -291,15 +329,13 @@ export default function CrearMovimiento() {
       const arr: Seccion[] = Array.isArray(raw) ? raw : raw?.secciones ?? [];
       const ordered = arr.slice().sort((a, b) => a.numero - b.numero);
       setSectionsByVia((m) => ({ ...m, [viaId]: ordered }));
-    } catch {
-      setSectionsByVia((m) => ({ ...m, [viaId]: [] }));
-    } finally {
+    } catch { setSectionsByVia((m) => ({ ...m, [viaId]: [] })); }
+    finally {
       secLoadingRef.current[viaId] = false;
       setSecLoading((s) => ({ ...s, [viaId]: false }));
     }
-  }, []); // estable
+  }, [sectionsByVia]);
 
-  /** reset secciones al cambiar vía */
   useEffect(() => {
     setFromSection(undefined);
     setLocoLockedBy(null);
@@ -311,18 +347,17 @@ export default function CrearMovimiento() {
     if (form.toTrack) ensureSections(form.toTrack);
   }, [form.toTrack, ensureSections]);
 
-  /** helpers */
+  /** Helpers */
   const tapToggle = (key: string, onSingle: () => void, onDouble: () => void) => {
     const now = Date.now();
     const last = lastTap.current[key] || 0;
-    if (now - last < DOUBLE_TAP_MS) onDouble();
-    else onSingle();
+    if (now - last < DOUBLE_TAP_MS) onDouble(); else onSingle();
     lastTap.current[key] = now;
   };
   const viaName = (id?: number | null) => (id ? vias.find((v) => v.id === id)?.nombre || "" : "");
   const isService = !!form.service;
 
-  /** seleccionar sección origen (prellenar loco si ocupada) */
+  /** Seleccionar sección origen (precarga loco si ocupada) */
   const selectFromSection = async (s: Seccion) => {
     const willSelect = fromSection !== s.numero;
     const newVal = willSelect ? s.numero : undefined;
@@ -336,7 +371,7 @@ export default function CrearMovimiento() {
       } else {
         try {
           const mov = await fetchJSON(`${API_BASE}/movimientos/${s.movimientoId}`);
-          const loco = Number(mov?.locomotiveNumber ?? 0);
+          const loco = Number((mov as any)?.locomotiveNumber ?? 0);
           if (loco > 0) {
             setForm((p) => ({ ...p, locomotiveNumber: loco }));
             setLocoLockedBy({ movimientoId: s.movimientoId!, viaId: form.fromTrack!, numero: s.numero });
@@ -348,20 +383,15 @@ export default function CrearMovimiento() {
     }
   };
 
-  /** validaciones (no bloquea por empresa/localidad cuando eres CLIENTE) */
+  /** Validaciones */
   const validate1 = () => {
     const e: Record<string, string> = {};
-
-    const empresaOk = Number.isFinite(resolvedIds.empresaId);
-    const locOk = Number.isFinite(resolvedIds.localidadId);
-
-    if (canManageAll && !empresaOk) e.empresaId = "Selecciona empresa.";
-    if (canManageAll && !locOk) e.selectedLocalityId = "Selecciona localidad.";
-
+    const { empresaId, localidadId } = resolvedIds;
+    if (canManageAll && !Number.isFinite(empresaId)) e.empresaId = "Selecciona empresa.";
+    if (canManageAll && !Number.isFinite(localidadId)) e.selectedLocalityId = "Selecciona localidad.";
     if (!form.fromTrack) e.fromTrack = "Selecciona vía de origen.";
     if (!isService && !form.toTrack) e.toTrack = "Selecciona vía de destino.";
     if (!form.locomotiveNumber) e.locomotiveNumber = "Número requerido.";
-
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -379,11 +409,23 @@ export default function CrearMovimiento() {
     setErrors(e);
     return Object.keys(e).length === 0;
   };
-/** submit (cumple exactamente con lo que pide el backend + redirect por rol) */
-const submit = async () => {
+
+  /** OUTBOX helper */
+  const pushOutbox = (payload: any) => {
+    let q: any[] = [];
+    try { q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch {}
+    const item = { id: `${Date.now()}_${Math.random().toString(36).slice(2)}`, payload, createdAt: Date.now() };
+    const next = [...(Array.isArray(q) ? q : []), item];
+    localStorage.setItem(OUTBOX_KEY, JSON.stringify(next));
+    setPendingCount(next.length);
+    setBanner("Sin conexión: la solicitud quedó en cola y se enviará automáticamente.");
+    setTimeout(() => setBanner(null), 3500);
+  };
+
+  /** Submit (con offline y asignación de sección) */
+const submit = useCallback(async () => {
   const { empresaId, creadoPorId, localidadId } = resolvedIds;
 
-  // última validación defensiva
   if (!Number.isFinite(empresaId) || !Number.isFinite(creadoPorId) || !Number.isFinite(localidadId)) {
     alert("Faltan IDs requeridos (empresa, usuario o localidad).");
     return;
@@ -393,39 +435,48 @@ const submit = async () => {
     return;
   }
 
-  const payload: {
-    empresaId: number;
-    creadoPorId: number;
-    localidadId: number;
-    viaOrigenId: number;
-    locomotiveNumber: number;             // INT
-    prioridad: "ALTA" | "BAJA";
-    viaDestinoId?: number;
-    numeroSeccion?: number;
-    instrucciones?: string;
-  } = {
-    empresaId: Number(empresaId),
-    creadoPorId: Number(creadoPorId),
-    localidadId: Number(localidadId),
-    viaOrigenId: Number(form.fromTrack),
-    locomotiveNumber: Number(form.locomotiveNumber),
-    prioridad: form.priority ? "ALTA" : "BAJA",
-    ...(form.toTrack && !isService ? { viaDestinoId: Number(form.toTrack) } : {}),
-    ...(typeof fromSection === "number" ? { numeroSeccion: Number(fromSection) } : {}),
-    ...(form.comments.trim() ? { instrucciones: form.comments.trim() } : {}),
-  };
+  const only = <T extends object>(cond: boolean, obj: T) => (cond ? obj : {});
 
-  // helper para decidir a dónde mandar según rol
+  const payload = {
+  empresaId: Number(empresaId),
+  creadoPorId: Number(creadoPorId),
+  localidadId: Number(localidadId),
+  viaOrigenId: Number(form.fromTrack),
+  locomotiveNumber: Number(form.locomotiveNumber),
+  prioridad: form.priority ? "ALTA" : "BAJA",
+
+  // opcionales
+  ...only(!!form.toTrack && !isService, { viaDestinoId: Number(form.toTrack) }), // permite iguales si tu backend ya lo acepta
+  ...only(typeof fromSection === "number", { numeroSeccion: Number(fromSection) }),
+  ...only(!!form.comments.trim(), { instrucciones: form.comments.trim() }),
+
+  // 👇 nombres que Prisma sí espera
+  tipoMovimiento: ["MD_TRABAJANDO", "REMOLCADA"].includes(form.movementType) ? form.movementType : null,
+  direccionEmpuje:
+    form.movementType === "REMOLCADA" && ["EMPUJAR", "JALAR"].includes(form.direccionEmpuje || "")
+      ? (form.direccionEmpuje as "EMPUJAR" | "JALAR")
+      : "Sin_Solicitar",
+  posicionCabina: !isService && ["DENTRO", "AFUERA"].includes(form.cabinPosition) ? form.cabinPosition : "Sin_Solicitar",
+  posicionChimenea: !isService && ["DENTRO", "AFUERA"].includes(form.chimneyPosition) ? form.chimneyPosition : "Sin_Solicitar",
+
+  // servicio como flags
+  ...only(form.service === "Lavado", { lavado: true }),
+  ...only(form.service === "Torno",  { torno: true }),
+
+};
+
+
   const roleToPath = (r?: string) => {
     const R = String(r || "").toUpperCase();
     if (R === "COORDINADOR") return "/coordinador/movimientos";
     if (R === "ADMINISTRADOR") return "/administrador/movimientos";
-    return "/cliente/movimientos"; // default CLIENTE u otros roles
+    if (R === "SUPERVISOR") return "/supervisor/movimientos";
+    return "/cliente/movimientos";
   };
 
   try {
     setSending(true);
-    const res = await fetch(`${API_BASE}/movimientos`, {
+    const res = await fetchWithTimeout(`${API_BASE}/movimientos`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json", Accept: "application/json", ...tokenHeader() },
@@ -433,13 +484,18 @@ const submit = async () => {
     });
 
     const txt = await res.text();
-    if (!res.ok) throw new Error(`HTTP ${res.status}${txt ? `: ${txt}` : ""}`);
-    const created = txt ? JSON.parse(txt) : {};
-    const movimientoId = Number(created?.id || 0);
+    if (!res.ok) {
+      // intenta mostrar detalle legible
+      try { const j = JSON.parse(txt); alert(j.message || j.error || txt); }
+      catch { alert(txt || `HTTP ${res.status}`); }
+      return;
+    }
 
-    // asignar sección origen (opcional)
+    const created = txt ? safeJSON(txt) : {};
+    const movimientoId = Number((created as any)?.id || 0);
+
     if (movimientoId && form.fromTrack && typeof fromSection === "number") {
-      await fetch(`${API_BASE}/secciones/via/${form.fromTrack}/asignar`, {
+      await fetchWithTimeout(`${API_BASE}/secciones/via/${form.fromTrack}/asignar`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", ...tokenHeader() },
@@ -447,24 +503,21 @@ const submit = async () => {
       }).catch(() => {});
     }
 
-    // limpiar draft/UI y redirigir según rol
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
     setFromSection(undefined);
     setToSection(undefined);
     setLocoLockedBy(null);
     setStep(1);
 
-    const dest = roleToPath(rol); // usa el estado 'rol' ya resuelto desde la cookie
-    window.location.assign(dest);
+    window.location.assign(roleToPath(rol));
   } catch (e: any) {
-    alert(e.message || "Error al crear movimiento");
+    alert(e?.message || "Error al crear movimiento");
   } finally {
     setSending(false);
   }
-};
+}, [resolvedIds, form, isService, fromSection, rol]);
 
-
-  /** progreso */
+  /** Progreso */
   const STEP_CFG = [
     { label: "Paso 1 de 3", percent: 33 },
     { label: "Paso 2 de 3", percent: 66 },
@@ -474,39 +527,63 @@ const submit = async () => {
 
   const lockedClienteMissingData = !canManageAll && !Number.isFinite(Number(getCookie("locId") || NaN));
 
-  const Badge = ({ tone, children }: { tone: "ok" | "warn" | "error" | "muted"; children: React.ReactNode }) => {
-    const map = {
-      ok: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-800",
-      warn: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-800",
-      error: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-200 dark:border-rose-800",
-      muted: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
-    } as const;
-    return <span className={clsx(chipBase, map[tone])}>{children}</span>;
-  };
+  // Acceso rápido enviar
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "enter" && step === 3 && !sending) {
+        e.preventDefault();
+        submit();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [step, sending, submit]);
+
+  const goSalir = () => window.location.assign("/cliente/movimientos");
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
+      {/* Hace grandes los selects en celular */}
+      <style jsx global>{`
+        @media (max-width: 640px) {
+          select, select option { font-size: 16px !important; line-height: 1.45 !important; }
+          select { min-height: 48px !important; }
+        }
+      `}</style>
+
+      {/* Estado conexión / outbox + Salir */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Badge tone={online ? "ok" : "error"}>{online ? "En línea" : "Sin conexión"}</Badge>
+        {pendingCount > 0 && (
+          <>
+            <Badge tone="warn">{pendingCount} pendiente(s)</Badge>
+            <button onClick={flushOutbox} className="rounded-md border px-3 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+              Enviar pendientes
+            </button>
+            <button onClick={() => { localStorage.removeItem(OUTBOX_KEY); setPendingCount(0); }} className="rounded-md border px-3 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+              Vaciar cola
+            </button>
+          </>
+        )}
+        {banner && <span className="text-xs text-slate-600 dark:text-slate-300">{banner}</span>}
+        <button onClick={goSalir} className="ml-auto rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800" title="Volver a mis movimientos">
+          Salir
+        </button>
+      </div>
+
       <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
         Nuevo Movimiento <span className="text-slate-500 dark:text-slate-400">({label})</span>
       </h1>
 
       {!canManageAll && (
         <div className="mt-3 rounded-lg border-l-4 border-sky-400 bg-sky-50 p-3 text-sm dark:border-sky-600 dark:bg-sky-900/20">
-          <div className="flex items-center justify-between">
-            <div className="font-medium text-sky-800 dark:text-sky-200">
-              CLIENTE
-            </div>
-          </div>
-          {lockedClienteMissingData && (
-            <div className="mt-2 text-rose-700 dark:text-rose-300">
-              No se encontró  una sesión activa por favor inicie sesión nuevamente.
-            </div>
-          )}
+          <div className="font-medium text-sky-800 dark:text-sky-200">CLIENTE</div>
+          {lockedClienteMissingData && <div className="mt-2 text-rose-700 dark:text-rose-300">No se encontró una sesión activa. Por favor inicia sesión nuevamente.</div>}
         </div>
       )}
 
       {/* barra progreso */}
-      <div className="mt-3 h-2 w-full rounded bg-slate-200 dark:bg-slate-800">
+      <div className="mt-3 h-2 w-full rounded bg-slate-200 dark:bg-slate-800" aria-label="Progreso">
         <div className="h-2 rounded bg-emerald-600 transition-[width] duration-300" style={{ width: `${percent}%` }} />
       </div>
       <div className="mt-1 text-right text-xs text-slate-500 dark:text-slate-400">{percent}%</div>
@@ -544,40 +621,34 @@ const submit = async () => {
           />
         )}
         {step === 2 && <StepTwo form={form} setForm={setForm} errors={errors} isService={isService} />}
-        {step === 3 && (
-          <StepThree
-            form={form}
-            setForm={setForm}
-            sending={sending}
-            submit={submit}
-            fromSection={fromSection}
-            toSection={toSection}
-            viaName={viaName}
-          />
-        )}
+        {step === 3 && <StepThree form={form} setForm={setForm} sending={sending} submit={submit} fromSection={fromSection} toSection={toSection} viaName={viaName} />}
       </div>
 
-      <div className="mt-4 flex gap-3">
+      <div className="mt-4 flex flex-wrap gap-3">
+        <button
+          onClick={() => { try { localStorage.removeItem(DRAFT_KEY); } catch {} setForm(baseInitialForm); setFromSection(undefined); setToSection(undefined); setErrors({}); }}
+          className="rounded-md border px-4 py-2 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+        >
+          Limpiar
+        </button>
+
         {step > 1 && (
-          <button
-            onClick={() => setStep((s) => (s === 1 ? 1 : ((s - 1) as 1 | 2 | 3)))}
-            className="rounded-md border px-4 py-2 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-          >
+          <button onClick={() => setStep((s) => (s === 1 ? 1 : ((s - 1) as 1 | 2 | 3)))} className="rounded-md border px-4 py-2 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
             Anterior
           </button>
         )}
         {step < 3 && (
           <button
-            onClick={() => {
-              if (step === 1 && !validate1()) return;
-              if (step === 2 && !validate2()) return;
-              setStep((s) => ((s + 1) as 1 | 2 | 3));
-            }}
+            onClick={() => { if (step === 1 && !validate1()) return; if (step === 2 && !validate2()) return; setStep((s) => ((s + 1) as 1 | 2 | 3)); }}
             className="rounded-md bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700"
           >
             Siguiente
           </button>
         )}
+
+        <button onClick={goSalir} className="ml-auto rounded-md border px-4 py-2 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800" title="Volver a mis movimientos">
+          Salir
+        </button>
       </div>
 
       {locoLockedBy ? (
@@ -585,10 +656,7 @@ const submit = async () => {
           <div className="font-semibold text-sky-800 dark:text-sky-200">
             Locomotora bloqueada por sección #{locoLockedBy.numero} (movimiento #{locoLockedBy.movimientoId}).
           </div>
-          <button
-            onClick={() => setLocoLockedBy(null)}
-            className="mt-2 rounded-md border px-3 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-          >
+          <button onClick={() => setLocoLockedBy(null)} className="mt-2 rounded-md border px-3 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
             Quitar vinculación
           </button>
         </div>
@@ -598,14 +666,20 @@ const submit = async () => {
 }
 
 /** ======= SUBCOMPONENTES ======= */
-
 function Field(props: React.InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string }) {
-  const { label, error, className, ...rest } = props;
+  const { label, error, className, id, ...rest } = props;
+  const eid = id || `f_${label.replace(/\s+/g, "_").toLowerCase()}`;
   return (
-    <label className="mb-3 block">
+    <label htmlFor={eid} className="mb-3 block">
       <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">{label}</span>
-      <input {...rest} className={clsx(inputBase, error && "border-rose-500 focus:border-rose-500", className)} />
-      {error ? <span className="mt-1 block text-xs text-rose-600 dark:text-rose-400">{error}</span> : null}
+      <input
+        id={eid}
+        {...rest}
+        aria-invalid={!!error}
+        aria-describedby={error ? `${eid}_err` : undefined}
+        className={clsx(inputBase, error && "border-rose-500 focus:border-rose-500", className)}
+      />
+      {error ? <span id={`${eid}_err`} className="mt-1 block text-xs text-rose-600 dark:text-rose-400">{error}</span> : null}
     </label>
   );
 }
@@ -625,16 +699,20 @@ function Select({
   error?: string;
   disabled?: boolean;
 }) {
+  const id = `sel_${label.replace(/\s+/g, "_").toLowerCase()}`;
   return (
-    <label className="mb-3 block">
+    <label className="mb-3 block" htmlFor={id}>
       <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">{label}</span>
       <select
+        id={id}
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
+        aria-invalid={!!error}
+        aria-describedby={error ? `${id}_err` : undefined}
         className={clsx(
           inputBase,
-          "bg-white dark:bg-slate-900",
+          "bg-white dark:bg-slate-900 appearance-none touch-manipulation",
           disabled && "cursor-not-allowed opacity-60",
           error && "border-rose-500 focus:border-rose-500"
         )}
@@ -646,7 +724,7 @@ function Select({
           </option>
         ))}
       </select>
-      {error ? <span className="mt-1 block text-xs text-rose-600 dark:text-rose-400">{error}</span> : null}
+      {error ? <span id={`${id}_err`} className="mt-1 block text-xs text-rose-600 dark:text-rose-400">{error}</span> : null}
     </label>
   );
 }
@@ -682,37 +760,16 @@ function StepOne(props: {
   viaName: (id?: number | null) => string;
 }) {
   const {
-    form,
-    setForm,
-    errors,
-    empresas,
-    localidades,
-    vias,
-    canManageAll,
-    userCompanyName,
-    showFromOpts,
-    setShowFromOpts,
-    showToOpts,
-    setShowToOpts,
-    tapToggle,
-    sectionsByVia,
-    secLoading,
-    ensureSections,
-    fromSection,
-    toSection,
-    setFromSection,
-    setToSection,
-    viaName,
-    locoLockedBy,
+    form, setForm, errors, empresas, localidades, vias, canManageAll, userCompanyName,
+    showFromOpts, setShowFromOpts, showToOpts, setShowToOpts, tapToggle, sectionsByVia, secLoading,
+    ensureSections, fromSection, toSection, setFromSection, setToSection, viaName, locoLockedBy
   } = props;
 
   const viaOption = (v: Via) => {
     const secs = sectionsByVia[v.id];
     const anyOcc: boolean | null = Array.isArray(secs) ? secs.some((x) => x.ocupada) : null;
-
     const label = anyOcc === null ? "—" : anyOcc ? "OCUPADA" : "LIBRE";
     const tone = anyOcc === null ? "text-slate-500" : anyOcc ? "text-rose-600" : "text-emerald-600";
-
     return (
       <button
         key={v.id}
@@ -728,10 +785,8 @@ function StepOne(props: {
   const viaOptionTo = (v: Via) => {
     const secs = sectionsByVia[v.id];
     const allOcc: boolean | null = Array.isArray(secs) ? secs.length > 0 && secs.every((x) => x.ocupada) : null;
-
     const label = allOcc === null ? "—" : allOcc ? "SIN SECC. LIBRES" : "HAY LIBRES";
     const tone = allOcc === null ? "text-slate-500" : allOcc ? "text-rose-600" : "text-emerald-600";
-
     return (
       <button
         key={v.id}
@@ -776,22 +831,14 @@ function StepOne(props: {
           <div className="flex flex-wrap gap-2">
             {list.map((s) => {
               const active = selected === s.numero;
-              const color = s.ocupada
-                ? "border-rose-500 text-rose-700 dark:text-rose-300"
-                : "border-emerald-500 text-emerald-700 dark:text-emerald-300";
+              const color = s.ocupada ? "border-rose-500 text-rose-700 dark:text-rose-300" : "border-emerald-500 text-emerald-700 dark:text-emerald-300";
               return (
                 <button
                   key={s.id}
                   onClick={() => (kind === "from" ? setFromSection(s) : setToSection(active ? undefined : s.numero))}
-                  className={clsx(
-                    "rounded-full border px-3 py-1 text-xs font-semibold",
-                    color,
-                    active && (s.ocupada ? "bg-rose-600 text-white" : "bg-emerald-600 text-white")
-                  )}
+                  className={clsx("rounded-full border px-3 py-1 text-xs font-semibold", color, active && (s.ocupada ? "bg-rose-600 text-white" : "bg-emerald-600 text-white"))}
                 >
-                  #{s.numero}
-                  {s.nombre ? ` · ${s.nombre}` : ""}
-                  {s.ocupada ? " · OCUP" : ""}
+                  #{s.numero}{s.nombre ? ` · ${s.nombre}` : ""}{s.ocupada ? " · OCUP" : ""}
                 </button>
               );
             })}
@@ -803,8 +850,7 @@ function StepOne(props: {
 
   const empresaLabel =
     empresas.find((e) => e.id === form.empresaId)?.nombre ||
-    userCompanyName ||
-    (Number.isFinite(Number(form.empresaId)) ? `ID ${form.empresaId}` : "");
+    userCompanyName || (Number.isFinite(Number(form.empresaId)) ? `ID ${form.empresaId}` : "");
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -842,7 +888,7 @@ function StepOne(props: {
       {/* Servicio */}
       <div className="sm:col-span-2">
         <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Servicio</span>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {(["Lavado", "Torno"] as const).map((svc) => {
             const active = form.service === svc;
             return (
@@ -857,9 +903,8 @@ function StepOne(props: {
                 }
                 className={clsx(
                   "rounded-md border px-3 py-2 text-sm",
-                  active
-                    ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
-                    : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                  active ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                         : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                 )}
               >
                 {svc}
@@ -883,8 +928,10 @@ function StepOne(props: {
       <Field
         label="Número de locomotora"
         type="number"
+        inputMode="numeric"
+        pattern="[0-9]*"
         value={form.locomotiveNumber ? String(form.locomotiveNumber) : ""}
-        onChange={(e) => setForm((p) => ({ ...p, locomotiveNumber: Number(e.target.value) || 0 }))}
+        onChange={(e) => setForm((p) => ({ ...p, locomotiveNumber: Math.max(0, Number(e.target.value) || 0) }))}
         className={locoLockedBy ? "opacity-70" : ""}
         disabled={!!locoLockedBy}
         error={errors.locomotiveNumber}
@@ -895,10 +942,7 @@ function StepOne(props: {
         <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">De vía</span>
         <div className="flex gap-2">
           <button
-            onClick={() => {
-              setShowFromOpts((v) => !v);
-              if (form.fromTrack) ensureSections(form.fromTrack);
-            }}
+            onClick={() => { setShowFromOpts((v) => !v); if (form.fromTrack) ensureSections(form.fromTrack); }}
             className="min-w-[220px] rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
           >
             {form.fromTrack ? `Vía ${viaName(form.fromTrack)}` : "Selecciona una vía"}
@@ -906,13 +950,7 @@ function StepOne(props: {
           {errors.fromTrack ? <span className="self-center text-xs text-rose-600 dark:text-rose-400">{errors.fromTrack}</span> : null}
         </div>
 
-        {showFromOpts && (
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            {vias.map((v) => (
-              <div key={v.id}>{viaOption(v)}</div>
-            ))}
-          </div>
-        )}
+        {showFromOpts && <div className="mt-2 grid gap-2 sm:grid-cols-2">{vias.map((v) => (<div key={v.id}>{viaOption(v)}</div>))}</div>}
 
         <SectionsPills kind="from" viaId={form.fromTrack} />
       </div>
@@ -923,10 +961,7 @@ function StepOne(props: {
           <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Para vía</span>
           <div className="flex gap-2">
             <button
-              onClick={() => {
-                setShowToOpts((v) => !v);
-                if (form.toTrack) ensureSections(form.toTrack);
-              }}
+              onClick={() => { setShowToOpts((v) => !v); if (form.toTrack) ensureSections(form.toTrack); }}
               className="min-w-[220px] rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
             >
               {form.toTrack ? `Vía ${viaName(form.toTrack)}` : "Selecciona una vía"}
@@ -934,13 +969,7 @@ function StepOne(props: {
             {errors.toTrack ? <span className="self-center text-xs text-rose-600 dark:text-rose-400">{errors.toTrack}</span> : null}
           </div>
 
-          {showToOpts && (
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {vias.map((v) => (
-                <div key={v.id}>{viaOptionTo(v)}</div>
-              ))}
-            </div>
-          )}
+          {showToOpts && <div className="mt-2 grid gap-2 sm:grid-cols-2">{vias.map((v) => (<div key={v.id}>{viaOptionTo(v)}</div>))}</div>}
 
           <SectionsPills kind="to" viaId={form.toTrack} />
         </div>
@@ -961,97 +990,140 @@ function StepTwo({
   errors: Record<string, string>;
   isService: boolean;
 }) {
-  return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      <Select
-        label="Tipo de movimiento"
-        value={form.movementType}
-        onChange={(v) => setForm((p) => ({ ...p, movementType: v as any }))}
-        options={[
-          { label: "MD Trabajando", value: "MD_TRABAJANDO" },
-          { label: "Remolcada", value: "REMOLCADA" },
-        ]}
-        error={errors.movementType}
-      />
+  const Card = ({
+    active,
+    label,
+    onClick,
+  }: {
+    active: boolean;
+    label: string;
+    onClick: () => void;
+  }) => (
+    <button
+      onClick={onClick}
+      className={clsx(
+        "flex w-full items-center justify-between rounded-md border px-3 py-3 text-left",
+        "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800",
+        active && "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
+      )}
+    >
+      <span className="font-medium">{label}</span>
+      <span
+        className={clsx(
+          "ml-3 rounded-full px-2 py-0.5 text-xs",
+          active ? "border border-emerald-500 text-emerald-700 dark:text-emerald-300" : "border border-slate-300 text-slate-500"
+        )}
+      >
+        {active ? "Seleccionado" : "Elegir"}
+      </span>
+    </button>
+  );
 
+  return (
+    <div className="grid gap-6">
+      {/* Tipo de movimiento */}
+      <div>
+        <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">Tipo de movimiento</div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Card
+            label="MD Trabajando"
+            active={form.movementType === "MD_TRABAJANDO"}
+            onClick={() => setForm((p) => ({ ...p, movementType: "MD_TRABAJANDO" }))}
+          />
+          <Card
+            label="Remolcada"
+            active={form.movementType === "REMOLCADA"}
+            onClick={() => setForm((p) => ({ ...p, movementType: "REMOLCADA" }))}
+          />
+        </div>
+        {errors.movementType && <div className="mt-1 text-xs text-rose-600">{errors.movementType}</div>}
+      </div>
+
+      {/* Posiciones (solo si NO es servicio) */}
       {!isService && (
         <>
-          <Select
-            label="Posición de cabina"
-            value={form.cabinPosition}
-            onChange={(v) => setForm((p) => ({ ...p, cabinPosition: v as any }))}
-            options={[
-              { label: "Dentro", value: "DENTRO" },
-              { label: "Afuera", value: "AFUERA" },
-            ]}
-            error={errors.cabinPosition}
-          />
-          <Select
-            label="Posición de chimenea"
-            value={form.chimneyPosition}
-            onChange={(v) => setForm((p) => ({ ...p, chimneyPosition: v as any, posicionChimenea: v as any }))}
-            options={[
-              { label: "Dentro", value: "DENTRO" },
-              { label: "Afuera", value: "AFUERA" },
-            ]}
-            error={errors.chimneyPosition}
-          />
+          <div>
+            <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">Posición de cabina</div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Card
+                label="Dentro"
+                active={form.cabinPosition === "DENTRO"}
+                onClick={() => setForm((p) => ({ ...p, cabinPosition: "DENTRO" }))}
+              />
+              <Card
+                label="Afuera"
+                active={form.cabinPosition === "AFUERA"}
+                onClick={() => setForm((p) => ({ ...p, cabinPosition: "AFUERA" }))}
+              />
+            </div>
+            {errors.cabinPosition && <div className="mt-1 text-xs text-rose-600">{errors.cabinPosition}</div>}
+          </div>
+
+          <div>
+            <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">Posición de chimenea</div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Card
+                label="Dentro"
+                active={form.chimneyPosition === "DENTRO"}
+                onClick={() => setForm((p) => ({ ...p, chimneyPosition: "DENTRO", posicionChimenea: "DENTRO" }))}
+              />
+              <Card
+                label="Afuera"
+                active={form.chimneyPosition === "AFUERA"}
+                onClick={() => setForm((p) => ({ ...p, chimneyPosition: "AFUERA", posicionChimenea: "AFUERA" }))}
+              />
+            </div>
+            {errors.chimneyPosition && <div className="mt-1 text-xs text-rose-600">{errors.chimneyPosition}</div>}
+          </div>
         </>
       )}
 
+      {/* Dirección (solo si Remolcada) */}
       {form.movementType === "REMOLCADA" && (
-        <Select
-          label="Dirección (remolcada)"
-          value={form.direccionEmpuje}
-          onChange={(v) => setForm((p) => ({ ...p, direccionEmpuje: v as Direccion, pushPull: v as any }))}
-          options={[
-            { label: "Empujar", value: "EMPUJAR" },
-            { label: "Jalar", value: "JALAR" },
-          ]}
-          error={errors.direccionEmpuje}
-        />
+        <div>
+          <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">Dirección (remolcada)</div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Card
+              label="Empujar"
+              active={form.direccionEmpuje === "EMPUJAR"}
+              onClick={() => setForm((p) => ({ ...p, direccionEmpuje: "EMPUJAR", pushPull: "EMPUJAR" }))}
+            />
+            <Card
+              label="Jalar"
+              active={form.direccionEmpuje === "JALAR"}
+              onClick={() => setForm((p) => ({ ...p, direccionEmpuje: "JALAR", pushPull: "JALAR" }))}
+            />
+          </div>
+          {errors.direccionEmpuje && <div className="mt-1 text-xs text-rose-600">{errors.direccionEmpuje}</div>}
+        </div>
       )}
     </div>
   );
 }
 
+
 /** ------ Step 3 ------ */
 function StepThree({
-  form,
-  setForm,
-  sending,
-  submit,
-  fromSection,
-  toSection,
-  viaName,
-}: {
-  form: MovementFormData;
-  setForm: React.Dispatch<React.SetStateAction<MovementFormData>>;
-  sending: boolean;
-  submit: () => void;
-  fromSection?: number;
-  toSection?: number;
-  viaName: (id?: number | null) => string;
-}) {
+  form, setForm, sending, submit, fromSection, toSection, viaName,
+}: { form: MovementFormData; setForm: React.Dispatch<React.SetStateAction<MovementFormData>>; sending: boolean; submit: () => void; fromSection?: number; toSection?: number; viaName: (id?: number | null) => string; }) {
+  const sectionHint = (fromSection ? `[SECCION_ORIGEN:${fromSection}] ` : "") + (toSection ? `[SECCION_DESTINO:${toSection}]` : "");
+  const showHint = Boolean(fromSection || toSection);
+
   return (
     <div className="grid gap-4">
       <div className="rounded-lg border p-3 text-sm dark:border-slate-700">
         <div className="font-semibold mb-2 text-slate-800 dark:text-slate-100">Resumen</div>
         <ul className="grid gap-1 text-slate-700 dark:text-slate-300">
           <li>Localidad: {form.selectedLocalityId ?? "—"}</li>
-          <li>
-            Origen: {form.fromTrack ? `Vía ${viaName(form.fromTrack)} ${fromSection ? `(Sección #${fromSection})` : ""}` : "—"}
-          </li>
-          {!form.service && (
-            <li>
-              Destino: {form.toTrack ? `Vía ${viaName(form.toTrack)} ${toSection ? `(Sección #${toSection})` : ""}` : "—"}
-            </li>
-          )}
+          <li>Origen: {form.fromTrack ? `Vía ${viaName(form.fromTrack)} ${fromSection ? `(Sección #${fromSection})` : ""}` : "—"}</li>
+          {!form.service && <li>Destino: {form.toTrack ? `Vía ${viaName(form.toTrack)} ${toSection ? `(Sección #${toSection})` : ""}` : "—"}</li>}
           <li>Locomotora: {form.locomotiveNumber || "—"}</li>
           <li>Tipo: {form.movementType || "—"}</li>
+          <li>Dirección: {form.direccionEmpuje || "—"}</li>
           <li>Prioridad: {form.priority ? "ALTA" : "BAJA"}</li>
           <li>Servicio: {form.service || "—"}</li>
           <li>Inicio: {fmtLocalDateTime(form.fechaInicio)}</li>
+          <li>Fin: {fmtLocalDateTime(form.fechaFin)}</li>
         </ul>
       </div>
 
@@ -1064,21 +1136,22 @@ function StepThree({
           onChange={(e) => setForm((p) => ({ ...p, comments: e.target.value }))}
           placeholder="Escribe comentarios; agregaremos las secciones seleccionadas automáticamente."
         />
-        {(fromSection || toSection) && (
-          <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
-            Se añadirá: {fromSection ? `[SECCION_ORIGEN:${fromSection}] ` : ""}
-            {toSection ? `[SECCION_DESTINO:${toSection}]` : ""}
-          </span>
-        )}
+        {showHint && <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">Se añadirá: {sectionHint.trim()}</span>}
       </label>
 
-      <button
-        onClick={submit}
-        disabled={sending}
-        className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-      >
+      <button onClick={submit} disabled={sending} className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" title="Ctrl/Cmd + Enter para enviar">
         {sending ? "Enviando..." : "Confirmar solicitud"}
       </button>
     </div>
   );
+}
+
+function Badge({ tone, children }: { tone: "ok" | "warn" | "error" | "muted"; children: React.ReactNode }) {
+  const map = {
+    ok: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-800",
+    warn: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-800",
+    error: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-200 dark:border-rose-800",
+    muted: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
+  } as const;
+  return <span className={clsx(chipBase, map[tone])}>{children}</span>;
 }

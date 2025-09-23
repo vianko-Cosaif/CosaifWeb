@@ -26,7 +26,7 @@ export type IncidenteEmergente = {
 
 export interface UseIncidentMonitorArgs {
   apiBase?: string;
-  intervalMs?: number; // Intervalo en milisegundos (por defecto 5000)
+  intervalMs?: number; // Intervalo en milisegundos (por defecto 60000)
   enabled?: boolean; // Si el monitoreo está activo
   onIncidentDetected?: (incident: IncidenteEmergente) => void; // Callback cuando se detecta un incidente
   empresaId?: number | null;
@@ -55,7 +55,7 @@ export interface UseIncidentMonitorReturn {
 
 export function useIncidentMonitor({
   apiBase = "/bff",
-  intervalMs = 5000, // 5 segundos por defecto
+  intervalMs = 60000, // 1 minuto por defecto
   enabled = true,
   onIncidentDetected,
   empresaId = null,
