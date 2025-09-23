@@ -1,16 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import SidebarMenu, { Rol } from "@/app/Components/Menu/Menu";
 import { MapPin, RefreshCw, Shield } from "lucide-react";
 import ThemeToggle from "@/app/Components/ui/ThemeToggle";
+import { IncidentMonitor } from "@/app/Components/IncidentModal";
 import { getClientCookie } from "@/lib/cookies";
 
 export default function ClienteLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const router = useRouter();
   const [rol, setRol] = useState<Rol>("CLIENTE");
   const [loc, setLoc] = useState<string>("-");
+  const [empresaId, setEmpresaId] = useState<number | null>(null);
 
   useEffect(() => {
     const roleRaw = (getClientCookie("role") ?? "").toUpperCase();
@@ -24,7 +27,11 @@ export default function ClienteLayout({ children }: { children: React.ReactNode 
       getClientCookie("locId") ??
       (typeof window !== "undefined" ? localStorage.getItem("locId") ?? "-" : "-");
     setLoc(locId);
-  }, []);
+
+    // Si tienes empresaId en cookies/localStorage, setéalo aquí
+    const empId = Number(getClientCookie("empresaId") ?? localStorage.getItem("empresaId"));
+    setEmpresaId(Number.isFinite(empId) && empId > 0 ? empId : null);
+  }, [pathname]);
 
   return (
     <div className="relative flex min-h-svh bg-gradient-to-b from-emerald-50 to-sky-50 dark:from-slate-900 dark:to-slate-950">
@@ -38,6 +45,15 @@ export default function ClienteLayout({ children }: { children: React.ReactNode 
       />
 
       <div className="relative z-10 flex min-h-svh flex-1 flex-col">
+        {/* Monitor de incidentes global para /cliente/* */}
+        <IncidentMonitor
+          apiBase="/bff"
+          intervalMs={5000}
+          enabled={true}
+          empresaId={empresaId}
+          localidadId={Number(loc) || null}
+        />
+
         {/* Skip link accesible */}
         <a
           href="#main"

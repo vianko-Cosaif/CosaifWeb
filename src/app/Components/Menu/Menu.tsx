@@ -13,6 +13,7 @@ import {
   Train,
   Building2,
   ShieldHalf,
+  LayoutDashboard,
 } from "lucide-react";
 
 export type Rol = "ADMINISTRADOR" | "COORDINADOR" | "CLIENTE";
@@ -129,11 +130,9 @@ export default function SidebarMenu({
 
   useBodyScrollLock(mobileOpen && !isDesktop);
 
-  // rol normalizado + tema seguro
   const normRol = useMemo<Rol>(() => normalizeRole(rol as string), [rol]);
   const theme = useMemo(() => ROLE_THEME[normRol] ?? ROLE_THEME.CLIENTE, [normRol]);
 
-  // Clamp responsivo
   const openW = useMemo(() => Math.round(Math.min(Math.max(expandedWidth, 240), 420)), [expandedWidth]);
   const colW = useMemo(() => Math.round(Math.min(Math.max(collapsedWidth, 64), 104)), [collapsedWidth]);
 
@@ -142,18 +141,27 @@ export default function SidebarMenu({
 
   // Rutas por item
   const NAV = useMemo(
-    () => ([
-      { id: "Movimientos", label: "Movimientos", href: `${BASE}/movimientos`, icon: <Train className="h-5 w-5" />, show: true },
-      { id: "Usuario", label: "Usuarios", href: `${BASE}/usuarios`, icon: <Users className="h-5 w-5" />, show: normRol !== "CLIENTE" },
-      { id: "Localidad", label: "Localidad y Vías", href: `${BASE}/localidad`, icon: <MapPinned className="h-5 w-5" />, show: normRol !== "CLIENTE" },
-      { id: "Incidente", label: "Registro de Incidentes", href: `/incidentes`, icon: <TriangleAlert className="h-5 w-5" />, show: true },
-      { id: "Terminal", label: "Terminal", href: `${BASE}/terminal`, icon: <Terminal className="h-5 w-5" />, show: normRol !== "CLIENTE" },
-    ].filter(i => i.show)),
-    [normRol]
+    () =>
+      [
+        { id: "Panel", label: "Panel", href: BASE, icon: <LayoutDashboard className="h-5 w-5" />, show: normRol === "CLIENTE", exact: true }, // 1. Añadido 'exact: true'
+        { id: "Movimientos", label: "Movimientos", href: `${BASE}/movimientos`, icon: <Train className="h-5 w-5" />, show: true },
+        { id: "Usuario", label: "Usuarios", href: `${BASE}/usuarios`, icon: <Users className="h-5 w-5" />, show: normRol !== "CLIENTE" },
+        { id: "Localidad", label: "Localidad y Vías", href: `${BASE}/localidad`, icon: <MapPinned className="h-5 w-5" />, show: normRol !== "CLIENTE" },
+        { id: "Incidente", label: "Registro de Incidentes", href: `/incidentes`, icon: <TriangleAlert className="h-5 w-5" />, show: true },
+        { id: "Terminal", label: "Terminal", href: `${BASE}/terminal`, icon: <Terminal className="h-5 w-5" />, show: normRol !== "CLIENTE" },
+      ]
+        .filter((i) => i.show)
+        // 2. Lógica para determinar 'isActive' movida aquí
+        .map((it) => ({
+          ...it,
+          isActive: it.exact
+            ? pathname === it.href
+            : pathname.startsWith(it.href),
+        })),
+    [normRol, pathname] // 3. Se añade 'pathname' a las dependencias
   );
 
   const vars: React.CSSProperties = {
-    // siempre existen por el fallback de theme
     "--sb-bg": theme.bg, "--sb-text": theme.text, "--sb-accent": theme.accent, "--sb-border": theme.border,
     "--sb-glass": theme.glass, "--sb-role-bg": theme.roleBg, "--sb-role-border": theme.roleBorder, "--sb-role-text": theme.roleText,
     "--sbw-open": `${openW}px`, "--sbw-collapsed": `${colW}px`,
@@ -240,16 +248,16 @@ export default function SidebarMenu({
         {/* Items */}
         <nav className="mt-3 flex-1 overflow-y-auto px-2" role="navigation" aria-label="Navegación principal">
           {NAV.map((it) => {
-            const isActive = pathname.startsWith(it.href);
+            // 4. Lógica de 'isActive' local eliminada
             return (
               <button
                 key={it.id}
                 type="button"
                 onClick={() => router.push(it.href)}
-                aria-current={isActive ? "page" : undefined}
+                aria-current={it.isActive ? "page" : undefined} // Se usa it.isActive
                 className={[
                   "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors motion-safe:duration-200",
-                  isActive ? "bg-white/10 ring-1 ring-inset ring-[var(--sb-accent)]" : "hover:bg-white/5",
+                  it.isActive ? "bg-white/10 ring-1 ring-inset ring-[var(--sb-accent)]" : "hover:bg-white/5", // Se usa it.isActive
                 ].join(" ")}
               >
                 <span className="shrink-0 opacity-90">{it.icon}</span>
@@ -333,7 +341,7 @@ export default function SidebarMenu({
           mobileOpen ? "translate-x-0" : "-translate-x-full",
         ].join(" ")}
       >
-        <div className="flex h-full w：[min(92vw,360px)] flex-col" style={{ background: "var(--sb-bg)" }}>
+        <div className="flex h-full w-[min(92vw,360px)] flex-col" style={{ background: "var(--sb-bg)" }}>
           <div className="flex items-center gap-2 border-b px-4 py-4" style={{ borderColor: "var(--sb-border)", paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
             <Home className="h-5 w-5" />
             <div className="flex-1">
@@ -375,16 +383,16 @@ export default function SidebarMenu({
 
           <nav className="mt-3 flex-1 overflow-y-auto px-2" role="navigation" aria-label="Navegación principal">
             {NAV.map((it) => {
-              const isActive = pathname.startsWith(it.href);
+              // 4. Lógica de 'isActive' local eliminada
               return (
                 <button
                   key={it.id}
                   type="button"
                   onClick={() => { router.push(it.href); setMobileOpen(false); }}
-                  aria-current={isActive ? "page" : undefined}
+                  aria-current={it.isActive ? "page" : undefined} // Se usa it.isActive
                   className={[
                     "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors motion-safe:duration-200",
-                    isActive ? "bg-white/10 ring-1 ring-inset ring-[var(--sb-accent)]" : "hover:bg-white/5",
+                    it.isActive ? "bg-white/10 ring-1 ring-inset ring-[var(--sb-accent)]" : "hover:bg-white/5", // Se usa it.isActive
                   ].join(" ")}
                 >
                   <span className="shrink-0 opacity-90">{it.icon}</span>

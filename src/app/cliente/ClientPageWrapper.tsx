@@ -2,7 +2,6 @@
 
 import React from "react";
 import SelectLocalidad from "@/app/Components/cliente/SelectLocalidad";
-import { IncidentMonitor } from "@/app/Components/IncidentModal";
 import type { IncidenteEmergente } from "@/app/hooks/useIncidentMonitor";
 
 /* ================= Tipos ================= */
@@ -34,20 +33,7 @@ export default function ClientPageWrapper({ localidadId, empresaId }: ClientPage
 
   return (
     <>
-      {/* Monitor de incidentes - solo se activa si hay localidadId */}
-      {localidadId && (
-        <IncidentMonitor
-          apiBase="/bff"
-          intervalMs={5000} // 5 segundos
-          enabled={true}
-          empresaId={empresaId}
-          localidadId={localidadId}
-          onIncidentResolved={handleIncidentResolved}
-          onIncidentSkipped={handleIncidentSkipped}
-          onIncidentContinued={handleIncidentContinued}
-        />
-      )}
-
+      
       {/* Contenido principal */}
       <section className="mx-auto w-full max-w-7xl p-4 sm:p-6">
         {localidadId ? (

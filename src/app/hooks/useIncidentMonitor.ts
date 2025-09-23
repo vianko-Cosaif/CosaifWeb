@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useVisibleInterval } from "./useVisibleInterval";
 
 /* ================= Tipos ================= */
+
 export type IncidenteEmergente = {
   id: number;
   descripcion: string;
@@ -25,7 +26,7 @@ export type IncidenteEmergente = {
 
 export interface UseIncidentMonitorArgs {
   apiBase?: string;
-  intervalMs?: number; // Intervalo en milisegundos, por defecto 60000 (1 minuto)
+  intervalMs?: number; // Intervalo en milisegundos (por defecto 5000)
   enabled?: boolean; // Si el monitoreo está activo
   onIncidentDetected?: (incident: IncidenteEmergente) => void; // Callback cuando se detecta un incidente
   empresaId?: number | null;
@@ -51,6 +52,7 @@ export interface UseIncidentMonitorReturn {
 }
 
 /* =============== Hook =============== */
+
 export function useIncidentMonitor({
   apiBase = "/bff",
   intervalMs = 5000, // 5 segundos por defecto
@@ -59,7 +61,6 @@ export function useIncidentMonitor({
   empresaId = null,
   localidadId = null,
 }: UseIncidentMonitorArgs = {}): UseIncidentMonitorReturn {
-
   // Estado del monitoreo
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [lastCheck, setLastCheck] = useState<Date | null>(null);
@@ -74,6 +75,14 @@ export function useIncidentMonitor({
   const requestSeq = useRef(0);
   const isMounted = useRef(true);
 
+  /* ---- Asegurar bandera de montaje correcta ---- */
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
   // Función para obtener headers de autenticación
   const getAuthHeaders = useCallback((): HeadersInit => {
     if (typeof document === "undefined") return {};
@@ -84,7 +93,6 @@ export function useIncidentMonitor({
   // Función para adaptar incidente de la API
   const adaptIncidente = useCallback((incident: any): IncidenteEmergente => {
     const movement = incident.movimiento || {};
-
     return {
       id: incident.id,
       descripcion: incident.descripcion || "Sin descripción",
@@ -116,9 +124,12 @@ export function useIncidentMonitor({
       if (empresaId) params.append("empresaId", String(empresaId));
       if (localidadId) params.append("localidadId", String(localidadId));
 
+      // Buster anti-cache
+      params.append("_", Date.now().toString());
+
       const url = `${apiBase}/incidentes?${params.toString()}`;
 
-      console.log("🔍 Verificando incidentes en:", url); // Debug log
+      // console.log("🔍 Verificando incidentes en:", url);
 
       const response = await fetch(url, {
         method: "GET",
@@ -139,8 +150,6 @@ export function useIncidentMonitor({
       // Verificar si este request sigue siendo válido
       if (mySeq !== requestSeq.current || !isMounted.current) return;
 
-      console.log("📊 Respuesta de incidentes:", data); // Debug log
-
       // Procesar respuesta
       let incidents: any[] = [];
       if (data?.success && Array.isArray(data.data)) {
@@ -152,34 +161,28 @@ export function useIncidentMonitor({
       }
 
       // Filtrar solo incidentes ABIERTOS
-      const activeIncidentsData = incidents.filter(inc => inc.estado === "ABIERTO");
-
-      console.log("🚨 Incidentes activos encontrados:", activeIncidentsData.length); // Debug log
+      const activeIncidentsData = incidents.filter((inc) => inc.estado === "ABIERTO");
 
       // Adaptar incidentes
       const adaptedIncidents = activeIncidentsData.map(adaptIncidente);
 
-      // Obtener IDs actuales para comparar
-      setLastIncidentIds(prevIds => {
-        const currentIds = new Set(adaptedIncidents.map(inc => inc.id));
-        const newIds = [...currentIds].filter(id => !prevIds.has(id));
-
-        console.log("🆕 Nuevos incidentes detectados:", newIds.length); // Debug log
+      // Detectar nuevos IDs vs. últimos conocidos
+      setLastIncidentIds((prevIds) => {
+        const currentIds = new Set(adaptedIncidents.map((inc) => inc.id));
+        const newIds = [...currentIds].filter((id) => !prevIds.has(id));
 
         if (newIds.length > 0) {
           setHasNewIncidents(true);
 
           // Llamar callback para cada nuevo incidente
-          newIds.forEach(id => {
-            const incident = adaptedIncidents.find(inc => inc.id === id);
+          newIds.forEach((id) => {
+            const incident = adaptedIncidents.find((inc) => inc.id === id);
             if (incident && onIncidentDetected) {
-              console.log("🔔 Llamando callback para incidente:", incident.id); // Debug log
               onIncidentDetected(incident);
             }
           });
         } else if (currentIds.size === 0) {
-          // Si no hay nuevos IDs Y la lista actual de incidentes está vacía,
-          // entonces ya no hay "nuevos incidentes" que atender.
+          // Si la lista está vacía, ya no hay "nuevos" por atender
           setHasNewIncidents(false);
         }
 
@@ -189,7 +192,6 @@ export function useIncidentMonitor({
       // Actualizar estado
       setActiveIncidents(adaptedIncidents);
       setLastCheck(new Date());
-
     } catch (err: any) {
       if (mySeq === requestSeq.current && isMounted.current) {
         setError(err?.message || "Error al consultar incidentes");
@@ -213,29 +215,54 @@ export function useIncidentMonitor({
     setError(null);
   }, []);
 
-  // Función para iniciar monitoreo
+  // Iniciar monitoreo y forzar primer check inmediato (evita "nunca")
   const startMonitoring = useCallback(() => {
     setIsMonitoring(true);
-  }, []);
+    // Verificación inmediata al activar monitoreo
+    Promise.resolve().then(() => checkIncidents());
+  }, [checkIncidents]);
 
-  // Función para detener monitoreo
+  // Detener monitoreo
   const stopMonitoring = useCallback(() => {
     setIsMonitoring(false);
   }, []);
 
-  // Efecto para verificación inicial inmediata
+  // Verificación inicial cuando está habilitado y monitoreando
   useEffect(() => {
     if (enabled && isMonitoring) {
-      console.log("🚀 Iniciando verificación de incidentes..."); // Debug log
       checkIncidents();
     }
+  }, [enabled, isMonitoring, checkIncidents]);
+
+  // Si lastCheck es null ("nunca"), dispara una verificación
+  useEffect(() => {
+    if (enabled && isMonitoring && lastCheck === null) {
+      checkIncidents();
+    }
+  }, [enabled, isMonitoring, lastCheck, checkIncidents]);
+
+  // Re-verificar al recuperar foco o visibilidad (p. ej., al volver a /cliente)
+  useEffect(() => {
+    const onFocus = () => {
+      if (enabled && isMonitoring) checkIncidents();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible" && enabled && isMonitoring) {
+        checkIncidents();
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [enabled, isMonitoring, checkIncidents]);
 
   // Hook para intervalo visible (solo ejecuta cuando la pestaña está visible)
   useVisibleInterval(
     () => {
       if (enabled && isMonitoring) {
-        console.log("⏰ Verificación periódica de incidentes..."); // Debug log
         checkIncidents();
       }
     },
@@ -245,17 +272,9 @@ export function useIncidentMonitor({
   // Auto-iniciar monitoreo si está habilitado
   useEffect(() => {
     if (enabled && !isMonitoring) {
-      console.log("🔄 Auto-iniciando monitoreo de incidentes..."); // Debug log
       startMonitoring();
     }
   }, [enabled, isMonitoring, startMonitoring]);
-
-  // Cleanup al desmontar
-  useEffect(() => {
-    return () => {
-      isMounted.current = false;
-    };
-  }, []);
 
   return {
     // Estado
