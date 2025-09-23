@@ -944,7 +944,7 @@ function StepOne(props: {
         <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">De vía</span>
         <div className="flex gap-2">
           <button
-            onClick={() => { setShowFromOpts((v) => !v); if (form.fromTrack) ensureSections(form.fromTrack); }}
+            onClick={() => { setShowFromOpts(!showFromOpts); if (form.fromTrack) ensureSections(form.fromTrack); }}
             className="min-w-[220px] rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
           >
             {form.fromTrack ? `Vía ${viaName(form.fromTrack)}` : "Selecciona una vía"}
@@ -963,7 +963,7 @@ function StepOne(props: {
           <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Para vía</span>
           <div className="flex gap-2">
             <button
-              onClick={() => { setShowToOpts((v) => !v); if (form.toTrack) ensureSections(form.toTrack); }}
+              onClick={() => { setShowToOpts(!showToOpts); if (form.toTrack) ensureSections(form.toTrack); }}
               className="min-w-[220px] rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
             >
               {form.toTrack ? `Vía ${viaName(form.toTrack)}` : "Selecciona una vía"}
