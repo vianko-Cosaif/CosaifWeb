@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-const API_URL = process.env.API_URL!;                     
+const API_URL = process.env.API_ORIGIN;                     
 const TOKEN_COOKIE = process.env.JWT_COOKIE_NAME ?? "token";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,9 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
   const destURL = `${API_URL}/${path.join("/")}${orig.search}`;
 
   const h = new Headers(req.headers);
-  h.set("host", new URL(API_URL).host);
+  if (API_URL) {
+    h.set("host", new URL(API_URL).host);
+  }
   h.delete("connection");
   if (token) h.set("authorization", `Bearer ${token}`);
 

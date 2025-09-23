@@ -68,11 +68,15 @@ const fmtDate = (s?: string | null) =>
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const clsx = (...xs: Array<string | false | null | undefined>) =>
   xs.filter(Boolean).join(" ");
-const toText = (v: any) =>
+const toText = (v: unknown) =>
   v == null
     ? "—"
     : typeof v === "object"
-    ? v?.nombre ?? v?.numero ?? v?.code ?? v?.id ?? JSON.stringify(v)
+    ? (v as { nombre?: string; numero?: string; code?: string; id?: string })?.nombre ??
+      (v as { nombre?: string; numero?: string; code?: string; id?: string })?.numero ??
+      (v as { nombre?: string; numero?: string; code?: string; id?: string })?.code ??
+      (v as { nombre?: string; numero?: string; code?: string; id?: string })?.id ??
+      JSON.stringify(v)
     : String(v);
 
 const getCookie = (name: string) => {
@@ -122,7 +126,7 @@ export default function MovimientosPanel({
 
   // rol / cookies
   const userMeta = useMemo(getUserMeta, []);
-  const cookieRole = (getCookie("role") || (userMeta as any)?.rol || role || "CLIENTE").toString();
+  const cookieRole = (getCookie("role") || (userMeta as { rol?: string })?.rol || role || "CLIENTE").toString();
   const roleUp = cookieRole.toUpperCase();
   const isClient = roleUp === "CLIENTE";
   const cookieLocId = Number(getCookie("locId") || "") || null;
@@ -138,7 +142,7 @@ export default function MovimientosPanel({
   // combos
   const [empOpts, setEmpOpts] = useState<Option[]>(empresas);
   const [locOpts, setLocOpts] = useState<Option[]>(localidades);
-  const [combosReady, setCombosReady] = useState(false);
+  const [, setCombosReady] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -153,7 +157,7 @@ export default function MovimientosPanel({
           });
           if (r.ok) {
             const data = await r.json();
-            if (!ignore) setEmpOpts(data.map((x: any) => ({ id: x.id, nombre: x.nombre })));
+            if (!ignore) setEmpOpts(data.map((x: Option) => ({ id: x.id, nombre: x.nombre })));
           }
         }
         if (!localidades.length) {
@@ -164,7 +168,7 @@ export default function MovimientosPanel({
           });
           if (r.ok) {
             const data = await r.json();
-            if (!ignore) setLocOpts(data.map((x: any) => ({ id: x.id, nombre: x.nombre })));
+            if (!ignore) setLocOpts(data.map((x: Option) => ({ id: x.id, nombre: x.nombre })));
           }
         }
       } catch {}
@@ -180,6 +184,7 @@ export default function MovimientosPanel({
   useEffect(() => {
     if (!isClient || empId != null) return;
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const name = ((userMeta as any)?.empresa?.nombre || "").toLowerCase().trim();
       if (!name) return;
 
@@ -194,7 +199,7 @@ export default function MovimientosPanel({
         if (found) { setEmpId(found.id); return; }
       }
     } catch {}
-  }, [isClient, empId, empOpts, (userMeta as any)?.empresa?.nombre]);
+  }, [isClient, empId, empOpts, userMeta]);
 
   // nombre de localidad (para el input bloqueado)
   const [locName, setLocName] = useState<string>("");
@@ -245,6 +250,7 @@ export default function MovimientosPanel({
       if (isClient && empId == null) return;
 
       const my = ++reqSeq.current;
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       showRefreshing ? setRefreshing(true) : setLoading(true);
       try {
         const headers: HeadersInit = { "Content-Type": "application/json" };
@@ -271,6 +277,7 @@ export default function MovimientosPanel({
         if (my !== reqSeq.current) return;
 
         const raw = Array.isArray(data?.rows) ? data.rows : Array.isArray(data) ? data : [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const rows: Movement[] = raw.map((m: any): Movement => {
           const estadoCalc = m.estado ?? m.status ?? (m.finalizado ? "CONCLUIDO" : "PENDIENTE");
           const finalizadoCalc = m.finalizado ?? (String(estadoCalc).toUpperCase() === "CONCLUIDO");
@@ -291,6 +298,7 @@ export default function MovimientosPanel({
             operadorId: m.operadorId ?? null,
             maquinistaId: m.maquinistaId ?? null,
             empresaId: m.empresaId,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             empresaNombre: m.empresaNombre ?? m.empresa?.nombre ?? (userMeta as any)?.empresa?.nombre ?? undefined,
             fechaSolicitud: m.fechaSolicitud ?? m.createdAt ?? null,
             fechaInicio: m.fechaInicio ?? null,
@@ -320,6 +328,7 @@ export default function MovimientosPanel({
             : securedRows.filter((r) => r.finalizado);
 
         setItems(finalRows);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         setTotal(Number((data as any)?.total ?? finalRows.length));
       } catch {
         setItems([]);
@@ -339,6 +348,7 @@ export default function MovimientosPanel({
   const filtered = useMemo(() => {
     const qx = (q || "").trim().toLowerCase();
     if (!qx) return items;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const hay = (s: any) => String(s ?? "").toLowerCase().includes(qx);
     return items.filter((m) =>
       hay(m.id) || hay(m.locomotora) || hay(m.empresaNombre) || hay(m.localidadNombre) ||
@@ -463,6 +473,7 @@ export default function MovimientosPanel({
             {lockedEmpresa ? (
               <input
                 className="input min-h-10"
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 value={empOpts.find((o) => o.id === empId)?.nombre ?? (userMeta as any)?.empresa?.nombre ?? "Mi empresa"}
                 disabled
               />
