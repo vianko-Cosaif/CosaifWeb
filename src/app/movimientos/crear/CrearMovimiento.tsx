@@ -195,6 +195,7 @@ export default function CrearMovimiento() {
       ...baseInitialForm,
       creadoPorId: u?.id ?? null,
       clienteId: u?.id ?? null,
+      
       empresaId: Number.isFinite(empresaId) ? empresaId : null,
     };
 
@@ -548,7 +549,8 @@ const submit = useCallback(async () => {
         @media (max-width: 640px) {
           select, select option { font-size: 16px !important; line-height: 1.45 !important; }
           select { min-height: 48px !important; }
-        }
+        }import { useLocalStorage } from '../../hooks/useLocalStorage';
+
       `}</style>
 
       {/* Estado conexión / outbox + Salir */}
@@ -1122,8 +1124,6 @@ function StepThree({
           <li>Dirección: {form.direccionEmpuje || "—"}</li>
           <li>Prioridad: {form.priority ? "ALTA" : "BAJA"}</li>
           <li>Servicio: {form.service || "—"}</li>
-          <li>Inicio: {fmtLocalDateTime(form.fechaInicio)}</li>
-          <li>Fin: {fmtLocalDateTime(form.fechaFin)}</li>
         </ul>
       </div>
 
