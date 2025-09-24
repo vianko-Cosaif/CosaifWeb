@@ -195,7 +195,6 @@ export default function CrearMovimiento() {
       ...baseInitialForm,
       creadoPorId: u?.id ?? null,
       clienteId: u?.id ?? null,
-      
       empresaId: Number.isFinite(empresaId) ? empresaId : null,
     };
 
@@ -1124,6 +1123,7 @@ function StepThree({
           <li>Dirección: {form.direccionEmpuje || "—"}</li>
           <li>Prioridad: {form.priority ? "ALTA" : "BAJA"}</li>
           <li>Servicio: {form.service || "—"}</li>
+        
         </ul>
       </div>
 
