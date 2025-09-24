@@ -169,6 +169,7 @@ export default function CrearMovimiento() {
   // UI / selección
   const [showFromOpts, setShowFromOpts] = useState(false);
   const [showToOpts, setShowToOpts] = useState(false);
+  const [selectionMode, setSelectionMode] = useState<"de_via" | "para_via">("de_via"); // Modo de selección por defecto
   const lastTap = useRef<Record<string, number>>({});
   const [fromSection, setFromSection] = useState<number | undefined>(undefined);
   const [toSection, setToSection] = useState<number | undefined>(undefined);
@@ -337,11 +338,20 @@ export default function CrearMovimiento() {
     }
   }, [sectionsByVia]);
 
+  // Reset vias when selection mode changes
   useEffect(() => {
-    setFromSection(undefined);
-    setLocoLockedBy(null);
-    if (form.fromTrack) ensureSections(form.fromTrack);
-  }, [form.fromTrack, ensureSections]);
+    if (form.service) {
+      if (selectionMode === "de_via") {
+        setForm((p) => ({ ...p, toTrack: null }));
+        setToSection(undefined);
+        setShowToOpts(false);
+      } else if (selectionMode === "para_via") {
+        setForm((p) => ({ ...p, fromTrack: null }));
+        setFromSection(undefined);
+        setShowFromOpts(false);
+      }
+    }
+  }, [selectionMode, form.service]);
 
   useEffect(() => {
     setToSection(undefined);
@@ -390,8 +400,16 @@ export default function CrearMovimiento() {
     const { empresaId, localidadId } = resolvedIds;
     if (canManageAll && !Number.isFinite(empresaId)) e.empresaId = "Selecciona empresa.";
     if (canManageAll && !Number.isFinite(localidadId)) e.selectedLocalityId = "Selecciona localidad.";
-    if (!form.fromTrack) e.fromTrack = "Selecciona vía de origen.";
-    if (!isService && !form.toTrack) e.toTrack = "Selecciona vía de destino.";
+
+    // Validar según el modo de selección
+    if (form.service) {
+      if (selectionMode === "de_via" && !form.fromTrack) e.fromTrack = "Selecciona vía de origen.";
+      if (selectionMode === "para_via" && !form.toTrack) e.toTrack = "Selecciona vía de destino.";
+    } else {
+      if (!form.fromTrack) e.fromTrack = "Selecciona vía de origen.";
+      if (!form.toTrack) e.toTrack = "Selecciona vía de destino.";
+    }
+
     if (!form.locomotiveNumber) e.locomotiveNumber = "Número requerido.";
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -400,7 +418,7 @@ export default function CrearMovimiento() {
   const validate2 = () => {
     const e: Record<string, string> = {};
     if (!form.movementType) e.movementType = "Selecciona el tipo de movimiento.";
-    if (!isService) {
+    if (!form.service) {
       if (!["DENTRO", "AFUERA"].includes(form.cabinPosition)) e.cabinPosition = "Selecciona posición de cabina.";
       if (!["DENTRO", "AFUERA"].includes(form.chimneyPosition)) e.chimneyPosition = "Selecciona posición de chimenea.";
     }
@@ -431,25 +449,33 @@ export default function CrearMovimiento() {
       alert("Faltan IDs requeridos (empresa, usuario o localidad).");
       return;
     }
-    if (!form.fromTrack || !form.locomotiveNumber) {
-      alert("Faltan vía de origen o número de locomotora.");
+    if (!form.locomotiveNumber) {
+      alert("Faltan número de locomotora.");
       return;
     }
 
     const only = <T extends object>(cond: boolean, obj: T) => (cond ? obj : {});
 
+    // Determinar las vías según el modo de selección
+    const fromTrack = selectionMode === "de_via" ? form.fromTrack : null;
+    const toTrack = selectionMode === "para_via" ? form.toTrack : null;
+
+    if (!fromTrack && !toTrack) {
+      alert("Debe seleccionar al menos una vía según el modo de selección.");
+      return;
+    }
+
     const payload = {
       empresaId: Number(empresaId),
       creadoPorId: Number(creadoPorId),
       localidadId: Number(localidadId),
-      viaOrigenId: Number(form.fromTrack),
+      viaOrigenId: fromTrack ? Number(fromTrack) : null,
       locomotiveNumber: Number(form.locomotiveNumber),
       prioridad: form.priority ? "ALTA" : "BAJA",
 
       // opcionales
-      ...only(!!form.toTrack && !isService, { viaDestinoId: Number(form.toTrack) }), // permite iguales si tu backend ya lo acepta
-      ...only(typeof fromSection === "number", { numeroSeccion: Number(fromSection) }),
-      ...only(!!form.comments.trim(), { instrucciones: form.comments.trim() }),
+      ...only(!!toTrack && selectionMode === "para_via", { viaDestinoId: Number(toTrack) }),
+      ...only(typeof fromSection === "number" && selectionMode === "de_via", { numeroSeccion: Number(fromSection) }),
 
       // 👇 nombres que Prisma sí espera
       tipoMovimiento: ["MD_TRABAJANDO", "REMOLCADA"].includes(form.movementType) ? form.movementType : null,
@@ -457,8 +483,8 @@ export default function CrearMovimiento() {
         form.movementType === "REMOLCADA" && ["EMPUJAR", "JALAR"].includes(form.direccionEmpuje || "")
           ? (form.direccionEmpuje as "EMPUJAR" | "JALAR")
           : "Sin_Solicitar",
-      posicionCabina: !isService && ["DENTRO", "AFUERA"].includes(form.cabinPosition) ? form.cabinPosition : "Sin_Solicitar",
-      posicionChimenea: !isService && ["DENTRO", "AFUERA"].includes(form.chimneyPosition) ? form.chimneyPosition : "Sin_Solicitar",
+      posicionCabina: !form.service && ["DENTRO", "AFUERA"].includes(form.cabinPosition) ? form.cabinPosition : "Sin_Solicitar",
+      posicionChimenea: !form.service && ["DENTRO", "AFUERA"].includes(form.chimneyPosition) ? form.chimneyPosition : "Sin_Solicitar",
 
       // servicio como flags
       ...only(form.service === "Lavado", { lavado: true }),
@@ -495,8 +521,8 @@ export default function CrearMovimiento() {
       const created = txt ? safeJSON(txt) : {};
       const movimientoId = Number((created as any)?.id || 0);
 
-      if (movimientoId && form.fromTrack && typeof fromSection === "number") {
-        await fetchWithTimeout(`${API_BASE}/secciones/via/${form.fromTrack}/asignar`, {
+      if (movimientoId && fromTrack && typeof fromSection === "number") {
+        await fetchWithTimeout(`${API_BASE}/secciones/via/${fromTrack}/asignar`, {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json", ...tokenHeader() },
@@ -516,7 +542,7 @@ export default function CrearMovimiento() {
     } finally {
       setSending(false);
     }
-  }, [resolvedIds, form, isService, fromSection, rol]);
+  }, [resolvedIds, form, selectionMode, fromSection, rol]);
 
   /** Progreso */
   const STEP_CFG = [
@@ -616,6 +642,8 @@ export default function CrearMovimiento() {
               setShowFromOpts={setShowFromOpts}
               showToOpts={showToOpts}
               setShowToOpts={setShowToOpts}
+              selectionMode={selectionMode}
+              setSelectionMode={setSelectionMode}
               tapToggle={(k, a, b) => tapToggle(k, a, b)}
               sectionsByVia={sectionsByVia}
               secLoading={secLoading}
@@ -630,7 +658,7 @@ export default function CrearMovimiento() {
             />
           )}
           {step === 2 && <StepTwo form={form} setForm={setForm} errors={errors} isService={isService} />}
-          {step === 3 && <StepThree form={form} setForm={setForm} sending={sending} submit={submit} fromSection={fromSection} toSection={toSection} viaName={viaName} />}
+          {step === 3 && <StepThree form={form} setForm={setForm} sending={sending} submit={submit} fromSection={fromSection} toSection={toSection} viaName={viaName} selectionMode={selectionMode} />}
         </div>
 
         <div className="mt-4 flex flex-wrap gap-3">
@@ -769,6 +797,8 @@ function StepOne(props: {
   setShowFromOpts: (v: boolean) => void;
   showToOpts: boolean;
   setShowToOpts: (v: boolean) => void;
+  selectionMode: "de_via" | "para_via";
+  setSelectionMode: (mode: "de_via" | "para_via") => void;
   tapToggle: (key: string, onSingle: () => void, onDouble: () => void) => void;
   sectionsByVia: Record<number, Seccion[]>;
   secLoading: Record<number, boolean>;
@@ -783,8 +813,9 @@ function StepOne(props: {
 }) {
   const {
     form, setForm, errors, empresas, localidades, vias, canManageAll, userCompanyName,
-    showFromOpts, setShowFromOpts, showToOpts, setShowToOpts, tapToggle, sectionsByVia, secLoading,
-    ensureSections, fromSection, toSection, setFromSection, setToSection, viaName, locoLockedBy
+    showFromOpts, setShowFromOpts, showToOpts, setShowToOpts, selectionMode, setSelectionMode,
+    tapToggle, sectionsByVia, secLoading, ensureSections, fromSection, toSection,
+    setFromSection, setToSection, viaName, locoLockedBy
   } = props;
 
   const viaOption = (v: Via) => {
@@ -937,6 +968,37 @@ function StepOne(props: {
         </div>
       </div>
 
+      {/* Modo de selección - solo visible cuando hay servicio seleccionado */}
+      {form.service && (
+        <div className="sm:col-span-2">
+          <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Modo de selección</span>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setSelectionMode("de_via")}
+              className={clsx(
+                "rounded-md border px-3 py-2 text-sm",
+                selectionMode === "de_via"
+                  ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                  : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              )}
+            >
+              De vía
+            </button>
+            <button
+              onClick={() => setSelectionMode("para_via")}
+              className={clsx(
+                "rounded-md border px-3 py-2 text-sm",
+                selectionMode === "para_via"
+                  ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                  : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              )}
+            >
+              Para vía
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Prioridad + Loco */}
       <label className="mb-3 mt-1 flex items-center gap-2">
         <input
@@ -960,25 +1022,27 @@ function StepOne(props: {
       />
 
       {/* Vía origen */}
-      <div className="sm:col-span-2">
-        <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">De vía</span>
-        <div className="flex gap-2">
-          <button
-            onClick={() => { setShowFromOpts(!showFromOpts); if (form.fromTrack) ensureSections(form.fromTrack); }}
-            className="min-w-[220px] rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-          >
-            {form.fromTrack ? `Vía ${viaName(form.fromTrack)}` : "Selecciona una vía"}
-          </button>
-          {errors.fromTrack ? <span className="self-center text-xs text-rose-600 dark:text-rose-400">{errors.fromTrack}</span> : null}
+      {(!form.service || selectionMode === "de_via") && (
+        <div className="sm:col-span-2">
+          <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">De vía</span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setShowFromOpts(!showFromOpts); if (form.fromTrack) ensureSections(form.fromTrack); }}
+              className="min-w-[220px] rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+            >
+              {form.fromTrack ? `Vía ${viaName(form.fromTrack)}` : "Selecciona una vía"}
+            </button>
+            {errors.fromTrack ? <span className="self-center text-xs text-rose-600 dark:text-rose-400">{errors.fromTrack}</span> : null}
+          </div>
+
+          {showFromOpts && <div className="mt-2 grid gap-2 sm:grid-cols-2">{vias.map((v) => (<div key={v.id}>{viaOption(v)}</div>))}</div>}
+
+          <SectionsPills kind="from" viaId={form.fromTrack} />
         </div>
-
-        {showFromOpts && <div className="mt-2 grid gap-2 sm:grid-cols-2">{vias.map((v) => (<div key={v.id}>{viaOption(v)}</div>))}</div>}
-
-        <SectionsPills kind="from" viaId={form.fromTrack} />
-      </div>
+      )}
 
       {/* Vía destino */}
-      {!form.service && (
+      {(!form.service || selectionMode === "para_via") && (
         <div className="sm:col-span-2">
           <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Para vía</span>
           <div className="flex gap-2">
@@ -1126,8 +1190,8 @@ function StepTwo({
 
 /** ------ Step 3 ------ */
 function StepThree({
-  form, setForm, sending, submit, fromSection, toSection, viaName,
-}: { form: MovementFormData; setForm: React.Dispatch<React.SetStateAction<MovementFormData>>; sending: boolean; submit: () => void; fromSection?: number; toSection?: number; viaName: (id?: number | null) => string; }) {
+  form, setForm, sending, submit, fromSection, toSection, viaName, selectionMode,
+}: { form: MovementFormData; setForm: React.Dispatch<React.SetStateAction<MovementFormData>>; sending: boolean; submit: () => void; fromSection?: number; toSection?: number; viaName: (id?: number | null) => string; selectionMode: "de_via" | "para_via"; }) {
   const sectionHint = (fromSection ? `[SECCION_ORIGEN:${fromSection}] ` : "") + (toSection ? `[SECCION_DESTINO:${toSection}]` : "");
   const showHint = Boolean(fromSection || toSection);
 
@@ -1137,13 +1201,18 @@ function StepThree({
         <div className="font-semibold mb-2 text-slate-800 dark:text-slate-100">Resumen</div>
         <ul className="grid gap-1 text-slate-700 dark:text-slate-300">
           <li>Localidad: {form.selectedLocalityId ?? "—"}</li>
-          <li>Origen: {form.fromTrack ? `Vía ${viaName(form.fromTrack)} ${fromSection ? `(Sección #${fromSection})` : ""}` : "—"}</li>
-          {!form.service && <li>Destino: {form.toTrack ? `Vía ${viaName(form.toTrack)} ${toSection ? `(Sección #${toSection})` : ""}` : "—"}</li>}
+          {selectionMode === "de_via" && (
+            <li>Origen: {form.fromTrack ? `Vía ${viaName(form.fromTrack)} ${fromSection ? `(Sección #${fromSection})` : ""}` : "—"}</li>
+          )}
+          {selectionMode === "para_via" && (
+            <li>Destino: {form.toTrack ? `Vía ${viaName(form.toTrack)} ${toSection ? `(Sección #${toSection})` : ""}` : "—"}</li>
+          )}
           <li>Locomotora: {form.locomotiveNumber || "—"}</li>
           <li>Tipo: {form.movementType || "—"}</li>
           <li>Dirección: {form.direccionEmpuje || "—"}</li>
           <li>Prioridad: {form.priority ? "ALTA" : "BAJA"}</li>
           <li>Servicio: {form.service || "—"}</li>
+          <li>Modo de selección: {selectionMode === "de_via" ? "De vía" : "Para vía"}</li>
         </ul>
       </div>
 
