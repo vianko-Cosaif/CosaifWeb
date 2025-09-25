@@ -213,7 +213,7 @@ export default function RailQueueBoard({
       // ===== mapear info directamente del listado =====
       const mapFromList: Record<number, RondaInfo> = {};
       for (const r of data) {
-        const mv = r.movimiento ?? null as Ronda["movimiento"];
+        const mv = (r.movimiento ?? null) as Ronda["movimiento"];
         const emp = r.empresa ?? null;
         mapFromList[r.id] = {
           empresa: { id: emp?.id ?? 0, nombre: emp?.nombre ?? "—" },
@@ -296,6 +296,12 @@ export default function RailQueueBoard({
   const locoText = fmtLoco(curMov?.locomotiveNumber ?? curMov?.locomotora);
   const viaO = curMov?.viaOrigen?.nombre || "";
   const viaD = curMov?.viaDestino?.nombre || "";
+
+  // === lógica pedida: usar servicio como "origen" si no hay vía origen ===
+  const hasService = !!(curMov?.torno || curMov?.lavado);
+  const serviceOrigin = curMov?.torno ? "Torno" : (curMov?.lavado ? "Lavado" : "");
+  const desdeLbl = viaO || serviceOrigin; // prioridad: vía origen > servicio
+  const hasAny = !!(desdeLbl || viaD || hasService);
 
   return (
     <div ref={boardRef} className="contents">
@@ -504,7 +510,15 @@ export default function RailQueueBoard({
                     className="mt-6 rounded-lg bg-gradient-to-r from-sky-100 to-emerald-100 text-slate-900 p-4 border border-slate-200 dark:from-slate-800 dark:to-slate-800 dark:text-slate-100 dark:border-slate-700"
                   >
                     <p className="text-sm">
-                      Mover <b>{locoText}</b> {viaO || viaD ? "desde" : "entre"} <b>{viaO || "—"}</b> hacia <b>{viaD || "—"}</b>.
+                      {hasAny ? (
+                        <>
+                          Mover <b>{locoText}</b> desde <b>{desdeLbl || "—"}</b> hacia <b>{viaD || "—"}</b>.
+                        </>
+                      ) : (
+                        <>
+                          Mover <b>{locoText}</b> entre <b>—</b> y <b>—</b>.
+                        </>
+                      )}
                     </p>
                   </motion.div>
                 </>
