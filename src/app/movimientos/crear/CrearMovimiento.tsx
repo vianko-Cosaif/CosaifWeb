@@ -169,6 +169,7 @@ export default function CrearMovimiento() {
   // UI / selección
   const [showFromOpts, setShowFromOpts] = useState(false);
   const [showToOpts, setShowToOpts] = useState(false);
+  const [selectionMode, setSelectionMode] = useState<"de_via" | "para_via">("de_via"); // Modo de selección por defecto
   const lastTap = useRef<Record<string, number>>({});
   const [fromSection, setFromSection] = useState<number | undefined>(undefined);
   const [toSection, setToSection] = useState<number | undefined>(undefined);
@@ -186,7 +187,7 @@ export default function CrearMovimiento() {
     const locCookie = Number(getCookie("locId") || NaN);
     const uRaw = typeof window !== "undefined" ? localStorage.getItem("user") : null;
     let u: any = null;
-    try { u = uRaw ? JSON.parse(uRaw) : null; } catch {}
+    try { u = uRaw ? JSON.parse(uRaw) : null; } catch { }
     setUser(u || null);
     setUserCompanyName(u?.empresa?.nombre || "");
 
@@ -195,6 +196,7 @@ export default function CrearMovimiento() {
       ...baseInitialForm,
       creadoPorId: u?.id ?? null,
       clienteId: u?.id ?? null,
+      
       empresaId: Number.isFinite(empresaId) ? empresaId : null,
     };
 
@@ -230,7 +232,7 @@ export default function CrearMovimiento() {
           if (!Number.isFinite(Number(localidadId)) && !canAll && lList.length === 1) localidadId = lList[0].id;
           return { ...p, empresaId: Number(empresaId) || p.empresaId, selectedLocalityId: (Number(localidadId) || p.selectedLocalityId) ?? null };
         });
-      } catch {}
+      } catch { }
 
       try {
         const raw = typeof window !== "undefined" ? localStorage.getItem(DRAFT_KEY) : null;
@@ -241,12 +243,12 @@ export default function CrearMovimiento() {
           setToSection(d.toSection);
           setLocoLockedBy(d.locoLockedBy || null);
         }
-      } catch {}
+      } catch { }
 
       try {
         const q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]");
         setPendingCount(Array.isArray(q) ? q.length : 0);
-      } catch {}
+      } catch { }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initFormLocked]);
@@ -266,7 +268,7 @@ export default function CrearMovimiento() {
   useEffect(() => {
     const payload = { form, fromSection, toSection, locoLockedBy };
     if (draftTimer.current) clearTimeout(draftTimer.current);
-    draftTimer.current = setTimeout(() => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(payload)); } catch {} }, 350);
+    draftTimer.current = setTimeout(() => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(payload)); } catch { } }, 350);
     return () => { if (draftTimer.current) clearTimeout(draftTimer.current); };
   }, [form, fromSection, toSection, locoLockedBy]);
 
@@ -281,7 +283,7 @@ export default function CrearMovimiento() {
   const flushOutbox = useCallback(async () => {
     if (!online) return;
     let q: any[] = [];
-    try { q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch {}
+    try { q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch { }
     if (!Array.isArray(q) || q.length === 0) return;
 
     const keep: any[] = [];
@@ -336,11 +338,20 @@ export default function CrearMovimiento() {
     }
   }, [sectionsByVia]);
 
+  // Reset vias when selection mode changes
   useEffect(() => {
-    setFromSection(undefined);
-    setLocoLockedBy(null);
-    if (form.fromTrack) ensureSections(form.fromTrack);
-  }, [form.fromTrack, ensureSections]);
+    if (form.service) {
+      if (selectionMode === "de_via") {
+        setForm((p) => ({ ...p, toTrack: null }));
+        setToSection(undefined);
+        setShowToOpts(false);
+      } else if (selectionMode === "para_via") {
+        setForm((p) => ({ ...p, fromTrack: null }));
+        setFromSection(undefined);
+        setShowFromOpts(false);
+      }
+    }
+  }, [selectionMode, form.service]);
 
   useEffect(() => {
     setToSection(undefined);
@@ -376,7 +387,7 @@ export default function CrearMovimiento() {
             setForm((p) => ({ ...p, locomotiveNumber: loco }));
             setLocoLockedBy({ movimientoId: s.movimientoId!, viaId: form.fromTrack!, numero: s.numero });
           }
-        } catch {}
+        } catch { }
       }
     } else {
       if (locoLockedBy && locoLockedBy.viaId === form.fromTrack && locoLockedBy.numero === s.numero) setLocoLockedBy(null);
@@ -389,8 +400,16 @@ export default function CrearMovimiento() {
     const { empresaId, localidadId } = resolvedIds;
     if (canManageAll && !Number.isFinite(empresaId)) e.empresaId = "Selecciona empresa.";
     if (canManageAll && !Number.isFinite(localidadId)) e.selectedLocalityId = "Selecciona localidad.";
-    if (!form.fromTrack) e.fromTrack = "Selecciona vía de origen.";
-    if (!isService && !form.toTrack) e.toTrack = "Selecciona vía de destino.";
+
+    // Validar según el modo de selección
+    if (form.service) {
+      if (selectionMode === "de_via" && !form.fromTrack) e.fromTrack = "Selecciona vía de origen.";
+      if (selectionMode === "para_via" && !form.toTrack) e.toTrack = "Selecciona vía de destino.";
+    } else {
+      if (!form.fromTrack) e.fromTrack = "Selecciona vía de origen.";
+      if (!form.toTrack) e.toTrack = "Selecciona vía de destino.";
+    }
+
     if (!form.locomotiveNumber) e.locomotiveNumber = "Número requerido.";
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -399,7 +418,7 @@ export default function CrearMovimiento() {
   const validate2 = () => {
     const e: Record<string, string> = {};
     if (!form.movementType) e.movementType = "Selecciona el tipo de movimiento.";
-    if (!isService) {
+    if (!form.service) {
       if (!["DENTRO", "AFUERA"].includes(form.cabinPosition)) e.cabinPosition = "Selecciona posición de cabina.";
       if (!["DENTRO", "AFUERA"].includes(form.chimneyPosition)) e.chimneyPosition = "Selecciona posición de chimenea.";
     }
@@ -413,7 +432,7 @@ export default function CrearMovimiento() {
   /** OUTBOX helper */
   const pushOutbox = (payload: any) => {
     let q: any[] = [];
-    try { q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch {}
+    try { q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch { }
     const item = { id: `${Date.now()}_${Math.random().toString(36).slice(2)}`, payload, createdAt: Date.now() };
     const next = [...(Array.isArray(q) ? q : []), item];
     localStorage.setItem(OUTBOX_KEY, JSON.stringify(next));
@@ -423,99 +442,107 @@ export default function CrearMovimiento() {
   };
 
   /** Submit (con offline y asignación de sección) */
-const submit = useCallback(async () => {
-  const { empresaId, creadoPorId, localidadId } = resolvedIds;
+  const submit = useCallback(async () => {
+    const { empresaId, creadoPorId, localidadId } = resolvedIds;
 
-  if (!Number.isFinite(empresaId) || !Number.isFinite(creadoPorId) || !Number.isFinite(localidadId)) {
-    alert("Faltan IDs requeridos (empresa, usuario o localidad).");
-    return;
-  }
-  if (!form.fromTrack || !form.locomotiveNumber) {
-    alert("Faltan vía de origen o número de locomotora.");
-    return;
-  }
-
-  const only = <T extends object>(cond: boolean, obj: T) => (cond ? obj : {});
-
-  const payload = {
-  empresaId: Number(empresaId),
-  creadoPorId: Number(creadoPorId),
-  localidadId: Number(localidadId),
-  viaOrigenId: Number(form.fromTrack),
-  locomotiveNumber: Number(form.locomotiveNumber),
-  prioridad: form.priority ? "ALTA" : "BAJA",
-
-  // opcionales
-  ...only(!!form.toTrack && !isService, { viaDestinoId: Number(form.toTrack) }), // permite iguales si tu backend ya lo acepta
-  ...only(typeof fromSection === "number", { numeroSeccion: Number(fromSection) }),
-  ...only(!!form.comments.trim(), { instrucciones: form.comments.trim() }),
-
-  // 👇 nombres que Prisma sí espera
-  tipoMovimiento: ["MD_TRABAJANDO", "REMOLCADA"].includes(form.movementType) ? form.movementType : null,
-  direccionEmpuje:
-    form.movementType === "REMOLCADA" && ["EMPUJAR", "JALAR"].includes(form.direccionEmpuje || "")
-      ? (form.direccionEmpuje as "EMPUJAR" | "JALAR")
-      : "Sin_Solicitar",
-  posicionCabina: !isService && ["DENTRO", "AFUERA"].includes(form.cabinPosition) ? form.cabinPosition : "Sin_Solicitar",
-  posicionChimenea: !isService && ["DENTRO", "AFUERA"].includes(form.chimneyPosition) ? form.chimneyPosition : "Sin_Solicitar",
-
-  // servicio como flags
-  ...only(form.service === "Lavado", { lavado: true }),
-  ...only(form.service === "Torno",  { torno: true }),
-
-};
-
-
-  const roleToPath = (r?: string) => {
-    const R = String(r || "").toUpperCase();
-    if (R === "COORDINADOR") return "/coordinador/movimientos";
-    if (R === "ADMINISTRADOR") return "/administrador/movimientos";
-    if (R === "SUPERVISOR") return "/supervisor/movimientos";
-    return "/cliente/movimientos";
-  };
-
-  try {
-    setSending(true);
-    const res = await fetchWithTimeout(`${API_BASE}/movimientos`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json", Accept: "application/json", ...tokenHeader() },
-      body: JSON.stringify(payload),
-    });
-
-    const txt = await res.text();
-    if (!res.ok) {
-      // intenta mostrar detalle legible
-      try { const j = JSON.parse(txt); alert(j.message || j.error || txt); }
-      catch { alert(txt || `HTTP ${res.status}`); }
+    if (!Number.isFinite(empresaId) || !Number.isFinite(creadoPorId) || !Number.isFinite(localidadId)) {
+      alert("Faltan IDs requeridos (empresa, usuario o localidad).");
+      return;
+    }
+    if (!form.locomotiveNumber) {
+      alert("Faltan número de locomotora.");
       return;
     }
 
-    const created = txt ? safeJSON(txt) : {};
-    const movimientoId = Number((created as any)?.id || 0);
+    const only = <T extends object>(cond: boolean, obj: T) => (cond ? obj : {});
 
-    if (movimientoId && form.fromTrack && typeof fromSection === "number") {
-      await fetchWithTimeout(`${API_BASE}/secciones/via/${form.fromTrack}/asignar`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", ...tokenHeader() },
-        body: JSON.stringify({ numero: Number(fromSection), movimientoId }),
-      }).catch(() => {});
+    // Determinar las vías según el modo de selección
+    const fromTrack = selectionMode === "de_via" ? form.fromTrack : null;
+    const toTrack = selectionMode === "para_via" ? form.toTrack : null;
+
+    if (!fromTrack && !toTrack) {
+      alert("Debe seleccionar al menos una vía según el modo de selección.");
+      return;
     }
 
-    try { localStorage.removeItem(DRAFT_KEY); } catch {}
-    setFromSection(undefined);
-    setToSection(undefined);
-    setLocoLockedBy(null);
-    setStep(1);
+    const payload = {
+      empresaId: Number(empresaId),
+      creadoPorId: Number(creadoPorId),
+      localidadId: Number(localidadId),
+      viaOrigenId: fromTrack ? Number(fromTrack) : null,
+      locomotiveNumber: Number(form.locomotiveNumber),
+      prioridad: form.priority ? "ALTA" : "BAJA",
 
-    window.location.assign(roleToPath(rol));
-  } catch (e: any) {
-    alert(e?.message || "Error al crear movimiento");
-  } finally {
-    setSending(false);
-  }
-}, [resolvedIds, form, isService, fromSection, rol]);
+      // opcionales
+      ...only(!!toTrack && selectionMode === "para_via", { viaDestinoId: Number(toTrack) }),
+      ...only(typeof fromSection === "number" && selectionMode === "de_via", { numeroSeccion: Number(fromSection) }),
+
+      // 👇 nombres que Prisma sí espera
+      tipoMovimiento: ["MD_TRABAJANDO", "REMOLCADA"].includes(form.movementType) ? form.movementType : null,
+      direccionEmpuje:
+        form.movementType === "REMOLCADA" && ["EMPUJAR", "JALAR"].includes(form.direccionEmpuje || "")
+          ? (form.direccionEmpuje as "EMPUJAR" | "JALAR")
+          : "Sin_Solicitar",
+      posicionCabina: !form.service && ["DENTRO", "AFUERA"].includes(form.cabinPosition) ? form.cabinPosition : "Sin_Solicitar",
+      posicionChimenea: !form.service && ["DENTRO", "AFUERA"].includes(form.chimneyPosition) ? form.chimneyPosition : "Sin_Solicitar",
+
+      // servicio como flags
+      ...only(form.service === "Lavado", { lavado: true }),
+      ...only(form.service === "Torno", { torno: true }),
+
+    };
+
+
+    const roleToPath = (r?: string) => {
+      const R = String(r || "").toUpperCase();
+      if (R === "COORDINADOR") return "/coordinador/movimientos";
+      if (R === "ADMINISTRADOR") return "/administrador/movimientos";
+      if (R === "SUPERVISOR") return "/supervisor/movimientos";
+      return "/cliente/movimientos";
+    };
+
+    try {
+      setSending(true);
+      const res = await fetchWithTimeout(`${API_BASE}/movimientos`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json", ...tokenHeader() },
+        body: JSON.stringify(payload),
+      });
+
+      const txt = await res.text();
+      if (!res.ok) {
+        // intenta mostrar detalle legible
+        try { const j = JSON.parse(txt); alert(j.message || j.error || txt); }
+        catch { alert(txt || `HTTP ${res.status}`); }
+        return;
+      }
+
+      const created = txt ? safeJSON(txt) : {};
+      const movimientoId = Number((created as any)?.id || 0);
+
+      if (movimientoId && fromTrack && typeof fromSection === "number") {
+        await fetchWithTimeout(`${API_BASE}/secciones/via/${fromTrack}/asignar`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json", ...tokenHeader() },
+          body: JSON.stringify({ numero: Number(fromSection), movimientoId }),
+        }).catch(() => { });
+      }
+
+      try { localStorage.removeItem(DRAFT_KEY); } catch { }
+      setFromSection(undefined);
+      setToSection(undefined);
+      setLocoLockedBy(null);
+      setStep(1);
+
+      window.location.assign(roleToPath(rol));
+    } catch (e: any) {
+      alert(e?.message || "Error al crear movimiento");
+    } finally {
+      setSending(false);
+    }
+  }, [resolvedIds, form, selectionMode, fromSection, rol]);
 
   /** Progreso */
   const STEP_CFG = [
@@ -552,117 +579,139 @@ const submit = useCallback(async () => {
 
       `}</style>
 
-      {/* Estado conexión / outbox + Salir */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Badge tone={online ? "ok" : "error"}>{online ? "En línea" : "Sin conexión"}</Badge>
-        {pendingCount > 0 && (
-          <>
-            <Badge tone="warn">{pendingCount} pendiente(s)</Badge>
-            <button onClick={flushOutbox} className="rounded-md border px-3 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
-              Enviar pendientes
-            </button>
-            <button onClick={() => { localStorage.removeItem(OUTBOX_KEY); setPendingCount(0); }} className="rounded-md border px-3 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
-              Vaciar cola
-            </button>
-          </>
-        )}
-        {banner && <span className="text-xs text-slate-600 dark:text-slate-300">{banner}</span>}
-        <button onClick={goSalir} className="ml-auto rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800" title="Volver a mis movimientos">
-          Salir
-        </button>
-      </div>
+      {/* Grid de fondo que hereda del layout */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-0 bg-[linear-gradient(to_right,rgba(0,0,0,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.05)_1px,transparent_1px)] bg-[size:24px_24px] dark:opacity-[0.07]"
+      />
+      <div className="relative z-10">
 
-      <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-        Nuevo Movimiento <span className="text-slate-500 dark:text-slate-400">({label})</span>
-      </h1>
-
-      {!canManageAll && (
-        <div className="mt-3 rounded-lg border-l-4 border-sky-400 bg-sky-50 p-3 text-sm dark:border-sky-600 dark:bg-sky-900/20">
-          <div className="font-medium text-sky-800 dark:text-sky-200">CLIENTE</div>
-          {lockedClienteMissingData && <div className="mt-2 text-rose-700 dark:text-rose-300">No se encontró una sesión activa. Por favor inicia sesión nuevamente.</div>}
+        {/* Estado conexión / outbox + Salir */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Badge tone={online ? "ok" : "error"}>{online ? "En línea" : "Sin conexión"}</Badge>
+          {pendingCount > 0 && (
+            <>
+              <Badge tone="warn">{pendingCount} pendiente(s)</Badge>
+              <button onClick={flushOutbox} className="rounded-md border px-3 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+                Enviar pendientes
+              </button>
+              <button onClick={() => { localStorage.removeItem(OUTBOX_KEY); setPendingCount(0); }} className="rounded-md border px-3 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+                Vaciar cola
+              </button>
+            </>
+          )}
+          {banner && <span className="text-xs text-slate-600 dark:text-slate-300">{banner}</span>}
+          <button onClick={goSalir} className="ml-auto rounded-md border border-red-500 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:border-red-500 dark:text-red-400 dark:hover:bg-red-900/20" title="Volver a mis movimientos">
+            Salir
+          </button>
         </div>
-      )}
 
-      {/* barra progreso */}
-      <div className="mt-3 h-2 w-full rounded bg-slate-200 dark:bg-slate-800" aria-label="Progreso">
-        <div className="h-2 rounded bg-emerald-600 transition-[width] duration-300" style={{ width: `${percent}%` }} />
-      </div>
-      <div className="mt-1 text-right text-xs text-slate-500 dark:text-slate-400">{percent}%</div>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+          Nuevo Movimiento <span className="text-slate-500 dark:text-slate-400">({label})</span>
+        </h1>
 
-      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        {step === 1 && (
-          <StepOne
-            form={form}
-            setForm={setForm}
-            errors={errors}
-            empresas={empresas}
-            localidades={localidades}
-            vias={vias}
-            canManageAll={canManageAll}
-            userCompanyName={userCompanyName}
-            showEmpresaOpts={false}
-            setShowEmpresaOpts={() => {}}
-            showLocOpts={false}
-            setShowLocOpts={() => {}}
-            showFromOpts={showFromOpts}
-            setShowFromOpts={setShowFromOpts}
-            showToOpts={showToOpts}
-            setShowToOpts={setShowToOpts}
-            tapToggle={(k, a, b) => tapToggle(k, a, b)}
-            sectionsByVia={sectionsByVia}
-            secLoading={secLoading}
-            ensureSections={ensureSections}
-            fromSection={fromSection}
-            toSection={toSection}
-            setFromSection={selectFromSection}
-            setToSection={setToSection}
-            locoLockedBy={locoLockedBy}
-            setLocoLockedBy={setLocoLockedBy}
-            viaName={viaName}
-          />
-        )}
-        {step === 2 && <StepTwo form={form} setForm={setForm} errors={errors} isService={isService} />}
-        {step === 3 && <StepThree form={form} setForm={setForm} sending={sending} submit={submit} fromSection={fromSection} toSection={toSection} viaName={viaName} />}
-      </div>
-
-      <div className="mt-4 flex flex-wrap gap-3">
-        <button
-          onClick={() => { try { localStorage.removeItem(DRAFT_KEY); } catch {} setForm(baseInitialForm); setFromSection(undefined); setToSection(undefined); setErrors({}); }}
-          className="rounded-md border px-4 py-2 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-        >
-          Limpiar
-        </button>
-
-        {step > 1 && (
-          <button onClick={() => setStep((s) => (s === 1 ? 1 : ((s - 1) as 1 | 2 | 3)))} className="rounded-md border px-4 py-2 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
-            Anterior
-          </button>
-        )}
-        {step < 3 && (
-          <button
-            onClick={() => { if (step === 1 && !validate1()) return; if (step === 2 && !validate2()) return; setStep((s) => ((s + 1) as 1 | 2 | 3)); }}
-            className="rounded-md bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700"
-          >
-            Siguiente
-          </button>
-        )}
-
-        <button onClick={goSalir} className="ml-auto rounded-md border px-4 py-2 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800" title="Volver a mis movimientos">
-          Salir
-        </button>
-      </div>
-
-      {locoLockedBy ? (
-        <div className="mt-4 rounded-lg border-l-4 border-sky-400 bg-sky-50 p-3 text-sm dark:border-sky-600 dark:bg-sky-900/20">
-          <div className="font-semibold text-sky-800 dark:text-sky-200">
-            Locomotora bloqueada por sección #{locoLockedBy.numero} (movimiento #{locoLockedBy.movimientoId}).
+        {!canManageAll && (
+          <div className="mt-3 rounded-lg border-l-4 border-sky-400 bg-sky-50 p-3 text-sm dark:border-sky-600 dark:bg-sky-900/20">
+            <div className="font-medium text-sky-800 dark:text-sky-200">CLIENTE</div>
+            {lockedClienteMissingData && <div className="mt-2 text-rose-700 dark:text-rose-300">No se encontró una sesión activa. Por favor inicia sesión nuevamente.</div>}
           </div>
-          <button onClick={() => setLocoLockedBy(null)} className="mt-2 rounded-md border px-3 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
-            Quitar vinculación
+        )}
+
+        {/* barra progreso */}
+        <div className="mt-3 h-2 w-full rounded bg-slate-200 dark:bg-slate-800" aria-label="Progreso">
+          <div className="h-2 rounded bg-emerald-600 transition-[width] duration-300" style={{ width: `${percent}%` }} />
+        </div>
+        <div className="mt-1 text-right text-xs text-slate-500 dark:text-slate-400">{percent}%</div>
+
+        <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          {step === 1 && (
+            <StepOne
+              form={form}
+              setForm={setForm}
+              errors={errors}
+              empresas={empresas}
+              localidades={localidades}
+              vias={vias}
+              canManageAll={canManageAll}
+              userCompanyName={userCompanyName}
+              showEmpresaOpts={false}
+              setShowEmpresaOpts={() => { }}
+              showLocOpts={false}
+              setShowLocOpts={() => { }}
+              showFromOpts={showFromOpts}
+              setShowFromOpts={setShowFromOpts}
+              showToOpts={showToOpts}
+              setShowToOpts={setShowToOpts}
+              selectionMode={selectionMode}
+              setSelectionMode={setSelectionMode}
+              tapToggle={(k, a, b) => tapToggle(k, a, b)}
+              sectionsByVia={sectionsByVia}
+              secLoading={secLoading}
+              ensureSections={ensureSections}
+              fromSection={fromSection}
+              toSection={toSection}
+              setFromSection={selectFromSection}
+              setToSection={setToSection}
+              locoLockedBy={locoLockedBy}
+              setLocoLockedBy={setLocoLockedBy}
+              viaName={viaName}
+            />
+          )}
+          {step === 2 && <StepTwo form={form} setForm={setForm} errors={errors} isService={isService} />}
+          {step === 3 && <StepThree form={form} setForm={setForm} sending={sending} submit={submit} fromSection={fromSection} toSection={toSection} viaName={viaName} selectionMode={selectionMode} />}
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button
+            onClick={() => {
+              try { localStorage.removeItem(DRAFT_KEY); } catch { }
+              setForm((prev) => ({ ...baseInitialForm, selectedLocalityId: canManageAll ? null : prev.selectedLocalityId }));
+              setFromSection(undefined);
+              setToSection(undefined);
+              setErrors({});
+              // Cerrar desplegables de vías si están abiertos
+              setShowFromOpts(false);
+              setShowToOpts(false);
+              // Si está en el paso 3, volver al paso 1
+              if (step === 3) setStep(1);
+            }}
+            className="rounded-md border px-4 py-2 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            Limpiar
+          </button>
+
+          {step > 1 && (
+            <button onClick={() => setStep((s) => (s === 1 ? 1 : ((s - 1) as 1 | 2 | 3)))} className="rounded-md border border-amber-500 px-4 py-2 text-amber-700 hover:bg-amber-50 dark:border-amber-500 dark:text-amber-400 dark:hover:bg-amber-900/20">
+              Anterior
+            </button>
+          )}
+          {step < 3 && (
+            <button
+              onClick={() => { if (step === 1 && !validate1()) return; if (step === 2 && !validate2()) return; setStep((s) => ((s + 1) as 1 | 2 | 3)); }}
+              className="rounded-md bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700"
+            >
+              Siguiente
+            </button>
+          )}
+
+          <button onClick={goSalir} className="ml-auto rounded-md border border-red-500 px-4 py-2 text-red-600 hover:bg-red-50 dark:border-red-500 dark:text-red-400 dark:hover:bg-red-900/20" title="Volver a mis movimientos">
+            Salir
           </button>
         </div>
-      ) : null}
+
+        {locoLockedBy ? (
+          <div className="mt-4 rounded-lg border-l-4 border-sky-400 bg-sky-50 p-3 text-sm dark:border-sky-600 dark:bg-sky-900/20">
+            <div className="font-semibold text-sky-800 dark:text-sky-200">
+              Locomotora bloqueada por sección #{locoLockedBy.numero} (movimiento #{locoLockedBy.movimientoId}).
+            </div>
+            <button onClick={() => setLocoLockedBy(null)} className="mt-2 rounded-md border px-3 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+              Quitar vinculación
+            </button>
+          </div>
+        ) : null}
+      </div>
     </div>
+
   );
 }
 
@@ -748,6 +797,8 @@ function StepOne(props: {
   setShowFromOpts: (v: boolean) => void;
   showToOpts: boolean;
   setShowToOpts: (v: boolean) => void;
+  selectionMode: "de_via" | "para_via";
+  setSelectionMode: (mode: "de_via" | "para_via") => void;
   tapToggle: (key: string, onSingle: () => void, onDouble: () => void) => void;
   sectionsByVia: Record<number, Seccion[]>;
   secLoading: Record<number, boolean>;
@@ -762,8 +813,9 @@ function StepOne(props: {
 }) {
   const {
     form, setForm, errors, empresas, localidades, vias, canManageAll, userCompanyName,
-    showFromOpts, setShowFromOpts, showToOpts, setShowToOpts, tapToggle, sectionsByVia, secLoading,
-    ensureSections, fromSection, toSection, setFromSection, setToSection, viaName, locoLockedBy
+    showFromOpts, setShowFromOpts, showToOpts, setShowToOpts, selectionMode, setSelectionMode,
+    tapToggle, sectionsByVia, secLoading, ensureSections, fromSection, toSection,
+    setFromSection, setToSection, viaName, locoLockedBy
   } = props;
 
   const viaOption = (v: Via) => {
@@ -905,7 +957,7 @@ function StepOne(props: {
                 className={clsx(
                   "rounded-md border px-3 py-2 text-sm",
                   active ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
-                         : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                    : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                 )}
               >
                 {svc}
@@ -915,6 +967,37 @@ function StepOne(props: {
           {form.service ? <span className="self-center text-xs text-slate-500 dark:text-slate-400">Doble clic para desmarcar</span> : null}
         </div>
       </div>
+
+      {/* Modo de selección - solo visible cuando hay servicio seleccionado */}
+      {form.service && (
+        <div className="sm:col-span-2">
+          <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Modo de selección</span>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setSelectionMode("de_via")}
+              className={clsx(
+                "rounded-md border px-3 py-2 text-sm",
+                selectionMode === "de_via"
+                  ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                  : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              )}
+            >
+              De vía
+            </button>
+            <button
+              onClick={() => setSelectionMode("para_via")}
+              className={clsx(
+                "rounded-md border px-3 py-2 text-sm",
+                selectionMode === "para_via"
+                  ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                  : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              )}
+            >
+              Para vía
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Prioridad + Loco */}
       <label className="mb-3 mt-1 flex items-center gap-2">
@@ -939,30 +1022,32 @@ function StepOne(props: {
       />
 
       {/* Vía origen */}
-      <div className="sm:col-span-2">
-        <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">De vía</span>
-        <div className="flex gap-2">
-          <button
-            onClick={() => { setShowFromOpts((v) => !v); if (form.fromTrack) ensureSections(form.fromTrack); }}
-            className="min-w-[220px] rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-          >
-            {form.fromTrack ? `Vía ${viaName(form.fromTrack)}` : "Selecciona una vía"}
-          </button>
-          {errors.fromTrack ? <span className="self-center text-xs text-rose-600 dark:text-rose-400">{errors.fromTrack}</span> : null}
+      {(!form.service || selectionMode === "de_via") && (
+        <div className="sm:col-span-2">
+          <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">De vía</span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setShowFromOpts(!showFromOpts); if (form.fromTrack) ensureSections(form.fromTrack); }}
+              className="min-w-[220px] rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+            >
+              {form.fromTrack ? `Vía ${viaName(form.fromTrack)}` : "Selecciona una vía"}
+            </button>
+            {errors.fromTrack ? <span className="self-center text-xs text-rose-600 dark:text-rose-400">{errors.fromTrack}</span> : null}
+          </div>
+
+          {showFromOpts && <div className="mt-2 grid gap-2 sm:grid-cols-2">{vias.map((v) => (<div key={v.id}>{viaOption(v)}</div>))}</div>}
+
+          <SectionsPills kind="from" viaId={form.fromTrack} />
         </div>
-
-        {showFromOpts && <div className="mt-2 grid gap-2 sm:grid-cols-2">{vias.map((v) => (<div key={v.id}>{viaOption(v)}</div>))}</div>}
-
-        <SectionsPills kind="from" viaId={form.fromTrack} />
-      </div>
+      )}
 
       {/* Vía destino */}
-      {!form.service && (
+      {(!form.service || selectionMode === "para_via") && (
         <div className="sm:col-span-2">
           <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Para vía</span>
           <div className="flex gap-2">
             <button
-              onClick={() => { setShowToOpts((v) => !v); if (form.toTrack) ensureSections(form.toTrack); }}
+              onClick={() => { setShowToOpts(!showToOpts); if (form.toTrack) ensureSections(form.toTrack); }}
               className="min-w-[220px] rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
             >
               {form.toTrack ? `Vía ${viaName(form.toTrack)}` : "Selecciona una vía"}
@@ -1105,8 +1190,8 @@ function StepTwo({
 
 /** ------ Step 3 ------ */
 function StepThree({
-  form, setForm, sending, submit, fromSection, toSection, viaName,
-}: { form: MovementFormData; setForm: React.Dispatch<React.SetStateAction<MovementFormData>>; sending: boolean; submit: () => void; fromSection?: number; toSection?: number; viaName: (id?: number | null) => string; }) {
+  form, setForm, sending, submit, fromSection, toSection, viaName, selectionMode,
+}: { form: MovementFormData; setForm: React.Dispatch<React.SetStateAction<MovementFormData>>; sending: boolean; submit: () => void; fromSection?: number; toSection?: number; viaName: (id?: number | null) => string; selectionMode: "de_via" | "para_via"; }) {
   const sectionHint = (fromSection ? `[SECCION_ORIGEN:${fromSection}] ` : "") + (toSection ? `[SECCION_DESTINO:${toSection}]` : "");
   const showHint = Boolean(fromSection || toSection);
 
@@ -1116,14 +1201,17 @@ function StepThree({
         <div className="font-semibold mb-2 text-slate-800 dark:text-slate-100">Resumen</div>
         <ul className="grid gap-1 text-slate-700 dark:text-slate-300">
           <li>Localidad: {form.selectedLocalityId ?? "—"}</li>
-          <li>Origen: {form.fromTrack ? `Vía ${viaName(form.fromTrack)} ${fromSection ? `(Sección #${fromSection})` : ""}` : "—"}</li>
-          {!form.service && <li>Destino: {form.toTrack ? `Vía ${viaName(form.toTrack)} ${toSection ? `(Sección #${toSection})` : ""}` : "—"}</li>}
+          {selectionMode === "de_via" && (
+            <li>Origen: {form.fromTrack ? `Vía ${viaName(form.fromTrack)} ${fromSection ? `(Sección #${fromSection})` : ""}` : "—"}</li>
+          )}
+          {selectionMode === "para_via" && (
+            <li>Destino: {form.toTrack ? `Vía ${viaName(form.toTrack)} ${toSection ? `(Sección #${toSection})` : ""}` : "—"}</li>
+          )}
           <li>Locomotora: {form.locomotiveNumber || "—"}</li>
           <li>Tipo: {form.movementType || "—"}</li>
           <li>Dirección: {form.direccionEmpuje || "—"}</li>
           <li>Prioridad: {form.priority ? "ALTA" : "BAJA"}</li>
           <li>Servicio: {form.service || "—"}</li>
-        
         </ul>
       </div>
 

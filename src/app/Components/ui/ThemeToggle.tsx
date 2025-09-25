@@ -74,7 +74,7 @@ export default function ThemeToggle({
 /* ---- estilos ---- */
 function baseBtn(withLabel: boolean, size: Size) {
   const common =
-    "inline-flex items-center rounded-md border border-slate-200 bg-white text-slate-700 " +
+    "inline-flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 " +
     "hover:bg-slate-50 active:scale-[.98] transition " +
     "dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700";
   if (withLabel) return `${common} h-9 px-3`;
