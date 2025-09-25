@@ -167,12 +167,12 @@ export default function IncidentModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-stretch sm:items-start justify-center bg-slate-900/70 p-0 sm:p-4"
+      className="fixed inset-0 z-50 flex items-stretch sm:items-start justify-center bg-slate-900/70 dark:bg-black/70 p-0 sm:p-4"
       role="dialog"
       aria-labelledby="incident-title"
       aria-modal="true"
     >
-      <div className="w-full max-h-dvh sm:h-auto sm:mt-6 sm:max-h-[90vh] max-w-5xl bg-white shadow-2xl sm:rounded-lg flex flex-col">
+      <div className="w-full max-h-dvh sm:h-auto sm:mt-6 sm:max-h-[90vh] max-w-5xl bg-white dark:bg-slate-900 shadow-2xl sm:rounded-lg flex flex-col">
         {/* Header */}
         <div className="bg-gradient-to-r from-emerald-700 to-emerald-900 px-4 sm:px-5 py-3 sm:py-4">
           <div className="flex items-center justify-between gap-3">
@@ -194,7 +194,7 @@ export default function IncidentModal({
         </div>
 
         {/* Status */}
-        <div className="flex items-center justify-between border-b px-4 sm:px-5 py-2 bg-slate-50">
+        <div className="flex items-center justify-between border-b px-4 sm:px-5 py-2 bg-slate-50 dark:bg-slate-800">
           <div className={cn("flex items-center gap-2 text-xs sm:text-sm font-semibold", ESTADO_COLORS[incident.estado])}>
             <Info className="h-4 w-4" />
             <span className="uppercase">{incident.estado}</span>
@@ -203,47 +203,47 @@ export default function IncidentModal({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5 bg-slate-50">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 bg-slate-50 dark:bg-slate-800">
           <div className="space-y-3">
             {/* Descripción */}
-            <section className="rounded-lg border bg-white p-3 shadow-sfm">
-              <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-800">
+            <section className="rounded-lg border bg-white dark:bg-slate-900 p-3 shadow-sfm">
+              <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-800 dark:text-slate-200">
                 <Info className="h-5 w-5 text-emerald-600" />
                 Descripción del Incidente
               </h2>
-              <p className="text-slate-700 leading-relaxed">
+              <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
                 {incident.descripcion || "Sin descripción disponible"}
               </p>
             </section>
 
             {/* Información del Movimiento */}
-            <section className="rounded-xl border bg-white p-4 shadow-sm">
-              <h2 className="mb-3 text-base font-semibold text-slate-800">Información del Movimiento</h2>
+            <section className="rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-sm">
+              <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-200">Información del Movimiento</h2>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <div className="text-xs font-semibold text-slate-500 uppercase">Empresa</div>
-                  <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
                     <Building className="h-4 w-4 text-slate-500" />
                     {incident.empresa || "No especificada"}
                   </div>
                 </div>
                 <div>
                   <div className="text-xs font-semibold text-slate-500 uppercase">Locomotora</div>
-                  <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
                     <Train className="h-4 w-4 text-slate-500" />
                     {incident.locomotora ? `#${incident.locomotora}` : "No especificada"}
                   </div>
                 </div>
                 <div>
                   <div className="text-xs font-semibold text-slate-500 uppercase">Origen</div>
-                  <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
                     <MapPin className="h-4 w-4 text-slate-500" />
                     {incident.origen || "No especificado"}
                   </div>
                 </div>
                 <div>
                   <div className="text-xs font-semibold text-slate-500 uppercase">Destino</div>
-                  <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
                     <MapPin className="h-4 w-4 text-slate-500" />
                     {incident.destino || "No especificado"}
                   </div>
@@ -252,9 +252,9 @@ export default function IncidentModal({
             </section>
 
             {/* Fecha y Hora */}
-            <section className="rounded-xl border bg-white p-4 shadow-sm">
-              <h2 className="mb-3 text-base font-semibold text-slate-800">Información Temporal</h2>
-              <div className="flex items-center gap-2 text-sm text-slate-700">
+            <section className="rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-sm">
+              <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-200">Información Temporal</h2>
+              <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
                 <Clock className="h-4 w-4 text-slate-500" />
                 <span>
                   Reportado el {new Date(incident.fechaInicio).toLocaleString("es-ES", {
@@ -270,13 +270,13 @@ export default function IncidentModal({
 
             {/* Resolución del incidente */}
             {incident.estado === "ABIERTO" && (
-              <section className="rounded-xl border bg-white p-4 shadow-sm">
-                <h2 className="mb-3 text-base font-semibold text-slate-800">Resolución del incidente</h2>
+              <section className="rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-sm">
+                <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-200">Resolución del incidente</h2>
                 <textarea
                   value={resolution}
                   onChange={(e) => setResolution(e.target.value)}
                   rows={3}
-                  className="w-full resize-none rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                  className="w-full resize-none rounded-lg border border-slate-300 bg-slate-50 dark:bg-slate-800 dark:border-slate-600 p-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                   placeholder="Describe las acciones tomadas para resolver el incidente..."
                   maxLength={1000}
                 />
@@ -287,7 +287,7 @@ export default function IncidentModal({
                     disabled={!resolution}
                     className={cn(
                       "flex-1 rounded-lg px-4 py-2 text-sm font-semibold",
-                      resolution ? "bg-slate-200 text-slate-700 hover:bg-slate-300" : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                      resolution ? "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600" : "bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed"
                     )}
                   >
                     Limpiar
@@ -297,7 +297,7 @@ export default function IncidentModal({
                     disabled={!resolution.trim() || isResolving}
                     className={cn(
                       "flex-[2] rounded-lg px-4 py-2 text-sm font-semibold text-white",
-                      resolution.trim() && !isResolving ? "bg-emerald-600 hover:bg-emerald-700" : "bg-slate-300 cursor-not-allowed"
+                      resolution.trim() && !isResolving ? "bg-emerald-600 hover:bg-emerald-700" : "bg-slate-300 dark:bg-slate-700 cursor-not-allowed"
                     )}
                   >
                     {isResolving ? "Resolviendo..." : "Confirmar resolución"}
@@ -309,7 +309,7 @@ export default function IncidentModal({
         </div>
 
         {/* Footer */}
-        <div className="flex flex-col sm:flex-row gap-2 border-t bg-white px-4 sm:px-5 py-3">
+        <div className="flex flex-col sm:flex-row gap-2 border-t bg-white dark:bg-slate-900 px-4 sm:px-5 py-3">
           {showTimer && incident.estado === "ABIERTO" ? (
             <>
 

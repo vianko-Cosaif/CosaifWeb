@@ -27,14 +27,14 @@ type Seccion = {
   nombre?: string | null;
   ocupada: boolean;
   movimientoId?: number | null;
-  movimiento?: { id: number; locomotiveNumber?: number | null } | null;
+  movimiento?: { id: number; locomotiveNumber?: string | null } | null;
 };
 
 type Option = { label: string; value: string };
 
 export interface MovementFormData {
   empresaId: number | null;
-  locomotiveNumber: number;
+  locomotiveNumber: string;
   priority: boolean;
   fromTrack: number | null;
   toTrack: number | null;
@@ -55,7 +55,7 @@ export interface MovementFormData {
 
 const baseInitialForm: MovementFormData = {
   empresaId: null,
-  locomotiveNumber: 0,
+  locomotiveNumber: "",
   priority: false,
   fromTrack: null,
   toTrack: null,
@@ -377,14 +377,14 @@ export default function CrearMovimiento() {
     if (willSelect && s.ocupada && s.movimientoId) {
       const locoIn = Number(s.movimiento?.locomotiveNumber ?? 0);
       if (locoIn > 0) {
-        setForm((p) => ({ ...p, locomotiveNumber: locoIn }));
+        setForm((p) => ({ ...p, locomotiveNumber: String(locoIn) }));
         setLocoLockedBy({ movimientoId: s.movimientoId!, viaId: form.fromTrack!, numero: s.numero });
       } else {
         try {
           const mov = await fetchJSON(`${API_BASE}/movimientos/${s.movimientoId}`);
           const loco = Number((mov as any)?.locomotiveNumber ?? 0);
           if (loco > 0) {
-            setForm((p) => ({ ...p, locomotiveNumber: loco }));
+            setForm((p) => ({ ...p, locomotiveNumber: String(loco) }));
             setLocoLockedBy({ movimientoId: s.movimientoId!, viaId: form.fromTrack!, numero: s.numero });
           }
         } catch { }
@@ -410,7 +410,7 @@ export default function CrearMovimiento() {
       if (!form.toTrack) e.toTrack = "Selecciona vía de destino.";
     }
 
-    if (!form.locomotiveNumber) e.locomotiveNumber = "Número requerido.";
+    if (!form.locomotiveNumber.trim()) e.locomotiveNumber = "Número requerido.";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -449,7 +449,7 @@ export default function CrearMovimiento() {
       alert("Faltan IDs requeridos (empresa, usuario o localidad).");
       return;
     }
-    if (!form.locomotiveNumber) {
+    if (!form.locomotiveNumber.trim()) {
       alert("Faltan número de locomotora.");
       return;
     }
@@ -457,8 +457,8 @@ export default function CrearMovimiento() {
     const only = <T extends object>(cond: boolean, obj: T) => (cond ? obj : {});
 
     // Determinar las vías según el modo de selección
-    const fromTrack = selectionMode === "de_via" ? form.fromTrack : null;
-    const toTrack = selectionMode === "para_via" ? form.toTrack : null;
+    const fromTrack = (!form.service || selectionMode === "de_via") ? form.fromTrack : null;
+    const toTrack = (!form.service || selectionMode === "para_via") ? form.toTrack : null;
 
     if (!fromTrack && !toTrack) {
       alert("Debe seleccionar al menos una vía según el modo de selección.");
@@ -474,8 +474,8 @@ export default function CrearMovimiento() {
       prioridad: form.priority ? "ALTA" : "BAJA",
 
       // opcionales
-      ...only(!!toTrack && selectionMode === "para_via", { viaDestinoId: Number(toTrack) }),
-      ...only(typeof fromSection === "number" && selectionMode === "de_via", { numeroSeccion: Number(fromSection) }),
+      ...only(!!toTrack && (!form.service || selectionMode === "para_via"), { viaDestinoId: Number(toTrack) }),
+      ...only(typeof fromSection === "number" && (!form.service || selectionMode === "de_via"), { numeroSeccion: Number(fromSection) }),
 
       // 👇 nombres que Prisma sí espera
       tipoMovimiento: ["MD_TRABAJANDO", "REMOLCADA"].includes(form.movementType) ? form.movementType : null,
@@ -1011,11 +1011,17 @@ function StepOne(props: {
       </label>
       <Field
         label="Número de locomotora"
-        type="number"
+        type="text"
         inputMode="numeric"
         pattern="[0-9]*"
         value={form.locomotiveNumber ? String(form.locomotiveNumber) : ""}
-        onChange={(e) => setForm((p) => ({ ...p, locomotiveNumber: Math.max(0, Number(e.target.value) || 0) }))}
+        onChange={(e) => {
+          const value = e.target.value;
+          // Solo permitir dígitos del 0 al 9 y campo vacío
+          if (value === '' || /^\d+$/.test(value)) {
+            setForm((p) => ({ ...p, locomotiveNumber: value }));
+          }
+        }}
         className={locoLockedBy ? "opacity-70" : ""}
         disabled={!!locoLockedBy}
         error={errors.locomotiveNumber}
