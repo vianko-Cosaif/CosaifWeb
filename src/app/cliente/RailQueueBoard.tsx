@@ -512,11 +512,11 @@ export default function RailQueueBoard({
                     <p className="text-sm">
                       {hasAny ? (
                         <>
-                          Mover <b>{locoText}</b> desde <b>{desdeLbl || "—"}</b> hacia <b>{viaD || "—"}</b>.
+                          Mover locomotora <b>{locoText}</b> desde <b>{desdeLbl || "—"}</b> hacia <b>{viaD || "—"}</b>.
                         </>
                       ) : (
                         <>
-                          Mover <b>{locoText}</b> entre <b>—</b> y <b>—</b>.
+                          Mover locomotora <b>{locoText}</b> entre <b>—</b> y <b>—</b>.
                         </>
                       )}
                     </p>
