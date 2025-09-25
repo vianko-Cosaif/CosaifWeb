@@ -3,19 +3,43 @@ import { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 
 /* ===== Tipos ===== */
-type Ronda = { id: number; rondaNumero: number; orden: number; concluido: boolean };
+type Ronda = {
+  id: number;
+  rondaNumero: number;
+  orden: number;
+  concluido: boolean;
+  // Campos opcionales que vienen en /rondas y usamos para construir info
+  empresa?: { id: number; nombre: string } | null;
+  movimiento?: {
+    id?: number;
+    viaOrigen?: { nombre?: string | null } | null;
+    viaDestino?: { nombre?: string | null } | null;
+    lavado?: boolean;
+    torno?: boolean;
+    estado?: string | null;
+    prioridad?: "BAJA" | "ALTA" | null;
+    locomotiveNumber?: number | string | null;
+    locomotora?: string | null;
+  } | null;
+  movimientoId?: number | null;
+};
+
 type RondaInfo = {
   empresa: { id: number; nombre: string };
   movimiento: {
     id?: number;
-    viaOrigen: { nombre: string };
-    viaDestino: { nombre: string | null };
+    viaOrigen?: { nombre?: string | null } | null;
+    viaDestino?: { nombre?: string | null } | null;
     lavado: boolean;
     torno: boolean;
+    estado?: string;
+    prioridad?: "BAJA" | "ALTA";
+    locomotiveNumber?: number | string;
     locomotora?: string | null;
   };
   movimientoId?: number;
 };
+
 type ToastKind = "move" | "new" | "done" | "warning";
 type Toast = { id: number; text: string; kind: ToastKind };
 
@@ -24,11 +48,18 @@ const fmtList = new Intl.ListFormat("es", { style: "short", type: "conjunction" 
 const codeFrom = (inf?: RondaInfo, fallbackId?: number) =>
   String(inf?.movimientoId ?? inf?.movimiento?.id ?? fallbackId ?? "—");
 
+const fmtLoco = (v: unknown) => {
+  if (v == null) return "N/D";
+  const s = String(v).replace(/\D+/g, "");
+  if (!s) return "N/D";
+  return s.padStart(4, "0").slice(0, 16);
+};
+
 async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   console.log("[fetchJson] GET", url);
   const r = await fetch(url, {
     cache: "no-store",
-    credentials: "include",   // envía cookies (token) same-origin
+    credentials: "include",
     mode: "same-origin",
     signal,
   });
@@ -40,27 +71,6 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const data = (await r.json()) as T;
   console.log("[fetchJson] data", data);
   return data;
-}
-
-async function loadInfoMap(ids: number[], signal?: AbortSignal): Promise<Record<number, RondaInfo>> {
-  console.log("[loadInfoMap] ids", ids);
-  if (ids.length === 0) return {};
-  const qs = encodeURIComponent(ids.join(","));
-  try {
-    const bulk = await fetchJson<Record<number, RondaInfo>>(`/api/cliente/rondas-info?ids=${qs}`, signal);
-    if (!bulk || typeof bulk !== "object") throw new Error("bulk inválido");
-    console.log("[loadInfoMap] bulk ok", bulk);
-    return bulk;
-  } catch (e) {
-    console.warn("[loadInfoMap] bulk failed, fallback per-id", e);
-    const entries = await Promise.allSettled(
-      ids.map(async (id) => [id, await fetchJson<RondaInfo>(`/api/cliente/ronda-info?id=${id}`, signal)] as const)
-    );
-    const map: Record<number, RondaInfo> = {};
-    for (const e of entries) if (e.status === "fulfilled") map[e.value[0]] = e.value[1];
-    console.log("[loadInfoMap] fallback map", map);
-    return map;
-  }
 }
 
 function useVisibleInterval(fn: () => void, delay: number | null, deps: React.DependencyList = []) {
@@ -178,14 +188,15 @@ export default function RailQueueBoard({
 
       if (!firstLoad.current) {
         if (prev.length && nextIds[0] && nextIds[0] !== prev[0]) {
-          const code = codeFrom(info[data[0]?.id], data[0]?.id);
-          pushToast(`Se movió la orden a ${code}`, "move");
+          const curR = data[0];
+          const curCode = String(curR.movimiento?.id ?? curR.movimientoId ?? curR.id);
+          pushToast(`Se movió la orden a ${curCode}`, "move");
         }
         const prevSet = new Set(prev);
         const created = nextIds.filter((id) => !prevSet.has(id));
         const removed = prev.filter((id) => !nextIds.includes(id));
         if (created.length) {
-          const codes = created.map((id) => codeFrom(info[id], id));
+          const codes = created.map((id) => String(data.find((r) => r.id === id)?.movimiento?.id ?? id));
           pushToast(`Nueva(s) orden(es): ${fmtList.format(codes)}`, "new");
         }
         if (removed.length) {
@@ -199,13 +210,28 @@ export default function RailQueueBoard({
 
       setItems(data);
 
-      const ids = data.slice(0, nextCount + 1).map((x) => x.id);
-      console.log("[RailQueueBoard] ids para info:", ids);
-      const map = await loadInfoMap(ids, ac.signal);
-      console.log("[RailQueueBoard] info map:", map);
-
-      if (mySeq !== reqSeq.current) return;
-      startTransition(() => setInfo(map));
+      // ===== mapear info directamente del listado =====
+      const mapFromList: Record<number, RondaInfo> = {};
+      for (const r of data) {
+        const mv = r.movimiento ?? null as Ronda["movimiento"];
+        const emp = r.empresa ?? null;
+        mapFromList[r.id] = {
+          empresa: { id: emp?.id ?? 0, nombre: emp?.nombre ?? "—" },
+          movimiento: {
+            id: mv?.id,
+            viaOrigen: mv?.viaOrigen ?? null,
+            viaDestino: mv?.viaDestino ?? null,
+            lavado: Boolean(mv?.lavado),
+            torno: Boolean(mv?.torno),
+            estado: mv?.estado ?? undefined,
+            prioridad: (mv?.prioridad as "BAJA" | "ALTA" | undefined) ?? undefined,
+            locomotiveNumber: mv?.locomotiveNumber ?? mv?.locomotora ?? undefined,
+            locomotora: mv?.locomotora ?? undefined,
+          },
+          movimientoId: (mv?.id ?? r.movimientoId ?? undefined) as number | undefined,
+        };
+      }
+      startTransition(() => setInfo(mapFromList));
       lastOkAt.current = Date.now();
     } catch (err) {
       if (mySeq === reqSeq.current) pushToast(online ? "Error al cargar datos" : "Sin conexión", "warning");
@@ -265,6 +291,11 @@ export default function RailQueueBoard({
   const next = useMemo(() => items.slice(1, nextCount + 1), [items, nextCount]);
 
   const lastAgo = timeAgo(lastOkAt.current);
+
+  const curMov = curInfo?.movimiento;
+  const locoText = fmtLoco(curMov?.locomotiveNumber ?? curMov?.locomotora);
+  const viaO = curMov?.viaOrigen?.nombre || "";
+  const viaD = curMov?.viaDestino?.nombre || "";
 
   return (
     <div ref={boardRef} className="contents">
@@ -400,7 +431,7 @@ export default function RailQueueBoard({
                       </motion.div>
                       <div>
                         <div className="text-[11px] uppercase tracking-widest text-slate-500 dark:text-slate-400">Locomotora</div>
-                        <div className="text-lg font-semibold">{curInfo?.movimiento?.locomotora ?? "—"}</div>
+                        <div className="text-lg font-semibold">{locoText}</div>
                         <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{curInfo?.empresa?.nombre ?? "—"}</div>
                       </div>
                     </div>
@@ -415,14 +446,54 @@ export default function RailQueueBoard({
                     </div>
                   </div>
 
-                  {/* stats */}
+                  {/* Origen/Destino + chips condicionados */}
                   <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <CardStat label="Vía origen" value={curInfo?.movimiento?.viaOrigen?.nombre ?? "—"} icon="↖️" />
-                    <CardStat label="Vía destino" value={curInfo?.movimiento?.viaDestino?.nombre ?? "Sin destino"} icon="↘️" />
-                    <div className="flex items-center gap-3 justify-end">
-                      <Chip ok={!!curInfo?.movimiento?.lavado} icon="💧">Lavado</Chip>
-                      <Chip ok={!!curInfo?.movimiento?.torno} icon="⚙️">Torno</Chip>
-                    </div>
+                    {viaO && !viaD && (
+                      <>
+                        <CardStat label="Vía origen" value={viaO} icon="↖️" />
+                        <div className="md:col-span-2 flex items-center gap-3 justify-end">
+                          <Chip ok={!!curMov?.lavado} icon="💧">Lavado</Chip>
+                          <Chip ok={!!curMov?.torno} icon="⚙️">Torno</Chip>
+                        </div>
+                      </>
+                    )}
+                    {viaD && !viaO && (
+                      <>
+                        <CardStat label="Vía destino" value={viaD} icon="↘️" />
+                        <div className="md:col-span-2 flex items-center gap-3 justify-end">
+                          <Chip ok={!!curMov?.lavado} icon="💧">Lavado</Chip>
+                          <Chip ok={!!curMov?.torno} icon="⚙️">Torno</Chip>
+                        </div>
+                      </>
+                    )}
+                    {(!viaO && !viaD) && (
+                      <>
+                        <CardStat label="Vía origen" value="—" icon="↖️" />
+                        <CardStat label="Vía destino" value="—" icon="↘️" />
+                        <div className="flex items-center gap-3 justify-end">
+                          <Chip ok={!!curMov?.lavado} icon="💧">Lavado</Chip>
+                          <Chip ok={!!curMov?.torno} icon="⚙️">Torno</Chip>
+                        </div>
+                      </>
+                    )}
+                    {(viaO && viaD) && (
+                      <>
+                        <CardStat label="Vía origen" value={viaO} icon="↖️" />
+                        <CardStat label="Vía destino" value={viaD} icon="↘️" />
+                        <div className="flex items-center gap-3 justify-end">
+                          <Chip ok={!!curMov?.lavado} icon="💧">Lavado</Chip>
+                          <Chip ok={!!curMov?.torno} icon="⚙️">Torno</Chip>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Estado, Prioridad, Orden, Ronda */}
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <CardStat label="Estado" value={curMov?.estado ?? "—"} icon="📌" />
+                    <CardStat label="Prioridad" value={curMov?.prioridad ?? "—"} icon="⚑" />
+                    <CardStat label="Orden" value={String(current?.orden ?? "—")} icon="№" />
+                    <CardStat label="Ronda" value={String(current?.rondaNumero ?? "—")} icon="🔁" />
                   </div>
 
                   {/* instrucción */}
@@ -433,9 +504,7 @@ export default function RailQueueBoard({
                     className="mt-6 rounded-lg bg-gradient-to-r from-sky-100 to-emerald-100 text-slate-900 p-4 border border-slate-200 dark:from-slate-800 dark:to-slate-800 dark:text-slate-100 dark:border-slate-700"
                   >
                     <p className="text-sm">
-                      Mover <b>{curInfo?.movimiento?.locomotora ?? "la unidad"}</b> desde{" "}
-                      <b>{curInfo?.movimiento?.viaOrigen?.nombre ?? "—"}</b> hacia{" "}
-                      <b>{curInfo?.movimiento?.viaDestino?.nombre ?? "—"}</b>.
+                      Mover <b>{locoText}</b> {viaO || viaD ? "desde" : "entre"} <b>{viaO || "—"}</b> hacia <b>{viaD || "—"}</b>.
                     </p>
                   </motion.div>
                 </>
@@ -470,6 +539,8 @@ export default function RailQueueBoard({
                 ) : (
                   next.map((n, index) => {
                     const inf = info[n.id];
+                    const mv = inf?.movimiento;
+                    const loco = fmtLoco(mv?.locomotiveNumber ?? mv?.locomotora);
                     return (
                       <motion.div
                         key={n.id}
@@ -486,36 +557,77 @@ export default function RailQueueBoard({
                           <div className="min-w-0 flex-1">
                             <div className="text-[11px] text-slate-500 dark:text-slate-400">Código</div>
                             <div className="truncate font-semibold tracking-wide">{codeFrom(inf, n.id)}</div>
+                            <div className="truncate text-[11px] text-slate-500 dark:text-slate-400">{inf?.empresa?.nombre ?? "—"}</div>
                           </div>
                           <div className="whitespace-nowrap text-[11px] text-slate-500 dark:text-slate-400">
                             Ronda #{n.rondaNumero}
                           </div>
                         </div>
                         <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                          {/* Origen/Destino condicionados */}
+                          {mv?.viaOrigen?.nombre && !mv?.viaDestino?.nombre && (
+                            <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+                              <div className="text-slate-500 dark:text-slate-400">Origen</div>
+                              <div className="truncate font-medium">{mv.viaOrigen.nombre}</div>
+                            </div>
+                          )}
+                          {mv?.viaDestino?.nombre && !mv?.viaOrigen?.nombre && (
+                            <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+                              <div className="text-slate-500 dark:text-slate-400">Destino</div>
+                              <div className="truncate font-medium">{mv.viaDestino.nombre}</div>
+                            </div>
+                          )}
+                          {mv?.viaOrigen?.nombre && mv?.viaDestino?.nombre && (
+                            <>
+                              <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+                                <div className="text-slate-500 dark:text-slate-400">Origen</div>
+                                <div className="truncate font-medium">{mv.viaOrigen.nombre}</div>
+                              </div>
+                              <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+                                <div className="text-slate-500 dark:text-slate-400">Destino</div>
+                                <div className="truncate font-medium">{mv.viaDestino.nombre}</div>
+                              </div>
+                            </>
+                          )}
+                          {!mv?.viaOrigen?.nombre && !mv?.viaDestino?.nombre && (
+                            <>
+                              <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+                                <div className="text-slate-500 dark:text-slate-400">Origen</div>
+                                <div className="truncate font-medium">—</div>
+                              </div>
+                              <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+                                <div className="text-slate-500 dark:text-slate-400">Destino</div>
+                                <div className="truncate font-medium">—</div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
                           <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
-                            <div className="text-slate-500 dark:text-slate-400">Origen</div>
-                            <div className="truncate font-medium">{inf?.movimiento?.viaOrigen?.nombre ?? "—"}</div>
+                            <div className="text-slate-500 dark:text-slate-400">Estado</div>
+                            <div className="font-medium">{mv?.estado ?? "—"}</div>
                           </div>
                           <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
-                            <div className="text-slate-500 dark:text-slate-400">Destino</div>
-                            <div className="truncate font-medium">{inf?.movimiento?.viaDestino?.nombre ?? "—"}</div>
+                            <div className="text-slate-500 dark:text-slate-400">Prioridad</div>
+                            <div className="font-medium">{mv?.prioridad ?? "—"}</div>
                           </div>
                         </div>
-                        <div className="mt-2 flex gap-2">
-                          <span className={`rounded-full border px-2 py-1 text-[11px] ${
-                            inf?.movimiento?.lavado
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
-                              : "border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                          }`}>
-                            💧 Lavado
-                          </span>
-                          <span className={`rounded-full border px-2 py-1 text-[11px] ${
-                            inf?.movimiento?.torno
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
-                              : "border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                          }`}>
-                            ⚙️ Torno
-                          </span>
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">Loco: <span className="font-medium text-slate-700 dark:text-slate-200">{loco}</span></div>
+                          <div className="flex gap-2">
+                            <span className={`${mv?.lavado
+                                ? "rounded-full border px-2 py-1 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
+                                : "rounded-full border px-2 py-1 border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                            }`}>
+                              💧 Lavado
+                            </span>
+                            <span className={`${mv?.torno
+                                ? "rounded-full border px-2 py-1 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
+                                : "rounded-full border px-2 py-1 border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                            }`}>
+                              ⚙️ Torno
+                            </span>
+                          </div>
                         </div>
                       </motion.div>
                     );
