@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
 import {
   ImageIcon,
   Info,
@@ -56,9 +56,9 @@ const URGENCY = {
 } as const;
 
 const ESTADO_COLORS = {
-  ABIERTO: "text-amber-600",
-  RESUELTO: "text-emerald-600",
-  CERRADO: "text-rose-600",
+  ABIERTO: "text-amber-600 dark:text-amber-300",
+  RESUELTO: "text-emerald-600 dark:text-emerald-300",
+  CERRADO: "text-rose-600 dark:text-rose-300",
 } as const;
 
 /* === UTILS === */
@@ -106,15 +106,15 @@ function truncate(text = "", max = 90) {
   return text.length <= max ? text : `${text.slice(0, max)}…`;
 }
 
-/* === IMAGE (fix stretch by applying class to <img>) === */
+/* === IMAGE (auth + abort + dark) === */
 type ImageWithAuthProps = {
   src: string;
   alt?: string;
   containerClassName?: string;
-  imgClassName?: string; // <- IMPORTANT: allows object-contain/cover on the IMG itself
+  imgClassName?: string;
 };
 
-function ImageWithAuth({
+const ImageWithAuth = React.memo(function ImageWithAuth({
   src,
   alt = "",
   containerClassName,
@@ -125,7 +125,7 @@ function ImageWithAuth({
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    let alive = true;
+    const ac = new AbortController();
     let revoked: string | null = null;
 
     (async () => {
@@ -142,24 +142,24 @@ function ImageWithAuth({
           headers: authHeaders(),
           credentials: "include",
           cache: "no-store",
+          signal: ac.signal,
         });
         if (!r.ok) throw new Error("img fetch");
         const b = await r.blob();
-        if (!alive) return;
         const u = URL.createObjectURL(b);
         revoked = u;
         setUrl(u);
       } catch {
-        if (!alive) return;
+        if (ac.signal.aborted) return;
         setUrl(EMPTY_IMAGE);
         setHasError(true);
       } finally {
-        if (alive) setIsLoading(false);
+        if (!ac.signal.aborted) setIsLoading(false);
       }
     })();
 
     return () => {
-      alive = false;
+      ac.abort();
       if (revoked) URL.revokeObjectURL(revoked);
     };
   }, [src]);
@@ -170,24 +170,26 @@ function ImageWithAuth({
         src={url}
         alt={alt}
         draggable={false}
+        decoding="async"
+        loading="lazy"
         className={cn("block h-full w-full select-none", imgClassName)}
       />
       {isLoading && (
-        <div className="absolute inset-0 grid place-items-center bg-slate-100">
+        <div className="absolute inset-0 grid place-items-center bg-slate-100 dark:bg-slate-800/60" aria-busy>
           <div className="h-7 w-7 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent" />
         </div>
       )}
       {hasError && !isLoading && (
-        <div className="absolute inset-0 grid place-items-center bg-slate-100 text-slate-500">
+        <div className="absolute inset-0 grid place-items-center bg-slate-100 text-slate-500 dark:bg-slate-800/60 dark:text-slate-300">
           <AlertTriangle className="h-6 w-6" />
         </div>
       )}
     </div>
   );
-}
+});
 
 /* === TIMER === */
-function TimerBar({ leftMs, pct }: { leftMs: number; pct: number }) {
+const TimerBar = React.memo(function TimerBar({ leftMs, pct }: { leftMs: number; pct: number }) {
   const u = urgencyFor(pct);
   return (
     <div className="mt-3 sm:mt-4">
@@ -197,15 +199,15 @@ function TimerBar({ leftMs, pct }: { leftMs: number; pct: number }) {
         <span className="text-[10px] sm:text-xs opacity-90">restante</span>
         <span className="ml-3 text-[10px] sm:text-xs font-semibold">{u.label}</span>
       </div>
-      <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/30">
+      <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/30 dark:bg-white/20">
         <div className={cn("h-2 rounded-full transition-[width] duration-300", u.bar)} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
-}
+});
 
 /* === GALLERY (responsive + no stretch) === */
-function ImageGallery({
+const ImageGallery = React.memo(function ImageGallery({
   images,
   index,
   onChange,
@@ -228,24 +230,25 @@ function ImageGallery({
       if (e.key === "ArrowLeft") prev();
       if (e.key === "ArrowRight") next();
     };
-    window.addEventListener("keydown", k);
+    window.addEventListener("keydown", k, { passive: true });
     return () => window.removeEventListener("keydown", k);
   }, [prev, next]);
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      {/* Main viewer: adapt height per breakpoint, use object-contain on IMG */}
+      {/* Main viewer */}
       <div
         className={cn(
-          "relative overflow-hidden rounded-xl border bg-white shadow-sm",
-          fullscreen ? "h-[70vh] sm:h-[78vh]" : "h-[45vh] sm:h-[380px] lg:h-[480px]"
+          "relative overflow-hidden rounded-xl border bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900",
+          "touch-pan-y touch-pinch-zoom",
+          fullscreen ? "h-[70vh] sm:h-[78vh]" : "h-[42vh] sm:h-[380px] lg:h-[480px]"
         )}
       >
         {total ? (
           <ImageWithAuth
             src={images[i]}
             alt={`Imagen ${i + 1} de ${total}`}
-            containerClassName="h-full w-full bg-slate-50"
+            containerClassName="h-full w-full bg-slate-50 dark:bg-slate-800"
             imgClassName="object-contain"
           />
         ) : (
@@ -257,7 +260,7 @@ function ImageGallery({
           <button
             onClick={prev}
             disabled={i === 0}
-            className={cn("rounded p-1", i === 0 ? "opacity-50 cursor-not-allowed" : "hover:bg-white/20")}
+            className={cn("rounded p-1 focus:outline-none focus:ring-2 focus:ring-white/50", i === 0 ? "opacity-50 cursor-not-allowed" : "hover:bg-white/20")}
             aria-label="Anterior"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -269,7 +272,7 @@ function ImageGallery({
             onClick={next}
             disabled={i === total - 1}
             className={cn(
-              "rounded p-1",
+              "rounded p-1 focus:outline-none focus:ring-2 focus:ring-white/50",
               i === total - 1 ? "opacity-50 cursor-not-allowed" : "hover:bg-white/20"
             )}
             aria-label="Siguiente"
@@ -280,7 +283,7 @@ function ImageGallery({
 
         <button
           onClick={onToggleFullscreen}
-          className="absolute right-3 top-3 rounded-md bg-black/55 p-2 text-white hover:bg-black/70"
+          className="absolute right-3 top-3 rounded-md bg-black/55 p-2 text-white hover:bg-black/70 focus:outline-none focus:ring-2 focus:ring-white/50"
           aria-label={fullscreen ? "Salir pantalla completa" : "Pantalla completa"}
           title={fullscreen ? "Salir pantalla completa" : "Pantalla completa"}
         >
@@ -288,8 +291,8 @@ function ImageGallery({
         </button>
       </div>
 
-      {/* Thumbs: fixed square, images object-cover but contained inside square to avoid warp */}
-      <div className="rounded-xl border bg-white p-3 sm:p-4 shadow-sm">
+      {/* Thumbs */}
+      <div className="rounded-xl border bg-white p-3 sm:p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 sm:gap-3">
           {(total ? images : Array(4).fill("")).map((src, idx) => {
             const active = idx === i;
@@ -299,9 +302,9 @@ function ImageGallery({
                 onClick={() => onChange(idx)}
                 disabled={!src}
                 className={cn(
-                  "relative aspect-square overflow-hidden rounded-lg border",
-                  src ? "hover:border-slate-300" : "opacity-50 cursor-not-allowed",
-                  active ? "border-emerald-600 ring-2 ring-emerald-600/20" : "border-slate-200"
+                  "relative aspect-square overflow-hidden rounded-lg border focus:outline-none focus:ring-2 focus:ring-emerald-600/40",
+                  src ? "hover:border-slate-300 dark:hover:border-slate-500" : "opacity-50 cursor-not-allowed",
+                  active ? "border-emerald-600 ring-2 ring-emerald-600/20" : "border-slate-200 dark:border-slate-700"
                 )}
                 aria-label={src ? `Ver imagen ${idx + 1}` : "Miniatura no disponible"}
               >
@@ -309,7 +312,7 @@ function ImageGallery({
                   <ImageWithAuth
                     src={src}
                     containerClassName="h-full w-full"
-                    imgClassName="object-cover" // cover in thumbnail is ok (square crop)
+                    imgClassName="object-cover"
                   />
                 ) : (
                   <img src={EMPTY_IMAGE} className="h-full w-full object-cover" alt="" />
@@ -321,7 +324,7 @@ function ImageGallery({
       </div>
     </div>
   );
-}
+});
 
 /* === MAIN === */
 export default function SmartIncidentBlocker({
@@ -340,10 +343,11 @@ export default function SmartIncidentBlocker({
   const [idx, setIdx] = useState(0);
   const [now, setNow] = useState<number>(Date.now());
   const [fullscreen, setFullscreen] = useState(false);
+  const headingId = useId();
 
-  /* Fetch details */
+  /* Fetch details with abort */
   useEffect(() => {
-    let live = true;
+    const ac = new AbortController();
     (async () => {
       try {
         const id = (incident?.incidenteId ?? incident?.id) as string | number | undefined;
@@ -352,28 +356,27 @@ export default function SmartIncidentBlocker({
           headers: authHeaders(),
           credentials: "include",
           cache: "no-store",
+          signal: ac.signal,
         });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const j = await r.json();
         if (j?.success === false) throw new Error(j?.error || "Error");
-        if (!live) return;
+        if (ac.signal.aborted) return;
         setFetched(j?.data ?? j);
       } catch (e: any) {
-        if (!live) return;
+        if (ac.signal.aborted) return;
         setErr(e?.message || "Error al cargar incidente");
       } finally {
-        if (live) setLoading(false);
+        if (!ac.signal.aborted) setLoading(false);
       }
     })();
-    return () => {
-      live = false;
-    };
+    return () => ac.abort();
   }, [incident]);
 
-  /* Timer */
+  /* Timer tick each 1s */
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
   }, []);
 
   /* Derived */
@@ -437,7 +440,7 @@ export default function SmartIncidentBlocker({
 
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => e.key === "Escape" && close();
-    window.addEventListener("keydown", onEsc);
+    window.addEventListener("keydown", onEsc, { passive: true });
     return () => window.removeEventListener("keydown", onEsc);
   }, [close]);
 
@@ -448,22 +451,22 @@ export default function SmartIncidentBlocker({
     <div
       className="fixed inset-0 z-50 flex items-stretch sm:items-start justify-center bg-slate-900/70 p-0 sm:p-4"
       role="dialog"
-      aria-labelledby="incident-title"
+      aria-labelledby={headingId}
       aria-modal="true"
     >
-      <div className="w-full h-dvh sm:h-auto sm:mt-6 sm:max-h-[92vh] max-w-screen-2xl overflow-hidden bg-white shadow-2xl sm:rounded-2xl flex flex-col">
+      <div className="w-full h-dvh sm:h-auto sm:mt-6 sm:max-h-[92vh] max-w-screen-2xl overflow-hidden bg-white shadow-2xl sm:rounded-2xl flex flex-col dark:bg-slate-900 dark:text-slate-100">
         {/* Header */}
-        <div className="bg-gradient-to-r from-emerald-700 to-emerald-900 px-4 sm:px-6 py-4 sm:py-5">
+        <div className="bg-gradient-to-r from-emerald-700 to-emerald-900 px-4 sm:px-6 py-4 sm:py-5 dark:from-emerald-800 dark:to-emerald-950">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <div className={cn("h-3 w-3 rounded-full flex-shrink-0", urgencyFor(pct).bar)} />
-              <h1 id="incident-title" className="truncate text-base sm:text-lg font-bold text-white">
+              <h1 id={headingId} className="truncate text-base sm:text-lg font-bold text-white">
                 {truncate(current?.descripcion || "Incidente", 100)}
               </h1>
             </div>
             <button
               onClick={close}
-              className="rounded-md p-1 text-white/90 hover:bg-white/10 transition-colors"
+              className="rounded-md p-1 text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-white/50"
               aria-label="Cerrar"
             >
               <X className="h-5 w-5" />
@@ -473,7 +476,7 @@ export default function SmartIncidentBlocker({
         </div>
 
         {/* Status */}
-        <div className="flex items-center justify-between border-b px-4 sm:px-6 py-3 bg-slate-50">
+        <div className="flex items-center justify-between border-b px-4 sm:px-6 py-3 bg-slate-50 dark:bg-slate-900 dark:border-slate-700">
           <div className={cn("flex items-center gap-2 text-xs sm:text-sm font-semibold", ESTADO_COLORS[estado])}>
             <Info className="h-4 w-4" />
             <span className="uppercase">{estado}</span>
@@ -482,12 +485,12 @@ export default function SmartIncidentBlocker({
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 border-b px-2 sm:px-4 bg-white">
+        <div className="flex gap-2 border-b px-2 sm:px-4 bg-white dark:bg-slate-900 dark:border-slate-700">
           <button
             onClick={() => setTab(0)}
             className={cn(
               "flex flex-1 items-center justify-center gap-2 border-b-4 px-2 sm:px-3 py-2 sm:py-3 text-xs sm:text-sm font-semibold transition-colors",
-              tab === 0 ? "border-emerald-600 text-emerald-700" : "border-transparent text-slate-500 hover:text-slate-700"
+              tab === 0 ? "border-emerald-600 text-emerald-700 dark:text-emerald-300" : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
             )}
             role="tab"
             aria-selected={tab === 0}
@@ -499,7 +502,7 @@ export default function SmartIncidentBlocker({
             onClick={() => setTab(1)}
             className={cn(
               "flex flex-1 items-center justify-center gap-2 border-b-4 px-2 sm:px-3 py-2 sm:py-3 text-xs sm:text-sm font-semibold transition-colors",
-              tab === 1 ? "border-emerald-600 text-emerald-700" : "border-transparent text-slate-500 hover:text-slate-700"
+              tab === 1 ? "border-emerald-600 text-emerald-700 dark:text-emerald-300" : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
             )}
             role="tab"
             aria-selected={tab === 1}
@@ -510,39 +513,39 @@ export default function SmartIncidentBlocker({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50 dark:bg-slate-900">
           {loading ? (
             <div className="py-10 text-center">
-              <div className="inline-flex items-center gap-3 text-slate-500">
+              <div className="inline-flex items-center gap-3 text-slate-500 dark:text-slate-400">
                 <div className="h-6 w-6 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent" />
                 Cargando detalles del incidente...
               </div>
             </div>
           ) : err ? (
-            <div className="rounded-lg bg-rose-50 border border-rose-200 p-4">
-              <div className="flex items-center gap-2 text-rose-800">
+            <div className="rounded-lg bg-rose-50 border border-rose-200 p-4 dark:bg-rose-900/20 dark:border-rose-800">
+              <div className="flex items-center gap-2 text-rose-800 dark:text-rose-300">
                 <AlertTriangle className="h-5 w-5" />
                 <span className="font-semibold">Error</span>
               </div>
-              <p className="mt-2 text-rose-700">{err}</p>
+              <p className="mt-2 text-rose-700 dark:text-rose-200">{err}</p>
             </div>
           ) : tab === 0 ? (
             <div className="space-y-4" role="tabpanel">
-              <section className="rounded-xl border bg-white p-4 shadow-sm">
-                <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-800">
+              <section className="rounded-xl border bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-800 dark:text-slate-100">
                   <Info className="h-5 w-5 text-emerald-600" />
                   Descripción
                 </h2>
-                <p className="text-slate-700 leading-relaxed">
+                <p className="text-slate-700 leading-relaxed dark:text-slate-200">
                   {current?.descripcion || "Sin descripción disponible"}
                 </p>
               </section>
 
-              <section className="rounded-xl border bg-white p-4 shadow-sm">
+              <section className="rounded-xl border bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <div>
-                    <div className="text-xs font-semibold text-slate-500 uppercase">Reportado</div>
-                    <div className="mt-1 text-sm font-medium text-slate-700">
+                    <div className="text-xs font-semibold text-slate-500 uppercase dark:text-slate-400">Reportado</div>
+                    <div className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">
                       {new Date(startMs).toLocaleString("es-ES", {
                         year: "numeric",
                         month: "long",
@@ -553,16 +556,16 @@ export default function SmartIncidentBlocker({
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs font-semibold text-slate-500 uppercase">Empresa</div>
-                    <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700">
-                      <Building className="h-4 w-4 text-slate-500" />
+                    <div className="text-xs font-semibold text-slate-500 uppercase dark:text-slate-400">Empresa</div>
+                    <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                      <Building className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                       {current?.movimiento?.empresa?.nombre || "No especificada"}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs font-semibold text-slate-500 uppercase">Locomotora</div>
-                    <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700">
-                      <Train className="h-4 w-4 text-slate-500" />
+                    <div className="text-xs font-semibold text-slate-500 uppercase dark:text-slate-400">Locomotora</div>
+                    <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                      <Train className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                       {current?.movimiento?.locomotiveNumber ? `#${current.movimiento.locomotiveNumber}` : "No especificada"}
                     </div>
                   </div>
@@ -570,31 +573,33 @@ export default function SmartIncidentBlocker({
               </section>
 
               {operatorComment && (
-                <section className="rounded-xl border bg-amber-50 border-amber-200 p-4 shadow-sm">
-                  <h2 className="mb-3 text-base font-semibold text-amber-800">Comentario del operador</h2>
-                  <p className="text-amber-700 leading-relaxed">{operatorComment}</p>
+                <section className="rounded-xl border bg-amber-50 border-amber-200 p-4 shadow-sm dark:bg-amber-900/20 dark:border-amber-800">
+                  <h2 className="mb-3 text-base font-semibold text-amber-800 dark:text-amber-200">Comentario del operador</h2>
+                  <p className="text-amber-700 leading-relaxed dark:text-amber-200/90">{operatorComment}</p>
                 </section>
               )}
 
               {estado === "ABIERTO" && (
-                <section className="rounded-xl border bg-white p-4 shadow-sm">
-                  <h2 className="mb-3 text-base font-semibold text-slate-800">Resolución del incidente</h2>
+                <section className="rounded-xl border bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                  <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-100">Resolución del incidente</h2>
                   <textarea
                     value={resolution}
                     onChange={(e) => setResolution(e.target.value)}
                     rows={5}
-                    className="w-full resize-none rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-full resize-none rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                     placeholder="Describe las acciones tomadas..."
                     maxLength={1000}
                   />
-                  <div className="mt-2 text-xs text-slate-500">{resolution.length}/1000</div>
+                  <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">{resolution.length}/1000</div>
                   <div className="mt-3 flex gap-2">
                     <button
                       onClick={() => setResolution("")}
                       disabled={!resolution}
                       className={cn(
                         "flex-1 rounded-lg px-4 py-2 text-sm font-semibold",
-                        resolution ? "bg-slate-200 text-slate-700 hover:bg-slate-300" : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                        resolution
+                          ? "bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
+                          : "bg-slate-100 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-600"
                       )}
                     >
                       Limpiar
@@ -604,7 +609,7 @@ export default function SmartIncidentBlocker({
                       disabled={!resolution.trim()}
                       className={cn(
                         "flex-[2] rounded-lg px-4 py-2 text-sm font-semibold text-white",
-                        resolution.trim() ? "bg-emerald-600 hover:bg-emerald-700" : "bg-slate-300 cursor-not-allowed"
+                        resolution.trim() ? "bg-emerald-600 hover:bg-emerald-700" : "bg-slate-300 cursor-not-allowed dark:bg-slate-700"
                       )}
                     >
                       Confirmar resolución
@@ -627,7 +632,7 @@ export default function SmartIncidentBlocker({
         </div>
 
         {/* Footer */}
-        <div className="flex gap-2 border-t bg-white px-4 sm:px-6 py-3 sm:py-4">
+        <div className="flex gap-2 border-t bg-white px-4 sm:px-6 py-3 sm:py-4 dark:bg-slate-900 dark:border-slate-700">
           {showTimer && estado === "ABIERTO" ? (
             <>
               <button
@@ -635,7 +640,7 @@ export default function SmartIncidentBlocker({
                 disabled={!resolution.trim()}
                 className={cn(
                   "flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 font-semibold text-white",
-                  resolution.trim() ? "bg-emerald-600 hover:bg-emerald-700" : "bg-slate-300 cursor-not-allowed"
+                  resolution.trim() ? "bg-emerald-600 hover:bg-emerald-700" : "bg-slate-300 cursor-not-allowed dark:bg-slate-700"
                 )}
               >
                 <CheckCircle2 className="h-5 w-5" />

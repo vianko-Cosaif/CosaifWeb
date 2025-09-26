@@ -51,19 +51,19 @@ const ROLE_THEME_LIGHT = {
 /* ===== Tema por rol (dark) ===== */
 const ROLE_THEME_DARK = {
   ADMINISTRADOR: {
-    bg: "#07170F", text: "#EAF8F0", accent: "#58C49A", border: "#123524",
-    glass: "rgba(255,255,255,0.08)", roleBg: "rgba(88,196,154,0.18)",
-    roleBorder: "#1E5A40", roleText: "#9CE6C7",
+    bg: "#0B2217", text: "#E6F7EE", accent: "#5ED3A5", border: "#13432E",
+    glass: "rgba(255,255,255,0.08)", roleBg: "rgba(94,211,165,0.16)",
+    roleBorder: "#1E5A40", roleText: "#A6F0D3",
   },
   COORDINADOR: {
-    bg: "#121A24", text: "#E7F1FA", accent: "#50CFE0", border: "#1B2734",
-    glass: "rgba(255,255,255,0.08)", roleBg: "rgba(80,207,224,0.18)",
-    roleBorder: "#2D7E90", roleText: "#B7ECF3",
+    bg: "#0F1722", text: "#E8F4FB", accent: "#57D8E8", border: "#1B2A3A",
+    glass: "rgba(255,255,255,0.08)", roleBg: "rgba(87,216,232,0.16)",
+    roleBorder: "#2D7E90", roleText: "#BCEFF6",
   },
   CLIENTE: {
-    bg: "#12261D", text: "#E7FAF0", accent: "#62DB96", border: "#1B3A2E",
-    glass: "rgba(255,255,255,0.08)", roleBg: "rgba(98,219,150,0.18)",
-    roleBorder: "#2E6F53", roleText: "#C8F4DA",
+    bg: "#0F241B", text: "#E6F7EE", accent: "#5ED3A5", border: "#174635",
+    glass: "rgba(255,255,255,0.08)", roleBg: "rgba(94,211,165,0.16)",
+    roleBorder: "#2B6E55", roleText: "#BFF3DD",
   },
 } as const;
 
@@ -134,6 +134,45 @@ function deleteClientCookies(names: string[]) {
   } catch {}
 }
 
+/* Lee localStorage.theme = "light" | "dark" | "system" y reacciona a cambios */
+function useThemePref(key: string = "theme") {
+  type Pref = "light" | "dark" | "system";
+  const read = (): Pref | null => {
+    try {
+      const v = localStorage.getItem(key);
+      return v === "light" || v === "dark" || v === "system" ? v : null;
+    } catch { return null; }
+  };
+  const [pref, setPref] = React.useState<Pref | null>(read);
+
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => { if (e.key === key) setPref(read()); };
+    window.addEventListener("storage", onStorage);
+    const i = window.setInterval(() => setPref((p) => {
+      const r = read(); return r !== p ? r : p;
+    }), 300);
+    return () => { window.removeEventListener("storage", onStorage); clearInterval(i); };
+  }, [key]);
+
+  return pref;
+}
+
+/* Sigue la clase <html class="dark"> si existe */
+function useDarkFromClass(cls = "dark") {
+  const [isDark, set] = useState<boolean>(() =>
+    typeof document !== "undefined" && document.documentElement.classList.contains(cls)
+  );
+  useEffect(() => {
+    const el = document.documentElement;
+    const update = () => set(el.classList.contains(cls));
+    update();
+    const obs = new MutationObserver(update);
+    obs.observe(el, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, [cls]);
+  return isDark;
+}
+
 /* ===== Componente ===== */
 export default function SidebarMenu({
   rol,
@@ -149,7 +188,17 @@ export default function SidebarMenu({
   const pathname = usePathname();
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const prefersDark = usePrefersDark();
-  const isDark = appearance === "dark" || (appearance === "auto" && prefersDark);
+  const classDark = useDarkFromClass("dark");
+  const themePref = useThemePref("theme");
+
+  // Prioridad: prop explícita > localStorage.theme > .dark global > SO
+  const isDark =
+    appearance === "dark" ? true :
+    appearance === "light" ? false :
+    themePref === "dark" ? true :
+    themePref === "light" ? false :
+    themePref === "system" ? prefersDark :
+    classDark ?? prefersDark;
 
   const [open, setOpen] = useLocalStorageBool("sidebar:open", defaultOpen);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -374,7 +423,7 @@ export default function SidebarMenu({
           mobileOpen ? "translate-x-0" : "-translate-x-full",
         ].join(" ")}
       >
-        <div className="flex h-full w-[min(92vw,360px)] flex-col" style={{ background: "var(--sb-bg)" }}>
+        <div className="flex h-full w=[min(92vw,360px)] md:w-auto flex-col" style={{ background: "var(--sb-bg)" }}>
           <div className="flex items-center gap-2 border-b px-4 py-4" style={{ borderColor: "var(--sb-border)", paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
             <Home className="h-5 w-5" />
             <div className="flex-1">
