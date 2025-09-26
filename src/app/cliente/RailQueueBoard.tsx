@@ -8,7 +8,6 @@ type Ronda = {
   rondaNumero: number;
   orden: number;
   concluido: boolean;
-  // Campos opcionales que vienen en /rondas y usamos para construir info
   empresa?: { id: number; nombre: string } | null;
   movimiento?: {
     id?: number;
@@ -56,21 +55,12 @@ const fmtLoco = (v: unknown) => {
 };
 
 async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
-  console.log("[fetchJson] GET", url);
-  const r = await fetch(url, {
-    cache: "no-store",
-    credentials: "include",
-    mode: "same-origin",
-    signal,
-  });
-  console.log("[fetchJson] status", r.status, r.statusText);
+  const r = await fetch(url, { cache: "no-store", credentials: "include", mode: "same-origin", signal });
   if (!r.ok) {
     const txt = await r.text().catch(() => "");
     throw new Error(`${r.status} ${r.statusText} :: ${txt.slice(0, 200)}`);
   }
-  const data = (await r.json()) as T;
-  console.log("[fetchJson] data", data);
-  return data;
+  return (await r.json()) as T;
 }
 
 function useVisibleInterval(fn: () => void, delay: number | null, deps: React.DependencyList = []) {
@@ -164,7 +154,7 @@ export default function RailQueueBoard({
   useEffect(() => () => abortRef.current?.abort(), []);
 
   useEffect(() => {
-    console.log("[RailQueueBoard] mount localidadId:", localidadId);
+    // mount
   }, [localidadId]);
 
   async function load(showRefreshing = false) {
@@ -177,10 +167,7 @@ export default function RailQueueBoard({
 
     try {
       const url = `/api/cliente/rondas?localidadId=${localidadId}`;
-      console.log("[RailQueueBoard] fetching rondas:", url);
       const data = await fetchJson<Ronda[]>(url, ac.signal);
-      console.log("[RailQueueBoard] rondas data:", data);
-
       data.sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden);
 
       const prev = prevIdsRef.current;
@@ -210,7 +197,7 @@ export default function RailQueueBoard({
 
       setItems(data);
 
-      // ===== mapear info directamente del listado =====
+      // map info
       const mapFromList: Record<number, RondaInfo> = {};
       for (const r of data) {
         const mv = (r.movimiento ?? null) as Ronda["movimiento"];
@@ -255,12 +242,10 @@ export default function RailQueueBoard({
     try {
       if (document.fullscreenElement) document.exitFullscreen();
       else boardRef.current?.requestFullscreen();
-    } catch (e) {
-      console.warn("[RailQueueBoard] fullscreen error", e);
-    }
+    } catch {}
   };
 
-  // Keyboard shortcuts: r refresh, a auto, s sound, f fullscreen
+  // Shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -297,107 +282,119 @@ export default function RailQueueBoard({
   const viaO = curMov?.viaOrigen?.nombre || "";
   const viaD = curMov?.viaDestino?.nombre || "";
 
-  // === lógica pedida: usar servicio como "origen" si no hay vía origen ===
   const hasService = !!(curMov?.torno || curMov?.lavado);
   const serviceOrigin = curMov?.torno ? "Torno" : (curMov?.lavado ? "Lavado" : "");
-  const desdeLbl = viaO || serviceOrigin; // prioridad: vía origen > servicio
+  const desdeLbl = viaO || serviceOrigin;
   const hasAny = !!(desdeLbl || viaD || hasService);
 
   return (
-    <div ref={boardRef} className="contents">
-      {/* TOASTS */}
-      <div className="fixed right-4 top-4 z-50 space-y-2 max-w-[min(92vw,420px)] sm:bottom-auto sm:top-4 sm:right-4 bottom-4">
-        <AnimatePresence>
-          {toasts.map((t) => {
-            const bar =
-              t.kind === "move" ? "border-l-4 border-emerald-500/80" :
-              t.kind === "new"  ? "border-l-4 border-sky-500/80" :
-              t.kind === "warning" ? "border-l-4 border-amber-500/80" :
-              "border-l-4 border-slate-400/70";
-            const tone =
-              t.kind === "move" ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200" :
-              t.kind === "new"  ? "bg-sky-50 text-sky-900 dark:bg-sky-950/40 dark:text-sky-200" :
-              t.kind === "warning" ? "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200" :
-              "bg-slate-50 text-slate-900 dark:bg-slate-800 dark:text-slate-100";
-            return (
-              <motion.button
-                key={t.id}
-                initial={{ x: 100, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: 100, opacity: 0, transition: { duration: 0.18 } }}
-                role={t.kind === "warning" ? "alert" : "status"}
-                aria-live={t.kind === "warning" ? "assertive" : "polite"}
-                onClick={() => dismiss(t.id)}
-                className={`w-full text-left rounded-md px-4 py-3 text-sm shadow border ${bar} ${tone}`}
-                title="Clic para cerrar"
-              >
-                <span className="mr-2">
-                  {t.kind === "move" ? "🔄" : t.kind === "new" ? "🆕" : t.kind === "warning" ? "⚠️" : "✅"}
-                </span>
-                {t.text}
-              </motion.button>
-            );
-          })}
-        </AnimatePresence>
+    <main ref={boardRef} className="min-h-svh md:min-h-dvh bg-white text-slate-900 dark:bg-neutral-950 dark:text-slate-100">
+      {/* TOASTS: centrados en móvil, esquina en desktop */}
+      <div className="fixed inset-x-0 bottom-4 z-50 flex justify-center px-3 sm:inset-auto sm:right-4 sm:top-4 sm:bottom-auto sm:left-auto sm:px-0">
+        <div className="space-y-2 w-full max-w-[min(92vw,420px)]">
+          <AnimatePresence>
+            {toasts.map((t) => {
+              const bar =
+                t.kind === "move" ? "border-l-4 border-emerald-500/80" :
+                t.kind === "new"  ? "border-l-4 border-sky-500/80" :
+                t.kind === "warning" ? "border-l-4 border-amber-500/80" :
+                "border-l-4 border-slate-400/70";
+              const tone =
+                t.kind === "move" ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200" :
+                t.kind === "new"  ? "bg-sky-50 text-sky-900 dark:bg-sky-950/40 dark:text-sky-200" :
+                t.kind === "warning" ? "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200" :
+                "bg-slate-50 text-slate-900 dark:bg-slate-800 dark:text-slate-100";
+              return (
+                <motion.button
+                  key={t.id}
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: 20, opacity: 0, transition: { duration: 0.18 } }}
+                  role={t.kind === "warning" ? "alert" : "status"}
+                  aria-live={t.kind === "warning" ? "assertive" : "polite"}
+                  onClick={() => dismiss(t.id)}
+                  className={`w-full text-left rounded-md px-4 py-3 text-sm shadow border ${bar} ${tone}`}
+                  title="Clic para cerrar"
+                >
+                  <span className="mr-2">
+                    {t.kind === "move" ? "🔄" : t.kind === "new" ? "🆕" : t.kind === "warning" ? "⚠️" : "✅"}
+                  </span>
+                  {t.text}
+                </motion.button>
+              );
+            })}
+          </AnimatePresence>
+        </div>
       </div>
 
-      {/* TOOLBAR */}
-      <div className="mx-auto my-2 flex w-full max-w-screen-2xl items-center justify-end gap-2 px-4">
-        <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] tabular-nums ${
-          polling ? "border-emerald-300 text-emerald-700 dark:text-emerald-300" : "border-slate-300 text-slate-600 dark:text-slate-300"
-        }`} title="Estado de actualización">
-          <span className={`inline-block h-2 w-2 rounded-full ${polling ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} aria-hidden />
-          LIVE
-        </span>
-        <span className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400" aria-live="polite">
-          Últ. act: {lastAgo}
-        </span>
-        {!online && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200" title="Sin conexión">
-            ⚠️ Offline
+      {/* TOOLBAR sticky con blur y safe-areas */}
+      <div className="sticky top-0 z-40 border-b border-slate-200/60 bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/50 dark:border-slate-800/60 dark:bg-neutral-950/70 dark:supports-[backdrop-filter]:bg-neutral-950/50 pt-[env(safe-area-inset-top)]">
+        <div className="mx-auto flex w-full max-w-screen-2xl flex-wrap items-center justify-end gap-2 px-3 sm:px-4 md:px-6 py-2">
+          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] tabular-nums ${
+            polling ? "border-emerald-300 text-emerald-700 dark:text-emerald-300" : "border-slate-300 text-slate-600 dark:text-slate-300"
+          }`}>
+            <span className={`inline-block h-2 w-2 rounded-full ${polling ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} aria-hidden />
+            LIVE
           </span>
-        )}
-        <button
-          onClick={() => setSoundOn((s) => !s)}
-          className={`rounded-md border px-3 py-2 text-sm shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-800 ${soundOn ? "border-emerald-400 text-emerald-700 dark:text-emerald-300" : ""}`}
-          title="Pitido al cambiar la orden actual"
-          aria-pressed={soundOn}
-        >
-          {soundOn ? "🔔 Sonido" : "🔕 Silencio"}
-        </button>
-        <button
-          onClick={() => setPolling((p) => !p)}
-          className="rounded-md border px-3 py-2 text-sm shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-800"
-          title="Activar/pausar auto-actualización"
-          aria-pressed={polling}
-        >
-          {polling ? "⏸️ Auto" : "▶️ Auto"}
-        </button>
-        <button
-          onClick={() => load(true)}
-          disabled={refreshing}
-          className="rounded-md border px-3 py-2 text-sm shadow-sm transition hover:bg-slate-50 disabled:opacity-60 dark:hover:bg-slate-800"
-          aria-busy={refreshing}
-          title="Refrescar"
-        >
-          {refreshing ? "⟳ Actualizando…" : "↻ Actualizar"}
-        </button>
-        <button
-          onClick={toggleFullscreen}
-          className="rounded-md border px-3 py-2 text-sm shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-800"
-          title="Pantalla completa (f)"
-          aria-pressed={isFs}
-        >
-          {isFs ? "⤢ Salir" : "⤢ Full"}
-        </button>
+          <span className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400" aria-live="polite">
+            Últ. act: {lastAgo}
+          </span>
+          {!online && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
+              ⚠️ Offline
+            </span>
+          )}
+          <button
+            onClick={() => setSoundOn((s) => !s)}
+            className={`rounded-md border px-3 py-2 text-sm shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-800 ${soundOn ? "border-emerald-400 text-emerald-700 dark:text-emerald-300" : ""}`}
+            title="Pitido al cambiar la orden actual"
+            aria-pressed={soundOn}
+          >
+            {soundOn ? "🔔 Sonido" : "🔕 Silencio"}
+          </button>
+          <button
+            onClick={() => setPolling((p) => !p)}
+            className="rounded-md border px-3 py-2 text-sm shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-800"
+            title="Activar/pausar auto-actualización"
+            aria-pressed={polling}
+          >
+            {polling ? "⏸️ Auto" : "▶️ Auto"}
+          </button>
+          <button
+            onClick={() => load(true)}
+            disabled={refreshing}
+            className="rounded-md border px-3 py-2 text-sm shadow-sm transition hover:bg-slate-50 disabled:opacity-60 dark:hover:bg-slate-800"
+            aria-busy={refreshing}
+            title="Refrescar"
+          >
+            {refreshing ? "⟳ Actualizando…" : "↻ Actualizar"}
+          </button>
+          <button
+            onClick={toggleFullscreen}
+            className="rounded-md border px-3 py-2 text-sm shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-800"
+            title="Pantalla completa (f)"
+            aria-pressed={isFs}
+          >
+            {isFs ? "⤢ Salir" : "⤢ Full"}
+          </button>
+        </div>
       </div>
 
-      <div className="mx-auto w-full max-w-screen-2xl p-4" aria-busy={loading || refreshing}>
+      {/* CONTENIDO */}
+      <section
+        className="
+          mx-auto w-full max-w-screen-2xl
+          px-3 sm:px-4 md:px-6 lg:px-8
+          py-3 sm:py-4 md:py-6 lg:py-8
+          pb-[env(safe-area-inset-bottom)]
+        "
+        aria-busy={loading || refreshing}
+      >
         <div className="grid gap-6 lg:grid-cols-3">
           {/* IZQUIERDA */}
           <div className="lg:col-span-2 rounded-2xl p-6 bg-gradient-to-br from-white via-sky-50 to-white text-slate-800 shadow border border-slate-200
-                          dark:from-slate-900 dark:via-slate-900 dark:to-slate-900 dark:text-slate-100 dark:border-slate-700">
-            <div className="mb-4 flex items-center justify-between gap-3">
+                          dark:from-neutral-900 dark:via-neutral-900 dark:to-neutral-900 dark:text-slate-100 dark:border-slate-800">
+            <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Tablero de Rondas</h1>
                 <div className="mt-1 text-[11px] tracking-widest font-medium text-slate-500 dark:text-slate-400">
@@ -420,7 +417,7 @@ export default function RailQueueBoard({
               initial={{ scale: prefersReduced ? 1 : 0.985, opacity: prefersReduced ? 1 : 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ type: "spring", stiffness: 260, damping: 26 }}
-              className="rounded-xl bg-white p-4 sm:p-6 border shadow-sm border-slate-200 dark:bg-slate-900 dark:border-slate-700 min-h-[180px]"
+              className="rounded-xl bg-white p-4 sm:p-6 border shadow-sm border-slate-200 dark:bg-slate-900 dark:border-slate-800 min-h-[180px]"
             >
               {loading && !current ? (
                 <SkeletonCurrent />
@@ -452,7 +449,7 @@ export default function RailQueueBoard({
                     </div>
                   </div>
 
-                  {/* Origen/Destino + chips condicionados */}
+                  {/* Origen/Destino + chips */}
                   <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
                     {viaO && !viaD && (
                       <>
@@ -495,7 +492,7 @@ export default function RailQueueBoard({
                   </div>
 
                   {/* Estado, Prioridad, Orden, Ronda */}
-                  <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
                     <CardStat label="Estado" value={curMov?.estado ?? "—"} icon="📌" />
                     <CardStat label="Prioridad" value={curMov?.prioridad ?? "—"} icon="⚑" />
                     <CardStat label="Orden" value={String(current?.orden ?? "—")} icon="№" />
@@ -511,13 +508,9 @@ export default function RailQueueBoard({
                   >
                     <p className="text-sm">
                       {hasAny ? (
-                        <>
-                          Mover locomotora <b>{locoText}</b> desde <b>{desdeLbl || "—"}</b> hacia <b>{viaD || "—"}</b>.
-                        </>
+                        <>Mover locomotora <b>{locoText}</b> desde <b>{desdeLbl || "—"}</b> hacia <b>{viaD || "—"}</b>.</>
                       ) : (
-                        <>
-                          Mover locomotora <b>{locoText}</b> entre <b>—</b> y <b>—</b>.
-                        </>
+                        <>Mover locomotora <b>{locoText}</b> entre <b>—</b> y <b>—</b>.</>
                       )}
                     </p>
                   </motion.div>
@@ -532,7 +525,7 @@ export default function RailQueueBoard({
           </div>
 
           {/* DERECHA */}
-          <div className="rounded-2xl bg-white text-slate-900 shadow border border-slate-200 p-4 sm:p-5 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-700">
+          <aside className="rounded-2xl bg-white text-slate-900 shadow border border-slate-200 p-4 sm:p-5 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-800">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="flex items-center gap-2 font-semibold">
                 <span>📋</span> Próximas órdenes
@@ -546,9 +539,7 @@ export default function RailQueueBoard({
               <AnimatePresence initial={false}>
                 {loading && next.length === 0 ? (
                   <>
-                    {Array.from({ length: nextCount }).map((_, i) => (
-                      <SkeletonNext key={i} />
-                    ))}
+                    {Array.from({ length: nextCount }).map((_, i) => <SkeletonNext key={i} />)}
                   </>
                 ) : (
                   next.map((n, index) => {
@@ -562,7 +553,7 @@ export default function RailQueueBoard({
                         animate={{ y: 0, opacity: 1 }}
                         exit={{ y: prefersReduced ? 0 : -14, opacity: prefersReduced ? 1 : 0 }}
                         transition={{ duration: prefersReduced ? 0 : 0.25, delay: prefersReduced ? 0 : index * 0.04 }}
-                        className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 transition hover:bg-white dark:border-slate-700 dark:bg-slate-800/60 dark:hover:bg-slate-800"
+                        className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 transition hover:bg-white dark:border-slate-800 dark:bg-slate-800/60 dark:hover:bg-slate-800"
                       >
                         <div className="flex items-center gap-3">
                           <div className="grid h-10 w-10 place-items-center rounded-full border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
@@ -578,7 +569,6 @@ export default function RailQueueBoard({
                           </div>
                         </div>
                         <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                          {/* Origen/Destino condicionados */}
                           {mv?.viaOrigen?.nombre && !mv?.viaDestino?.nombre && (
                             <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
                               <div className="text-slate-500 dark:text-slate-400">Origen</div>
@@ -654,22 +644,22 @@ export default function RailQueueBoard({
                 )}
               </AnimatePresence>
             </div>
-          </div>
+          </aside>
         </div>
-      </div>
+      </section>
 
       {/* audio */}
       <audio ref={bellRef} preload="auto" aria-hidden="true">
         <source src="/sounds/notification.mp3" type="audio/mp3" />
       </audio>
-    </div>
+    </main>
   );
 }
 
 /* ===== Subcomponentes ===== */
 function CardStat({ label, value, icon }: { label: string; value: string; icon: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+    <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
       <div className="flex items-center gap-1 text-[11px] uppercase tracking-widest text-slate-500 dark:text-slate-400">
         {icon} {label}
       </div>
@@ -715,7 +705,7 @@ function SkeletonCurrent() {
 }
 function SkeletonNext() {
   return (
-    <div className="animate-pulse rounded-lg border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+    <div className="animate-pulse rounded-lg border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-800/60">
       <div className="flex items-center gap-3">
         <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-700" />
         <div className="h-4 w-40 rounded bg-slate-200 dark:bg-slate-700" />

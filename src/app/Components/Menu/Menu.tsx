@@ -18,17 +18,19 @@ import {
 
 export type Rol = "ADMINISTRADOR" | "COORDINADOR" | "CLIENTE";
 export interface SidebarMenuProps {
-  rol: Rol | string; // acepta strings sueltos tipo "ADMIN", "SUPERVISOR", etc.
+  rol: Rol | string;
   nombre?: string;
   empresa?: string;
   version?: string;
   defaultOpen?: boolean;
-  expandedWidth?: number; // px
-  collapsedWidth?: number; // px
+  expandedWidth?: number;
+  collapsedWidth?: number;
+  /** "auto" respeta el SO. No afecta nada fuera del sidebar. */
+  appearance?: "auto" | "light" | "dark";
 }
 
-/* ===== Tema por rol ===== */
-const ROLE_THEME = {
+/* ===== Tema por rol (light) ===== */
+const ROLE_THEME_LIGHT = {
   ADMINISTRADOR: {
     bg: "#0D2818", text: "#E9F5ED", accent: "#40916C", border: "#1B4332",
     glass: "rgba(255,255,255,0.06)", roleBg: "rgba(64,145,108,0.15)",
@@ -46,18 +48,36 @@ const ROLE_THEME = {
   },
 } as const;
 
+/* ===== Tema por rol (dark) ===== */
+const ROLE_THEME_DARK = {
+  ADMINISTRADOR: {
+    bg: "#07170F", text: "#EAF8F0", accent: "#58C49A", border: "#123524",
+    glass: "rgba(255,255,255,0.08)", roleBg: "rgba(88,196,154,0.18)",
+    roleBorder: "#1E5A40", roleText: "#9CE6C7",
+  },
+  COORDINADOR: {
+    bg: "#121A24", text: "#E7F1FA", accent: "#50CFE0", border: "#1B2734",
+    glass: "rgba(255,255,255,0.08)", roleBg: "rgba(80,207,224,0.18)",
+    roleBorder: "#2D7E90", roleText: "#B7ECF3",
+  },
+  CLIENTE: {
+    bg: "#12261D", text: "#E7FAF0", accent: "#62DB96", border: "#1B3A2E",
+    glass: "rgba(255,255,255,0.08)", roleBg: "rgba(98,219,150,0.18)",
+    roleBorder: "#2E6F53", roleText: "#C8F4DA",
+  },
+} as const;
+
 const ROLE_ICON: Record<Rol, React.ReactNode> = {
   ADMINISTRADOR: <ShieldHalf className="h-4 w-4" />,
   COORDINADOR: <Train className="h-4 w-4" />,
   CLIENTE: <Building2 className="h-4 w-4" />,
 };
 
-/* ===== Normalizador de rol ===== */
+/* ===== Normalizador ===== */
 function normalizeRole(r?: string): Rol {
   const s = (r || "").toUpperCase().trim();
   if (s === "ADMINISTRADOR" || s === "ADMIN") return "ADMINISTRADOR";
   if (s === "COORDINADOR" || s === "COOORDINADOR" || s === "COORD") return "COORDINADOR";
-  // cualquier otro (SUPERVISOR, OPERADOR, vacío, etc.) cae a CLIENTE
   return "CLIENTE";
 }
 
@@ -71,6 +91,9 @@ function useMediaQuery(q: string) {
     return () => m.removeEventListener("change", on);
   }, [q]);
   return ok;
+}
+function usePrefersDark() {
+  return useMediaQuery("(prefers-color-scheme: dark)");
 }
 function useBodyScrollLock(lock: boolean) {
   useEffect(() => {
@@ -120,10 +143,14 @@ export default function SidebarMenu({
   defaultOpen = true,
   expandedWidth = 300,
   collapsedWidth = 76,
+  appearance = "auto",
 }: SidebarMenuProps) {
   const router = useRouter();
   const pathname = usePathname();
   const isDesktop = useMediaQuery("(min-width: 768px)");
+  const prefersDark = usePrefersDark();
+  const isDark = appearance === "dark" || (appearance === "auto" && prefersDark);
+
   const [open, setOpen] = useLocalStorageBool("sidebar:open", defaultOpen);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -131,7 +158,10 @@ export default function SidebarMenu({
   useBodyScrollLock(mobileOpen && !isDesktop);
 
   const normRol = useMemo<Rol>(() => normalizeRole(rol as string), [rol]);
-  const theme = useMemo(() => ROLE_THEME[normRol] ?? ROLE_THEME.CLIENTE, [normRol]);
+  const theme = useMemo(
+    () => (isDark ? ROLE_THEME_DARK[normRol] : ROLE_THEME_LIGHT[normRol]),
+    [normRol, isDark]
+  );
 
   const openW = useMemo(() => Math.round(Math.min(Math.max(expandedWidth, 240), 420)), [expandedWidth]);
   const colW = useMemo(() => Math.round(Math.min(Math.max(collapsedWidth, 64), 104)), [collapsedWidth]);
@@ -139,11 +169,10 @@ export default function SidebarMenu({
   const asideId = "sidebar-mobile";
   const BASE = "/cliente";
 
-  // Rutas por item
   const NAV = useMemo(
     () =>
       [
-        { id: "Panel", label: "Panel", href: BASE, icon: <LayoutDashboard className="h-5 w-5" />, show: normRol === "CLIENTE", exact: true }, // 1. Añadido 'exact: true'
+        { id: "Panel", label: "Panel", href: BASE, icon: <LayoutDashboard className="h-5 w-5" />, show: normRol === "CLIENTE", exact: true },
         { id: "Movimientos", label: "Movimientos", href: `${BASE}/movimientos`, icon: <Train className="h-5 w-5" />, show: true },
         { id: "Usuario", label: "Usuarios", href: `${BASE}/usuarios`, icon: <Users className="h-5 w-5" />, show: normRol !== "CLIENTE" },
         { id: "Localidad", label: "Localidad y Vías", href: `${BASE}/localidad`, icon: <MapPinned className="h-5 w-5" />, show: normRol !== "CLIENTE" },
@@ -151,20 +180,24 @@ export default function SidebarMenu({
         { id: "Terminal", label: "Terminal", href: `${BASE}/terminal`, icon: <Terminal className="h-5 w-5" />, show: normRol !== "CLIENTE" },
       ]
         .filter((i) => i.show)
-        // 2. Lógica para determinar 'isActive' movida aquí
         .map((it) => ({
           ...it,
-          isActive: it.exact
-            ? pathname === it.href
-            : pathname.startsWith(it.href),
+          isActive: it.exact ? pathname === it.href : pathname.startsWith(it.href),
         })),
-    [normRol, pathname] // 3. Se añade 'pathname' a las dependencias
+    [normRol, pathname]
   );
 
   const vars: React.CSSProperties = {
-    "--sb-bg": theme.bg, "--sb-text": theme.text, "--sb-accent": theme.accent, "--sb-border": theme.border,
-    "--sb-glass": theme.glass, "--sb-role-bg": theme.roleBg, "--sb-role-border": theme.roleBorder, "--sb-role-text": theme.roleText,
-    "--sbw-open": `${openW}px`, "--sbw-collapsed": `${colW}px`,
+    "--sb-bg": theme.bg,
+    "--sb-text": theme.text,
+    "--sb-accent": theme.accent,
+    "--sb-border": theme.border,
+    "--sb-glass": theme.glass,
+    "--sb-role-bg": theme.roleBg,
+    "--sb-role-border": theme.roleBorder,
+    "--sb-role-text": theme.roleText,
+    "--sbw-open": `${openW}px`,
+    "--sbw-collapsed": `${colW}px`,
   } as React.CSSProperties;
 
   async function handleLogoutLocal() {
@@ -192,7 +225,7 @@ export default function SidebarMenu({
 
   /* ===== Desktop ===== */
   const Desktop = (
-    <aside style={vars} className="fixed left-0 top-0 z-40 hidden h-svh border-r md:flex" aria-label="Barra lateral">
+    <aside data-appearance={isDark ? "dark" : "light"} style={vars} className="fixed left-0 top-0 z-40 hidden h-svh border-r md:flex" aria-label="Barra lateral">
       <div
         className="flex h-full flex-col border-r text-[var(--sb-text)] shadow-xl"
         style={{ width: open ? "var(--sbw-open)" : "var(--sbw-collapsed)", background: "var(--sb-bg)", borderColor: "var(--sb-border)" }}
@@ -211,8 +244,8 @@ export default function SidebarMenu({
             aria-label={open ? "Colapsar menú" : "Expandir menú"}
             aria-expanded={open}
             onClick={() => setOpen((v) => !v)}
-            className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md border bg-[var(--sb-glass)] hover:opacity-90"
-            style={{ borderColor: "var(--sb-border)" }}
+            className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md border"
+            style={{ borderColor: "var(--sb-border)", background: "var(--sb-glass)", color: "var(--sb-text)" }}
           >
             <MenuIcon className="h-4 w-4" />
           </button>
@@ -247,24 +280,22 @@ export default function SidebarMenu({
 
         {/* Items */}
         <nav className="mt-3 flex-1 overflow-y-auto px-2" role="navigation" aria-label="Navegación principal">
-          {NAV.map((it) => {
-            // 4. Lógica de 'isActive' local eliminada
-            return (
-              <button
-                key={it.id}
-                type="button"
-                onClick={() => router.push(it.href)}
-                aria-current={it.isActive ? "page" : undefined} // Se usa it.isActive
-                className={[
-                  "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors motion-safe:duration-200",
-                  it.isActive ? "bg-white/10 ring-1 ring-inset ring-[var(--sb-accent)]" : "hover:bg-white/5", // Se usa it.isActive
-                ].join(" ")}
-              >
-                <span className="shrink-0 opacity-90">{it.icon}</span>
-                {open && <span className="truncate">{it.label}</span>}
-              </button>
-            );
-          })}
+          {NAV.map((it) => (
+            <button
+              key={it.id}
+              type="button"
+              onClick={() => router.push(it.href)}
+              aria-current={it.isActive ? "page" : undefined}
+              className={[
+                "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors motion-safe:duration-200",
+                it.isActive ? "bg-white/10 ring-1 ring-inset ring-[var(--sb-accent)]" : "hover:bg-white/5",
+              ].join(" ")}
+              style={{ color: "var(--sb-text)" }}
+            >
+              <span className="shrink-0 opacity-90">{it.icon}</span>
+              {open && <span className="truncate">{it.label}</span>}
+            </button>
+          ))}
         </nav>
 
         {/* Footer */}
@@ -277,8 +308,8 @@ export default function SidebarMenu({
                 onClick={handleLogoutLocal}
                 disabled={loggingOut}
                 aria-busy={loggingOut}
-                className="inline-flex items-center gap-2 rounded-md border px-2 py-1 hover:opacity-90 disabled:opacity-60"
-                style={{ borderColor: "var(--sb-border)", background: "var(--sb-glass)" }}
+                className="inline-flex items-center gap-2 rounded-md border px-2 py-1 disabled:opacity-60"
+                style={{ borderColor: "var(--sb-border)", background: "var(--sb-glass)", color: "var(--sb-text)" }}
               >
                 <LogOut className="h-4 w-4" /> {loggingOut ? "Saliendo…" : "Cerrar sesión"}
               </button>
@@ -290,8 +321,8 @@ export default function SidebarMenu({
                 onClick={handleLogoutLocal}
                 disabled={loggingOut}
                 aria-busy={loggingOut}
-                className="inline-flex items-center justify-center rounded-md border p-2 hover:opacity-90 disabled:opacity-60"
-                style={{ borderColor: "var(--sb-border)", background: "var(--sb-glass)" }}
+                className="inline-flex items-center justify-center rounded-md border p-2 disabled:opacity-60"
+                style={{ borderColor: "var(--sb-border)", background: "var(--sb-glass)", color: "var(--sb-text)" }}
                 title="Cerrar sesión"
               >
                 <LogOut className="h-5 w-5" />
@@ -319,7 +350,8 @@ export default function SidebarMenu({
         aria-controls={asideId}
         aria-expanded={mobileOpen}
         onClick={() => setMobileOpen(true)}
-        className="fixed left-3 top-[max(0.5rem,env(safe-area-inset-top))] z-30 inline-flex h-10 w-10 items-center justify-center rounded-md border bg-white text-slate-900 shadow md:hidden dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+        className="fixed left-3 top-[max(0.5rem,env(safe-area-inset-top))] z-30 inline-flex h-10 w-10 items-center justify-center rounded-md border shadow md:hidden"
+        style={{ background: "var(--sb-glass)", color: "var(--sb-text)", borderColor: "var(--sb-border)" }}
       >
         <MenuIcon className="h-5 w-5" />
         <span className="sr-only">Abrir menú</span>
@@ -331,6 +363,7 @@ export default function SidebarMenu({
 
       <aside
         id={asideId}
+        data-appearance={isDark ? "dark" : "light"}
         style={vars}
         role="dialog"
         aria-modal="true"
@@ -353,8 +386,8 @@ export default function SidebarMenu({
               type="button"
               aria-label="Cerrar menú"
               onClick={() => setMobileOpen(false)}
-              className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md border hover:opacity-90"
-              style={{ borderColor: "var(--sb-border)", background: "var(--sb-glass)" }}
+              className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md border"
+              style={{ borderColor: "var(--sb-border)", background: "var(--sb-glass)", color: "var(--sb-text)" }}
             >
               ✕
             </button>
@@ -382,24 +415,22 @@ export default function SidebarMenu({
           </div>
 
           <nav className="mt-3 flex-1 overflow-y-auto px-2" role="navigation" aria-label="Navegación principal">
-            {NAV.map((it) => {
-              // 4. Lógica de 'isActive' local eliminada
-              return (
-                <button
-                  key={it.id}
-                  type="button"
-                  onClick={() => { router.push(it.href); setMobileOpen(false); }}
-                  aria-current={it.isActive ? "page" : undefined} // Se usa it.isActive
-                  className={[
-                    "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors motion-safe:duration-200",
-                    it.isActive ? "bg-white/10 ring-1 ring-inset ring-[var(--sb-accent)]" : "hover:bg-white/5", // Se usa it.isActive
-                  ].join(" ")}
-                >
-                  <span className="shrink-0 opacity-90">{it.icon}</span>
-                  <span className="truncate">{it.label}</span>
-                </button>
-              );
-            })}
+            {NAV.map((it) => (
+              <button
+                key={it.id}
+                type="button"
+                onClick={() => { router.push(it.href); setMobileOpen(false); }}
+                aria-current={it.isActive ? "page" : undefined}
+                className={[
+                  "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors motion-safe:duration-200",
+                  it.isActive ? "bg-white/10 ring-1 ring-inset ring-[var(--sb-accent)]" : "hover:bg-white/5",
+                ].join(" ")}
+                style={{ color: "var(--sb-text)" }}
+              >
+                <span className="shrink-0 opacity-90">{it.icon}</span>
+                <span className="truncate">{it.label}</span>
+              </button>
+            ))}
           </nav>
 
           <div className="mt-auto border-t px-3 py-4" style={{ borderColor: "var(--sb-border)", paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
@@ -408,12 +439,12 @@ export default function SidebarMenu({
               onClick={handleLogoutLocal}
               disabled={loggingOut}
               aria-busy={loggingOut}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm hover:opacity-90 disabled:opacity-60"
-              style={{ borderColor: "var(--sb-border)", background: "var(--sb-glass)" }}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm disabled:opacity-60"
+              style={{ borderColor: "var(--sb-border)", background: "var(--sb-glass)", color: "var(--sb-text)" }}
             >
               <LogOut className="h-4 w-4" /> {loggingOut ? "Saliendo…" : "Cerrar sesión"}
             </button>
-            <div className="mt-2 text-center text-xs opacity-70">{version}</div>
+            <div className="mt-2 text-center text-xs opacity-70" style={{ color: "var(--sb-text)" }}>{version}</div>
           </div>
         </div>
       </aside>
@@ -424,7 +455,7 @@ export default function SidebarMenu({
     <>
       {Desktop}
       {Mobile}
-      {/* Spacer responsivo para empujar el contenido. Solo en desktop. */}
+      {/* Spacer solo desktop */}
       <div className="hidden md:block" style={{ width: open ? openW : colW }} />
     </>
   );
