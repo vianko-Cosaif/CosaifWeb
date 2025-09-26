@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, useMemo } from "react";
 import {
   AlertTriangle,
   X,
@@ -15,9 +15,12 @@ import {
   ChevronRight,
   Info,
   TimerReset,
+  ImageIcon,
 } from "lucide-react";
 import type { IncidenteEmergente } from "@/app/hooks/useIncidentMonitor";
 import ConfirmationModal from "../ConfirmationModal";
+import { ImageWithAuth } from "./ImageWithAuth";
+import { ImageGallery } from "./ImageGallery";
 
 /* ================= Tipos ================= */
 interface IncidentModalProps {
@@ -97,6 +100,9 @@ export default function IncidentModal({
   const [now, setNow] = useState<number>(Date.now());
   const [isResolving, setIsResolving] = useState(false);
   const [isSkipConfirmOpen, setIsSkipConfirmOpen] = useState(false);
+  const [tab, setTab] = useState<0 | 1>(0);
+  const [imageIndex, setImageIndex] = useState(0);
+  const [fullscreen, setFullscreen] = useState(false);
 
   // Timer para actualizar cada segundo
   useEffect(() => {
@@ -111,6 +117,19 @@ export default function IncidentModal({
   const leftMs = Math.max(0, WINDOW_DURATION_MS - (now - startMs));
   const pct = Math.round(((WINDOW_DURATION_MS - leftMs) / WINDOW_DURATION_MS) * 100);
   const showTimer = leftMs > 0 && incident.estado === "ABIERTO";
+
+  // Obtener imágenes
+  const images = useMemo(() => {
+    let list: string[] = [];
+    if (Array.isArray(incident.imagenes) && incident.imagenes.length) {
+      list = incident.imagenes;
+    } else {
+      list = [incident.imagen1, incident.imagen2, incident.imagen3, incident.imagen4].filter(Boolean) as string[];
+    }
+    return list;
+  }, [incident]);
+
+  const hasImages = images.length > 0;
 
   // Manejar resolución
   const handleResolve = useCallback(async () => {
@@ -202,117 +221,166 @@ export default function IncidentModal({
           {showTimer && <div className={cn("text-[10px] sm:text-xs font-semibold", urgencyFor(pct).color)}>{urgencyFor(pct).label}</div>}
         </div>
 
+        {/* Tabs */}
+        <div className="flex gap-2 border-b px-2 sm:px-4 bg-white dark:bg-slate-900">
+          <button
+            onClick={() => setTab(0)}
+            className={cn(
+              "flex flex-1 items-center justify-center gap-2 border-b-4 px-2 sm:px-3 py-2 sm:py-3 text-xs sm:text-sm font-semibold transition-colors",
+              tab === 0 ? "border-emerald-600 text-emerald-700 dark:text-emerald-400" : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"
+            )}
+            role="tab"
+            aria-selected={tab === 0}
+          >
+            <Info className="h-4 w-4" />
+            Detalles
+          </button>
+          <button
+            onClick={() => setTab(1)}
+            className={cn(
+              "flex flex-1 items-center justify-center gap-2 border-b-4 px-2 sm:px-3 py-2 sm:py-3 text-xs sm:text-sm font-semibold transition-colors",
+              tab === 1 ? "border-emerald-600 text-emerald-700 dark:text-emerald-400" : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"
+            )}
+            role="tab"
+            aria-selected={tab === 1}
+          >
+            <ImageIcon className="h-4 w-4" />
+            Imágenes {hasImages ? `(${images.length})` : ""}
+          </button>
+        </div>
+
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 bg-slate-50 dark:bg-slate-800">
-          <div className="space-y-3">
-            {/* Descripción */}
-            <section className="rounded-lg border bg-white dark:bg-slate-900 p-3 shadow-sfm">
-              <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-800 dark:text-slate-200">
-                <Info className="h-5 w-5 text-emerald-600" />
-                Descripción del Incidente
-              </h2>
-              <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
-                {incident.descripcion || "Sin descripción disponible"}
-              </p>
-            </section>
+          {tab === 0 ? (
+            <div className="space-y-3">
+              {/* Descripción */}
+              <section className="rounded-lg border bg-white dark:bg-slate-900 p-3 shadow-sfm">
+                <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-800 dark:text-slate-200">
+                  <Info className="h-5 w-5 text-emerald-600" />
+                  Descripción del Incidente
+                </h2>
+                <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                  {incident.descripcion || "Sin descripción disponible"}
+                </p>
+              </section>
 
-            {/* Información del Movimiento */}
-            <section className="rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-sm">
-              <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-200">Información del Movimiento</h2>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <div className="text-xs font-semibold text-slate-500 uppercase">Empresa</div>
-                  <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                    <Building className="h-4 w-4 text-slate-500" />
-                    {incident.empresa || "No especificada"}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs font-semibold text-slate-500 uppercase">Locomotora</div>
-                  <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                    <Train className="h-4 w-4 text-slate-500" />
-                    {incident.locomotora ? `#${incident.locomotora}` : "No especificada"}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs font-semibold text-slate-500 uppercase">Origen</div>
-                  <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                    <MapPin className="h-4 w-4 text-slate-500" />
-                    {incident.origen || "No especificado"}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs font-semibold text-slate-500 uppercase">Destino</div>
-                  <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                    <MapPin className="h-4 w-4 text-slate-500" />
-                    {incident.destino || "No especificado"}
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Fecha y Hora */}
-            <section className="rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-sm">
-              <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-200">Información Temporal</h2>
-              <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-                <Clock className="h-4 w-4 text-slate-500" />
-                <span>
-                  Reportado el {new Date(incident.fechaInicio).toLocaleString("es-ES", {
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
-              </div>
-            </section>
-
-            {/* Resolución del incidente */}
-            {incident.estado === "ABIERTO" && (
+              {/* Información del Movimiento */}
               <section className="rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-sm">
-                <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-200">Resolución del incidente</h2>
-                <textarea
-                  value={resolution}
-                  onChange={(e) => setResolution(e.target.value)}
-                  rows={3}
-                  className="w-full resize-none rounded-lg border border-slate-300 bg-slate-50 dark:bg-slate-800 dark:border-slate-600 p-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                  placeholder="Describe las acciones tomadas para resolver el incidente..."
-                  maxLength={1000}
-                />
-                <div className="mt-2 text-xs text-slate-500">{resolution.length}/1000</div>
-                <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={() => setResolution("")}
-                    disabled={!resolution}
-                    className={cn(
-                      "flex-1 rounded-lg px-4 py-2 text-sm font-semibold",
-                      resolution ? "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600" : "bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed"
-                    )}
-                  >
-                    Limpiar
-                  </button>
-                  <button
-                    onClick={handleResolve}
-                    disabled={!resolution.trim() || isResolving}
-                    className={cn(
-                      "flex-[2] rounded-lg px-4 py-2 text-sm font-semibold text-white",
-                      resolution.trim() && !isResolving ? "bg-emerald-600 hover:bg-emerald-700" : "bg-slate-300 dark:bg-slate-700 cursor-not-allowed"
-                    )}
-                  >
-                    {isResolving ? "Resolviendo..." : "Confirmar resolución"}
-                  </button>
+                <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-200">Información del Movimiento</h2>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 uppercase">Empresa</div>
+                    <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                      <Building className="h-4 w-4 text-slate-500" />
+                      {incident.empresa || "No especificada"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 uppercase">Locomotora</div>
+                    <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                      <Train className="h-4 w-4 text-slate-500" />
+                      {incident.locomotora ? `#${incident.locomotora}` : "No especificada"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 uppercase">Origen</div>
+                    <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                      <MapPin className="h-4 w-4 text-slate-500" />
+                      {incident.origen || "No especificado"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 uppercase">Destino</div>
+                    <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                      <MapPin className="h-4 w-4 text-slate-500" />
+                      {incident.destino || "No especificado"}
+                    </div>
+                  </div>
                 </div>
               </section>
-            )}
-          </div>
+
+              {/* Fecha y Hora */}
+              <section className="rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-sm">
+                <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-200">Información Temporal</h2>
+                <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                  <Clock className="h-4 w-4 text-slate-500" />
+                  <span>
+                    Reportado el {new Date(incident.fechaInicio).toLocaleString("es-ES", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </div>
+              </section>
+
+              {/* Resolución del incidente */}
+              {incident.estado === "ABIERTO" && (
+                <section className="rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-sm">
+                  <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-200">Resolución del incidente</h2>
+                  <textarea
+                    value={resolution}
+                    onChange={(e) => setResolution(e.target.value)}
+                    rows={3}
+                    className="w-full resize-none rounded-lg border border-slate-300 bg-slate-50 dark:bg-slate-800 dark:border-slate-600 p-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                    placeholder="Describe las acciones tomadas para resolver el incidente..."
+                    maxLength={1000}
+                  />
+                  <div className="mt-2 text-xs text-slate-500">{resolution.length}/1000</div>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => setResolution("")}
+                      disabled={!resolution}
+                      className={cn(
+                        "flex-1 rounded-lg px-4 py-2 text-sm font-semibold",
+                        resolution ? "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600" : "bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed"
+                      )}
+                    >
+                      Limpiar
+                    </button>
+                    <button
+                      onClick={handleResolve}
+                      disabled={!resolution.trim() || isResolving}
+                      className={cn(
+                        "flex-[2] rounded-lg px-4 py-2 text-sm font-semibold text-white",
+                        resolution.trim() && !isResolving ? "bg-emerald-600 hover:bg-emerald-700" : "bg-slate-300 dark:bg-slate-700 cursor-not-allowed"
+                      )}
+                    >
+                      {isResolving ? "Resolviendo..." : "Confirmar resolución"}
+                    </button>
+                  </div>
+                </section>
+              )}
+            </div>
+          ) : (
+            <div>
+              {hasImages ? (
+                <ImageGallery
+                  images={images}
+                  index={imageIndex}
+                  onChange={setImageIndex}
+                  fullscreen={fullscreen}
+                  onToggleFullscreen={() => setFullscreen((v) => !v)}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <ImageIcon className="h-12 w-12 text-slate-400 mb-4" />
+                  <h3 className="text-lg font-semibold text-slate-600 dark:text-slate-400 mb-2">No hay imágenes disponibles</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-500">
+                    Este incidente no tiene imágenes asociadas.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         <div className="flex flex-col sm:flex-row gap-2 border-t bg-white dark:bg-slate-900 px-4 sm:px-5 py-3">
-          {showTimer && incident.estado === "ABIERTO" ? (
+          {showTimer && incident.estado === "ABIERTO" && tab === 0 ? (
             <>
-
               <button
                 onClick={() => setIsSkipConfirmOpen(true)}
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-3 font-semibold text-white hover:bg-amber-600"
@@ -321,14 +389,14 @@ export default function IncidentModal({
                 Omitir
               </button>
             </>
-          ) : (
+          ) : tab === 0 ? (
             <button
               onClick={handleContinue}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 font-semibold text-white hover:bg-emerald-800"
             >
               Continuar
             </button>
-          )}
+          ) : null}
         </div>
       </div>
       <ConfirmationModal
