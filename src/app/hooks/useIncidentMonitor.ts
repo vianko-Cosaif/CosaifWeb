@@ -15,6 +15,11 @@ export type IncidenteEmergente = {
   locomotora?: string;
   origen?: string;
   destino?: string;
+  imagen1?: string;
+  imagen2?: string;
+  imagen3?: string;
+  imagen4?: string;
+  imagenes?: string[];
   movimiento?: {
     empresa?: { nombre?: string };
     locomotiveNumber?: string;
@@ -102,6 +107,11 @@ export function useIncidentMonitor({
       locomotora: movement?.locomotiveNumber || incident?.locomotora,
       origen: movement?.viaOrigen?.nombre || incident?.origen,
       destino: movement?.viaDestino?.nombre || incident?.destino,
+      imagen1: incident.imagen1,
+      imagen2: incident.imagen2,
+      imagen3: incident.imagen3,
+      imagen4: incident.imagen4,
+      imagenes: incident.imagenes,
       movimiento: movement,
       _original: incident,
     };
