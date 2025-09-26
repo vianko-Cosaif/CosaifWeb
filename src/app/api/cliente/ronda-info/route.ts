@@ -1,7 +1,10 @@
+import "server-only";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
+
+const JWT = process.env.JWT_COOKIE_NAME ?? "token";
 
 async function fetchOne(base: URL, id: string, token?: string) {
   const url = new URL(`/movimientos/ronda/${encodeURIComponent(id)}/info`, base);
@@ -18,24 +21,24 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const raw = searchParams.get("ids") ?? "";
-    const ids = raw.split(",").map(s => s.trim()).filter(Boolean);
+    const ids = Array.from(new Set(raw.split(",").map(s => s.trim()).filter(Boolean)));
     if (ids.length === 0) return NextResponse.json({});
 
-    const token = cookies().get(process.env.JWT_COOKIE_NAME ?? "token")?.value;
+    const c = await cookies(); // solo lectura en Next 15
+    const token = c.get(JWT)?.value;
     const base = new URL("/bff", req.url);
 
     const results = await Promise.allSettled(ids.map(id => fetchOne(base, id, token)));
-    const out: Record<number, unknown> = {};
+    const out: Record<string, unknown> = {};
     for (const res of results) {
       if (res.status === "fulfilled" && res.value) {
         const [id, data] = res.value;
-        out[id] = data;
+        out[String(id)] = data;
       }
     }
     return NextResponse.json(out);
   } catch (err) {
     console.error("[rondas-info] error:", err);
-    // El componente ya hace fallback a /ronda-info si esto falla
     return NextResponse.json({}, { status: 200 });
   }
 }

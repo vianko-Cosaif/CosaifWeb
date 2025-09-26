@@ -288,10 +288,16 @@ export default function RailQueueBoard({
   const hasAny = !!(desdeLbl || viaD || hasService);
 
   return (
-    <main ref={boardRef} className="min-h-svh md:min-h-dvh bg-white text-slate-900 dark:bg-neutral-950 dark:text-slate-100">
-      {/* TOASTS: centrados en móvil, esquina en desktop */}
-      <div className="fixed inset-x-0 bottom-4 z-50 flex justify-center px-3 sm:inset-auto sm:right-4 sm:top-4 sm:bottom-auto sm:left-auto sm:px-0">
-        <div className="space-y-2 w-full max-w-[min(92vw,420px)]">
+    <main 
+      ref={boardRef} 
+      className="min-h-svh md:min-h-dvh bg-white text-slate-900 dark:bg-neutral-950 dark:text-slate-100"
+    >
+      {/* TOASTS: Responsive positioning */}
+      <div className="fixed z-50 flex justify-center px-3 
+                      inset-x-0 bottom-2 
+                      sm:inset-auto sm:right-2 sm:top-2 sm:bottom-auto sm:left-auto sm:px-0
+                      md:bottom-4 md:right-4 md:top-auto">
+        <div className="space-y-2 w-full max-w-[min(95vw,420px)]">
           <AnimatePresence>
             {toasts.map((t) => {
               const bar =
@@ -307,19 +313,22 @@ export default function RailQueueBoard({
               return (
                 <motion.button
                   key={t.id}
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  exit={{ y: 20, opacity: 0, transition: { duration: 0.18 } }}
+                  initial={{ y: 20, opacity: 0, scale: 0.95 }}
+                  animate={{ y: 0, opacity: 1, scale: 1 }}
+                  exit={{ y: 20, opacity: 0, scale: 0.95, transition: { duration: 0.18 } }}
                   role={t.kind === "warning" ? "alert" : "status"}
                   aria-live={t.kind === "warning" ? "assertive" : "polite"}
                   onClick={() => dismiss(t.id)}
-                  className={`w-full text-left rounded-md px-4 py-3 text-sm shadow border ${bar} ${tone}`}
+                  className={`w-full text-left rounded-lg px-3 py-2.5 text-sm shadow-lg border ${bar} ${tone} 
+                             hover:scale-[1.02] transition-transform duration-150`}
                   title="Clic para cerrar"
                 >
-                  <span className="mr-2">
-                    {t.kind === "move" ? "🔄" : t.kind === "new" ? "🆕" : t.kind === "warning" ? "⚠️" : "✅"}
-                  </span>
-                  {t.text}
+                  <div className="flex items-center">
+                    <span className="mr-2 text-base">
+                      {t.kind === "move" ? "🔄" : t.kind === "new" ? "🆕" : t.kind === "warning" ? "⚠️" : "✅"}
+                    </span>
+                    <span className="flex-1">{t.text}</span>
+                  </div>
                 </motion.button>
               );
             })}
@@ -327,214 +336,277 @@ export default function RailQueueBoard({
         </div>
       </div>
 
-      {/* TOOLBAR sticky con blur y safe-areas */}
-      <div className="sticky top-0 z-40 border-b border-slate-200/60 bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/50 dark:border-slate-800/60 dark:bg-neutral-950/70 dark:supports-[backdrop-filter]:bg-neutral-950/50 pt-[env(safe-area-inset-top)]">
-        <div className="mx-auto flex w-full max-w-screen-2xl flex-wrap items-center justify-end gap-2 px-3 sm:px-4 md:px-6 py-2">
-          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] tabular-nums ${
-            polling ? "border-emerald-300 text-emerald-700 dark:text-emerald-300" : "border-slate-300 text-slate-600 dark:text-slate-300"
-          }`}>
-            <span className={`inline-block h-2 w-2 rounded-full ${polling ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} aria-hidden />
-            LIVE
-          </span>
-          <span className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400" aria-live="polite">
-            Últ. act: {lastAgo}
-          </span>
-          {!online && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
-              ⚠️ Offline
-            </span>
-          )}
-          <button
-            onClick={() => setSoundOn((s) => !s)}
-            className={`rounded-md border px-3 py-2 text-sm shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-800 ${soundOn ? "border-emerald-400 text-emerald-700 dark:text-emerald-300" : ""}`}
-            title="Pitido al cambiar la orden actual"
-            aria-pressed={soundOn}
-          >
-            {soundOn ? "🔔 Sonido" : "🔕 Silencio"}
-          </button>
-          <button
-            onClick={() => setPolling((p) => !p)}
-            className="rounded-md border px-3 py-2 text-sm shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-800"
-            title="Activar/pausar auto-actualización"
-            aria-pressed={polling}
-          >
-            {polling ? "⏸️ Auto" : "▶️ Auto"}
-          </button>
-          <button
-            onClick={() => load(true)}
-            disabled={refreshing}
-            className="rounded-md border px-3 py-2 text-sm shadow-sm transition hover:bg-slate-50 disabled:opacity-60 dark:hover:bg-slate-800"
-            aria-busy={refreshing}
-            title="Refrescar"
-          >
-            {refreshing ? "⟳ Actualizando…" : "↻ Actualizar"}
-          </button>
-          <button
-            onClick={toggleFullscreen}
-            className="rounded-md border px-3 py-2 text-sm shadow-sm transition hover:bg-slate-50 dark:hover:bg-slate-800"
-            title="Pantalla completa (f)"
-            aria-pressed={isFs}
-          >
-            {isFs ? "⤢ Salir" : "⤢ Full"}
-          </button>
+      {/* TOOLBAR - Completamente responsive */}
+      <div className="sticky top-0 z-40 border-b border-slate-200/60 bg-white/90 backdrop-blur-md 
+                      dark:border-slate-800/60 dark:bg-neutral-950/90
+                      pt-[env(safe-area-inset-top)]">
+        <div className="mx-auto w-full max-w-screen-2xl">
+          <div className="flex flex-wrap items-center justify-between gap-2 p-3 
+                          sm:justify-end sm:gap-3 sm:px-4 
+                          md:px-6 md:py-2">
+            
+            {/* Left side - Status info */}
+            <div className="flex items-center gap-2 flex-1 min-w-[150px]">
+              <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs
+                                ${polling ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" 
+                                          : "border-slate-300 bg-slate-50 text-slate-600 dark:bg-slate-800/50 dark:text-slate-300"}`}>
+                <span className={`inline-block h-2 w-2 rounded-full ${polling ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} aria-hidden />
+                {polling ? "LIVE" : "PAUSED"}
+              </span>
+              
+              <span className="hidden xs:inline text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                Últ. act: {lastAgo}
+              </span>
+            </div>
+
+            {/* Right side - Controls */}
+            <div className="flex items-center gap-1 flex-wrap justify-end">
+              {!online && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
+                  ⚠️ Offline
+                </span>
+              )}
+
+              {/* Mobile first button sizing */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setSoundOn((s) => !s)}
+                  className={`rounded-lg border px-2.5 py-1.5 text-xs transition-all duration-200 flex items-center gap-1
+                             ${soundOn 
+                                ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" 
+                                : "border-slate-300 bg-white text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                             } hover:scale-105 active:scale-95`}
+                  title="Pitido al cambiar la orden actual"
+                  aria-pressed={soundOn}
+                >
+                  <span className="text-sm">{soundOn ? "🔔" : "🔕"}</span>
+                  <span className="hidden sm:inline">{soundOn ? "Sonido" : "Silencio"}</span>
+                </button>
+
+                <button
+                  onClick={() => setPolling((p) => !p)}
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs transition-all duration-200 
+                             hover:scale-105 active:scale-95 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300
+                             flex items-center gap-1"
+                  title="Activar/pausar auto-actualización"
+                  aria-pressed={polling}
+                >
+                  <span className="text-sm">{polling ? "⏸️" : "▶️"}</span>
+                  <span className="hidden sm:inline">Auto</span>
+                </button>
+
+                <button
+                  onClick={() => load(true)}
+                  disabled={refreshing}
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs transition-all duration-200 
+                             hover:scale-105 active:scale-95 disabled:opacity-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300
+                             flex items-center gap-1"
+                  aria-busy={refreshing}
+                  title="Refrescar"
+                >
+                  <span className="text-sm">{refreshing ? "⟳" : "↻"}</span>
+                  <span className="hidden sm:inline">{refreshing ? "Actualizando…" : "Actualizar"}</span>
+                </button>
+
+                <button
+                  onClick={toggleFullscreen}
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs transition-all duration-200 
+                             hover:scale-105 active:scale-95 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300
+                             flex items-center gap-1"
+                  title="Pantalla completa (f)"
+                  aria-pressed={isFs}
+                >
+                  <span className="text-sm">{isFs ? "⤢" : "⤢"}</span>
+                  <span className="hidden sm:inline">{isFs ? "Salir" : "Full"}</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* CONTENIDO */}
+      {/* CONTENIDO PRINCIPAL */}
       <section
-        className="
-          mx-auto w-full max-w-screen-2xl
-          px-3 sm:px-4 md:px-6 lg:px-8
-          py-3 sm:py-4 md:py-6 lg:py-8
-          pb-[env(safe-area-inset-bottom)]
-        "
+        className="mx-auto w-full max-w-screen-2xl
+                   px-3 sm:px-4 md:px-6 lg:px-8
+                   py-4 sm:py-6 md:py-8
+                   pb-[env(safe-area-inset-bottom)]"
         aria-busy={loading || refreshing}
       >
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* IZQUIERDA */}
-          <div className="lg:col-span-2 rounded-2xl p-6 bg-gradient-to-br from-white via-sky-50 to-white text-slate-800 shadow border border-slate-200
-                          dark:from-neutral-900 dark:via-neutral-900 dark:to-neutral-900 dark:text-slate-100 dark:border-slate-800">
-            <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="grid gap-4 md:gap-6 lg:gap-8 lg:grid-cols-3">
+          
+          {/* COLUMNA IZQUIERDA - ORDEN ACTUAL */}
+          <div className="lg:col-span-2 rounded-2xl p-4 sm:p-6 
+                          bg-gradient-to-br from-white via-sky-50 to-white text-slate-800 
+                          shadow-lg border border-slate-200
+                          dark:from-neutral-900 dark:via-neutral-800 dark:to-neutral-900 dark:text-slate-100 dark:border-slate-700">
+            
+            {/* Header */}
+            <div className="mb-4 flex flex-col xs:flex-row xs:items-center xs:justify-between gap-3">
               <div>
-                <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Tablero de Rondas</h1>
-                <div className="mt-1 text-[11px] tracking-widest font-medium text-slate-500 dark:text-slate-400">
-                  ORDEN ACTUAL • CURRENT MOVE
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight bg-gradient-to-r from-sky-600 to-emerald-600 bg-clip-text text-transparent">
+                  Tablero de Rondas
+                </h1>
+                <div className="mt-1 text-xs tracking-widest font-medium text-slate-500 dark:text-slate-400 uppercase">
+                  Orden Actual • Current Move
                 </div>
               </div>
+              
               <button
                 onClick={() => load(true)}
-                className="text-xs rounded-full px-3 py-2 border bg-white hover:bg-slate-50 transition dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-700"
+                className="text-xs rounded-full px-4 py-2 border bg-white hover:bg-slate-50 transition-all duration-200 
+                           dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-600
+                           hover:scale-105 active:scale-95 flex items-center gap-2"
                 disabled={refreshing}
                 aria-busy={refreshing}
                 title="Refrescar"
               >
-                {refreshing ? "⟳ Actualizando…" : "↻ Actualizar"}
+                <span>{refreshing ? "⟳" : "↻"}</span>
+                <span>{refreshing ? "Actualizando…" : "Actualizar"}</span>
               </button>
             </div>
 
+            {/* Contenido de la orden actual */}
             <motion.div
               key={current?.id ?? "empty"}
               initial={{ scale: prefersReduced ? 1 : 0.985, opacity: prefersReduced ? 1 : 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ type: "spring", stiffness: 260, damping: 26 }}
-              className="rounded-xl bg-white p-4 sm:p-6 border shadow-sm border-slate-200 dark:bg-slate-900 dark:border-slate-800 min-h-[180px]"
+              className="rounded-xl bg-white p-4 sm:p-6 border shadow-sm border-slate-200 
+                         dark:bg-slate-900 dark:border-slate-700 min-h-[200px]"
             >
               {loading && !current ? (
                 <SkeletonCurrent />
               ) : current ? (
                 <>
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div className="flex items-center gap-4">
+                  {/* Header con locomotora y código */}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                    <div className="flex items-center gap-3 sm:gap-4">
                       <motion.div
                         animate={prefersReduced ? {} : { scale: [1, 1.05, 1] }}
                         transition={prefersReduced ? {} : { repeat: Infinity, duration: 3 }}
-                        className="grid h-14 w-14 place-items-center rounded-full bg-sky-50 border border-slate-200 dark:bg-slate-800 dark:border-slate-700"
+                        className="grid h-12 w-12 sm:h-14 sm:w-14 place-items-center rounded-full 
+                                   bg-gradient-to-br from-sky-100 to-emerald-100 border border-slate-200 
+                                   dark:from-slate-800 dark:to-slate-700 dark:border-slate-600"
                       >
-                        <span className="text-2xl">🚆</span>
+                        <span className="text-xl sm:text-2xl">🚆</span>
                       </motion.div>
                       <div>
-                        <div className="text-[11px] uppercase tracking-widest text-slate-500 dark:text-slate-400">Locomotora</div>
-                        <div className="text-lg font-semibold">{locoText}</div>
-                        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{curInfo?.empresa?.nombre ?? "—"}</div>
+                        <div className="text-xs uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                          Locomotora
+                        </div>
+                        <div className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                          {locoText}
+                        </div>
+                        <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                          {curInfo?.empresa?.nombre ?? "—"}
+                        </div>
                       </div>
                     </div>
+                    
                     <div className="text-right">
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400">Código</div>
-                      <div
-                        className="font-black tracking-widest bg-gradient-to-r from-sky-600 to-emerald-600 bg-clip-text text-transparent"
-                        style={{ fontSize: "clamp(28px,8vw,72px)" }}
-                      >
+                      <div className="text-xs text-slate-500 dark:text-slate-400">Código</div>
+                      <div className="font-black tracking-widest bg-gradient-to-r from-sky-600 to-emerald-600 bg-clip-text text-transparent
+                                     text-3xl xs:text-4xl sm:text-5xl md:text-6xl lg:text-7xl">
                         {codeFrom(curInfo, current.id)}
                       </div>
                     </div>
                   </div>
 
-                  {/* Origen/Destino + chips */}
-                  <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {viaO && !viaD && (
-                      <>
-                        <CardStat label="Vía origen" value={viaO} icon="↖️" />
-                        <div className="md:col-span-2 flex items-center gap-3 justify-end">
-                          <Chip ok={!!curMov?.lavado} icon="💧">Lavado</Chip>
-                          <Chip ok={!!curMov?.torno} icon="⚙️">Torno</Chip>
-                        </div>
-                      </>
-                    )}
-                    {viaD && !viaO && (
-                      <>
-                        <CardStat label="Vía destino" value={viaD} icon="↘️" />
-                        <div className="md:col-span-2 flex items-center gap-3 justify-end">
-                          <Chip ok={!!curMov?.lavado} icon="💧">Lavado</Chip>
-                          <Chip ok={!!curMov?.torno} icon="⚙️">Torno</Chip>
-                        </div>
-                      </>
-                    )}
-                    {(!viaO && !viaD) && (
-                      <>
-                        <CardStat label="Vía origen" value="—" icon="↖️" />
-                        <CardStat label="Vía destino" value="—" icon="↘️" />
-                        <div className="flex items-center gap-3 justify-end">
-                          <Chip ok={!!curMov?.lavado} icon="💧">Lavado</Chip>
-                          <Chip ok={!!curMov?.torno} icon="⚙️">Torno</Chip>
-                        </div>
-                      </>
-                    )}
-                    {(viaO && viaD) && (
-                      <>
-                        <CardStat label="Vía origen" value={viaO} icon="↖️" />
-                        <CardStat label="Vía destino" value={viaD} icon="↘️" />
-                        <div className="flex items-center gap-3 justify-end">
-                          <Chip ok={!!curMov?.lavado} icon="💧">Lavado</Chip>
-                          <Chip ok={!!curMov?.torno} icon="⚙️">Torno</Chip>
-                        </div>
-                      </>
-                    )}
+                  {/* Grid de información principal */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                    {/* Vía Origen */}
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 
+                                    dark:border-slate-700 dark:bg-slate-800/50">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                        <span>↖️</span> Vía Origen
+                      </div>
+                      <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
+                        {viaO || "—"}
+                      </div>
+                    </div>
+
+                    {/* Vía Destino */}
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 
+                                    dark:border-slate-700 dark:bg-slate-800/50">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                        <span>↘️</span> Vía Destino
+                      </div>
+                      <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
+                        {viaD || "—"}
+                      </div>
+                    </div>
+
+                    {/* Servicios */}
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 
+                                    dark:border-slate-700 dark:bg-slate-800/50">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                        <span>⚙️</span> Servicios
+                      </div>
+                      <div className="flex gap-2">
+                        <Chip ok={!!curMov?.lavado} icon="💧">Lavado</Chip>
+                        <Chip ok={!!curMov?.torno} icon="⚙️">Torno</Chip>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Estado, Prioridad, Orden, Ronda */}
-                  <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <CardStat label="Estado" value={curMov?.estado ?? "—"} icon="📌" />
-                    <CardStat label="Prioridad" value={curMov?.prioridad ?? "—"} icon="⚑" />
-                    <CardStat label="Orden" value={String(current?.orden ?? "—")} icon="№" />
-                    <CardStat label="Ronda" value={String(current?.rondaNumero ?? "—")} icon="🔁" />
+                  {/* Información secundaria */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
+                    <InfoBadge label="Estado" value={curMov?.estado ?? "—"} icon="📌" />
+                    <InfoBadge label="Prioridad" value={curMov?.prioridad ?? "—"} icon="⚑" />
+                    <InfoBadge label="Orden" value={String(current?.orden ?? "—")} icon="№" />
+                    <InfoBadge label="Ronda" value={String(current?.rondaNumero ?? "—")} icon="🔁" />
                   </div>
 
-                  {/* instrucción */}
+                  {/* Instrucción */}
                   <motion.div
                     initial={{ x: prefersReduced ? 0 : -8, opacity: prefersReduced ? 1 : 0 }}
                     animate={{ x: 0, opacity: 1 }}
                     transition={{ delay: prefersReduced ? 0 : 0.1 }}
-                    className="mt-6 rounded-lg bg-gradient-to-r from-sky-100 to-emerald-100 text-slate-900 p-4 border border-slate-200 dark:from-slate-800 dark:to-slate-800 dark:text-slate-100 dark:border-slate-700"
+                    className="rounded-xl bg-gradient-to-r from-sky-100 to-emerald-100 text-slate-900 
+                               p-4 border border-slate-200 dark:from-slate-800 dark:to-slate-700 
+                               dark:text-slate-100 dark:border-slate-600"
                   >
-                    <p className="text-sm">
+                    <p className="text-sm font-medium">
                       {hasAny ? (
-                        <>Mover locomotora <b>{locoText}</b> desde <b>{desdeLbl || "—"}</b> hacia <b>{viaD || "—"}</b>.</>
+                        <>Mover locomotora <b className="text-sky-700 dark:text-sky-300">{locoText}</b> desde <b className="text-emerald-700 dark:text-emerald-300">{desdeLbl || "—"}</b> hacia <b className="text-emerald-700 dark:text-emerald-300">{viaD || "—"}</b>.</>
                       ) : (
-                        <>Mover locomotora <b>{locoText}</b> entre <b>—</b> y <b>—</b>.</>
+                        <>Mover locomotora <b className="text-sky-700 dark:text-sky-300">{locoText}</b> entre <b>—</b> y <b>—</b>.</>
                       )}
                     </p>
                   </motion.div>
                 </>
               ) : (
-                <div className="py-14 text-center">
-                  <div className="mb-3 text-5xl">🗂️</div>
-                  <div className="text-base font-semibold text-slate-700 dark:text-slate-300">Sin movimientos pendientes</div>
+                <div className="py-12 text-center">
+                  <div className="mb-4 text-5xl">🗂️</div>
+                  <div className="text-lg font-semibold text-slate-700 dark:text-slate-300">
+                    Sin movimientos pendientes
+                  </div>
+                  <div className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+                    No hay órdenes en la cola actualmente
+                  </div>
                 </div>
               )}
             </motion.div>
           </div>
 
-          {/* DERECHA */}
-          <aside className="rounded-2xl bg-white text-slate-900 shadow border border-slate-200 p-4 sm:p-5 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-800">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="flex items-center gap-2 font-semibold">
-                <span>📋</span> Próximas órdenes
+          {/* COLUMNA DERECHA - PRÓXIMAS ÓRDENES */}
+          <aside className="rounded-2xl bg-white text-slate-900 shadow-lg border border-slate-200 
+                            p-4 sm:p-6 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-700
+                            h-fit max-h-[calc(100vh-200px)] overflow-y-auto">
+            
+            {/* Header del aside */}
+            <div className="mb-4 flex items-center justify-between sticky top-0 bg-white dark:bg-slate-900 pb-2">
+              <h3 className="flex items-center gap-2 font-bold text-lg">
+                <span className="text-xl">📋</span> Próximas Órdenes
               </h3>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                {next.length} de {nextCount}
+              <span className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs 
+                               text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                {next.length}/{nextCount}
               </span>
             </div>
 
+            {/* Lista de próximas órdenes */}
             <div className="space-y-3">
               <AnimatePresence initial={false}>
                 {loading && next.length === 0 ? (
@@ -553,84 +625,75 @@ export default function RailQueueBoard({
                         animate={{ y: 0, opacity: 1 }}
                         exit={{ y: prefersReduced ? 0 : -14, opacity: prefersReduced ? 1 : 0 }}
                         transition={{ duration: prefersReduced ? 0 : 0.25, delay: prefersReduced ? 0 : index * 0.04 }}
-                        className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 transition hover:bg-white dark:border-slate-800 dark:bg-slate-800/60 dark:hover:bg-slate-800"
+                        className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 transition-all duration-200 
+                                   hover:bg-white hover:shadow-md hover:border-slate-300
+                                   dark:border-slate-700 dark:bg-slate-800/60 dark:hover:bg-slate-800"
                       >
-                        <div className="flex items-center gap-3">
-                          <div className="grid h-10 w-10 place-items-center rounded-full border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
+                        {/* Header de la tarjeta */}
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="grid h-10 w-10 place-items-center rounded-full 
+                                         border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
                             <span className="text-lg">🚆</span>
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="text-[11px] text-slate-500 dark:text-slate-400">Código</div>
-                            <div className="truncate font-semibold tracking-wide">{codeFrom(inf, n.id)}</div>
-                            <div className="truncate text-[11px] text-slate-500 dark:text-slate-400">{inf?.empresa?.nombre ?? "—"}</div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">Código</div>
+                            <div className="truncate font-bold tracking-wide text-slate-900 dark:text-slate-100">
+                              {codeFrom(inf, n.id)}
+                            </div>
+                            <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+                              {inf?.empresa?.nombre ?? "—"}
+                            </div>
                           </div>
-                          <div className="whitespace-nowrap text-[11px] text-slate-500 dark:text-slate-400">
+                          <div className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
                             Ronda #{n.rondaNumero}
                           </div>
                         </div>
-                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                          {mv?.viaOrigen?.nombre && !mv?.viaDestino?.nombre && (
-                            <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
-                              <div className="text-slate-500 dark:text-slate-400">Origen</div>
-                              <div className="truncate font-medium">{mv.viaOrigen.nombre}</div>
+
+                        {/* Vías */}
+                        <div className="grid grid-cols-2 gap-2 mb-3">
+                          <div className="rounded-lg border border-slate-200 bg-white p-2 
+                                         dark:border-slate-700 dark:bg-slate-900">
+                            <div className="text-xs text-slate-500 dark:text-slate-400">Origen</div>
+                            <div className="truncate text-sm font-medium">
+                              {mv?.viaOrigen?.nombre || "—"}
                             </div>
-                          )}
-                          {mv?.viaDestino?.nombre && !mv?.viaOrigen?.nombre && (
-                            <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
-                              <div className="text-slate-500 dark:text-slate-400">Destino</div>
-                              <div className="truncate font-medium">{mv.viaDestino.nombre}</div>
-                            </div>
-                          )}
-                          {mv?.viaOrigen?.nombre && mv?.viaDestino?.nombre && (
-                            <>
-                              <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
-                                <div className="text-slate-500 dark:text-slate-400">Origen</div>
-                                <div className="truncate font-medium">{mv.viaOrigen.nombre}</div>
-                              </div>
-                              <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
-                                <div className="text-slate-500 dark:text-slate-400">Destino</div>
-                                <div className="truncate font-medium">{mv.viaDestino.nombre}</div>
-                              </div>
-                            </>
-                          )}
-                          {!mv?.viaOrigen?.nombre && !mv?.viaDestino?.nombre && (
-                            <>
-                              <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
-                                <div className="text-slate-500 dark:text-slate-400">Origen</div>
-                                <div className="truncate font-medium">—</div>
-                              </div>
-                              <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
-                                <div className="text-slate-500 dark:text-slate-400">Destino</div>
-                                <div className="truncate font-medium">—</div>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                        <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
-                          <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
-                            <div className="text-slate-500 dark:text-slate-400">Estado</div>
-                            <div className="font-medium">{mv?.estado ?? "—"}</div>
                           </div>
-                          <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
-                            <div className="text-slate-500 dark:text-slate-400">Prioridad</div>
-                            <div className="font-medium">{mv?.prioridad ?? "—"}</div>
+                          <div className="rounded-lg border border-slate-200 bg-white p-2 
+                                         dark:border-slate-700 dark:bg-slate-900">
+                            <div className="text-xs text-slate-500 dark:text-slate-400">Destino</div>
+                            <div className="truncate text-sm font-medium">
+                              {mv?.viaDestino?.nombre || "—"}
+                            </div>
                           </div>
                         </div>
-                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                          <div className="text-[11px] text-slate-500 dark:text-slate-400">Loco: <span className="font-medium text-slate-700 dark:text-slate-200">{loco}</span></div>
-                          <div className="flex gap-2">
-                            <span className={`${mv?.lavado
-                                ? "rounded-full border px-2 py-1 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
-                                : "rounded-full border px-2 py-1 border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+
+                        {/* Estado y Prioridad */}
+                        <div className="grid grid-cols-2 gap-2 mb-3">
+                          <div className="rounded-lg border border-slate-300 bg-white p-2 
+                                         dark:border-slate-600 dark:bg-slate-900">
+                            <div className="text-xs text-slate-500 dark:text-slate-400">Estado</div>
+                            <div className="text-sm font-medium">{mv?.estado || "—"}</div>
+                          </div>
+                          <div className="rounded-lg border border-slate-200 bg-white p-2 
+                                         dark:border-slate-700 dark:bg-slate-900">
+                            <div className="text-xs text-slate-500 dark:text-slate-400">Prioridad</div>
+                            <div className={`text-sm font-medium ${
+                              mv?.prioridad === 'ALTA' ? 'text-red-600 dark:text-red-400' : 
+                              mv?.prioridad === 'BAJA' ? 'text-green-600 dark:text-green-400' : ''
                             }`}>
-                              💧 Lavado
-                            </span>
-                            <span className={`${mv?.torno
-                                ? "rounded-full border px-2 py-1 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
-                                : "rounded-full border px-2 py-1 border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                            }`}>
-                              ⚙️ Torno
-                            </span>
+                              {mv?.prioridad || "—"}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-xs text-slate-500 dark:text-slate-400">
+                            Loco: <span className="font-medium text-slate-700 dark:text-slate-200">{loco}</span>
+                          </div>
+                          <div className="flex gap-1">
+                            <ServiceChip active={!!mv?.lavado} icon="💧" text="Lavado" />
+                            <ServiceChip active={!!mv?.torno} icon="⚙️" text="Torno" />
                           </div>
                         </div>
                       </motion.div>
@@ -638,7 +701,12 @@ export default function RailQueueBoard({
                   })
                 )}
                 {!loading && next.length === 0 && (
-                  <motion.div initial={{ opacity: prefersReduced ? 1 : 0 }} animate={{ opacity: 1 }} className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                  <motion.div 
+                    initial={{ opacity: prefersReduced ? 1 : 0 }} 
+                    animate={{ opacity: 1 }} 
+                    className="py-8 text-center text-sm text-slate-500 dark:text-slate-400"
+                  >
+                    <div className="text-3xl mb-2">📭</div>
                     Sin movimientos pendientes
                   </motion.div>
                 )}
@@ -648,7 +716,7 @@ export default function RailQueueBoard({
         </div>
       </section>
 
-      {/* audio */}
+      {/* Audio para notificaciones */}
       <audio ref={bellRef} preload="auto" aria-hidden="true">
         <source src="/sounds/notification.mp3" type="audio/mp3" />
       </audio>
@@ -656,21 +724,26 @@ export default function RailQueueBoard({
   );
 }
 
-/* ===== Subcomponentes ===== */
-function CardStat({ label, value, icon }: { label: string; value: string; icon: string }) {
+/* ===== Subcomponentes Mejorados ===== */
+function InfoBadge({ label, value, icon }: { label: string; value: string; icon: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex items-center gap-1 text-[11px] uppercase tracking-widest text-slate-500 dark:text-slate-400">
+    <div className="rounded-lg border border-slate-200 bg-white p-2 text-center
+                    dark:border-slate-700 dark:bg-slate-900">
+      <div className="flex items-center justify-center gap-1 text-[10px] uppercase tracking-wider 
+                      text-slate-500 dark:text-slate-400">
         {icon} {label}
       </div>
-      <div className="mt-1 text-base font-semibold text-slate-900 dark:text-slate-100">{value}</div>
+      <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
+        {value}
+      </div>
     </div>
   );
 }
+
 function Chip({ ok, icon, children }: { ok: boolean; icon: string; children: React.ReactNode }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border ${
+      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border transition-all duration-200 ${
         ok
           ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
           : "border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
@@ -680,39 +753,72 @@ function Chip({ ok, icon, children }: { ok: boolean; icon: string; children: Rea
     </span>
   );
 }
+
+function ServiceChip({ active, icon, text }: { active: boolean; icon: string; text: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] border ${
+      active
+        ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
+        : "border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+    }`}>
+      {icon} {text}
+    </span>
+  );
+}
+
 function SkeletonCurrent() {
   return (
-    <div className="animate-pulse">
-      <div className="flex items-center justify-between gap-4">
+    <div className="animate-pulse space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="h-14 w-14 rounded-full bg-slate-200 dark:bg-slate-800" />
-          <div>
+          <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-full bg-slate-200 dark:bg-slate-800" />
+          <div className="space-y-2">
+            <div className="h-3 w-20 rounded bg-slate-200 dark:bg-slate-800" />
+            <div className="h-4 w-32 rounded bg-slate-200 dark:bg-slate-800" />
             <div className="h-3 w-24 rounded bg-slate-200 dark:bg-slate-800" />
-            <div className="mt-2 h-4 w-40 rounded bg-slate-200 dark:bg-slate-800" />
-            <div className="mt-2 h-3 w-28 rounded bg-slate-200 dark:bg-slate-800" />
           </div>
         </div>
-        <div className="h-10 w-36 rounded bg-slate-200 dark:bg-slate-800" />
+        <div className="h-8 sm:h-12 w-full sm:w-32 rounded bg-slate-200 dark:bg-slate-800" />
       </div>
-      <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-16 rounded-lg bg-slate-200 dark:bg-slate-800" />
+          <div key={i} className="h-16 rounded-xl bg-slate-200 dark:bg-slate-800" />
         ))}
       </div>
-      <div className="mt-6 h-14 rounded bg-slate-200 dark:bg-slate-800" />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="h-12 rounded-lg bg-slate-200 dark:bg-slate-800" />
+        ))}
+      </div>
+      <div className="h-16 rounded-xl bg-slate-200 dark:bg-slate-800" />
     </div>
   );
 }
+
 function SkeletonNext() {
   return (
     <div className="animate-pulse rounded-lg border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-800/60">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 mb-3">
         <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-700" />
-        <div className="h-4 w-40 rounded bg-slate-200 dark:bg-slate-700" />
+        <div className="flex-1 space-y-2">
+          <div className="h-3 w-3/4 rounded bg-slate-200 dark:bg-slate-700" />
+          <div className="h-2 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
+        </div>
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2 mb-3">
         <div className="h-10 rounded bg-slate-200 dark:bg-slate-700" />
         <div className="h-10 rounded bg-slate-200 dark:bg-slate-700" />
+      </div>
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="h-8 rounded bg-slate-200 dark:bg-slate-700" />
+        <div className="h-8 rounded bg-slate-200 dark:bg-slate-700" />
+      </div>
+      <div className="flex justify-between">
+        <div className="h-4 w-20 rounded bg-slate-200 dark:bg-slate-700" />
+        <div className="flex gap-1">
+          <div className="h-6 w-12 rounded-full bg-slate-200 dark:bg-slate-700" />
+          <div className="h-6 w-12 rounded-full bg-slate-200 dark:bg-slate-700" />
+        </div>
       </div>
     </div>
   );

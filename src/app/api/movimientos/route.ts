@@ -1,20 +1,26 @@
+import "server-only";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 const API_URL = process.env.API_URL!;
-const JWT_COOKIE_NAME = process.env.JWT_COOKIE_NAME || "token";
+const JWT_COOKIE_NAME = process.env.JWT_COOKIE_NAME ?? "token";
 
 export async function POST(req: Request) {
   try {
-    const token = cookies().get(JWT_COOKIE_NAME)?.value;
+    const c = await cookies(); // solo lectura en Next 15
+    const token = c.get(JWT_COOKIE_NAME)?.value;
     if (!token) {
       return NextResponse.json({ message: "No autenticado" }, { status: 401 });
     }
 
-    const payload = await req.json();
+    const payload: unknown = await req.json().catch(() => null);
+    if (payload == null) {
+      return NextResponse.json({ message: "Payload inválido" }, { status: 400 });
+    }
 
     const r = await fetch(`${API_URL}/movimientos`, {
       method: "POST",
+      cache: "no-store",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
@@ -24,15 +30,11 @@ export async function POST(req: Request) {
     });
 
     const text = await r.text();
-    let data: any = null;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = { message: text };
-    }
+    const isJSON = (r.headers.get("content-type") || "").includes("application/json");
+    const data: unknown = text ? (isJSON ? JSON.parse(text) : { message: text }) : null;
 
     return NextResponse.json(data ?? {}, { status: r.status });
-  } catch (e: any) {
+  } catch {
     return NextResponse.json(
       { message: "Fallo al contactar el API externo" },
       { status: 502 }
