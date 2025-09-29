@@ -140,6 +140,22 @@ export async function getRoleServer(): Promise<Role | null> {
   return v === "ADMINISTRADOR" || v === "COORDINADOR" || v === "CLIENTE" ? (v as Role) : null;
 }
 
+
+export function getEmpresaIdClient(): number | null {
+  const v = getClientCookie("empresaId") ?? localStorage.getItem("empresaId");
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+export async function getEmpresaIdServer(): Promise<number | null> {
+  const v = await getServerCookie("empresaId");
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+export function setEmpresaIdClient(id: number): void {
+  if (!Number.isFinite(id) || id <= 0) return;
+  setClientCookie("empresaId", String(id), { path: "/", sameSite: "lax", maxAge: 60 * 60 * 24 * 365 });
+}
+
 /* ============================
  * Utilidades internas
  * ============================ */

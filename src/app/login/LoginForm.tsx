@@ -95,6 +95,11 @@ export default function LoginForm() {
       // Cookie de apoyo no-httpOnly para poder leer el id en el cliente si hace falta
       document.cookie = `userId=${encodeURIComponent(String(uid))}; path=/; max-age=31536000; samesite=lax`;
 
+      // Guardar empresaId en cookies también
+      if (Number.isFinite(empresaId) && empresaId > 0) {
+        document.cookie = `empresaId=${encodeURIComponent(String(empresaId))}; path=/; max-age=31536000; samesite=lax`;
+      }
+
       // 3) Persistir locId (si viene en URL) y user completo en localStorage
       const urlLoc = new URLSearchParams(location.search).get("loc");
       const storedLoc = localStorage.getItem("locId");

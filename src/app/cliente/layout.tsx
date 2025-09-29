@@ -6,7 +6,7 @@ import SidebarMenu, { Rol } from "@/app/Components/Menu/Menu";
 import { MapPin, RefreshCw, Shield } from "lucide-react";
 import ThemeToggle from "@/app/Components/ui/ThemeToggle";
 import { IncidentMonitor } from "@/app/Components/IncidentModal";
-import { getClientCookie } from "@/lib/cookies";
+import { getClientCookie, getEmpresaIdClient } from "@/lib/cookies";
 
 export default function ClienteLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -28,9 +28,9 @@ export default function ClienteLayout({ children }: { children: React.ReactNode 
       (typeof window !== "undefined" ? localStorage.getItem("locId") ?? "-" : "-");
     setLoc(locId);
 
-    // Si tienes empresaId en cookies/localStorage, setéalo aquí
-    const empId = Number(getClientCookie("empresaId") ?? localStorage.getItem("empresaId"));
-    setEmpresaId(Number.isFinite(empId) && empId > 0 ? empId : null);
+    // Obtener empresaId del usuario logueado
+    const empId = getEmpresaIdClient();
+    setEmpresaId(empId);
   }, [pathname]);
 
   return (
