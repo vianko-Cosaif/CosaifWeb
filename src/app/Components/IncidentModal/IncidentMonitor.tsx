@@ -5,7 +5,37 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useIncidentMonitor, type IncidenteEmergente } from "@/app/hooks/useIncidentMonitor";
 import IncidentModal from "./IncidentModal";
 
-/* ================= Tipos ================= */
+/* ========== Helpers cookies/auth ========== */
+const getCookie = (name: string) => {
+  if (typeof document === "undefined") return null;
+  const m = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  return m ? decodeURIComponent(m[1]) : null;
+};
+
+const getAuthHeaders = (): HeadersInit => {
+  const token = getCookie("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+/** empresaId tolerante a typos comunes en cookie */
+const getEmpresaIdFromCookie = (): number | null => {
+  const raw = getCookie("empresaId") ?? getCookie("empresald") ?? getCookie("empresaID");
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+};
+
+/** intenta leer empresaId del incidente en distintas formas */
+const getIncidentEmpresaId = (inc: any): number | null =>
+  Number(
+    inc?.empresaId ??
+      inc?.empresa?.id ??
+      inc?.movimiento?.empresa?.id ??
+      inc?._original?.empresaId ??
+      inc?._original?.movimiento?.empresa?.id ??
+      NaN
+  ) || null;
+
+/* ========== Tipos ========== */
 interface IncidentMonitorProps {
   apiBase?: string;
   intervalMs?: number;
@@ -15,28 +45,27 @@ interface IncidentMonitorProps {
   onIncidentResolved?: (incident: IncidenteEmergente) => void;
   onIncidentSkipped?: (incident: IncidenteEmergente) => void;
   onIncidentContinued?: (incident: IncidenteEmergente) => void;
-
-  /** Ancho máximo para considerar “móvil” */
   mobileMaxWidth?: number;
 }
 
-/* ================= Componente Principal ================= */
+/* ========== Componente ========== */
 export default function IncidentMonitor({
   apiBase = "/bff",
-  intervalMs = 60000, // 1 minuto
+  intervalMs = 120000, // 2 minutos
   enabled = true,
-  empresaId = null,
+  empresaId: empresaIdProp = null,
   localidadId = null,
   onIncidentResolved,
   onIncidentSkipped,
   onIncidentContinued,
   mobileMaxWidth = 768,
 }: IncidentMonitorProps) {
+  const empresaId = empresaIdProp ?? getEmpresaIdFromCookie();
+
   const [currentIncident, setCurrentIncident] = useState<IncidenteEmergente | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [processedIncidents, setProcessedIncidents] = useState<Set<number>>(new Set());
 
-  // ====== Responsive mínimo ======
   const [isMobile, setIsMobile] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
 
@@ -58,50 +87,46 @@ export default function IncidentMonitor({
     return () => window.removeEventListener("keydown", onKey);
   }, [isSheetOpen]);
 
-  // ====== Lógica existente (sin cambios) ======
+  /* ---- Nuevo: validar empresa antes de abrir modal ---- */
   const handleNewIncident = useCallback(
     (incident: IncidenteEmergente) => {
+      const userEmp = empresaId ?? getEmpresaIdFromCookie();
+      const incEmp = getIncidentEmpresaId(incident);
+
+      if (userEmp && incEmp && userEmp !== incEmp) {
+        setProcessedIncidents((prev) => new Set(prev).add(incident.id)); // marcar y no mostrar
+        return;
+      }
       if (!processedIncidents.has(incident.id)) {
         setCurrentIncident(incident);
         setIsModalOpen(true);
       }
     },
-    [processedIncidents]
+    [processedIncidents, empresaId]
   );
 
-  const {
-    isMonitoring,
-    lastCheck,
-    error,
-    activeIncidents,
-    hasNewIncidents,
-  } = useIncidentMonitor({
+  const { isMonitoring, lastCheck, error, activeIncidents } = useIncidentMonitor({
     apiBase,
     intervalMs,
     enabled,
-    empresaId,
+    empresaId,        // ya filtra por empresa en el polling
     localidadId,
     onIncidentDetected: handleNewIncident,
   });
 
   const activeCount = Array.isArray(activeIncidents) ? activeIncidents.length : 0;
 
-
   const handleResolve = useCallback(
     async (incident: IncidenteEmergente, comments?: string) => {
       try {
         const response = await fetch(`${apiBase}/incidentes/${incident.id}/resuelto`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...getAuthHeaders(),
-          },
+          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
           credentials: "include",
           body: JSON.stringify({ estado: "RESUELTO", comentario: comments }),
         });
         if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
-
-        setProcessedIncidents((prev) => new Set([...prev, incident.id]));
+        setProcessedIncidents((prev) => new Set(prev).add(incident.id));
         setIsModalOpen(false);
         setCurrentIncident(null);
         onIncidentResolved?.(incident);
@@ -122,8 +147,7 @@ export default function IncidentMonitor({
           credentials: "include",
         });
         if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
-
-        setProcessedIncidents((prev) => new Set([...prev, incident.id]));
+        setProcessedIncidents((prev) => new Set(prev).add(incident.id));
         setIsModalOpen(false);
         setCurrentIncident(null);
         onIncidentSkipped?.(incident);
@@ -137,7 +161,7 @@ export default function IncidentMonitor({
 
   const handleContinue = useCallback(
     (incident: IncidenteEmergente) => {
-      setProcessedIncidents((prev) => new Set([...prev, incident.id]));
+      setProcessedIncidents((prev) => new Set(prev).add(incident.id));
       setIsModalOpen(false);
       setCurrentIncident(null);
       onIncidentContinued?.(incident);
@@ -150,33 +174,12 @@ export default function IncidentMonitor({
     setCurrentIncident(null);
   }, []);
 
-  const getAuthHeaders = useCallback((): HeadersInit => {
-    if (typeof document === "undefined") return {};
-    const match = document.cookie.match(/(?:^|;\s*)token=([^;]+)/);
-    return match ? { Authorization: `Bearer ${decodeURIComponent(match[1])}` } : {};
-  }, []);
-
   useEffect(() => {
     setProcessedIncidents(new Set());
   }, [empresaId, localidadId]);
 
-  if (process.env.NODE_ENV === "development") {
-    console.log("IncidentMonitor:", {
-      isMonitoring,
-      lastCheck,
-      error,
-      activeIncidents: activeIncidents.length,
-      hasNewIncidents,
-      currentIncident: currentIncident?.id,
-      isModalOpen,
-      isMobile,
-      isSheetOpen,
-    });
-  }
-
   return (
     <>
-      {/* Modal de incidente (igual que antes) */}
       {currentIncident && (
         <IncidentModal
           incident={currentIncident}
@@ -188,7 +191,6 @@ export default function IncidentMonitor({
         />
       )}
 
-      {/* Desktop */}
       {!isMobile && (
         <div className="fixed bottom-4 right-4 z-[1040] rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white p-3 text-xs max-w-xs border border-slate-200 dark:border-slate-700 shadow-lg">
           <div className="space-y-2">
@@ -204,28 +206,19 @@ export default function IncidentMonitor({
         </div>
       )}
 
-      {/* ====== MÓVIL: FAB + Bottom Sheet minimal ====== */}
       {isMobile && (
         <>
-          {/* FAB */}
           <button
             type="button"
-            aria-label={
-              isSheetOpen
-                ? "Ocultar monitor de incidentes"
-                : `Mostrar monitor de incidentes${activeCount > 0 ? ` (${activeCount} activos)` : ""}`
-            }
+            aria-label={isSheetOpen ? "Ocultar monitor de incidentes" : `Mostrar monitor de incidentes${activeCount > 0 ? ` (${activeCount} activos)` : ""}`}
             aria-expanded={isSheetOpen}
             aria-controls="incident-monitor-sheet"
             onClick={() => setIsSheetOpen((v) => !v)}
             className={`fixed right-4 bottom-4 z-[1030] grid place-items-center w-14 h-14 rounded-full bg-white dark:bg-slate-900 shadow-[0_8px_24px_rgba(0,0,0,0.18)] border border-slate-200 dark:border-slate-700 transition-transform ${isSheetOpen ? "scale-95" : "scale-100"}`}
           >
-            {/* Icono campana */}
             <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm6-6v-5a6 6 0 1 0-12 0v5l-2 2v1h16v-1l-2-2Z" fill="currentColor" />
             </svg>
-
-            {/* Badge numérico rojo */}
             {activeCount > 0 && (
               <span
                 aria-label={`${activeCount} incidentes activos`}
@@ -236,14 +229,8 @@ export default function IncidentMonitor({
             )}
           </button>
 
-
-          {/* Backdrop + Sheet */}
           {isSheetOpen && (
-            <div
-              className="fixed inset-0 z-[1035] bg-black/40 backdrop-blur-[2px]"
-              role="presentation"
-              onClick={() => setIsSheetOpen(false)}
-            >
+            <div className="fixed inset-0 z-[1035] bg-black/40 backdrop-blur-[2px]" role="presentation" onClick={() => setIsSheetOpen(false)}>
               <section
                 id="incident-monitor-sheet"
                 role="dialog"
@@ -252,7 +239,6 @@ export default function IncidentMonitor({
                 className="fixed bottom-0 inset-x-0 z-[1040] bg-white dark:bg-slate-900 rounded-t-2xl shadow-[0_-12px_32px_rgba(0,0,0,0.35)] max-h-[80vh] flex flex-col"
                 onClick={(e) => e.stopPropagation()}
               >
-                {/* Header */}
                 <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-200 dark:border-slate-800">
                   <div className="flex items-center gap-2">
                     <span className="text-lg">Monitor de Incidentes</span>
@@ -262,17 +248,11 @@ export default function IncidentMonitor({
                       </span>
                     ) : null}
                   </div>
-                  <button
-                    type="button"
-                    className="px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800"
-                    aria-label="Cerrar monitor de incidentes"
-                    onClick={() => setIsSheetOpen(false)}
-                  >
+                  <button type="button" className="px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Cerrar monitor de incidentes" onClick={() => setIsSheetOpen(false)}>
                     ✕
                   </button>
                 </div>
 
-                {/* Body (información básica) */}
                 <div className="px-4 py-3 overflow-auto text-sm text-slate-700 dark:text-slate-200">
                   <div className="space-y-1">
                     <div><span className="font-medium">Última verificación:</span> {lastCheck?.toLocaleTimeString() || "Nunca"}</div>
@@ -282,34 +262,25 @@ export default function IncidentMonitor({
 
                   {activeIncidents.length > 0 && (
                     <div className="mt-3 border-t border-slate-200 dark:border-slate-800 pt-3">
-                      <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">
-                        Incidentes activos
-                      </div>
+                      <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">Incidentes activos</div>
                       <ul className="space-y-2">
                         {activeIncidents.map((it: any) => (
                           <li key={it.id ?? Math.random()} className="p-2 rounded-lg border border-slate-200 dark:border-slate-800">
                             <div className="font-medium">#{it.id ?? "—"} {it.titulo ?? it.nombre ?? it.tipo ?? ""}</div>
-                            {it.descripcion && (
-                              <div className="text-slate-600 dark:text-slate-400 text-xs mt-0.5 line-clamp-2">
-                                {it.descripcion}
-                              </div>
-                            )}
+                            {it.descripcion && <div className="text-slate-600 dark:text-slate-400 text-xs mt-0.5 line-clamp-2">{it.descripcion}</div>}
                           </li>
                         ))}
                       </ul>
                     </div>
                   )}
 
-                  <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                    El monitor se mantiene en segundo plano. Si ocurre un incidente, se abrirá el modal automáticamente.
-                  </p>
+                  <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">El monitor permanece en segundo plano. Solo abrirá el modal si el incidente pertenece a tu empresa.</p>
                 </div>
               </section>
             </div>
           )}
         </>
       )}
-      {/* ====== FIN MÓVIL ====== */}
     </>
   );
 }

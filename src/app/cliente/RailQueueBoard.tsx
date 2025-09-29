@@ -121,9 +121,10 @@ function timeAgo(ts?: number | null) {
 }
 
 /* ===== Componente ===== */
-export default function RailQueueBoard({
+export default function RailQueueBoard(
+  {
   localidadId,
-  autoMs = 20_000,
+  autoMs = 120_000,
   nextCount = 5,
 }: { localidadId: number; autoMs?: number; nextCount?: number }) {
   const prefersReduced = useReducedMotion();
@@ -149,7 +150,7 @@ export default function RailQueueBoard({
   const firstLoad = useRef(true);
   const lastOkAt = useRef<number | null>(null);
 
-  const reqSeq = useRef(0);
+  const reqSeq = useRef(120);
   const abortRef = useRef<AbortController | null>(null);
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -163,7 +164,11 @@ export default function RailQueueBoard({
     const ac = new AbortController();
     abortRef.current = ac;
 
-    showRefreshing ? setRefreshing(true) : setLoading(true);
+    if (showRefreshing) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
 
     try {
       const url = `/api/cliente/rondas?localidadId=${localidadId}`;
