@@ -189,7 +189,7 @@ export default function IncidentMonitor({
       )}
 
       {/* Desktop */}
-      {!isMobile && process.env.NODE_ENV === "development" && (
+      {!isMobile && (
         <div className="fixed bottom-4 right-4 z-[1040] rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white p-3 text-xs max-w-xs border border-slate-200 dark:border-slate-700 shadow-lg">
           <div className="space-y-2">
             <div className="font-semibold text-emerald-600 dark:text-green-400">🔍 Monitor de Incidentes</div>
