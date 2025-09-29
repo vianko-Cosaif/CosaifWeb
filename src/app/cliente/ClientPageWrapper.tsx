@@ -116,36 +116,7 @@ export default function ClientPageWrapper({ localidadId, empresaId }: ClientPage
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800">
       {/* Header con información de contexto */}
-      <header className="border-b border-slate-200/60 bg-white/80 backdrop-blur-sm dark:border-slate-700/60 dark:bg-slate-900/80">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-4 gap-3">
-            <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-slate-900 to-blue-700 bg-clip-text text-transparent dark:from-slate-100 dark:to-blue-300">
-                Panel de Control de Operaciones
-              </h1>
-              <p className="text-slate-600 dark:text-slate-400 text-sm mt-1">
-                Gestión de movimientos ferroviarios en tiempo real
-              </p>
-            </div>
-            
-            {/* Información de contexto */}
-            <div className="flex items-center gap-4 text-sm">
-              {empresaId && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-3 py-1 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
-                  <span className="h-2 w-2 rounded-full bg-blue-500"></span>
-                  Empresa ID: {empresaId}
-                </span>
-              )}
-              {localidadId && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
-                  Localidad ID: {localidadId}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
+
 
       {/* Contenido principal */}
       <main className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
