@@ -76,7 +76,6 @@ const baseInitialForm: MovementFormData = {
 
 /** ======= UTILS ======= */
 const clsx = (...xs: Array<string | false | null | undefined>) => xs.filter(Boolean).join(" ");
-const fmtLocalDateTime = (s?: string | null) => (s ? new Date(s).toLocaleString("es-MX") : "—");
 const pad2 = (n: number) => (n < 10 ? `0${n}` : `${n}`);
 const toInputDT = (iso?: string) => {
   const d = iso ? new Date(iso) : new Date();
@@ -196,7 +195,6 @@ export default function CrearMovimiento() {
       ...baseInitialForm,
       creadoPorId: u?.id ?? null,
       clienteId: u?.id ?? null,
-      
       empresaId: Number.isFinite(empresaId) ? empresaId : null,
     };
 
@@ -450,11 +448,9 @@ export default function CrearMovimiento() {
       return;
     }
     if (!form.locomotiveNumber.trim()) {
-      alert("Faltan número de locomotora.");
+      alert("Falta número de locomotora.");
       return;
     }
-
-    const only = <T extends object>(cond: boolean, obj: T) => (cond ? obj : {});
 
     // Determinar las vías según el modo de selección
     const fromTrack = (!form.service || selectionMode === "de_via") ? form.fromTrack : null;
@@ -465,41 +461,61 @@ export default function CrearMovimiento() {
       return;
     }
 
-    const payload = {
+    // --- Construir 'instrucciones' al estilo del móvil ---
+    const meta: string[] = [];
+    if (typeof toSection === "number")   meta.push(`[META DESTINO:${toSection}]`);
+    if (typeof fromSection === "number") meta.push(`[META ORIGEN:${fromSection}]`);
+
+    const partes: string[] = [];
+    if (fromTrack)
+      partes.push(`De la vía ${viaName(fromTrack)}${typeof fromSection === "number" ? ` (sección ${fromSection})` : ""}`);
+    if (toTrack)
+      partes.push(`para la vía ${viaName(toTrack)}${typeof toSection === "number" ? ` (sección ${toSection})` : ""}`);
+
+    const instrucciones = [meta.join(" "), partes.join(" "), (form.comments || "").trim()]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
+    // numeroSeccion: si hay servicio, prioriza destino; si no, origen
+    const numeroSeccion =
+      form.service && (typeof toSection === "number" || typeof fromSection === "number")
+        ? Number(typeof toSection === "number" ? toSection : (fromSection as number))
+        : undefined;
+
+    // Construcción de payload sin null/undefined
+    const payload: Record<string, any> = {
       empresaId: Number(empresaId),
       creadoPorId: Number(creadoPorId),
+      clienteId: Number(form.clienteId ?? user?.id ?? creadoPorId),
       localidadId: Number(localidadId),
-      viaOrigenId: fromTrack ? Number(fromTrack) : null,
+
+      ...(fromTrack ? { viaOrigenId: Number(fromTrack) } : {}),
+      ...(toTrack   ? { viaDestinoId: Number(toTrack) } : {}),
+      ...(numeroSeccion !== undefined ? { numeroSeccion } : {}),
+
       locomotiveNumber: Number(form.locomotiveNumber),
       prioridad: form.priority ? "ALTA" : "BAJA",
 
-      // opcionales
-      ...only(!!toTrack && (!form.service || selectionMode === "para_via"), { viaDestinoId: Number(toTrack) }),
-      ...only(typeof fromSection === "number" && (!form.service || selectionMode === "de_via"), { numeroSeccion: Number(fromSection) }),
-
-      // 👇 nombres que Prisma sí espera
-      tipoMovimiento: ["MD_TRABAJANDO", "REMOLCADA"].includes(form.movementType) ? form.movementType : null,
+      tipoMovimiento: ["MD_TRABAJANDO", "REMOLCADA"].includes(form.movementType) ? form.movementType : undefined,
       direccionEmpuje:
         form.movementType === "REMOLCADA" && ["EMPUJAR", "JALAR"].includes(form.direccionEmpuje || "")
-          ? (form.direccionEmpuje as "EMPUJAR" | "JALAR")
+          ? form.direccionEmpuje
           : "Sin_Solicitar",
       posicionCabina: !form.service && ["DENTRO", "AFUERA"].includes(form.cabinPosition) ? form.cabinPosition : "Sin_Solicitar",
       posicionChimenea: !form.service && ["DENTRO", "AFUERA"].includes(form.chimneyPosition) ? form.chimneyPosition : "Sin_Solicitar",
 
-      // servicio como flags
-      ...only(form.service === "Lavado", { lavado: true }),
-      ...only(form.service === "Torno", { torno: true }),
+      ...(form.service === "Lavado" ? { lavado: true } : {}),
+      ...(form.service === "Torno"  ? { torno:  true } : {}),
 
+      ...(instrucciones ? { instrucciones } : {}),
+
+      finalizado: false,
+      incidenteGlobal: false,
     };
 
-
-    const roleToPath = (r?: string) => {
-      const R = String(r || "").toUpperCase();
-      if (R === "COORDINADOR") return "/coordinador/movimientos";
-      if (R === "ADMINISTRADOR") return "/administrador/movimientos";
-      if (R === "SUPERVISOR") return "/supervisor/movimientos";
-      return "/cliente/movimientos";
-    };
+    // Limpia undefined
+    Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
 
     try {
       setSending(true);
@@ -512,7 +528,6 @@ export default function CrearMovimiento() {
 
       const txt = await res.text();
       if (!res.ok) {
-        // intenta mostrar detalle legible
         try { const j = JSON.parse(txt); alert(j.message || j.error || txt); }
         catch { alert(txt || `HTTP ${res.status}`); }
         return;
@@ -521,12 +536,22 @@ export default function CrearMovimiento() {
       const created = txt ? safeJSON(txt) : {};
       const movimientoId = Number((created as any)?.id || 0);
 
-      if (movimientoId && fromTrack && typeof fromSection === "number") {
-        await fetchWithTimeout(`${API_BASE}/secciones/via/${fromTrack}/asignar`, {
+      // Asignación de sección segun lo elegido (destino prioridad)
+      const viaParaAsignar =
+        typeof toSection === "number" && toTrack
+          ? toTrack
+          : (typeof fromSection === "number" && fromTrack ? fromTrack : null);
+
+      const numeroParaAsignar =
+        typeof toSection === "number" ? toSection :
+        (typeof fromSection === "number" ? fromSection : undefined);
+
+      if (movimientoId && viaParaAsignar && typeof numeroParaAsignar === "number") {
+        await fetchWithTimeout(`${API_BASE}/secciones/via/${viaParaAsignar}/asignar`, {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json", ...tokenHeader() },
-          body: JSON.stringify({ numero: Number(fromSection), movimientoId }),
+          body: JSON.stringify({ numero: Number(numeroParaAsignar), movimientoId }),
         }).catch(() => { });
       }
 
@@ -536,13 +561,20 @@ export default function CrearMovimiento() {
       setLocoLockedBy(null);
       setStep(1);
 
+      const roleToPath = (r?: string) => {
+        const R = String(r || "").toUpperCase();
+        if (R === "COORDINADOR") return "/coordinador/movimientos";
+        if (R === "ADMINISTRADOR") return "/administrador/movimientos";
+        if (R === "SUPERVISOR") return "/supervisor/movimientos";
+        return "/cliente/movimientos";
+      };
       window.location.assign(roleToPath(rol));
     } catch (e: any) {
       alert(e?.message || "Error al crear movimiento");
     } finally {
       setSending(false);
     }
-  }, [resolvedIds, form, selectionMode, fromSection, rol]);
+  }, [resolvedIds, form, selectionMode, fromSection, toSection, rol, user]);
 
   /** Progreso */
   const STEP_CFG = [
@@ -575,8 +607,7 @@ export default function CrearMovimiento() {
         @media (max-width: 640px) {
           select, select option { font-size: 16px !important; line-height: 1.45 !important; }
           select { min-height: 48px !important; }
-        }import { useLocalStorage } from '../../hooks/useLocalStorage';
-
+        }
       `}</style>
 
       {/* Grid de fondo que hereda del layout */}
@@ -1017,7 +1048,6 @@ function StepOne(props: {
         value={form.locomotiveNumber ? String(form.locomotiveNumber) : ""}
         onChange={(e) => {
           const value = e.target.value;
-          // Solo permitir dígitos del 0 al 9 y campo vacío
           if (value === '' || /^\d+$/.test(value)) {
             setForm((p) => ({ ...p, locomotiveNumber: value }));
           }
@@ -1198,7 +1228,7 @@ function StepTwo({
 function StepThree({
   form, setForm, sending, submit, fromSection, toSection, viaName, selectionMode,
 }: { form: MovementFormData; setForm: React.Dispatch<React.SetStateAction<MovementFormData>>; sending: boolean; submit: () => void; fromSection?: number; toSection?: number; viaName: (id?: number | null) => string; selectionMode: "de_via" | "para_via"; }) {
-  const sectionHint = (fromSection ? `[SECCION_ORIGEN:${fromSection}] ` : "") + (toSection ? `[SECCION_DESTINO:${toSection}]` : "");
+  const sectionHint = (fromSection ? `[META ORIGEN:${fromSection}] ` : "") + (toSection ? `[META DESTINO:${toSection}]` : "");
   const showHint = Boolean(fromSection || toSection);
 
   return (
