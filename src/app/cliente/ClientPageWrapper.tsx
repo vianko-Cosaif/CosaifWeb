@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useCallback, Suspense, lazy } from "react";
 import SelectLocalidad from "@/app/Components/cliente/SelectLocalidad";
 import type { IncidenteEmergente } from "@/app/hooks/useIncidentMonitor";
