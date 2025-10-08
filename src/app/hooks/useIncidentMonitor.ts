@@ -3,8 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useVisibleInterval } from "./useVisibleInterval";
-
-/* ================= Tipos ================= */
+import { useAuthErrorHandler } from "./useAuthErrorHandler";
 
 export type IncidenteEmergente = {
   id: number;
@@ -80,6 +79,8 @@ export function useIncidentMonitor({
   const requestSeq = useRef(0);
   const isMounted = useRef(true);
 
+  const { handleFetchRequest } = useAuthErrorHandler();
+
   /* ---- Asegurar bandera de montaje correcta ---- */
   useEffect(() => {
     isMounted.current = true;
@@ -141,7 +142,7 @@ export function useIncidentMonitor({
 
       // console.log("🔍 Verificando incidentes en:", url);
 
-      const response = await fetch(url, {
+      const response = await handleFetchRequest(url, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -208,7 +209,7 @@ export function useIncidentMonitor({
         console.error("❌ Error en useIncidentMonitor:", err);
       }
     }
-  }, [apiBase, empresaId, localidadId, getAuthHeaders, adaptIncidente, onIncidentDetected]);
+  }, [apiBase, empresaId, localidadId, getAuthHeaders, adaptIncidente, onIncidentDetected, handleFetchRequest]);
 
   // Función para verificar ahora (manual)
   const checkNow = useCallback(async (): Promise<void> => {
