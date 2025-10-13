@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, startTransition } from "react";
+import dynamic from "next/dynamic";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 
 /* ===== Tipos ===== */
@@ -92,7 +93,7 @@ function useLocalStorageBoolean(key: string, initial = false) {
     const raw = window.localStorage.getItem(key);
     return raw === null ? initial : raw === "1";
   });
-  useEffect(() => { try { window.localStorage.setItem(key, v ? "1" : "0"); } catch {} }, [key, v]);
+  useEffect(() => { try { window.localStorage.setItem(key, v ? "1" : "0"); } catch { } }, [key, v]);
   return [v, setV] as const;
 }
 function useOnline() {
@@ -120,13 +121,16 @@ function timeAgo(ts?: number | null) {
   return `${h}h`;
 }
 
+/* ===== Carga dinámica del editor ===== */
+const EditRondas = dynamic(() => import("../Components/EditRondas"), { ssr: false });
+
 /* ===== Componente ===== */
 export default function RailQueueBoard(
   {
-  localidadId,
-  autoMs = 120_000,
-  nextCount = 5,
-}: { localidadId: number; autoMs?: number; nextCount?: number }) {
+    localidadId,
+    autoMs = 120_000,
+    nextCount = 5,
+  }: { localidadId: number; autoMs?: number; nextCount?: number }) {
   const prefersReduced = useReducedMotion();
   const online = useOnline();
   useRelativeClock();
@@ -153,6 +157,9 @@ export default function RailQueueBoard(
   const reqSeq = useRef(120);
   const abortRef = useRef<AbortController | null>(null);
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  // ⬇️ NUEVO: estado para abrir/cerrar editor 
+  const [openEditor, setOpenEditor] = useState(false);
 
   useEffect(() => {
     // mount
@@ -226,7 +233,6 @@ export default function RailQueueBoard(
       startTransition(() => setInfo(mapFromList));
       lastOkAt.current = Date.now();
     } catch (err) {
-      if (mySeq === reqSeq.current) pushToast(online ? "Error al cargar datos" : "Sin conexión", "warning");
       console.error("[RailQueueBoard] load error", err);
     } finally {
       if (mySeq === reqSeq.current) {
@@ -247,12 +253,13 @@ export default function RailQueueBoard(
     try {
       if (document.fullscreenElement) document.exitFullscreen();
       else boardRef.current?.requestFullscreen();
-    } catch {}
+    } catch { }
   };
 
-  // Shortcuts
+  // Shortcuts (deshabilitados cuando el editor está abierto)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (openEditor) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
       if (e.key === "r") { e.preventDefault(); load(true); }
@@ -262,7 +269,7 @@ export default function RailQueueBoard(
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [openEditor]); // include openEditor
 
   useEffect(() => { firstLoad.current = true; prevIdsRef.current = []; setInfo({}); setItems([]); setLoading(true); load(); }, [localidadId]);
   useVisibleInterval(() => polling && online && load(), polling ? autoMs || null : null, [autoMs, localidadId, polling, online]);
@@ -271,7 +278,7 @@ export default function RailQueueBoard(
     const curId = items[0]?.id ?? null;
     if (soundOn && curId && lastCurrentId.current && curId !== lastCurrentId.current) {
       const el = bellRef.current;
-      try { el?.pause?.(); if (el) { el.currentTime = 0; void el.play(); } } catch {}
+      try { el?.pause?.(); if (el) { el.currentTime = 0; void el.play(); } } catch { }
     }
     lastCurrentId.current = curId;
   }, [items, soundOn]);
@@ -293,8 +300,8 @@ export default function RailQueueBoard(
   const hasAny = !!(desdeLbl || viaD || hasService);
 
   return (
-    <main 
-      ref={boardRef} 
+    <main
+      ref={boardRef}
       className="min-h-svh md:min-h-dvh bg-white text-slate-900 dark:bg-neutral-950 dark:text-slate-100"
     >
       {/* TOASTS: Responsive positioning */}
@@ -307,14 +314,14 @@ export default function RailQueueBoard(
             {toasts.map((t) => {
               const bar =
                 t.kind === "move" ? "border-l-4 border-emerald-500/80" :
-                t.kind === "new"  ? "border-l-4 border-sky-500/80" :
-                t.kind === "warning" ? "border-l-4 border-amber-500/80" :
-                "border-l-4 border-slate-400/70";
+                  t.kind === "new" ? "border-l-4 border-sky-500/80" :
+                    t.kind === "warning" ? "border-l-4 border-amber-500/80" :
+                      "border-l-4 border-slate-400/70";
               const tone =
                 t.kind === "move" ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200" :
-                t.kind === "new"  ? "bg-sky-50 text-sky-900 dark:bg-sky-950/40 dark:text-sky-200" :
-                t.kind === "warning" ? "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200" :
-                "bg-slate-50 text-slate-900 dark:bg-slate-800 dark:text-slate-100";
+                  t.kind === "new" ? "bg-sky-50 text-sky-900 dark:bg-sky-950/40 dark:text-sky-200" :
+                    t.kind === "warning" ? "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200" :
+                      "bg-slate-50 text-slate-900 dark:bg-slate-800 dark:text-slate-100";
               return (
                 <motion.button
                   key={t.id}
@@ -349,16 +356,16 @@ export default function RailQueueBoard(
           <div className="flex flex-wrap items-center justify-between gap-2 p-3 
                           sm:justify-end sm:gap-3 sm:px-4 
                           md:px-6 md:py-2">
-            
+
             {/* Left side - Status info */}
             <div className="flex items-center gap-2 flex-1 min-w-[150px]">
               <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs
-                                ${polling ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" 
-                                          : "border-slate-300 bg-slate-50 text-slate-600 dark:bg-slate-800/50 dark:text-slate-300"}`}>
+                                ${polling ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
+                  : "border-slate-300 bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
                 <span className={`inline-block h-2 w-2 rounded-full ${polling ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} aria-hidden />
                 {polling ? "LIVE" : "PAUSED"}
               </span>
-              
+
               <span className="hidden xs:inline text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
                 Últ. act: {lastAgo}
               </span>
@@ -377,10 +384,10 @@ export default function RailQueueBoard(
                 <button
                   onClick={() => setSoundOn((s) => !s)}
                   className={`rounded-lg border px-2.5 py-1.5 text-xs transition-all duration-200 flex items-center gap-1
-                             ${soundOn 
-                                ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" 
-                                : "border-slate-300 bg-white text-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                             } hover:scale-105 active:scale-95`}
+                             ${soundOn
+                      ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
+                      : "border-slate-300 bg-white text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                    } hover:scale-105 active:scale-95`}
                   title="Pitido al cambiar la orden actual"
                   aria-pressed={soundOn}
                 >
@@ -421,8 +428,20 @@ export default function RailQueueBoard(
                   title="Pantalla completa (f)"
                   aria-pressed={isFs}
                 >
-                  <span className="text-sm">{isFs ? "⤢" : "⤢"}</span>
+                  <span className="text-sm">⤢</span>
                   <span className="hidden sm:inline">{isFs ? "Salir" : "Full"}</span>
+                </button>
+
+                {/* ⬇️ NUEVO: Botón para abrir el editor */}
+                <button
+                  onClick={() => setOpenEditor(true)}
+                  className="rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1.5 text-xs 
+                             text-sky-700 hover:scale-105 active:scale-95 transition-all duration-200
+                             dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-200"
+                  title="Editar rondas"
+                >
+                  <span className="text-sm">✏️</span>
+                  <span className="hidden sm:inline ml-1">Editar rondas</span>
                 </button>
               </div>
             </div>
@@ -439,13 +458,13 @@ export default function RailQueueBoard(
         aria-busy={loading || refreshing}
       >
         <div className="grid gap-4 md:gap-6 lg:gap-8 lg:grid-cols-3">
-          
+
           {/* COLUMNA IZQUIERDA - ORDEN ACTUAL */}
           <div className="lg:col-span-2 rounded-2xl p-4 sm:p-6 
                           bg-gradient-to-br from-white via-sky-50 to-white text-slate-800 
                           shadow-lg border border-slate-200
                           dark:from-neutral-900 dark:via-neutral-800 dark:to-neutral-900 dark:text-slate-100 dark:border-slate-700">
-            
+
             {/* Header */}
             <div className="mb-4 flex flex-col xs:flex-row xs:items-center xs:justify-between gap-3">
               <div>
@@ -456,7 +475,7 @@ export default function RailQueueBoard(
                   Orden Actual • Current Move
                 </div>
               </div>
-              
+
               <button
                 onClick={() => load(true)}
                 className="text-xs rounded-full px-4 py-2 border bg-white hover:bg-slate-50 transition-all duration-200 
@@ -508,7 +527,7 @@ export default function RailQueueBoard(
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="text-right">
                       <div className="text-xs text-slate-500 dark:text-slate-400">Código</div>
                       <div className="font-black tracking-widest bg-gradient-to-r from-sky-600 to-emerald-600 bg-clip-text text-transparent
@@ -599,7 +618,7 @@ export default function RailQueueBoard(
           <aside className="rounded-2xl bg-white text-slate-900 shadow-lg border border-slate-200 
                             p-4 sm:p-6 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-700
                             h-fit max-h-[calc(100vh-200px)] overflow-y-auto">
-            
+
             {/* Header del aside */}
             <div className="mb-4 flex items-center justify-between sticky top-0 bg-white dark:bg-slate-900 pb-2">
               <h3 className="flex items-center gap-2 font-bold text-lg">
@@ -682,10 +701,9 @@ export default function RailQueueBoard(
                           <div className="rounded-lg border border-slate-200 bg-white p-2 
                                          dark:border-slate-700 dark:bg-slate-900">
                             <div className="text-xs text-slate-500 dark:text-slate-400">Prioridad</div>
-                            <div className={`text-sm font-medium ${
-                              mv?.prioridad === 'ALTA' ? 'text-red-600 dark:text-red-400' : 
+                            <div className={`text-sm font-medium ${mv?.prioridad === 'ALTA' ? 'text-red-600 dark:text-red-400' :
                               mv?.prioridad === 'BAJA' ? 'text-green-600 dark:text-green-400' : ''
-                            }`}>
+                              }`}>
                               {mv?.prioridad || "—"}
                             </div>
                           </div>
@@ -706,9 +724,9 @@ export default function RailQueueBoard(
                   })
                 )}
                 {!loading && next.length === 0 && (
-                  <motion.div 
-                    initial={{ opacity: prefersReduced ? 1 : 0 }} 
-                    animate={{ opacity: 1 }} 
+                  <motion.div
+                    initial={{ opacity: prefersReduced ? 1 : 0 }}
+                    animate={{ opacity: 1 }}
                     className="py-8 text-center text-sm text-slate-500 dark:text-slate-400"
                   >
                     <div className="text-3xl mb-2">📭</div>
@@ -725,6 +743,25 @@ export default function RailQueueBoard(
       <audio ref={bellRef} preload="auto" aria-hidden="true">
         <source src="/sounds/notification.mp3" type="audio/mp3" />
       </audio>
+
+      {/* ⬇️ Modal del editor (wrapper más compacto) */}
+      {openEditor && (
+        <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm p-2 sm:p-4 
+            flex items-start justify-center pt-12 sm:pt-16">
+          <div className="w-full max-w-[1000px] h-auto max-h-[85vh] overflow-hidden rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-700">
+            <div className="h-full overflow-auto">
+              <EditRondas
+                localidadId={localidadId}
+                onClose={() => setOpenEditor(false)}
+                onSaved={() => {
+                  setOpenEditor(false);
+                  load(true); // refresca tablero al guardar
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -748,11 +785,10 @@ function InfoBadge({ label, value, icon }: { label: string; value: string; icon:
 function Chip({ ok, icon, children }: { ok: boolean; icon: string; children: React.ReactNode }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border transition-all duration-200 ${
-        ok
-          ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
-          : "border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-      }`}
+      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border transition-all duration-200 ${ok
+        ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
+        : "border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+        }`}
     >
       {icon} {children}
     </span>
@@ -761,11 +797,10 @@ function Chip({ ok, icon, children }: { ok: boolean; icon: string; children: Rea
 
 function ServiceChip({ active, icon, text }: { active: boolean; icon: string; text: string }) {
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] border ${
-      active
-        ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
-        : "border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
-    }`}>
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] border ${active
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
+      : "border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+      }`}>
       {icon} {text}
     </span>
   );
