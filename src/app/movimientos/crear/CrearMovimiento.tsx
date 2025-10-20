@@ -15,6 +15,7 @@ const FLUSH_INTERVAL_MS = 15000;
 /** ======= TIPOS ======= */
 type Servicio = "Lavado" | "Torno" | "";
 type Direccion = "EMPUJAR" | "JALAR" | "Sin_Solicitar";
+type Polo = "NORTE" | "SUR" | "Sin_Solicitar";
 type Posicion = "DENTRO" | "AFUERA" | "Sin_Solicitar";
 type Rol = "CLIENTE" | "ADMINISTRADOR" | "COORDINADOR" | "SUPERVISOR" | string;
 
@@ -41,6 +42,7 @@ export interface MovementFormData {
   selectedLocalityId?: number | null;
   cabinPosition: Posicion;
   chimneyPosition: Posicion;
+  polo: Polo;
   pushPull: "" | "EMPUJAR" | "JALAR";
   movementType: "" | "MD_TRABAJANDO" | "REMOLCADA";
   comments: string;
@@ -62,6 +64,7 @@ const baseInitialForm: MovementFormData = {
   selectedLocalityId: null,
   cabinPosition: "Sin_Solicitar",
   chimneyPosition: "Sin_Solicitar",
+  polo: "Sin_Solicitar",
   pushPull: "",
   movementType: "",
   comments: "",
@@ -418,7 +421,16 @@ export default function CrearMovimiento() {
     if (!form.movementType) e.movementType = "Selecciona el tipo de movimiento.";
     if (!form.service) {
       if (!["DENTRO", "AFUERA"].includes(form.cabinPosition)) e.cabinPosition = "Selecciona posición de cabina.";
-      if (!["DENTRO", "AFUERA"].includes(form.chimneyPosition)) e.chimneyPosition = "Selecciona posición de chimenea.";
+
+      // Chimney position is only required if polo is not selected
+      if (form.polo === "Sin_Solicitar" && !["DENTRO", "AFUERA"].includes(form.chimneyPosition)) {
+        e.chimneyPosition = "Selecciona posición de chimenea.";
+      }
+
+      // Polo is only required if chimney position is not selected
+      if (form.chimneyPosition === "Sin_Solicitar" && !["NORTE", "SUR"].includes(form.polo)) {
+        e.polo = "Selecciona polo o posición de chimenea.";
+      }
     }
     if (form.movementType === "REMOLCADA" && !["EMPUJAR", "JALAR"].includes(form.direccionEmpuje || "")) {
       e.direccionEmpuje = "Selecciona EMPUJAR o JALAR.";
@@ -471,6 +483,11 @@ export default function CrearMovimiento() {
       partes.push(`De la vía ${viaName(fromTrack)}${typeof fromSection === "number" ? ` (sección ${fromSection})` : ""}`);
     if (toTrack)
       partes.push(`para la vía ${viaName(toTrack)}${typeof toSection === "number" ? ` (sección ${toSection})` : ""}`);
+
+    // Add polo information if selected
+    if (form.polo && form.polo !== "Sin_Solicitar") {
+      partes.push(`| ${form.polo} | `);
+    }
 
     const instrucciones = [meta.join(" "), partes.join(" "), (form.comments || "").trim()]
       .filter(Boolean)
@@ -1116,16 +1133,20 @@ function StepTwo({
     active,
     label,
     onClick,
+    disabled,
   }: {
     active: boolean;
     label: string;
     onClick: () => void;
+    disabled?: boolean;
   }) => (
     <button
       onClick={onClick}
+      disabled={disabled}
       className={clsx(
         "flex w-full items-center justify-between rounded-md border px-3 py-3 text-left",
         "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800",
+        disabled && "opacity-50 cursor-not-allowed",
         active && "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
       )}
     >
@@ -1182,20 +1203,66 @@ function StepTwo({
           </div>
 
           <div>
+            <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">Polo</div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Card
+                label="Norte"
+                active={form.polo === "NORTE"}
+                disabled={form.chimneyPosition !== "Sin_Solicitar"}
+                onClick={() => {
+                  if (form.polo === "NORTE") {
+                    setForm((p) => ({ ...p, polo: "Sin_Solicitar" }));
+                  } else {
+                    setForm((p) => ({ ...p, polo: "NORTE", chimneyPosition: "Sin_Solicitar", posicionChimenea: null }));
+                  }
+                }}
+              />
+              <Card
+                label="Sur"
+                active={form.polo === "SUR"}
+                disabled={form.chimneyPosition !== "Sin_Solicitar"}
+                onClick={() => {
+                  if (form.polo === "SUR") {
+                    setForm((p) => ({ ...p, polo: "Sin_Solicitar" }));
+                  } else {
+                    setForm((p) => ({ ...p, polo: "SUR", chimneyPosition: "Sin_Solicitar", posicionChimenea: null }));
+                  }
+                }}
+              />
+            </div>
+            {(form.polo !== "Sin_Solicitar") && <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Doble clic para desmarcar</div>}
+          </div>
+
+          <div>
             <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">Posición de chimenea</div>
             <div className="grid gap-2 sm:grid-cols-2">
               <Card
                 label="Dentro"
                 active={form.chimneyPosition === "DENTRO"}
-                onClick={() => setForm((p) => ({ ...p, chimneyPosition: "DENTRO", posicionChimenea: "DENTRO" }))}
+                disabled={form.polo !== "Sin_Solicitar"}
+                onClick={() => {
+                  if (form.chimneyPosition === "DENTRO") {
+                    setForm((p) => ({ ...p, chimneyPosition: "Sin_Solicitar", posicionChimenea: null }));
+                  } else {
+                    setForm((p) => ({ ...p, chimneyPosition: "DENTRO", posicionChimenea: "DENTRO", polo: "Sin_Solicitar" }));
+                  }
+                }}
               />
               <Card
                 label="Afuera"
                 active={form.chimneyPosition === "AFUERA"}
-                onClick={() => setForm((p) => ({ ...p, chimneyPosition: "AFUERA", posicionChimenea: "AFUERA" }))}
+                disabled={form.polo !== "Sin_Solicitar"}
+                onClick={() => {
+                  if (form.chimneyPosition === "AFUERA") {
+                    setForm((p) => ({ ...p, chimneyPosition: "Sin_Solicitar", posicionChimenea: null }));
+                  } else {
+                    setForm((p) => ({ ...p, chimneyPosition: "AFUERA", posicionChimenea: "AFUERA", polo: "Sin_Solicitar" }));
+                  }
+                }}
               />
             </div>
             {errors.chimneyPosition && <div className="mt-1 text-xs text-rose-600">{errors.chimneyPosition}</div>}
+            {(form.chimneyPosition !== "Sin_Solicitar") && <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Doble clic para desmarcar</div>}
           </div>
         </>
       )}

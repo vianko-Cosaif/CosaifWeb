@@ -157,6 +157,18 @@ export async function apiSwapMovimientos(rondaAId: number | string, rondaBId: nu
   );
 }
 
+/** Cancela un movimiento y lo saca de su ronda (ruta oficial del backend) */
+export async function apiCancelarMovimiento(movimientoId: number, razon?: string) {
+  return patchJsonWithFallbacks(
+    [
+      `movimientos/movimientos/${movimientoId}/cancelar`,  // MovimientoRoutes.ts
+      // '/movimientos/cancelar'                 // por si existiera alias legacy
+    ],
+    { razon: razon ?? 'Sin motivo' }
+  );
+}
+
+
 /* ==============================
    Hook principal de datos (WEB)
    ============================== */
