@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import { useAuthErrorHandler } from '@/app/hooks/useAuthErrorHandler';
 import { useIncidentMonitor, type IncidenteEmergente } from "@/app/hooks/useIncidentMonitor";
 import IncidentModal from "./IncidentModal";
 
@@ -62,10 +63,11 @@ export default function IncidentMonitor({
 }: IncidentMonitorProps) {
   const empresaId = empresaIdProp ?? getEmpresaIdFromCookie();
 
+  const { handleFetchRequest } = useAuthErrorHandler();
+
   const [currentIncident, setCurrentIncident] = useState<IncidenteEmergente | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [processedIncidents, setProcessedIncidents] = useState<Set<number>>(new Set());
-
   const [isMobile, setIsMobile] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
 
@@ -119,8 +121,8 @@ export default function IncidentMonitor({
   const handleResolve = useCallback(
     async (incident: IncidenteEmergente, comments?: string) => {
       try {
-        const response = await fetch(`${apiBase}/incidentes/${incident.id}/resuelto`, {
-          method: "POST",
+      const response = await handleFetchRequest(`${apiBase}/incidentes/${incident.id}/resuelto`, {
+        method: "POST",
           headers: { "Content-Type": "application/json", ...getAuthHeaders() },
           credentials: "include",
           body: JSON.stringify({ estado: "RESUELTO", comentario: comments }),
@@ -135,14 +137,14 @@ export default function IncidentMonitor({
         alert("No se pudo resolver el incidente. Inténtalo de nuevo.");
       }
     },
-    [apiBase, onIncidentResolved]
+    [apiBase, onIncidentResolved, handleFetchRequest]
   );
 
   const handleSkip = useCallback(
     async (incident: IncidenteEmergente) => {
       try {
-        const response = await fetch(`${apiBase}/incidentes/${incident.id}/cerrar`, {
-          method: "POST",
+      const response = await handleFetchRequest(`${apiBase}/incidentes/${incident.id}/cerrar`, {
+        method: "POST",
           headers: { ...getAuthHeaders() },
           credentials: "include",
         });
@@ -156,7 +158,7 @@ export default function IncidentMonitor({
         alert("No se pudo omitir el incidente. Inténtalo de nuevo.");
       }
     },
-    [apiBase, onIncidentSkipped]
+    [apiBase, onIncidentSkipped, handleFetchRequest]
   );
 
   const handleContinue = useCallback(
