@@ -2,10 +2,16 @@
 'use client';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeftRight, MapPin, Save, X, CheckCircle, XCircle, Train, Info
+  ArrowLeftRight, MapPin, Save, X, CheckCircle, XCircle, Train, Info, Ban
 } from 'lucide-react';
-import { useRondaData, Ronda, InfoExtra, apiSwapMovimientos } from '@/app/hooks/useEditRonda';
-import { onThemeChange, isDark } from '@/lib/theme';
+import {
+  useRondaData,
+  Ronda,
+  InfoExtra,
+  apiSwapMovimientos,
+  apiCancelarMovimiento
+} from '@/app/hooks/useEditRonda';
+import { onThemeChange } from '@/lib/theme';
 
 /* =================== Config UI compacta con tema =================== */
 const COLORS = {
@@ -21,13 +27,6 @@ const COLORS = {
   surfaceAlt: 'bg-slate-50 dark:bg-slate-700',
 };
 
-const DENSITY = {
-  pad: 10,
-  gap: 10,
-  radius: 12,
-  fontBase: 13,
-  cardPad: 12,
-};
 
 function getRondaColor(n: number) {
   const palette = [
@@ -90,18 +89,24 @@ function SectionHeader({ rondaNumero, count }: { rondaNumero: number; count: num
 
 /* =============== Card compacta con detalles colapsables =============== */
 function RondaCard({
-  ronda, info, onSwapRequest,
+  ronda,
+  info,
+  onSwapRequest,
+  onCancelRequest,    // ⬅️ NUEVO
+  isCancelling,       // ⬅️ NUEVO
 }: {
   ronda: Ronda;
   info?: InfoExtra;
   onSwapRequest: () => void;
+  onCancelRequest: () => void; // ⬅️ NUEVO
+  isCancelling: boolean;       // ⬅️ NUEVO
 }) {
   const colors = getRondaColor(ronda.rondaNumero);
   const pr = priorityColors(ronda.movimiento?.prioridad as any);
   const [open, setOpen] = useState(false);
 
   return (
-    <div className={`rounded-xl p-3 shadow-sm mb-3`}>
+    <div className={`rounded-xl p-3 shadow-sm mb-3 ${COLORS.surface} border ${COLORS.border}`}>
       {/* Header compacto */}
       <div className="flex items-center gap-3">
         <div className={`${pr.bg} ${pr.color} rounded-lg px-2 py-1 text-xs font-bold`}>
@@ -197,13 +202,32 @@ function RondaCard({
         </div>
       )}
 
-      {/* botón swap */}
-      <div className="mt-3">
+      {/* acciones */}
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
         <button
           onClick={onSwapRequest}
           className={`bg-blue-600 hover:bg-blue-700 text-white border-none rounded-full px-3 py-2 font-bold text-sm flex items-center gap-2 cursor-pointer dark:bg-blue-500 dark:hover:bg-blue-600`}
         >
           <ArrowLeftRight size={16} /> Cambiar de lugar
+        </button>
+
+        <button
+          onClick={onCancelRequest}
+          disabled={isCancelling}
+          className={`${
+            isCancelling ? 'opacity-70 cursor-wait' : 'cursor-pointer'
+          } bg-red-600 hover:bg-red-700 text-white rounded-full px-3 py-2 font-bold text-sm flex items-center gap-2 dark:bg-red-500 dark:hover:bg-red-600`}
+        >
+          {isCancelling ? (
+            <>
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4A4 4 0 008 12H4z"></path></svg>
+              Cancelando…
+            </>
+          ) : (
+            <>
+              <Ban size={16} /> Cancelar y quitar
+            </>
+          )}
         </button>
       </div>
     </div>
@@ -357,7 +381,8 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
 
   const [swapModal, setSwapModal] = useState<{ visible: boolean; base: Ronda | null }>({ visible: false, base: null });
   const [toast, setToast] = useState<{ show: boolean; message: string }>({ show: false, message: '' });
-  const [themeKey, setThemeKey] = useState(0); // Forzar re-render en cambios de tema
+  const [themeKey, setThemeKey] = useState(0);
+  const [cancellingId, setCancellingId] = useState<number | null>(null); // ⬅️ NUEVO
 
   const showToast = (m: string) => setToast({ show: true, message: m });
 
@@ -369,6 +394,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
     return unsubscribe;
   }, []);
 
+  /* ===== Intercambio ===== */
   const handleSwapRequest = useCallback((ronda: Ronda) => {
     if (hasRealChanges) {
       alert('Debes guardar los cambios actuales antes de realizar otra modificación.');
@@ -406,6 +432,44 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
       alert(e?.message || 'Ocurrió un error al intercambiar las rondas');
     }
   }, [swapModal.base, setGroupedByRonda, setList, user]);
+
+  /* ===== Cancelación ===== */
+  const performCancel = useCallback(async (item: Ronda) => {
+    try {
+      const movimientoId = item.movimiento?.id;
+      if (!movimientoId) throw new Error('Movimiento inválido');
+
+      setCancellingId(movimientoId);
+      await apiCancelarMovimiento(movimientoId); // PATCH /movimientos/:id/cancelar
+
+      // Quitar de la ronda e indexar órdenes
+      setGroupedByRonda(prev => {
+        const copy: Record<number, Ronda[]> = { ...prev };
+        const rn = item.rondaNumero;
+        const filtered = (copy[rn] || []).filter(r => r.id !== item.id);
+        copy[rn] = filtered.map((r, idx) => ({ ...r, orden: idx + 1 })); // reindex
+        return copy;
+      });
+
+      setList(prev => prev.filter(r => r.id !== item.id));
+
+      showToast('Movimiento cancelado y quitado de la ronda');
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || 'No se pudo cancelar el movimiento');
+    } finally {
+      setCancellingId(null);
+    }
+  }, [setGroupedByRonda, setList]);
+
+  const handleCancelRequest = useCallback((item: Ronda) => {
+    if (hasRealChanges) {
+      alert('Debes guardar los cambios actuales antes de cancelar un movimiento.');
+      return;
+    }
+    const ok = confirm('¿Cancelar este movimiento?\nSe pondrá en CANCELADO y se quitará de la ronda.');
+    if (ok) performCancel(item);
+  }, [hasRealChanges, performCancel]);
 
   const handleSaveChanges = useCallback(async () => {
     if (!hasRealChanges) {
@@ -462,7 +526,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
       <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-3 flex items-center gap-2 text-sm">
         <Info className="text-sky-500" size={16} />
         <div className={`${COLORS.text}`}>
-          Usa <b>“Cambiar de lugar”</b> para intercambiar la locomotora con otra de cualquier ronda.
+          Usa <b>“Cambiar de lugar”</b> para intercambiar la locomotora con otra de cualquier ronda, o <b>“Cancelar y quitar”</b> para sacarla de la ronda.
         </div>
       </div>
 
@@ -484,6 +548,8 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
                     ronda={r}
                     info={infoMap[r.id]}
                     onSwapRequest={() => handleSwapRequest(r)}
+                    onCancelRequest={() => handleCancelRequest(r)}                // ⬅️ NUEVO
+                    isCancelling={cancellingId === (r.movimiento?.id ?? -1)}      // ⬅️ NUEVO
                   />
                 ))}
               </div>

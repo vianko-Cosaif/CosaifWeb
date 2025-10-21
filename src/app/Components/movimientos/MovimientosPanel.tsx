@@ -15,6 +15,9 @@ import {
   WifiOff,
   ArrowUpDown,
 } from "lucide-react";
+import dynamic from "next/dynamic";
+
+const EditarMovimiento = dynamic(() => import("src/app/movimientos/editar/EditarMovimiento"), { ssr: false });
 
 /* ===== Tipos ===== */
 export type Movement = {
@@ -407,6 +410,10 @@ export default function MovimientosPanel({
   const [detail, setDetail] = useState<Movement | null>(null);
   const openDetail = (m: Movement) => { if (isClient) return; setDetail(m); };
 
+  // editar
+  const [editId, setEditId] = useState<number | null>(null);
+  const openEdit = (m: Movement) => {  setEditId(m.id); setDetail(null); };
+
   // badges / resets
   const tabBadges = useMemo(() => ({ Actuales: filtered.filter((x) => !x.finalizado).length }), [filtered]);
   useEffect(() => { setPage(1); }, [empId, locId, from, to, tab, pageSize]);
@@ -688,8 +695,9 @@ export default function MovimientosPanel({
             <col className="hidden xl:table-column w-[260px]" />
             <col className="hidden xl:table-column w-[200px]" />
             <col className="w-28" />
-            <col className="w-28" />
-            <col className="hidden 2xl:table-column w-32" />
+            <col className="w-28" /> {/* Estado */}
+            {isClient && <col className="w-24" />} {/* Editar */}
+            <col className="hidden 2xl:table-column w-32" /> {/* Solicitud */}
             <col className="hidden lg:table-column w-32" />
             <col className="hidden lg:table-column w-32" />
             <col className="w-28" />
@@ -706,18 +714,19 @@ export default function MovimientosPanel({
               <Th className="hidden xl:table-cell">Tipo mov.</Th>
               <Th>Prioridad</Th>
               <Th>Estado</Th>
+              {isClient && <Th className="text-center">Editar</Th>}
               <Th onClick={() => toggleSort("fechaSolicitud")} sortable sortBy={sortBy} selfKey="fechaSolicitud" sortDir={sortDir} className="hidden 2xl:table-cell">Solicitud</Th>
               <Th onClick={() => toggleSort("fechaInicio")} sortable sortBy={sortBy} selfKey="fechaInicio" sortDir={sortDir} className="hidden lg:table-cell">Inicio</Th>
               <Th onClick={() => toggleSort("fechaFin")} sortable sortBy={sortBy} selfKey="fechaFin" sortDir={sortDir} className="hidden lg:table-cell">Fin</Th>
-              {!isClient && <Th className="text-right">&nbsp;</Th>}
+              {isClient && <Th className="text-right">&nbsp;</Th>}
             </tr>
           </thead>
           <tbody className="divide-y dark:divide-slate-800">
             {!mounted || loading ? (
-              <RowLoading />
+              <RowLoading colCount={isClient ? 13 : 15} />
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={isClient ? 13 : 14} className="p-6 text-center text-slate-500 dark:text-slate-400">
+                <td colSpan={isClient ? 13 : 15} className="p-6 text-center text-slate-500 dark:text-slate-400">
                   Sin resultados
                 </td>
               </tr>
@@ -748,6 +757,21 @@ export default function MovimientosPanel({
                       {m.estado || (m.finalizado ? "CONCLUIDO" : "PENDIENTE")}
                     </Badge>
                   </Td>
+
+                  {/* Botón Editar entre Estado y Solicitud */}
+                  {isClient && (
+                    <Td className="text-center">
+                      <button
+                        type="button"
+                        onClick={() => openEdit(m)}
+                        className="rounded-md border px-2 py-1 text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
+                        title={`Editar #${m.id}`}
+                      >
+                        Editar
+                      </button>
+                    </Td>
+                  )}
+
                   <Td className="hidden 2xl:table-cell whitespace-nowrap">{fmtDate(m.fechaSolicitud)}</Td>
                   <Td className="hidden lg:table-cell whitespace-nowrap">{fmtDateTime(m.fechaInicio)}</Td>
                   <Td className="hidden lg:table-cell whitespace-nowrap">{fmtDateTime(m.fechaFin)}</Td>
@@ -800,7 +824,7 @@ export default function MovimientosPanel({
       {/* Modal detalle (NO para CLIENTE) */}
       {!isClient && detail ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-2 sm:p-4 md:p-6" role="dialog" aria-modal="true">
-          <div className="w-full max-w-5xl max-h-[85svh] overflow-y-auto rounded-2xl border bg-white p-3 sm:p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+          <div className="w-full max-w-5xl max-h=[85svh] max-h-[85svh] overflow-y-auto rounded-2xl border bg-white p-3 sm:p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h3 className="text-lg font-semibold">Movimiento #{detail.id}</h3>
               <button className="rounded-md border px-2 py-1 hover:bg-slate-50 dark:hover:bg-slate-800" onClick={() => setDetail(null)} aria-label="Cerrar">
@@ -848,6 +872,35 @@ export default function MovimientosPanel({
                 <p className="text-amber-900 dark:text-amber-100">{detail.comentarioPostergacion}</p>
               </div>
             ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Modal editar (NO para CLIENTE) */}
+      {isClient && editId !== null ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-2 sm:p-4 md:p-6"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-5xl max-h-[85svh] overflow-y-auto rounded-2xl border bg-white p-3 sm:p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="text-lg font-semibold">Editar movimiento #{editId}</h3>
+              <button
+                className="rounded-md border px-2 py-1 hover:bg-slate-50 dark:hover:bg-slate-800"
+                onClick={() => setEditId(null)}
+                aria-label="Cerrar"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <EditarMovimiento
+              movimientoId={editId}
+              onClose={() => setEditId(null)}
+              onSaved={() => { setEditId(null); load(true); }}
+              /* apiBase={apiBase} */
+            />
           </div>
         </div>
       ) : null}
@@ -946,12 +999,12 @@ function InfoItem({ k, v, children }: { k: string; v?: React.ReactNode; children
   );
 }
 
-function RowLoading() {
+function RowLoading({ colCount = 14 }: { colCount?: number }) {
   return (
     <>
       {Array.from({ length: 6 }).map((_, i) => (
         <tr key={i} className="animate-pulse">
-          {Array.from({ length: 14 }).map((__, j) => (
+          {Array.from({ length: colCount }).map((__, j) => (
             <td key={j} className="p-2">
               <div className="h-4 w-24 rounded bg-slate-200 dark:bg-slate-800" />
             </td>
@@ -969,7 +1022,7 @@ function CardSkeleton({ count = 4 }: { count?: number }) {
         <div key={i} className="h-28 rounded-xl border bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <div className="h-4 w-40 rounded bg-slate-200 dark:bg-slate-800" />
           <div className="mt-3 grid grid-cols-2 gap-3">
-            <div className="h-3.5 w-24 rounded bg-slate-2 00 dark:bg-slate-800" />
+            <div className="h-3.5 w-24 rounded bg-slate-200 dark:bg-slate-800" />
             <div className="h-3.5 w-24 rounded bg-slate-200 dark:bg-slate-800" />
           </div>
         </div>
