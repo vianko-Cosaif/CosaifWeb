@@ -420,7 +420,8 @@ export default function CrearMovimiento() {
     const e: Record<string, string> = {};
     if (!form.movementType) e.movementType = "Selecciona el tipo de movimiento.";
     if (!form.service) {
-      if (!["DENTRO", "AFUERA"].includes(form.cabinPosition)) e.cabinPosition = "Selecciona posición de cabina.";
+      // Cabin position is now optional - no validation required
+      // if (!["DENTRO", "AFUERA"].includes(form.cabinPosition)) e.cabinPosition = "Selecciona posición de cabina.";
 
       // Chimney position is only required if polo is not selected
       if (form.polo === "Sin_Solicitar" && !["DENTRO", "AFUERA"].includes(form.chimneyPosition)) {
@@ -1186,51 +1187,66 @@ function StepTwo({
       {!isService && (
         <>
           <div>
-            <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">Posición de cabina</div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Card
-                label="Dentro"
-                active={form.cabinPosition === "DENTRO"}
-                onClick={() => setForm((p) => ({ ...p, cabinPosition: "DENTRO" }))}
-              />
-              <Card
-                label="Afuera"
-                active={form.cabinPosition === "AFUERA"}
-                onClick={() => setForm((p) => ({ ...p, cabinPosition: "AFUERA" }))}
-              />
-            </div>
-            {errors.cabinPosition && <div className="mt-1 text-xs text-rose-600">{errors.cabinPosition}</div>}
-          </div>
-
-          <div>
-            <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">Polo</div>
+            <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200"></div>
             <div className="grid gap-2 sm:grid-cols-2">
               <Card
                 label="Norte"
                 active={form.polo === "NORTE"}
-                disabled={form.chimneyPosition !== "Sin_Solicitar"}
+                disabled={form.cabinPosition !== "Sin_Solicitar" || form.chimneyPosition !== "Sin_Solicitar"}
                 onClick={() => {
                   if (form.polo === "NORTE") {
                     setForm((p) => ({ ...p, polo: "Sin_Solicitar" }));
                   } else {
-                    setForm((p) => ({ ...p, polo: "NORTE", chimneyPosition: "Sin_Solicitar", posicionChimenea: null }));
+                    setForm((p) => ({ ...p, polo: "NORTE", cabinPosition: "Sin_Solicitar", chimneyPosition: "Sin_Solicitar", posicionChimenea: null }));
                   }
                 }}
               />
               <Card
                 label="Sur"
                 active={form.polo === "SUR"}
-                disabled={form.chimneyPosition !== "Sin_Solicitar"}
+                disabled={form.cabinPosition !== "Sin_Solicitar" || form.chimneyPosition !== "Sin_Solicitar"}
                 onClick={() => {
                   if (form.polo === "SUR") {
                     setForm((p) => ({ ...p, polo: "Sin_Solicitar" }));
                   } else {
-                    setForm((p) => ({ ...p, polo: "SUR", chimneyPosition: "Sin_Solicitar", posicionChimenea: null }));
+                    setForm((p) => ({ ...p, polo: "SUR", cabinPosition: "Sin_Solicitar", chimneyPosition: "Sin_Solicitar", posicionChimenea: null }));
                   }
                 }}
               />
             </div>
             {(form.polo !== "Sin_Solicitar") && <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Doble clic para desmarcar</div>}
+          </div>
+
+          <div>
+            <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">Posición de cabina</div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Card
+                label="Dentro"
+                active={form.cabinPosition === "DENTRO"}
+                disabled={form.polo !== "Sin_Solicitar"}
+                onClick={() => {
+                  if (form.cabinPosition === "DENTRO") {
+                    setForm((p) => ({ ...p, cabinPosition: "Sin_Solicitar" }));
+                  } else {
+                    setForm((p) => ({ ...p, cabinPosition: "DENTRO", polo: "Sin_Solicitar" }));
+                  }
+                }}
+              />
+              <Card
+                label="Afuera"
+                active={form.cabinPosition === "AFUERA"}
+                disabled={form.polo !== "Sin_Solicitar"}
+                onClick={() => {
+                  if (form.cabinPosition === "AFUERA") {
+                    setForm((p) => ({ ...p, cabinPosition: "Sin_Solicitar" }));
+                  } else {
+                    setForm((p) => ({ ...p, cabinPosition: "AFUERA", polo: "Sin_Solicitar" }));
+                  }
+                }}
+              />
+            </div>
+            {errors.cabinPosition && <div className="mt-1 text-xs text-rose-600">{errors.cabinPosition}</div>}
+            {(form.cabinPosition !== "Sin_Solicitar") && <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Doble clic para desmarcar</div>}
           </div>
 
           <div>
