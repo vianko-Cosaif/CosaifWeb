@@ -487,7 +487,7 @@ export default function CrearMovimiento() {
 
     // Add polo information if selected
     if (form.polo && form.polo !== "Sin_Solicitar") {
-      partes.push(`| ${form.polo} | `);
+      partes.push(`| Posición: ${form.polo} | `);
     }
 
     const instrucciones = [meta.join(" "), partes.join(" "), (form.comments || "").trim()]
