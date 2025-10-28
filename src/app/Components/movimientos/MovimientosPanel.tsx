@@ -67,13 +67,10 @@ export interface MovimientosPanelProps {
 }
 
 /* ===== Utils ===== */
-const fmtDateTime = (s?: string | null) =>
-  s ? new Date(s).toLocaleString("es-MX") : "—";
-const fmtDate = (s?: string | null) =>
-  s ? new Date(s).toLocaleDateString("es-MX") : "—";
+const fmtDateTime = (s?: string | null) => (s ? new Date(s).toLocaleString("es-MX") : "—");
+const fmtDate = (s?: string | null) => (s ? new Date(s).toLocaleDateString("es-MX") : "—");
 const todayISO = () => new Date().toISOString().slice(0, 10);
-const clsx = (...xs: Array<string | false | null | undefined>) =>
-  xs.filter(Boolean).join(" ");
+const clsx = (...xs: Array<string | false | null | undefined>) => xs.filter(Boolean).join(" ");
 const toText = (v: unknown) =>
   v == null
     ? "—"
@@ -193,7 +190,9 @@ export default function MovimientosPanel({
       if (!ignore) setCombosReady(true);
     }
     loadCombos();
-    return () => { ignore = true; };
+    return () => {
+      ignore = true;
+    };
   }, [apiBase, empresas.length, localidades.length]);
 
   // derivar empresaId del CLIENTE
@@ -204,14 +203,20 @@ export default function MovimientosPanel({
       if (!name) return;
 
       const byOpts = empOpts.find((e) => e.nombre.toLowerCase().trim() === name);
-      if (byOpts) { setEmpId(byOpts.id); return; }
+      if (byOpts) {
+        setEmpId(byOpts.id);
+        return;
+      }
 
       const raw = localStorage.getItem("cached_companies_v2");
       if (raw) {
         const parsed = JSON.parse(raw);
         const arr: Option[] = parsed?.data ?? [];
         const found = arr.find((e) => e.nombre.toLowerCase().trim() === name);
-        if (found) { setEmpId(found.id); return; }
+        if (found) {
+          setEmpId(found.id);
+          return;
+        }
       }
     } catch {}
   }, [isClient, empId, empOpts, userMeta]);
@@ -219,9 +224,15 @@ export default function MovimientosPanel({
   // nombre de localidad (para el input bloqueado)
   const [locName, setLocName] = useState<string>("");
   useEffect(() => {
-    if (locId == null) { setLocName(""); return; }
+    if (locId == null) {
+      setLocName("");
+      return;
+    }
     const found = locOpts.find((o) => o.id === locId);
-    if (found) { setLocName(found.nombre); return; }
+    if (found) {
+      setLocName(found.nombre);
+      return;
+    }
     (async () => {
       try {
         const r = await fetch(`${apiBase}/localidades/${locId}`, { credentials: "include", cache: "no-store" });
@@ -243,7 +254,11 @@ export default function MovimientosPanel({
     const saved = Number(localStorage.getItem("mov:pageSize") || 50);
     return [25, 50, 100].includes(saved) ? saved : 50;
   });
-  useEffect(() => { try { localStorage.setItem("mov:pageSize", String(pageSize)); } catch {} }, [pageSize]);
+  useEffect(() => {
+    try {
+      localStorage.setItem("mov:pageSize", String(pageSize));
+    } catch {}
+  }, [pageSize]);
 
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -257,10 +272,16 @@ export default function MovimientosPanel({
     if (typeof window === "undefined") return true;
     return localStorage.getItem("mov:auto") !== "0";
   });
-  useEffect(() => { try { localStorage.setItem("mov:auto", auto ? "1" : "0"); } catch {} }, [auto]);
+  useEffect(() => {
+    try {
+      localStorage.setItem("mov:auto", auto ? "1" : "0");
+    } catch {}
+  }, [auto]);
 
   // CLIENTE no puede ver "Pasados"
-  useEffect(() => { if (isClient && tab !== "Actuales") setTab("Actuales"); }, [isClient, tab]);
+  useEffect(() => {
+    if (isClient && tab !== "Actuales") setTab("Actuales");
+  }, [isClient, tab]);
 
   // ordenamiento simple
   const [sortBy, setSortBy] = useState<"id" | "fechaSolicitud" | "fechaInicio" | "fechaFin">("id");
@@ -377,7 +398,9 @@ export default function MovimientosPanel({
     [apiBase, empId, locId, from, to, page, pageSize, tab, isClient, userMeta]
   );
 
-  useEffect(() => { load(false); }, [load]);
+  useEffect(() => {
+    load(false);
+  }, [load]);
   useVisibleInterval(() => auto && load(false), auto ? 20000 : null);
 
   // búsqueda + ordenamiento local
@@ -386,10 +409,7 @@ export default function MovimientosPanel({
     const hay = (s: any) => String(s ?? "").toLowerCase().includes(qx);
     let list = !qx
       ? items
-      : items.filter((m) =>
-          hay(m.id) || hay(m.locomotora) || hay(m.empresaNombre) || hay(m.localidadNombre) ||
-          hay(m.viaOrigen) || hay(m.viaDestino) || hay(m.estado) || hay(m.tipoAccion) || hay(m.tipoMovimiento)
-        );
+      : items.filter((m) => hay(m.id) || hay(m.locomotora) || hay(m.empresaNombre) || hay(m.localidadNombre) || hay(m.viaOrigen) || hay(m.viaDestino) || hay(m.estado) || hay(m.tipoAccion) || hay(m.tipoMovimiento));
 
     const getKey = (m: Movement) => {
       if (sortBy === "id") return m.id;
@@ -408,23 +428,28 @@ export default function MovimientosPanel({
 
   // detalle (bloqueado para CLIENTE)
   const [detail, setDetail] = useState<Movement | null>(null);
-  const openDetail = (m: Movement) => { if (isClient) return; setDetail(m); };
+  const openDetail = (m: Movement) => {
+    if (isClient) return;
+    setDetail(m);
+  };
 
   // editar
   const [editId, setEditId] = useState<number | null>(null);
-  const openEdit = (m: Movement) => {  setEditId(m.id); setDetail(null); };
+  const openEdit = (m: Movement) => {
+    setEditId(m.id);
+    setDetail(null);
+  };
 
   // badges / resets
   const tabBadges = useMemo(() => ({ Actuales: filtered.filter((x) => !x.finalizado).length }), [filtered]);
-  useEffect(() => { setPage(1); }, [empId, locId, from, to, tab, pageSize]);
+  useEffect(() => {
+    setPage(1);
+  }, [empId, locId, from, to, tab, pageSize]);
 
   const lockedEmpresa = isClient;
   const lockedLocalidad = isClient;
 
-  const showClear =
-    !!from || !!to || !!q ||
-    (!lockedLocalidad && locId != null) ||
-    (!lockedEmpresa && empId != null);
+  const showClear = !!from || !!to || !!q || (!lockedLocalidad && locId != null) || (!lockedEmpresa && empId != null);
 
   const tabs: Array<"Actuales" | "Pasados"> = isClient ? ["Actuales"] : ["Actuales", "Pasados"];
 
@@ -460,16 +485,11 @@ export default function MovimientosPanel({
               key={t}
               type="button"
               onClick={() => setTab(t)}
-              className={clsx(
-                "px-3 py-2 text-sm md:text-[13px] min-h-10 transition-colors",
-                tab === t ? "bg-sky-600 text-white" : "bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800"
-              )}
+              className={clsx("px-3 py-2 text-sm md:text-[13px] min-h-10 transition-colors", tab === t ? "bg-sky-600 text-white" : "bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800")}
               aria-pressed={tab === t}
             >
               {t}
-              {t === "Actuales" && tabBadges.Actuales > 0 ? (
-                <span className="ml-1 rounded-full bg-white/20 px-1.5 text-[10px]">{tabBadges.Actuales}</span>
-              ) : null}
+              {t === "Actuales" && tabBadges.Actuales > 0 ? <span className="ml-1 rounded-full bg-white/20 px-1.5 text-[10px]">{tabBadges.Actuales}</span> : null}
             </button>
           ))}
         </div>
@@ -509,11 +529,8 @@ export default function MovimientosPanel({
             {refreshing ? "Actualizando…" : "Actualizar"}
           </button>
 
-          {allowCreate &&  (
-            <Link
-              href="/movimientos/crear"
-              className="btn-primary !w-auto min-h-10 text-sm md:text-[13px] inline-flex items-center gap-2"
-            >
+          {allowCreate && (
+            <Link href="/movimientos/crear" className="btn-primary !w-auto min-h-10 text-sm md:text-[13px] inline-flex items-center gap-2">
               <Plus className="h-4 w-4" />
               Nuevo movimiento
             </Link>
@@ -525,7 +542,9 @@ export default function MovimientosPanel({
       {error && (
         <div className="pane flex items-center gap-2 rounded-lg border border-rose-300 bg-rose-50 p-2 text-sm text-rose-700 dark:border-rose-800 dark:bg-rose-900/20 dark:text-rose-200" role="status" aria-live="polite">
           <WifiOff className="h-4 w-4" /> {error}
-          <button onClick={() => load(true)} className="ml-auto rounded-md border px-2 py-0.5 text-xs hover:bg-white/50 dark:hover:bg-slate-800">Reintentar</button>
+          <button onClick={() => load(true)} className="ml-auto rounded-md border px-2 py-0.5 text-xs hover:bg-white/50 dark:hover:bg-slate-800">
+            Reintentar
+          </button>
         </div>
       )}
 
@@ -538,11 +557,7 @@ export default function MovimientosPanel({
           <div className="flex items-center gap-2">
             <label className="text-xs text-slate-500">
               Tamaño página
-              <select
-                className="ml-2 input min-h-8 py-1 text-xs"
-                value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
-              >
+              <select className="ml-2 input min-h-8 py-1 text-xs" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
                 <option>25</option>
                 <option>50</option>
                 <option>100</option>
@@ -555,7 +570,10 @@ export default function MovimientosPanel({
                 onClick={() => {
                   if (!lockedEmpresa) setEmpId(null);
                   if (!lockedLocalidad) setLocId(null);
-                  setFrom(""); setTo(""); setQ(""); setPage(1);
+                  setFrom("");
+                  setTo("");
+                  setQ("");
+                  setPage(1);
                 }}
               >
                 <X className="h-4 w-4" /> Limpiar
@@ -569,19 +587,15 @@ export default function MovimientosPanel({
           <div className="lg:col-span-2">
             <label className="mb-1 block text-xs text-slate-500">Empresa</label>
             {lockedEmpresa ? (
-              <input
-                className="input min-h-10"
-                value={empOpts.find((o) => o.id === empId)?.nombre ?? (userMeta as any)?.empresa?.nombre ?? "Mi empresa"}
-                disabled
-              />
+              <input className="input min-h-10" value={empOpts.find((o) => o.id === empId)?.nombre ?? (userMeta as any)?.empresa?.nombre ?? "Mi empresa"} disabled />
             ) : (
-              <select
-                className="input min-h-10"
-                value={empId ?? ""}
-                onChange={(e) => setEmpId(e.target.value ? Number(e.target.value) : null)}
-              >
+              <select className="input min-h-10" value={empId ?? ""} onChange={(e) => setEmpId(e.target.value ? Number(e.target.value) : null)}>
                 <option value="">Todas</option>
-                {empOpts.map((o) => (<option key={o.id} value={o.id}>{o.nombre}</option>))}
+                {empOpts.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.nombre}
+                  </option>
+                ))}
               </select>
             )}
           </div>
@@ -592,13 +606,13 @@ export default function MovimientosPanel({
             {lockedLocalidad ? (
               <input className="input min-h-10" value={locName || "—"} disabled />
             ) : (
-              <select
-                className="input min-h-10"
-                value={locId ?? ""}
-                onChange={(e) => setLocId(e.target.value ? Number(e.target.value) : null)}
-              >
+              <select className="input min-h-10" value={locId ?? ""} onChange={(e) => setLocId(e.target.value ? Number(e.target.value) : null)}>
                 <option value="">Todas</option>
-                {locOpts.map((o) => (<option key={o.id} value={o.id}>{o.nombre}</option>))}
+                {locOpts.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.nombre}
+                  </option>
+                ))}
               </select>
             )}
           </div>
@@ -639,12 +653,18 @@ export default function MovimientosPanel({
           filtered.map((m) => (
             <article key={m.id} className="rounded-xl border bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
               <div className="mb-2 flex items-center justify-between gap-3">
-                <h3 className="font-semibold text-base">#{m.id} · {m.localidadNombre ?? "—"}</h3>
+                <h3 className="font-semibold text-base">
+                  #{m.id} · {m.localidadNombre ?? "—"}
+                </h3>
                 <Badge
                   tone={
-                    m.estado?.toUpperCase() === "CONCLUIDO" ? "ok" :
-                    m.estado?.toUpperCase() === "DETENIDO" ? "error" :
-                    m.estado?.toUpperCase() === "EN_PROCESO" ? "warn" : "muted"
+                    m.estado?.toUpperCase() === "CONCLUIDO"
+                      ? "ok"
+                      : m.estado?.toUpperCase() === "DETENIDO"
+                      ? "error"
+                      : m.estado?.toUpperCase() === "EN_PROCESO"
+                      ? "warn"
+                      : "muted"
                   }
                 >
                   {m.estado || (m.finalizado ? "CONCLUIDO" : "PENDIENTE")}
@@ -663,11 +683,10 @@ export default function MovimientosPanel({
                 <InfoItem k="Fin" v={fmtDateTime(m.fechaFin)} />
               </dl>
 
-              {!isClient && (
-                <div className="mt-3 flex items-center justify-between">
-                  <Badge tone={m.prioridad === "ALTA" ? "warn" : m.prioridad === "BAJA" ? "muted" : "ok"}>
-                    {m.prioridad || "—"}
-                  </Badge>
+              <div className="mt-3 flex items-center justify-between">
+                <Badge tone={m.prioridad === "ALTA" ? "warn" : m.prioridad === "BAJA" ? "muted" : "ok"}>{m.prioridad || "—"}</Badge>
+
+                {!isClient ? (
                   <button
                     type="button"
                     onClick={() => openDetail(m)}
@@ -675,8 +694,17 @@ export default function MovimientosPanel({
                   >
                     Detalle
                   </button>
-                </div>
-              )}
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openEdit(m)}
+                    className="rounded-md border px-3 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
+                    title={`Editar #${m.id}`}
+                  >
+                    Editar
+                  </button>
+                )}
+              </div>
             </article>
           ))
         )}
@@ -695,19 +723,23 @@ export default function MovimientosPanel({
             <col className="hidden xl:table-column w-[260px]" />
             <col className="hidden xl:table-column w-[200px]" />
             <col className="w-28" />
-            <col className="w-28" /> {/* Estado */}
-            {isClient && <col className="w-24" />} {/* Editar */}
-            <col className="hidden 2xl:table-column w-32" /> {/* Solicitud */}
+            <col className="w-28" />
+            {isClient && <col className="w-24" />}
+            <col className="hidden 2xl:table-column w-32" />
             <col className="hidden lg:table-column w-32" />
             <col className="hidden lg:table-column w-32" />
             <col className="w-28" />
           </colgroup>
           <thead className="bg-slate-50 dark:bg-slate-800/60">
             <tr className="text-left">
-              <Th onClick={() => toggleSort("id")} sortable sortBy={sortBy} selfKey="id" sortDir={sortDir}>ID</Th>
+              <Th onClick={() => toggleSort("id")} sortable sortBy={sortBy} selfKey="id" sortDir={sortDir}>
+                ID
+              </Th>
               <Th className="hidden lg:table-cell">Empresa</Th>
               <Th className="hidden lg:table-cell">Localidad</Th>
-              <Th onClick={() => toggleSort("id")} sortable sortBy={sortBy} selfKey="id" sortDir={sortDir}>Locomotora</Th>
+              <Th onClick={() => toggleSort("id")} sortable sortBy={sortBy} selfKey="id" sortDir={sortDir}>
+                Locomotora
+              </Th>
               <Th>Vía Origen</Th>
               <Th>Vía Destino</Th>
               <Th className="hidden xl:table-cell">Acción</Th>
@@ -715,10 +747,16 @@ export default function MovimientosPanel({
               <Th>Prioridad</Th>
               <Th>Estado</Th>
               {isClient && <Th className="text-center">Editar</Th>}
-              <Th onClick={() => toggleSort("fechaSolicitud")} sortable sortBy={sortBy} selfKey="fechaSolicitud" sortDir={sortDir} className="hidden 2xl:table-cell">Solicitud</Th>
-              <Th onClick={() => toggleSort("fechaInicio")} sortable sortBy={sortBy} selfKey="fechaInicio" sortDir={sortDir} className="hidden lg:table-cell">Inicio</Th>
-              <Th onClick={() => toggleSort("fechaFin")} sortable sortBy={sortBy} selfKey="fechaFin" sortDir={sortDir} className="hidden lg:table-cell">Fin</Th>
-              {isClient && <Th className="text-right">&nbsp;</Th>}
+              <Th onClick={() => toggleSort("fechaSolicitud")} sortable sortBy={sortBy} selfKey="fechaSolicitud" sortDir={sortDir} className="hidden 2xl:table-cell">
+                Solicitud
+              </Th>
+              <Th onClick={() => toggleSort("fechaInicio")} sortable sortBy={sortBy} selfKey="fechaInicio" sortDir={sortDir} className="hidden lg:table-cell">
+                Inicio
+              </Th>
+              <Th onClick={() => toggleSort("fechaFin")} sortable sortBy={sortBy} selfKey="fechaFin" sortDir={sortDir} className="hidden lg:table-cell">
+                Fin
+              </Th>
+              {!isClient && <Th className="text-right">&nbsp;</Th>}
             </tr>
           </thead>
           <tbody className="divide-y dark:divide-slate-800">
@@ -742,23 +780,24 @@ export default function MovimientosPanel({
                   <Td className="hidden xl:table-cell max-w-[260px] truncate">{m.tipoAccion}</Td>
                   <Td className="hidden xl:table-cell max-w-[200px] truncate">{m.tipoMovimiento}</Td>
                   <Td>
-                    <Badge tone={m.prioridad === "ALTA" ? "warn" : m.prioridad === "BAJA" ? "muted" : "ok"}>
-                      {m.prioridad || "—"}
-                    </Badge>
+                    <Badge tone={m.prioridad === "ALTA" ? "warn" : m.prioridad === "BAJA" ? "muted" : "ok"}>{m.prioridad || "—"}</Badge>
                   </Td>
                   <Td>
                     <Badge
                       tone={
-                        m.estado?.toUpperCase() === "CONCLUIDO" ? "ok" :
-                        m.estado?.toUpperCase() === "DETENIDO" ? "error" :
-                        m.estado?.toUpperCase() === "EN_PROCESO" ? "warn" : "muted"
+                        m.estado?.toUpperCase() === "CONCLUIDO"
+                          ? "ok"
+                          : m.estado?.toUpperCase() === "DETENIDO"
+                          ? "error"
+                          : m.estado?.toUpperCase() === "EN_PROCESO"
+                          ? "warn"
+                          : "muted"
                       }
                     >
                       {m.estado || (m.finalizado ? "CONCLUIDO" : "PENDIENTE")}
                     </Badge>
                   </Td>
 
-                  {/* Botón Editar entre Estado y Solicitud */}
                   {isClient && (
                     <Td className="text-center">
                       <button
@@ -777,11 +816,7 @@ export default function MovimientosPanel({
                   <Td className="hidden lg:table-cell whitespace-nowrap">{fmtDateTime(m.fechaFin)}</Td>
                   {!isClient && (
                     <Td className="text-right">
-                      <button
-                        type="button"
-                        onClick={() => openDetail(m)}
-                        className="rounded-md border px-2 py-1 text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
-                      >
+                      <button type="button" onClick={() => openDetail(m)} className="rounded-md border px-2 py-1 text-xs hover:bg-slate-50 dark:hover:bg-slate-800">
                         Detalle
                       </button>
                     </Td>
@@ -876,21 +911,13 @@ export default function MovimientosPanel({
         </div>
       ) : null}
 
-      {/* Modal editar (NO para CLIENTE) */}
+      {/* Modal editar (CLIENTE) */}
       {isClient && editId !== null ? (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-2 sm:p-4 md:p-6"
-          role="dialog"
-          aria-modal="true"
-        >
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-2 sm:p-4 md:p-6" role="dialog" aria-modal="true">
           <div className="w-full max-w-5xl max-h-[85svh] overflow-y-auto rounded-2xl border bg-white p-3 sm:p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h3 className="text-lg font-semibold">Editar movimiento #{editId}</h3>
-              <button
-                className="rounded-md border px-2 py-1 hover:bg-slate-50 dark:hover:bg-slate-800"
-                onClick={() => setEditId(null)}
-                aria-label="Cerrar"
-              >
+              <button className="rounded-md border px-2 py-1 hover:bg-slate-50 dark:hover:bg-slate-800" onClick={() => setEditId(null)} aria-label="Cerrar">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -898,7 +925,10 @@ export default function MovimientosPanel({
             <EditarMovimiento
               movimientoId={editId}
               onClose={() => setEditId(null)}
-              onSaved={() => { setEditId(null); load(true); }}
+              onSaved={() => {
+                setEditId(null);
+                load(true);
+              }}
               /* apiBase={apiBase} */
             />
           </div>
@@ -961,24 +991,14 @@ function Td({ children, className = "" }: { children: React.ReactNode; className
   return <td className={clsx("px-3 py-2 align-middle", className)}>{children}</td>;
 }
 
-function Badge({
-  children,
-  tone = "muted",
-}: {
-  children: React.ReactNode;
-  tone?: "ok" | "warn" | "error" | "muted";
-}) {
+function Badge({ children, tone = "muted" }: { children: React.ReactNode; tone?: "ok" | "warn" | "error" | "muted" }) {
   const map = {
     ok: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-800",
     warn: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-800",
     error: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-200 dark:border-rose-800",
     muted: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
   } as const;
-  return (
-    <span className={clsx("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] sm:text-[11px] font-medium", map[tone])}>
-      {children}
-    </span>
-  );
+  return <span className={clsx("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] sm:text-[11px] font-medium", map[tone])}>{children}</span>;
 }
 
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
