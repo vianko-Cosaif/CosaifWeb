@@ -6,7 +6,7 @@ import { initThemeSSRScript } from "@/lib/theme";
 import ThemeToggleGlobal from "@/app/Components/ThemeToggleGlobal";
 
 export const metadata: Metadata = {
-  title: "Cosaif Logistics",
+  title: "Cosaif",
   description: "Operación ferroviaria sin fricción",
 };
 

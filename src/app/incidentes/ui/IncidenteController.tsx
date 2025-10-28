@@ -679,7 +679,7 @@ export default function IncidenteController() {
                     {filters.searchQuery && (
                       <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200">
                         <Search className="h-3 w-3" />
-                        Filtrado por: "{filters.searchQuery}"
+                        Filtrado por: &quot;{filters.searchQuery}&quot;
                       </span>
                     )}
                   </div>
