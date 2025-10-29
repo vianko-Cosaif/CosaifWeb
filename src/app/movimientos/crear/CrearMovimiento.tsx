@@ -12,6 +12,18 @@ const DOUBLE_TAP_MS = 250;
 const FETCH_TIMEOUT_MS = 12000;
 const FLUSH_INTERVAL_MS = 15000;
 
+/** ======= CONTRASEÑAS DE ALTA POR EMPRESA =======
+ *  Rellena este mapa con las contraseñas genéricas por empresa.
+ *  Ejemplos:
+ *  1 -> "ALTA-EMPRESA-1"
+ *  2 -> "ALTA-EMPRESA-2"
+ */
+const ALTA_PASSWORDS: Record<number, string> = {
+  1: "ALTA-EMPRESA-1",
+  2: "ALTA-EMPRESA-2",
+  // Agrega más { empresaId: "contraseña" }
+};
+
 /** ======= TIPOS ======= */
 type Servicio = "Lavado" | "Torno" | "";
 type Direccion = "EMPUJAR" | "JALAR" | "Sin_Solicitar";
@@ -171,7 +183,7 @@ export default function CrearMovimiento() {
   // UI / selección
   const [showFromOpts, setShowFromOpts] = useState(false);
   const [showToOpts, setShowToOpts] = useState(false);
-  const [selectionMode, setSelectionMode] = useState<"de_via" | "para_via">("de_via"); // Modo de selección por defecto
+  const [selectionMode, setSelectionMode] = useState<"de_via" | "para_via">("de_via");
   const lastTap = useRef<Record<string, number>>({});
   const [fromSection, setFromSection] = useState<number | undefined>(undefined);
   const [toSection, setToSection] = useState<number | undefined>(undefined);
@@ -402,7 +414,6 @@ export default function CrearMovimiento() {
     if (canManageAll && !Number.isFinite(empresaId)) e.empresaId = "Selecciona empresa.";
     if (canManageAll && !Number.isFinite(localidadId)) e.selectedLocalityId = "Selecciona localidad.";
 
-    // Validar según el modo de selección
     if (form.service) {
       if (selectionMode === "de_via" && !form.fromTrack) e.fromTrack = "Selecciona vía de origen.";
       if (selectionMode === "para_via" && !form.toTrack) e.toTrack = "Selecciona vía de destino.";
@@ -420,15 +431,9 @@ export default function CrearMovimiento() {
     const e: Record<string, string> = {};
     if (!form.movementType) e.movementType = "Selecciona el tipo de movimiento.";
     if (!form.service) {
-      // Cabin position is now optional - no validation required
-      // if (!["DENTRO", "AFUERA"].includes(form.cabinPosition)) e.cabinPosition = "Selecciona posición de cabina.";
-
-      // Chimney position is only required if polo is not selected
       if (form.polo === "Sin_Solicitar" && !["DENTRO", "AFUERA"].includes(form.chimneyPosition)) {
         e.chimneyPosition = "Selecciona posición de chimenea.";
       }
-
-      // Polo is only required if chimney position is not selected
       if (form.chimneyPosition === "Sin_Solicitar" && !["NORTE", "SUR"].includes(form.polo)) {
         e.polo = "Selecciona polo o posición de chimenea.";
       }
@@ -465,7 +470,6 @@ export default function CrearMovimiento() {
       return;
     }
 
-    // Determinar las vías según el modo de selección
     const fromTrack = (!form.service || selectionMode === "de_via") ? form.fromTrack : null;
     const toTrack = (!form.service || selectionMode === "para_via") ? form.toTrack : null;
 
@@ -474,7 +478,6 @@ export default function CrearMovimiento() {
       return;
     }
 
-    // --- Construir 'instrucciones' al estilo del móvil ---
     const meta: string[] = [];
     if (typeof toSection === "number")   meta.push(`[META DESTINO:${toSection}]`);
     if (typeof fromSection === "number") meta.push(`[META ORIGEN:${fromSection}]`);
@@ -485,7 +488,6 @@ export default function CrearMovimiento() {
     if (toTrack)
       partes.push(`para la vía ${viaName(toTrack)}${typeof toSection === "number" ? ` (sección ${toSection})` : ""}`);
 
-    // Add polo information if selected
     if (form.polo && form.polo !== "Sin_Solicitar") {
       partes.push(`| Posición: ${form.polo} | `);
     }
@@ -495,13 +497,11 @@ export default function CrearMovimiento() {
       .join(" ")
       .trim();
 
-    // numeroSeccion: si hay servicio, prioriza destino; si no, origen
     const numeroSeccion =
       form.service && (typeof toSection === "number" || typeof fromSection === "number")
         ? Number(typeof toSection === "number" ? toSection : (fromSection as number))
         : undefined;
 
-    // Construcción de payload sin null/undefined
     const payload: Record<string, any> = {
       empresaId: Number(empresaId),
       creadoPorId: Number(creadoPorId),
@@ -532,7 +532,6 @@ export default function CrearMovimiento() {
       incidenteGlobal: false,
     };
 
-    // Limpia undefined
     Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
 
     try {
@@ -554,7 +553,6 @@ export default function CrearMovimiento() {
       const created = txt ? safeJSON(txt) : {};
       const movimientoId = Number((created as any)?.id || 0);
 
-      // Asignación de sección segun lo elegido (destino prioridad)
       const viaParaAsignar =
         typeof toSection === "number" && toTrack
           ? toTrack
@@ -620,7 +618,6 @@ export default function CrearMovimiento() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
-      {/* Hace grandes los selects en celular */}
       <style jsx global>{`
         @media (max-width: 640px) {
           select, select option { font-size: 16px !important; line-height: 1.45 !important; }
@@ -628,14 +625,12 @@ export default function CrearMovimiento() {
         }
       `}</style>
 
-      {/* Grid de fondo que hereda del layout */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 z-0 bg-[linear-gradient(to_right,rgba(0,0,0,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.05)_1px,transparent_1px)] bg-[size:24px_24px] dark:opacity-[0.07]"
       />
       <div className="relative z-10">
 
-        {/* Estado conexión / outbox + Salir */}
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <Badge tone={online ? "ok" : "error"}>{online ? "En línea" : "Sin conexión"}</Badge>
           {pendingCount > 0 && (
@@ -666,7 +661,6 @@ export default function CrearMovimiento() {
           </div>
         )}
 
-        {/* barra progreso */}
         <div className="mt-3 h-2 w-full rounded bg-slate-200 dark:bg-slate-800" aria-label="Progreso">
           <div className="h-2 rounded bg-emerald-600 transition-[width] duration-300" style={{ width: `${percent}%` }} />
         </div>
@@ -718,10 +712,8 @@ export default function CrearMovimiento() {
               setFromSection(undefined);
               setToSection(undefined);
               setErrors({});
-              // Cerrar desplegables de vías si están abiertos
               setShowFromOpts(false);
               setShowToOpts(false);
-              // Si está en el paso 3, volver al paso 1
               if (step === 3) setStep(1);
             }}
             className="rounded-md border px-4 py-2 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
@@ -864,8 +856,52 @@ function StepOne(props: {
     form, setForm, errors, empresas, localidades, vias, canManageAll, userCompanyName,
     showFromOpts, setShowFromOpts, showToOpts, setShowToOpts, selectionMode, setSelectionMode,
     tapToggle, sectionsByVia, secLoading, ensureSections, fromSection, toSection,
-    setFromSection, setToSection, viaName, locoLockedBy
+    setFromSection, setToSection, viaName
   } = props;
+
+  /** ===== Alta Password Modal State ===== */
+  const [altaOpen, setAltaOpen] = useState(false);
+  const [altaPwd, setAltaPwd] = useState("");
+  const [altaErr, setAltaErr] = useState<string | null>(null);
+
+  const handlePriorityToggle = (checked: boolean) => {
+    if (!checked) {
+      setForm((p) => ({ ...p, priority: false }));
+      return;
+    }
+    const empId = Number(form.empresaId);
+    if (!Number.isFinite(empId)) {
+      alert("Selecciona una empresa antes de marcar prioridad alta.");
+      return;
+    }
+    setAltaPwd("");
+    setAltaErr(null);
+    setAltaOpen(true);
+  };
+
+  const confirmAltaPwd = () => {
+    const empId = Number(form.empresaId);
+    const expected = ALTA_PASSWORDS[empId];
+    if (!expected) {
+      setAltaErr("No hay contraseña configurada para esta empresa.");
+      return;
+    }
+    if (altaPwd.trim() !== expected) {
+      setAltaErr("Contraseña inválida.");
+      return;
+    }
+    setForm((p) => ({ ...p, priority: true }));
+    setAltaOpen(false);
+    setAltaPwd("");
+    setAltaErr(null);
+  };
+
+  const cancelAltaPwd = () => {
+    setAltaOpen(false);
+    setAltaPwd("");
+    setAltaErr(null);
+    setForm((p) => ({ ...p, priority: false }));
+  };
 
   const viaOption = (v: Via) => {
     const secs = sectionsByVia[v.id];
@@ -1054,10 +1090,18 @@ function StepOne(props: {
           type="checkbox"
           className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 dark:border-slate-700"
           checked={form.priority}
-          onChange={(e) => setForm((p) => ({ ...p, priority: e.target.checked }))}
+          onChange={(e) => handlePriorityToggle(e.target.checked)}
         />
-        <span className="text-sm text-slate-700 dark:text-slate-200">Prioridad alta</span>
+        <span className="text-sm text-slate-700 dark:text-slate-200">
+          Prioridad alta
+        </span>
       </label>
+      {form.priority === false && (
+        <div className="text-xs text-slate-500 dark:text-slate-400 -mt-2 mb-2">
+          Para activar ALTA se requiere contraseña según la empresa.
+        </div>
+      )}
+
       <Field
         label="Número de locomotora"
         type="text"
@@ -1070,8 +1114,8 @@ function StepOne(props: {
             setForm((p) => ({ ...p, locomotiveNumber: value }));
           }
         }}
-        className={locoLockedBy ? "opacity-70" : ""}
-        disabled={!!locoLockedBy}
+        className=""
+        disabled={false}
         error={errors.locomotiveNumber}
       />
 
@@ -1112,6 +1156,34 @@ function StepOne(props: {
           {showToOpts && <div className="mt-2 grid gap-2 sm:grid-cols-2">{vias.map((v) => (<div key={v.id}>{viaOptionTo(v)}</div>))}</div>}
 
           <SectionsPills kind="to" viaId={form.toTrack} />
+        </div>
+      )}
+
+      {/* ===== Modal de contraseña ALTA ===== */}
+      {altaOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="text-base font-semibold text-slate-800 dark:text-slate-100">Confirmar prioridad ALTA</div>
+            <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+              Ingresa la contraseña de ALTA para la empresa seleccionada.
+            </div>
+            <div className="mt-3">
+              <input
+                type="password"
+                className={clsx(inputBase, altaErr && "border-rose-500 focus:border-rose-500")}
+                value={altaPwd}
+                onChange={(e) => { setAltaPwd(e.target.value); setAltaErr(null); }}
+                onKeyDown={(e) => { if (e.key === "Enter") confirmAltaPwd(); }}
+                placeholder="Contraseña de ALTA"
+                autoFocus
+              />
+              {altaErr && <div className="mt-1 text-xs text-rose-600">{altaErr}</div>}
+            </div>
+            <div className="mt-4 flex gap-2">
+              <button onClick={confirmAltaPwd} className="rounded-md bg-emerald-600 px-3 py-2 text-sm text-white hover:bg-emerald-700">Confirmar</button>
+              <button onClick={cancelAltaPwd} className="rounded-md border px-3 py-2 text-sm hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Cancelar</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

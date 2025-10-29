@@ -46,6 +46,7 @@ type InfoEdicion = {
     posicionCabina?: Posicion | null;
     posicionChimenea?: Posicion | null;
     direccionEmpuje?: Direccion | null;
+    polo?: "NORTE" | "SUR" | "Sin_Solicitar" | null;
     meta?: { destinoId?: number; seccion?: number; liberar?: boolean };
   };
   editableKeys: Array<
@@ -57,6 +58,7 @@ type InfoEdicion = {
     | "posicionCabina"
     | "posicionChimenea"
     | "direccionEmpuje"
+    | "polo"
   >;
 };
 
@@ -150,6 +152,7 @@ export default function EditarMovimiento({
   const [posicionCabina, setPosicionCabina] = useState<Posicion>("Sin_Solicitar");
   const [posicionChimenea, setPosicionChimenea] = useState<Posicion>("Sin_Solicitar");
   const [direccionEmpuje, setDireccionEmpuje] = useState<Direccion>("Sin_Solicitar");
+  const [polo, setPolo] = useState<"NORTE" | "SUR" | "Sin_Solicitar">("Sin_Solicitar");
 
   // Secciones elegidas para hint META (el backend solo las lee desde instrucciones)
   const [fromSection, setFromSection] = useState<number | undefined>(undefined);
@@ -198,6 +201,7 @@ export default function EditarMovimiento({
         setViaOrigenId(data.movimiento.viaOrigen?.id ?? null);
         setViaDestinoId(data.movimiento.viaDestino?.id ?? null);
         setTipoMovimiento((data.movimiento.tipoMovimiento as any) || "");
+        setPolo(data.movimiento.polo || "Sin_Solicitar");
         setPosicionCabina((data.movimiento.posicionCabina as any) ?? "Sin_Solicitar");
         setPosicionChimenea((data.movimiento.posicionChimenea as any) ?? "Sin_Solicitar");
         setDireccionEmpuje((data.movimiento.direccionEmpuje as any) ?? "Sin_Solicitar");
@@ -263,64 +267,73 @@ export default function EditarMovimiento({
     return Object.keys(e).length === 0;
   };
 
-  /** Construir descripción automática de vías y secciones igual que en CrearMovimiento */
-  const buildAutoDescription = (fromTrackId?: number | null, toTrackId?: number | null, fromSection?: number, toSection?: number): string => {
+  /** Construir descripción automática de vías, secciones y polo igual que en CrearMovimiento */
+  const buildAutoDescription = (fromTrackId?: number | null, toTrackId?: number | null, fromSection?: number, toSection?: number, polo?: "NORTE" | "SUR" | "Sin_Solicitar"): string => {
     const partes: string[] = [];
     if (fromTrackId)
       partes.push(`De la vía ${viaName(fromTrackId)}${typeof fromSection === "number" ? ` (sección ${fromSection})` : ""}`);
     if (toTrackId)
       partes.push(`para la vía ${viaName(toTrackId)}${typeof toSection === "number" ? ` (sección ${toSection})` : ""}`);
-    return partes.join("");
+    
+    // Add polo information if selected
+    if (polo && polo !== "Sin_Solicitar") {
+      partes.push(`| Posición: ${polo} |`);
+    }
+    
+    return partes.join(" ");
   };
 
   const buildPayload = (): EditablePayload => {
-    if (!info) return {};
-    const orig = info.movimiento;
+    if (!info) return {} as EditablePayload;
 
-    const p: EditablePayload = {};
+    const { editableKeys } = info;
+    const payload: EditablePayload = {};
 
-    const add = (k: keyof EditablePayload, v: any, toNumber = false) => {
-      if (!(info.editableKeys as string[]).includes(k as string)) return;
-      const ov: any = ((): any => {
-        switch (k) {
-          case "instrucciones": return orig.instrucciones ?? "";
-          case "locomotiveNumber": return orig.locomotiveNumber ?? null;
-          case "viaOrigenId": return orig.viaOrigen?.id ?? null;
-          case "viaDestinoId": return orig.viaDestino?.id ?? null;
-          case "tipoMovimiento": return orig.tipoMovimiento ?? "";
-          case "posicionCabina": return (orig.posicionCabina as any) ?? "Sin_Solicitar";
-          case "posicionChimenea": return (orig.posicionChimenea as any) ?? "Sin_Solicitar";
-          case "direccionEmpuje": return (orig.direccionEmpuje as any) ?? "Sin_Solicitar";
-          default: return undefined;
-        }
-      })();
+    // Añadir solo los campos editables que han cambiado
+    if (editableKeys.includes('locomotiveNumber') && String(locomotiveNumber) !== String(info.movimiento.locomotiveNumber ?? '')) {
+      payload.locomotiveNumber = Number(locomotiveNumber) || 0;
+    }
 
-      const nv = toNumber ? (v === "" || v === null ? null : Number(v)) : v;
-      const areEqual = (a: any, b: any) => String(a ?? "") === String(b ?? "");
-      if (!areEqual(ov, nv)) (p as any)[k] = nv;
-    };
+    if (editableKeys.includes('viaOrigenId') && viaOrigenId !== info.movimiento.viaOrigen?.id) {
+      payload.viaOrigenId = viaOrigenId;
+    }
 
-    // Construir instrucciones igual que en CrearMovimiento: descripción automática + comentario del usuario
-    const autoDesc = buildAutoDescription(viaOrigenId, viaDestinoId, fromSection, toSection);
+    if (editableKeys.includes('viaDestinoId') && viaDestinoId !== info.movimiento.viaDestino?.id) {
+      payload.viaDestinoId = viaDestinoId;
+    }
+
+    if (editableKeys.includes('tipoMovimiento') && tipoMovimiento !== (info.movimiento.tipoMovimiento as any)) {
+      if (tipoMovimiento) payload.tipoMovimiento = tipoMovimiento;
+    }
+
+    if (editableKeys.includes('posicionCabina') && posicionCabina !== (info.movimiento.posicionCabina as any)) {
+      payload.posicionCabina = posicionCabina;
+    }
+
+    if (editableKeys.includes('posicionChimenea') && posicionChimenea !== (info.movimiento.posicionChimenea as any)) {
+      payload.posicionChimenea = posicionChimenea;
+    }
+
+    if (editableKeys.includes('direccionEmpuje') && direccionEmpuje !== (info.movimiento.direccionEmpuje as any)) {
+      payload.direccionEmpuje = direccionEmpuje;
+    }
+
+    // Polo is now included in the instructions, not in the payload
+
+    // Construir instrucciones con metadatos
+    const autoDesc = buildAutoDescription(viaOrigenId, viaDestinoId, fromSection, toSection, polo);
     const metaParts: string[] = [];
-    if (typeof toSection === "number") metaParts.push(`[META DESTINO:${toSection}]`);
-    if (typeof fromSection === "number") metaParts.push(`[META ORIGEN:${fromSection}]`);
+    if (typeof toSection === 'number') metaParts.push(`[META DESTINO:${toSection}]`);
+    if (typeof fromSection === 'number') metaParts.push(`[META ORIGEN:${fromSection}]`);
 
-    const finalInstr = [metaParts.join(" "), autoDesc, instrucciones?.trim() || ""]
+    const finalInstr = [metaParts.join(' '), autoDesc, instrucciones?.trim() || '']
       .filter(Boolean)
-      .join(" ")
+      .join(' ')
       .trim();
 
-    add("instrucciones", finalInstr);
-    add("locomotiveNumber", locomotiveNumber.trim() === "" ? null : Number(locomotiveNumber), true);
-    add("viaOrigenId", viaOrigenId ?? null, true);
-    add("viaDestinoId", viaDestinoId ?? null, true);
-    if (tipoMovimiento) add("tipoMovimiento", tipoMovimiento);
-    add("posicionCabina", posicionCabina);
-    add("posicionChimenea", posicionChimenea);
-    add("direccionEmpuje", tipoMovimiento === "REMOLCADA" ? direccionEmpuje : "Sin_Solicitar");
+    if (info.editableKeys.includes('instrucciones')) payload.instrucciones = finalInstr;
 
-    return p;
+    return payload;
   };
 
   /** Guardar */
@@ -428,7 +441,7 @@ export default function EditarMovimiento({
 
           {step === 2 && (
             <Step2Edit
-              readOnly={readOnly}
+              readOnly={!info.editable || saving}
               tipoMovimiento={tipoMovimiento}
               setTipoMovimiento={setTipoMovimiento}
               posicionCabina={posicionCabina}
@@ -437,6 +450,8 @@ export default function EditarMovimiento({
               setPosicionChimenea={setPosicionChimenea}
               direccionEmpuje={direccionEmpuje}
               setDireccionEmpuje={setDireccionEmpuje}
+              polo={polo}
+              setPolo={setPolo}
               errors={errors}
             />
           )}
@@ -746,6 +761,8 @@ function Step2Edit({
   setPosicionChimenea,
   direccionEmpuje,
   setDireccionEmpuje,
+  polo,
+  setPolo,
   errors,
 }: {
   readOnly: boolean;
@@ -757,6 +774,8 @@ function Step2Edit({
   setPosicionChimenea: (v: Posicion) => void;
   direccionEmpuje: Direccion;
   setDireccionEmpuje: (v: Direccion) => void;
+  polo: "NORTE" | "SUR" | "Sin_Solicitar";
+  setPolo: (v: "NORTE" | "SUR" | "Sin_Solicitar") => void;
   errors: Record<string, string>;
 }) {
   const Card = ({
@@ -799,21 +818,107 @@ function Step2Edit({
         {errors.tipoMovimiento && <div className="mt-1 text-xs text-rose-600">{errors.tipoMovimiento}</div>}
       </div>
 
-      {/* Posiciones */}
+      {/* Polo Norte/Sur */}
+      <div>
+        <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200"></div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Card 
+            label="Norte" 
+            active={polo === "NORTE"} 
+            onClick={() => {
+              if (polo === "NORTE") {
+                setPolo("Sin_Solicitar");
+              } else {
+                setPolo("NORTE");
+                setPosicionCabina("Sin_Solicitar");
+                setPosicionChimenea("Sin_Solicitar");
+              }
+            }} 
+            disabled={readOnly || posicionCabina !== "Sin_Solicitar" || posicionChimenea !== "Sin_Solicitar"} 
+          />
+          <Card 
+            label="Sur" 
+            active={polo === "SUR"} 
+            onClick={() => {
+              if (polo === "SUR") {
+                setPolo("Sin_Solicitar");
+              } else {
+                setPolo("SUR");
+                setPosicionCabina("Sin_Solicitar");
+                setPosicionChimenea("Sin_Solicitar");
+              }
+            }} 
+            disabled={readOnly || posicionCabina !== "Sin_Solicitar" || posicionChimenea !== "Sin_Solicitar"} 
+          />
+        </div>
+        {polo !== "Sin_Solicitar" && <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Doble clic para desmarcar</div>}
+      </div>
+
+      {/* Posición de cabina */}
       <div>
         <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">Posición de cabina</div>
         <div className="grid gap-2 sm:grid-cols-2">
-          <Card label="Dentro" active={posicionCabina === "DENTRO"} onClick={() => setPosicionCabina("DENTRO")} disabled={readOnly} />
-          <Card label="Afuera" active={posicionCabina === "AFUERA"} onClick={() => setPosicionCabina("AFUERA")} disabled={readOnly} />
+          <Card 
+            label="Dentro" 
+            active={posicionCabina === "DENTRO"} 
+            onClick={() => {
+              if (posicionCabina === "DENTRO") {
+                setPosicionCabina("Sin_Solicitar");
+              } else {
+                setPosicionCabina("DENTRO");
+                setPolo("Sin_Solicitar");
+              }
+            }} 
+            disabled={readOnly || polo !== "Sin_Solicitar"} 
+          />
+          <Card 
+            label="Afuera" 
+            active={posicionCabina === "AFUERA"} 
+            onClick={() => {
+              if (posicionCabina === "AFUERA") {
+                setPosicionCabina("Sin_Solicitar");
+              } else {
+                setPosicionCabina("AFUERA");
+                setPolo("Sin_Solicitar");
+              }
+            }} 
+            disabled={readOnly || polo !== "Sin_Solicitar"} 
+          />
         </div>
+        {posicionCabina !== "Sin_Solicitar" && <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Doble clic para desmarcar</div>}
       </div>
 
       <div>
         <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">Posición de chimenea</div>
         <div className="grid gap-2 sm:grid-cols-2">
-          <Card label="Dentro" active={posicionChimenea === "DENTRO"} onClick={() => setPosicionChimenea("DENTRO")} disabled={readOnly} />
-          <Card label="Afuera" active={posicionChimenea === "AFUERA"} onClick={() => setPosicionChimenea("AFUERA")} disabled={readOnly} />
+          <Card 
+            label="Dentro" 
+            active={posicionChimenea === "DENTRO"} 
+            onClick={() => {
+              if (posicionChimenea === "DENTRO") {
+                setPosicionChimenea("Sin_Solicitar");
+              } else {
+                setPosicionChimenea("DENTRO");
+                setPolo("Sin_Solicitar");
+              }
+            }} 
+            disabled={readOnly || polo !== "Sin_Solicitar"} 
+          />
+          <Card 
+            label="Afuera" 
+            active={posicionChimenea === "AFUERA"} 
+            onClick={() => {
+              if (posicionChimenea === "AFUERA") {
+                setPosicionChimenea("Sin_Solicitar");
+              } else {
+                setPosicionChimenea("AFUERA");
+                setPolo("Sin_Solicitar");
+              }
+            }} 
+            disabled={readOnly || polo !== "Sin_Solicitar"} 
+          />
         </div>
+        {posicionChimenea !== "Sin_Solicitar" && <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Doble clic para desmarcar</div>}
       </div>
 
       {/* Dirección (solo si Remolcada) */}
