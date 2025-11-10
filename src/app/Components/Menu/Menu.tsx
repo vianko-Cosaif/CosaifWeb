@@ -268,18 +268,6 @@ export default function SidebarMenu({
     [normRol, pathname, BASE]
   );
 
-  const vars: React.CSSProperties = {
-    "--sb-bg": theme.bg,
-    "--sb-text": theme.text,
-    "--sb-accent": theme.accent,
-    "--sb-border": theme.border,
-    "--sb-glass": theme.glass,
-    "--sb-role-bg": theme.roleBg,
-    "--sb-role-border": theme.roleBorder,
-    "--sb-role-text": theme.roleText,
-    "--sbw-open": `${openW}px`,
-    "--sbw-collapsed": `${colW}px`,
-  } as React.CSSProperties;
 
   async function handleLogoutLocal() {
     if (loggingOut) return;
@@ -306,7 +294,7 @@ export default function SidebarMenu({
 
   /* ===== Desktop ===== */
   const Desktop = (
-    <aside data-appearance={isDark ? "dark" : "light"} style={vars} className="fixed left-0 top-0 z-40 hidden h-svh border-r md:flex" aria-label="Barra lateral">
+    <aside data-appearance={isDark ? "dark" : "light"}  className="fixed left-0 top-0 z-40 hidden h-svh border-r md:flex" aria-label="Barra lateral">
       <div
         className="flex h-full flex-col border-r text-[var(--sb-text)] shadow-xl"
         style={{ width: open ? "var(--sbw-open)" : "var(--sbw-collapsed)", background: "var(--sb-bg)", borderColor: "var(--sb-border)" }}
@@ -445,7 +433,7 @@ export default function SidebarMenu({
       <aside
         id={asideId}
         data-appearance={isDark ? "dark" : "light"}
-        style={vars}
+       
         role="dialog"
         aria-modal="true"
         aria-hidden={!mobileOpen}
