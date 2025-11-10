@@ -18,6 +18,18 @@ import {
 
 /* ===== Tipos ===== */
 export type Rol = "ADMINISTRADOR" | "COORDINADOR" | "SUPERVISOR" | "CLIENTE";
+
+type Theme = {
+  bg: string;
+  text: string;
+  accent: string;
+  border: string;
+  glass: string;
+  roleBg: string;
+  roleBorder: string;
+  roleText: string;
+};
+
 export interface SidebarMenuProps {
   rol?: Rol | string;
   nombre?: string;
@@ -38,7 +50,7 @@ function getCookie(name: string): string {
 }
 
 /* ===== Tema por rol (light) ===== */
-const ROLE_THEME_LIGHT: Record<Rol, unknown> = {
+const ROLE_THEME_LIGHT: Record<Rol, Theme> = {
   ADMINISTRADOR: {
     bg: "#0D2818", text: "#E9F5ED", accent: "#40916C", border: "#1B4332",
     glass: "rgba(255,255,255,0.06)", roleBg: "rgba(64,145,108,0.15)",
@@ -62,7 +74,7 @@ const ROLE_THEME_LIGHT: Record<Rol, unknown> = {
 };
 
 /* ===== Tema por rol (dark) ===== */
-const ROLE_THEME_DARK: Record<Rol, unknown> = {
+const ROLE_THEME_DARK: Record<Rol, Theme> = {
   ADMINISTRADOR: {
     bg: "#0B2217", text: "#E6F7EE", accent: "#5ED3A5", border: "#13432E",
     glass: "rgba(255,255,255,0.08)", roleBg: "rgba(94,211,165,0.16)",
@@ -85,7 +97,7 @@ const ROLE_THEME_DARK: Record<Rol, unknown> = {
   },
 };
 
-const ROLE_ICON: Record<Rol, React.ReactNode> = {
+const ROLE_ICON: Record<Rol, JSX.Element> = {
   ADMINISTRADOR: <ShieldHalf className="h-4 w-4" />,
   COORDINADOR: <Train className="h-4 w-4" />,
   SUPERVISOR: <Users className="h-4 w-4" />,
@@ -231,7 +243,7 @@ export default function SidebarMenu({
   }, []);
   const normRol = useMemo<Rol>(() => normalizeRole((rol as string) || cookieRole || localRole), [rol, cookieRole, localRole]);
 
-  const theme = useMemo(
+  const theme: Theme = useMemo(
     () => (isDark ? ROLE_THEME_DARK[normRol] : ROLE_THEME_LIGHT[normRol]),
     [normRol, isDark]
   );
@@ -268,6 +280,18 @@ export default function SidebarMenu({
     [normRol, pathname, BASE]
   );
 
+  const vars: React.CSSProperties = {
+    "--sb-bg": theme.bg,
+    "--sb-text": theme.text,
+    "--sb-accent": theme.accent,
+    "--sb-border": theme.border,
+    "--sb-glass": theme.glass,
+    "--sb-role-bg": theme.roleBg,
+    "--sb-role-border": theme.roleBorder,
+    "--sb-role-text": theme.roleText,
+    "--sbw-open": `${openW}px`,
+    "--sbw-collapsed": `${colW}px`,
+  } as React.CSSProperties;
 
   async function handleLogoutLocal() {
     if (loggingOut) return;
@@ -294,7 +318,7 @@ export default function SidebarMenu({
 
   /* ===== Desktop ===== */
   const Desktop = (
-    <aside data-appearance={isDark ? "dark" : "light"}  className="fixed left-0 top-0 z-40 hidden h-svh border-r md:flex" aria-label="Barra lateral">
+    <aside data-appearance={isDark ? "dark" : "light"} style={vars} className="fixed left-0 top-0 z-40 hidden h-svh border-r md:flex" aria-label="Barra lateral">
       <div
         className="flex h-full flex-col border-r text-[var(--sb-text)] shadow-xl"
         style={{ width: open ? "var(--sbw-open)" : "var(--sbw-collapsed)", background: "var(--sb-bg)", borderColor: "var(--sb-border)" }}
@@ -433,7 +457,7 @@ export default function SidebarMenu({
       <aside
         id={asideId}
         data-appearance={isDark ? "dark" : "light"}
-       
+        style={vars}
         role="dialog"
         aria-modal="true"
         aria-hidden={!mobileOpen}
