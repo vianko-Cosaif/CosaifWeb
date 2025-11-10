@@ -30,6 +30,19 @@ type Theme = {
   roleText: string;
 };
 
+type SidebarCSSVars = React.CSSProperties & {
+  "--sb-bg": string;
+  "--sb-text": string;
+  "--sb-accent": string;
+  "--sb-border": string;
+  "--sb-glass": string;
+  "--sb-role-bg": string;
+  "--sb-role-border": string;
+  "--sb-role-text": string;
+  "--sbw-open": string;
+  "--sbw-collapsed": string;
+};
+
 export interface SidebarMenuProps {
   rol?: Rol | string;
   nombre?: string;
@@ -50,7 +63,7 @@ function getCookie(name: string): string {
 }
 
 /* ===== Tema por rol (light) ===== */
-const ROLE_THEME_LIGHT: Record<Rol, Theme> = {
+const ROLE_THEME_LIGHT = {
   ADMINISTRADOR: {
     bg: "#0D2818", text: "#E9F5ED", accent: "#40916C", border: "#1B4332",
     glass: "rgba(255,255,255,0.06)", roleBg: "rgba(64,145,108,0.15)",
@@ -71,10 +84,10 @@ const ROLE_THEME_LIGHT: Record<Rol, Theme> = {
     glass: "rgba(255,255,255,0.05)", roleBg: "rgba(74,194,125,0.15)",
     roleBorder: "#2E6F53", roleText: "#B7E4C7",
   },
-};
+} satisfies Record<Rol, Theme>;
 
 /* ===== Tema por rol (dark) ===== */
-const ROLE_THEME_DARK: Record<Rol, Theme> = {
+const ROLE_THEME_DARK = {
   ADMINISTRADOR: {
     bg: "#0B2217", text: "#E6F7EE", accent: "#5ED3A5", border: "#13432E",
     glass: "rgba(255,255,255,0.08)", roleBg: "rgba(94,211,165,0.16)",
@@ -95,7 +108,7 @@ const ROLE_THEME_DARK: Record<Rol, Theme> = {
     glass: "rgba(255,255,255,0.08)", roleBg: "rgba(94,211,165,0.16)",
     roleBorder: "#2B6E55", roleText: "#BFF3DD",
   },
-};
+} satisfies Record<Rol, Theme>;
 
 const ROLE_ICON: Record<Rol, JSX.Element> = {
   ADMINISTRADOR: <ShieldHalf className="h-4 w-4" />,
@@ -155,7 +168,7 @@ function deleteClientCookies(names: string[]) {
     const parts = host.split(".");
     const domains = new Set<string>([host]);
     for (let i = 0; i < parts.length - 1; i++) domains.add("." + parts.slice(i).join("."));
-    const paths = ["/", "/cliente", "/admin", "/coordinador", "/supervisor", "/operador", "/maquinista"];
+    const paths = ["/", "/cliente", "/administrador", "/coordinador", "/supervisor", "/operador", "/maquinista"];
     names.forEach((name) => {
       document.cookie = `${name}=; Max-Age=0; path=/;`;
       document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;`;
@@ -280,7 +293,7 @@ export default function SidebarMenu({
     [normRol, pathname, BASE]
   );
 
-  const vars: React.CSSProperties = {
+  const vars: SidebarCSSVars = {
     "--sb-bg": theme.bg,
     "--sb-text": theme.text,
     "--sb-accent": theme.accent,
@@ -291,7 +304,7 @@ export default function SidebarMenu({
     "--sb-role-text": theme.roleText,
     "--sbw-open": `${openW}px`,
     "--sbw-collapsed": `${colW}px`,
-  } as React.CSSProperties;
+  };
 
   async function handleLogoutLocal() {
     if (loggingOut) return;
