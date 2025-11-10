@@ -3,7 +3,6 @@ import "./globals.scss";
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { initThemeSSRScript } from "@/lib/theme";
-import ThemeToggleGlobal from "@/app/Components/ThemeToggleGlobal";
 
 export const metadata: Metadata = {
   title: "Cosaif",
@@ -37,7 +36,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </a>
 
         {/* Theme Toggle global - solo se muestra fuera de rutas /cliente */}
-        <ThemeToggleGlobal />
 
         <main id="main">{children}</main>
       </body>
