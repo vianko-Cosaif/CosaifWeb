@@ -16,9 +16,10 @@ import {
   LayoutDashboard,
 } from "lucide-react";
 
-export type Rol = "ADMINISTRADOR" | "COORDINADOR" | "CLIENTE";
+/* ===== Tipos ===== */
+export type Rol = "ADMINISTRADOR" | "COORDINADOR" | "SUPERVISOR" | "CLIENTE";
 export interface SidebarMenuProps {
-  rol: Rol | string;
+  rol?: Rol | string;
   nombre?: string;
   empresa?: string;
   version?: string;
@@ -29,8 +30,15 @@ export interface SidebarMenuProps {
   appearance?: "auto" | "light" | "dark";
 }
 
+/* ===== Helpers ===== */
+function getCookie(name: string): string {
+  if (typeof document === "undefined") return "";
+  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return m ? decodeURIComponent(m[1]) : "";
+}
+
 /* ===== Tema por rol (light) ===== */
-const ROLE_THEME_LIGHT = {
+const ROLE_THEME_LIGHT: Record<Rol, unknown> = {
   ADMINISTRADOR: {
     bg: "#0D2818", text: "#E9F5ED", accent: "#40916C", border: "#1B4332",
     glass: "rgba(255,255,255,0.06)", roleBg: "rgba(64,145,108,0.15)",
@@ -41,15 +49,20 @@ const ROLE_THEME_LIGHT = {
     glass: "rgba(255,255,255,0.05)", roleBg: "rgba(54,180,198,0.15)",
     roleBorder: "#2a6f7f", roleText: "#9adbe5",
   },
+  SUPERVISOR: {
+    bg: "#232038", text: "#ECE9FE", accent: "#7C3AED", border: "#2F2A4E",
+    glass: "rgba(255,255,255,0.06)", roleBg: "rgba(124,58,237,0.15)",
+    roleBorder: "#5B21B6", roleText: "#C4B5FD",
+  },
   CLIENTE: {
     bg: "#1E3B2E", text: "#E0F5E9", accent: "#4AC27D", border: "#25483A",
     glass: "rgba(255,255,255,0.05)", roleBg: "rgba(74,194,125,0.15)",
     roleBorder: "#2E6F53", roleText: "#B7E4C7",
   },
-} as const;
+};
 
 /* ===== Tema por rol (dark) ===== */
-const ROLE_THEME_DARK = {
+const ROLE_THEME_DARK: Record<Rol, unknown> = {
   ADMINISTRADOR: {
     bg: "#0B2217", text: "#E6F7EE", accent: "#5ED3A5", border: "#13432E",
     glass: "rgba(255,255,255,0.08)", roleBg: "rgba(94,211,165,0.16)",
@@ -57,19 +70,25 @@ const ROLE_THEME_DARK = {
   },
   COORDINADOR: {
     bg: "#0F1722", text: "#E8F4FB", accent: "#57D8E8", border: "#1B2A3A",
-    glass: "rgba(255,255,255,0.08)", roleBg: "rgba(87,216,232,0.16)",
+    glass: "rgba(255,255,255,0.08)", roleBg: "rgba(57,216,232,0.16)",
     roleBorder: "#2D7E90", roleText: "#BCEFF6",
+  },
+  SUPERVISOR: {
+    bg: "#18132B", text: "#EEE9FF", accent: "#A78BFA", border: "#241C43",
+    glass: "rgba(255,255,255,0.08)", roleBg: "rgba(167,139,250,0.16)",
+    roleBorder: "#4C1D95", roleText: "#DDD6FE",
   },
   CLIENTE: {
     bg: "#0F241B", text: "#E6F7EE", accent: "#5ED3A5", border: "#174635",
     glass: "rgba(255,255,255,0.08)", roleBg: "rgba(94,211,165,0.16)",
     roleBorder: "#2B6E55", roleText: "#BFF3DD",
   },
-} as const;
+};
 
 const ROLE_ICON: Record<Rol, React.ReactNode> = {
   ADMINISTRADOR: <ShieldHalf className="h-4 w-4" />,
   COORDINADOR: <Train className="h-4 w-4" />,
+  SUPERVISOR: <Users className="h-4 w-4" />,
   CLIENTE: <Building2 className="h-4 w-4" />,
 };
 
@@ -77,7 +96,8 @@ const ROLE_ICON: Record<Rol, React.ReactNode> = {
 function normalizeRole(r?: string): Rol {
   const s = (r || "").toUpperCase().trim();
   if (s === "ADMINISTRADOR" || s === "ADMIN") return "ADMINISTRADOR";
-  if (s === "COORDINADOR" || s === "COOORDINADOR" || s === "COORD") return "COORDINADOR";
+  if (s === "COORDINADOR" || s === "COORDINADORES" || s === "COORD") return "COORDINADOR";
+  if (s === "SUPERVISOR" || s === "SUPERVISORES" || s === "SUP") return "SUPERVISOR";
   return "CLIENTE";
 }
 
@@ -92,9 +112,7 @@ function useMediaQuery(q: string) {
   }, [q]);
   return ok;
 }
-function usePrefersDark() {
-  return useMediaQuery("(prefers-color-scheme: dark)");
-}
+function usePrefersDark() { return useMediaQuery("(prefers-color-scheme: dark)"); }
 function useBodyScrollLock(lock: boolean) {
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -206,7 +224,13 @@ export default function SidebarMenu({
 
   useBodyScrollLock(mobileOpen && !isDesktop);
 
-  const normRol = useMemo<Rol>(() => normalizeRole(rol as string), [rol]);
+  // Detecta rol: prop -> cookie -> localStorage.user.rol
+  const cookieRole = useMemo(() => getCookie("role"), []);
+  const localRole = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem("user") || "{}")?.rol as string | undefined; } catch { return undefined; }
+  }, []);
+  const normRol = useMemo<Rol>(() => normalizeRole((rol as string) || cookieRole || localRole), [rol, cookieRole, localRole]);
+
   const theme = useMemo(
     () => (isDark ? ROLE_THEME_DARK[normRol] : ROLE_THEME_LIGHT[normRol]),
     [normRol, isDark]
@@ -216,12 +240,20 @@ export default function SidebarMenu({
   const colW = useMemo(() => Math.round(Math.min(Math.max(collapsedWidth, 64), 104)), [collapsedWidth]);
 
   const asideId = "sidebar-mobile";
-  const BASE = "/cliente";
+
+  // Base por rol
+  const BASE_BY_ROLE: Record<Rol, string> = {
+    CLIENTE: "/cliente",
+    COORDINADOR: "/coordinador",
+    SUPERVISOR: "/supervisor",
+    ADMINISTRADOR: "/administrador",
+  };
+  const BASE = BASE_BY_ROLE[normRol];
 
   const NAV = useMemo(
     () =>
       [
-        { id: "Panel", label: "Panel", href: BASE, icon: <LayoutDashboard className="h-5 w-5" />, show: normRol === "CLIENTE", exact: true },
+        { id: "Panel", label: "Panel", href: BASE, icon: <LayoutDashboard className="h-5 w-5" />, show: true, exact: true },
         { id: "Movimientos", label: "Movimientos", href: `${BASE}/movimientos`, icon: <Train className="h-5 w-5" />, show: true },
         { id: "Usuario", label: "Usuarios", href: `${BASE}/usuarios`, icon: <Users className="h-5 w-5" />, show: normRol !== "CLIENTE" },
         { id: "Localidad", label: "Localidad y Vías", href: `${BASE}/localidad`, icon: <MapPinned className="h-5 w-5" />, show: normRol !== "CLIENTE" },
@@ -233,7 +265,7 @@ export default function SidebarMenu({
           ...it,
           isActive: it.exact ? pathname === it.href : pathname.startsWith(it.href),
         })),
-    [normRol, pathname]
+    [normRol, pathname, BASE]
   );
 
   const vars: React.CSSProperties = {
@@ -423,7 +455,7 @@ export default function SidebarMenu({
           mobileOpen ? "translate-x-0" : "-translate-x-full",
         ].join(" ")}
       >
-        <div className="flex h-full w=[min(92vw,360px)] md:w-auto flex-col" style={{ background: "var(--sb-bg)" }}>
+        <div className="flex h-full w-[min(92vw,360px)] md:w-auto flex-col" style={{ background: "var(--sb-bg)" }}>
           <div className="flex items-center gap-2 border-b px-4 py-4" style={{ borderColor: "var(--sb-border)", paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
             <Home className="h-5 w-5" />
             <div className="flex-1">

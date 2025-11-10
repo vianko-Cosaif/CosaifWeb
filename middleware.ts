@@ -7,13 +7,15 @@ const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
 const AREAS: Record<string, RegExp> = {
   CLIENTE: /^\/cliente(\/|$)/,
-  ADMINISTRADOR: /^\/admin(\/|$)/,
+  ADMINISTRADOR: /^\/administrador(\/|$)/,
   COORDINADOR: /^\/coordinador(\/|$)/,
+  SUPERVISOR: /^\/supervisor(\/|$)/,
 };
 const HOME: Record<string, string> = {
   CLIENTE: "/cliente",
-  ADMINISTRADOR: "/admin",
+  ADMINISTRADOR: "/administrador",
   COORDINADOR: "/coordinador",
+  SUPERVISOR: "/supervisor",
 };
 
 // Bloqueados siempre
@@ -94,7 +96,7 @@ export async function middleware(req: NextRequest) {
   const okHere = AREAS[session.role]?.test(pathname) ?? false;
   if (isInAnyArea && !okHere) {
     const u = req.nextUrl.clone();
-    u.pathname = HOME[session.role] ?? "/cliente";
+    u.pathname = HOME[session.role] ?? "/login";
     u.search = "";
     return NextResponse.redirect(u);
   }

@@ -1,6 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
+// Roles soportados: CLIENTE, SUPERVISOR, COORDINADOR, ADMINISTRADOR
+// Reglas:
+// - CLIENTE: ve solo su empresa, solo "Actuales", puede EDITAR sus movimientos y puede CREAR.
+// - SUPERVISOR: ve TODAS las empresas/localidades, solo "Actuales", NO edita. Crear si allowCreate.
+// - COORDINADOR/ADMINISTRADOR: ve TODO (Actuales y Pasados), NO edita. Crear si allowCreate.
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -14,6 +20,8 @@ import {
   Plus,
   WifiOff,
   ArrowUpDown,
+  Shield,
+  MapPin,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 
@@ -142,10 +150,20 @@ export default function MovimientosPanel({
   const userMeta = useMemo(getUserMeta, []);
   const cookieRole = (getCookie("role") || (userMeta as { rol?: string })?.rol || role || "CLIENTE").toString();
   const roleUp = cookieRole.toUpperCase();
+
+  // Flags por rol
   const isClient = roleUp === "CLIENTE";
+  const isSupervisor = roleUp === "SUPERVISOR";
+  const isCoordinator = roleUp === "COORDINADOR" || roleUp === "COORDINADORES";
+  const isAdmin = roleUp === "ADMINISTRADOR" || roleUp === "ADMIN";
+
+  const canEdit = isClient; // Solo cliente edita
+  const canSeePast = isCoordinator || isAdmin; // Past para coordinador/admin
+  const canSeeAllLocalidades = isSupervisor || isCoordinator || isAdmin; // cliente queda atado
+
   const cookieLocId = Number(getCookie("locId") || "") || null;
 
-  // filtros (CLIENTE bloqueado en empresa + localidad)
+  // filtros
   const [empId, setEmpId] = useState<number | null>(defaultEmpresaId ?? null);
   const [locId, setLocId] = useState<number | null>(defaultLocalidadId ?? cookieLocId ?? null);
   const [from, setFrom] = useState("");
@@ -221,7 +239,7 @@ export default function MovimientosPanel({
     } catch {}
   }, [isClient, empId, empOpts, userMeta]);
 
-  // nombre de localidad (para el input bloqueado)
+  // nombre de localidad bloqueada
   const [locName, setLocName] = useState<string>("");
   useEffect(() => {
     if (locId == null) {
@@ -278,10 +296,10 @@ export default function MovimientosPanel({
     } catch {}
   }, [auto]);
 
-  // CLIENTE no puede ver "Pasados"
+  // CLIENTE y SUPERVISOR no ven "Pasados"
   useEffect(() => {
-    if (isClient && tab !== "Actuales") setTab("Actuales");
-  }, [isClient, tab]);
+    if (!canSeePast && tab !== "Actuales") setTab("Actuales");
+  }, [canSeePast, tab]);
 
   // ordenamiento simple
   const [sortBy, setSortBy] = useState<"id" | "fechaSolicitud" | "fechaInicio" | "fechaFin">("id");
@@ -332,6 +350,7 @@ export default function MovimientosPanel({
         });
         if (!r.ok) throw new Error(String(r.status));
         const data = await r.json();
+
         if (my !== reqSeq.current) return;
 
         const raw = Array.isArray((data as any)?.rows) ? (data as any).rows : Array.isArray(data) ? data : [];
@@ -429,13 +448,14 @@ export default function MovimientosPanel({
   // detalle (bloqueado para CLIENTE)
   const [detail, setDetail] = useState<Movement | null>(null);
   const openDetail = (m: Movement) => {
-    if (isClient) return;
+    if (canEdit) return; // clientes no ven detalle admin
     setDetail(m);
   };
 
-  // editar
+  // editar (solo CLIENTE)
   const [editId, setEditId] = useState<number | null>(null);
   const openEdit = (m: Movement) => {
+    if (!canEdit) return;
     setEditId(m.id);
     setDetail(null);
   };
@@ -447,11 +467,21 @@ export default function MovimientosPanel({
   }, [empId, locId, from, to, tab, pageSize]);
 
   const lockedEmpresa = isClient;
-  const lockedLocalidad = isClient;
+  const lockedLocalidad = isClient && !canSeeAllLocalidades;
 
   const showClear = !!from || !!to || !!q || (!lockedLocalidad && locId != null) || (!lockedEmpresa && empId != null);
 
-  const tabs: Array<"Actuales" | "Pasados"> = isClient ? ["Actuales"] : ["Actuales", "Pasados"];
+  const tabs: Array<"Actuales" | "Pasados"> = canSeePast ? ["Actuales", "Pasados"] : ["Actuales"];
+
+  // rutas por rol + visibilidad de crear
+  const baseByRole: Record<string, string> = {
+    ADMINISTRADOR: "/administrador",
+    COORDINADOR: "/coordinador",
+    SUPERVISOR: "/supervisor",
+    CLIENTE: "/cliente",
+  };
+  const showCreate = isClient || !!allowCreate; // cliente siempre; otros si allowCreate
+  const createHref = `/movimientos/crear`;
 
   // atajos: / busca, r refresh, a auto
   useEffect(() => {
@@ -475,8 +505,16 @@ export default function MovimientosPanel({
   }, [load]);
 
   /* ===== Render ===== */
+  const panelTitle =
+    isClient ? "Panel de Cliente" :
+    isSupervisor ? "Panel de Supervisor" :
+    isCoordinator ? "Panel de Coordinación" :
+    isAdmin ? "Panel de Administrador" : "Panel";
+
   return (
     <section className="w-full max-w-screen-2xl mx-auto px-3 sm:px-4 lg:px-6 space-y-3">
+   
+
       {/* Toolbar */}
       <div className="pane sticky z-10 top-[max(0px,env(safe-area-inset-top))] flex flex-wrap items-center gap-2 backdrop-blur supports-[backdrop-filter]:bg-white/70 dark:supports-[backdrop-filter]:bg-slate-900/70">
         <div className="inline-flex rounded-lg border overflow-hidden">
@@ -529,8 +567,8 @@ export default function MovimientosPanel({
             {refreshing ? "Actualizando…" : "Actualizar"}
           </button>
 
-          {allowCreate && (
-            <Link href="/movimientos/crear" className="btn-primary !w-auto min-h-10 text-sm md:text-[13px] inline-flex items-center gap-2">
+          {showCreate && (
+            <Link href={createHref} className="btn-primary !w-auto min-h-10 text-sm md:text-[13px] inline-flex items-center gap-2">
               <Plus className="h-4 w-4" />
               Nuevo movimiento
             </Link>
@@ -643,8 +681,8 @@ export default function MovimientosPanel({
           <CardSkeleton count={4} />
         ) : filtered.length === 0 ? (
           <EmptyBox text="Sin resultados">
-            {allowCreate && !isClient && (
-              <Link href="/movimientos/crear" className="mt-4 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">
+            {showCreate && (
+              <Link href={createHref} className="mt-4 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">
                 <Plus className="h-4 w-4" /> Crear movimiento
               </Link>
             )}
@@ -686,15 +724,7 @@ export default function MovimientosPanel({
               <div className="mt-3 flex items-center justify-between">
                 <Badge tone={m.prioridad === "ALTA" ? "warn" : m.prioridad === "BAJA" ? "muted" : "ok"}>{m.prioridad || "—"}</Badge>
 
-                {!isClient ? (
-                  <button
-                    type="button"
-                    onClick={() => openDetail(m)}
-                    className="rounded-md border px-3 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
-                  >
-                    Detalle
-                  </button>
-                ) : (
+                {canEdit ? (
                   <button
                     type="button"
                     onClick={() => openEdit(m)}
@@ -702,6 +732,14 @@ export default function MovimientosPanel({
                     title={`Editar #${m.id}`}
                   >
                     Editar
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openDetail(m)}
+                    className="rounded-md border px-3 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
+                  >
+                    Detalle
                   </button>
                 )}
               </div>
@@ -724,7 +762,7 @@ export default function MovimientosPanel({
             <col className="hidden xl:table-column w-[200px]" />
             <col className="w-28" />
             <col className="w-28" />
-            {isClient && <col className="w-24" />}
+            {canEdit && <col className="w-24" />}
             <col className="hidden 2xl:table-column w-32" />
             <col className="hidden lg:table-column w-32" />
             <col className="hidden lg:table-column w-32" />
@@ -746,7 +784,7 @@ export default function MovimientosPanel({
               <Th className="hidden xl:table-cell">Tipo mov.</Th>
               <Th>Prioridad</Th>
               <Th>Estado</Th>
-              {isClient && <Th className="text-center">Editar</Th>}
+              {canEdit && <Th className="text-center">Editar</Th>}
               <Th onClick={() => toggleSort("fechaSolicitud")} sortable sortBy={sortBy} selfKey="fechaSolicitud" sortDir={sortDir} className="hidden 2xl:table-cell">
                 Solicitud
               </Th>
@@ -756,15 +794,15 @@ export default function MovimientosPanel({
               <Th onClick={() => toggleSort("fechaFin")} sortable sortBy={sortBy} selfKey="fechaFin" sortDir={sortDir} className="hidden lg:table-cell">
                 Fin
               </Th>
-              {!isClient && <Th className="text-right">&nbsp;</Th>}
+              {!canEdit && <Th className="text-right">&nbsp;</Th>}
             </tr>
           </thead>
           <tbody className="divide-y dark:divide-slate-800">
             {!mounted || loading ? (
-              <RowLoading colCount={isClient ? 13 : 15} />
+              <RowLoading colCount={canEdit ? 13 : 15} />
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={isClient ? 13 : 15} className="p-6 text-center text-slate-500 dark:text-slate-400">
+                <td colSpan={canEdit ? 13 : 15} className="p-6 text-center text-slate-500 dark:text-slate-400">
                   Sin resultados
                 </td>
               </tr>
@@ -798,7 +836,7 @@ export default function MovimientosPanel({
                     </Badge>
                   </Td>
 
-                  {isClient && (
+                  {canEdit && (
                     <Td className="text-center">
                       <button
                         type="button"
@@ -814,7 +852,7 @@ export default function MovimientosPanel({
                   <Td className="hidden 2xl:table-cell whitespace-nowrap">{fmtDate(m.fechaSolicitud)}</Td>
                   <Td className="hidden lg:table-cell whitespace-nowrap">{fmtDateTime(m.fechaInicio)}</Td>
                   <Td className="hidden lg:table-cell whitespace-nowrap">{fmtDateTime(m.fechaFin)}</Td>
-                  {!isClient && (
+                  {!canEdit && (
                     <Td className="text-right">
                       <button type="button" onClick={() => openDetail(m)} className="rounded-md border px-2 py-1 text-xs hover:bg-slate-50 dark:hover:bg-slate-800">
                         Detalle
@@ -857,7 +895,7 @@ export default function MovimientosPanel({
       </div>
 
       {/* Modal detalle (NO para CLIENTE) */}
-      {!isClient && detail ? (
+      {!canEdit && detail ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-2 sm:p-4 md:p-6" role="dialog" aria-modal="true">
           <div className="w-full max-w-5xl max-h=[85svh] max-h-[85svh] overflow-y-auto rounded-2xl border bg-white p-3 sm:p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -912,7 +950,7 @@ export default function MovimientosPanel({
       ) : null}
 
       {/* Modal editar (CLIENTE) */}
-      {isClient && editId !== null ? (
+      {canEdit && editId !== null ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-2 sm:p-4 md:p-6" role="dialog" aria-modal="true">
           <div className="w-full max-w-5xl max-h-[85svh] overflow-y-auto rounded-2xl border bg-white p-3 sm:p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -929,16 +967,15 @@ export default function MovimientosPanel({
                 setEditId(null);
                 load(true);
               }}
-              /* apiBase={apiBase} */
             />
           </div>
         </div>
       ) : null}
 
       {/* FAB móvil para crear */}
-      {allowCreate && !isClient && (
+      {showCreate && (
         <Link
-          href="/movimientos/crear"
+          href={createHref}
           className="md:hidden fixed bottom-5 right-5 inline-flex items-center justify-center rounded-full bg-sky-600 text-white shadow-lg hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 h-12 w-12"
           aria-label="Crear movimiento"
           title="Crear movimiento"
