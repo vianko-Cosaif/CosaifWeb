@@ -7,11 +7,11 @@ const DEST: Record<string, string> = {
   SUPERVISOR: "/supervisor",
   MAQUINISTA: "/maquinista",
   OPERADOR: "/operador",
-  ADMINISTRADOR: "/admin",
+  ADMINISTRADOR: "/administrador",
   COORDINADOR: "/coordinador",
 };
 
-const API_BASE ="/bff";
+const API_BASE = "/bff";
 const LOGIN_PATH = "/login";
 
 export default function LoginForm() {
@@ -37,7 +37,7 @@ export default function LoginForm() {
     const trace = Math.random().toString(36).slice(2);
 
     try {
-      // 1) Login a backend
+      // 1) Login al backend
       const r = await fetch(`${API_BASE}${LOGIN_PATH}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -46,7 +46,9 @@ export default function LoginForm() {
 
       if (!r.ok) {
         let msg = "Credenciales inválidas";
-        try { msg = String((await r.json())?.error || msg); } catch {}
+        try {
+          msg = String((await r.json())?.error || msg);
+        } catch {}
         setErr(msg);
         return;
       }
@@ -60,6 +62,7 @@ export default function LoginForm() {
           nombre?: string;
           empresaId?: number;
           empresa?: { id?: number; nombre?: string };
+          localidadId?: number; // <- importante
         };
         status?: number;
         id?: number; // por si el API lo manda en la raíz
@@ -70,13 +73,14 @@ export default function LoginForm() {
       const uid = Number(payload?.user?.id ?? payload?.id ?? NaN);
       const empresaId = Number(payload?.user?.empresaId ?? payload?.user?.empresa?.id ?? NaN);
       const empresaNombre = payload?.user?.empresa?.nombre || "";
+      const localidadId = Number(payload?.user?.localidadId ?? NaN);
 
       if (!token || !role || !Number.isFinite(uid)) {
         setErr("Respuesta inválida del servidor");
         return;
       }
 
-      // 2) Set cookies HttpOnly en Next (token/role)
+      // 2) Set cookies HttpOnly en Next (token/role) + locId (no HttpOnly)
       const setCookie = await fetch("/api/auth/login", {
         method: "POST",
         credentials: "same-origin",
@@ -84,6 +88,8 @@ export default function LoginForm() {
         body: JSON.stringify({
           token,
           role,
+          // pasamos locId para que el server pueda setear cookie también
+          locId: Number.isFinite(localidadId) ? localidadId : undefined,
           debug: { trace, status: payload?.status ?? r.status, role, user: payload?.user ?? null },
         }),
       });
@@ -92,23 +98,16 @@ export default function LoginForm() {
         return;
       }
 
-      // Cookie de apoyo no-httpOnly para poder leer el id en el cliente si hace falta
+      // 3) Cookies legibles por el cliente para IDs no sensibles
       document.cookie = `userId=${encodeURIComponent(String(uid))}; path=/; max-age=31536000; samesite=lax`;
-
-      // Guardar empresaId en cookies también
       if (Number.isFinite(empresaId) && empresaId > 0) {
         document.cookie = `empresaId=${encodeURIComponent(String(empresaId))}; path=/; max-age=31536000; samesite=lax`;
       }
-
-      // 3) Persistir locId (si viene en URL) y user completo en localStorage
-      const urlLoc = new URLSearchParams(location.search).get("loc");
-      const storedLoc = localStorage.getItem("locId");
-      const locId = urlLoc || storedLoc || "";
-      if (locId) {
-        try { localStorage.setItem("locId", String(locId)); } catch {}
-        document.cookie = `locId=${encodeURIComponent(String(locId))}; path=/; max-age=31536000; samesite=lax`;
+      if (Number.isFinite(localidadId)) {
+        document.cookie = `locId=${encodeURIComponent(String(localidadId))}; path=/; max-age=31536000; samesite=lax`;
       }
 
+      // 4) Persistir user (opcional, sin localidad)
       try {
         localStorage.setItem(
           "user",
@@ -122,11 +121,17 @@ export default function LoginForm() {
         );
       } catch {}
 
-      const base = DEST[role] || "/cliente";
-      const dest = locId ? `${base}?loc=${encodeURIComponent(String(locId))}` : base;
-
-      console.log("Ingresamos ✅", { trace, role, uid, empresaId, dest, locId });
-      window.location.assign(dest);
+      // 5) Redirección por rol, sin query ?loc
+      const destBase = DEST[role] || "/cliente";
+      console.log("Ingresamos ✅", {
+        trace,
+        role,
+        uid,
+        empresaId,
+        localidadId,
+        dest: destBase,
+      });
+      window.location.assign(destBase);
     } catch {
       setErr("No hay conexión con el servicio");
     } finally {
@@ -141,19 +146,50 @@ export default function LoginForm() {
 
       <div className="mt-6 space-y-4">
         <div>
-          <label htmlFor="username" className="mb-1 block text-xs text-slate-600 dark:text-slate-400">Usuario</label>
+          <label
+            htmlFor="username"
+            className="mb-1 block text-xs text-slate-600 dark:text-slate-400"
+          >
+            Usuario
+          </label>
           <div className="relative">
             <User className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input id="username" name="username" type="text" autoComplete="username" placeholder="tu_usuario" required className="input pl-9" />
+            <input
+              id="username"
+              name="username"
+              type="text"
+              autoComplete="username"
+              placeholder="tu_usuario"
+              required
+              className="input pl-9"
+            />
           </div>
         </div>
 
         <div>
-          <label htmlFor="password" className="mb-1 block text-xs text-slate-600 dark:text-slate-400">Contraseña</label>
+          <label
+            htmlFor="password"
+            className="mb-1 block text-xs text-slate-600 dark:text-slate-400"
+          >
+            Contraseña
+          </label>
           <div className="relative">
             <Lock className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input id="password" name="password" type={show ? "text" : "password"} autoComplete="current-password" placeholder="••••••••" required className="input pl-9 pr-12" />
-            <button type="button" onClick={() => setShow((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200" aria-label={show ? "ocultar contraseña" : "mostrar contraseña"}>
+            <input
+              id="password"
+              name="password"
+              type={show ? "text" : "password"}
+              autoComplete="current-password"
+              placeholder="••••••••"
+              required
+              className="input pl-9 pr-12"
+            />
+            <button
+              type="button"
+              onClick={() => setShow((s) => !s)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+              aria-label={show ? "ocultar contraseña" : "mostrar contraseña"}
+            >
               {show ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
             </button>
           </div>

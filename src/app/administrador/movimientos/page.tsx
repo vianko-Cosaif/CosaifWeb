@@ -1,0 +1,18 @@
+// src/app/cliente/movimientos/page.tsx
+import MovimientosPanel from "@/app/Components/movimientos/MovimientosPanel";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+
+export const dynamic = "force-dynamic";
+
+export default async function Page() {
+  const c = await cookies();
+  const token = c.get(process.env.JWT_COOKIE_NAME ?? "token")?.value;
+  if (!token) redirect("/login?loc=cliente");
+
+  return (
+    <section className="mx-auto w-full max-w-7xl p-4 sm:p-6">
+      <MovimientosPanel apiBase="/bff" allowCreate role="ADMINISTRADOR" />
+    </section>
+  );
+}

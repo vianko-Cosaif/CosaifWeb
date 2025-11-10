@@ -12,16 +12,11 @@ const DOUBLE_TAP_MS = 250;
 const FETCH_TIMEOUT_MS = 12000;
 const FLUSH_INTERVAL_MS = 15000;
 
-/** ======= CONTRASEÑAS DE ALTA POR EMPRESA =======
- *  Rellena este mapa con las contraseñas genéricas por empresa.
- *  Ejemplos:
- *  1 -> "ALTA-EMPRESA-1"
- *  2 -> "ALTA-EMPRESA-2"
- */
+/** ======= CONTRASEÑAS DE ALTA POR EMPRESA ======= */
 const ALTA_PASSWORDS: Record<number, string> = {
   1: "ALTA-EMPRESA-1",
   2: "ALTA-EMPRESA-2",
-  // Agrega más { empresaId: "contraseña" }
+  3: "ALTA-EMPRESA-3",
 };
 
 /** ======= TIPOS ======= */
@@ -66,6 +61,15 @@ export interface MovementFormData {
   posicionChimenea?: Posicion | null;
   direccionEmpuje?: Direccion;
 }
+
+/** ======= RUTAS POR ROL ======= */
+const BASE_BY_ROLE: Record<string, string> = {
+  ADMINISTRADOR: "/administrador",
+  COORDINADOR: "/coordinador",
+  SUPERVISOR: "/supervisor",
+  CLIENTE: "/cliente",
+};
+const roleBase = (r?: string) => BASE_BY_ROLE[String(r || "").toUpperCase()] || "/cliente";
 
 const baseInitialForm: MovementFormData = {
   empresaId: null,
@@ -150,7 +154,22 @@ function useVisibleInterval(cb: () => void, ms: number | null) {
   }, [cb, ms]);
 }
 
-/** ======= ESTILOS (mobile-first) ======= */
+/** ======= RESOLVER ROL (cookie → localStorage) ======= */
+function getRoleClient(): Rol {
+  const c = String(getCookie("role") || "").trim().toUpperCase();
+  if (c) return c as Rol;
+  try {
+    const raw = localStorage.getItem("user");
+    if (raw) {
+      const u = JSON.parse(raw);
+      const r = String(u?.rol || u?.role || "").toUpperCase();
+      if (r) return r as Rol;
+    }
+  } catch {}
+  return "CLIENTE";
+}
+
+/** ======= ESTILOS ======= */
 const inputBase =
   "w-full rounded-md border px-3 py-3 min-h-[48px] text-base sm:text-sm outline-none transition-colors " +
   "bg-white text-slate-900 placeholder-slate-400 border-slate-300 focus:border-sky-500 " +
@@ -193,83 +212,114 @@ export default function CrearMovimiento() {
   const [online, setOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
   const [pendingCount, setPendingCount] = useState<number>(0);
 
-  /** Init sesión + defaults */
+  /** Inicializa según rol y sesión */
   const initFormLocked = useCallback(() => {
-    const roleCookie = String(getCookie("role") || "").trim().toUpperCase();
-    if (roleCookie) setRol(roleCookie as Rol);
+    const role = getRoleClient();
+    setRol(role);
 
     const locCookie = Number(getCookie("locId") || NaN);
+
     const uRaw = typeof window !== "undefined" ? localStorage.getItem("user") : null;
     let u: any = null;
-    try { u = uRaw ? JSON.parse(uRaw) : null; } catch { }
+    try { u = uRaw ? JSON.parse(uRaw) : null; } catch {}
     setUser(u || null);
     setUserCompanyName(u?.empresa?.nombre || "");
 
-    const empresaId = Number(u?.empresaId ?? u?.empresa?.id ?? NaN);
+    const isAdminOrCoord = ["ADMINISTRADOR", "COORDINADOR"].includes(String(role).toUpperCase());
+
     const base: MovementFormData = {
       ...baseInitialForm,
       creadoPorId: u?.id ?? null,
       clienteId: u?.id ?? null,
-      empresaId: Number.isFinite(empresaId) ? empresaId : null,
+      empresaId: isAdminOrCoord ? null : (Number.isFinite(Number(u?.empresaId ?? u?.empresa?.id)) ? Number(u?.empresaId ?? u?.empresa?.id) : null),
+      selectedLocalityId: isAdminOrCoord ? null : (Number.isFinite(locCookie) ? locCookie : null),
     };
 
-    const isAdminOrCoord = ADMIN_OR_COORD.includes(roleCookie || String(u?.rol || u?.role || "").toUpperCase());
-    const selectedLocalityId = isAdminOrCoord ? null : Number.isFinite(locCookie) ? locCookie : null;
+    setForm((prev) => ({ ...base, ...prev }));
+  }, []);
 
-    setForm((prev) => ({ ...base, selectedLocalityId: selectedLocalityId ?? prev.selectedLocalityId ?? null }));
-  }, [ADMIN_OR_COORD]);
-
-  /** IDs finales */
+  /** IDs efectivos blindados por permisos */
   const resolvedIds = useMemo(() => {
-    const empresaId = Number(form.empresaId ?? user?.empresaId ?? user?.empresa?.id ?? NaN);
+    const role = String(rol).toUpperCase();
+    const forcedEmpresa = Number(user?.empresaId ?? user?.empresa?.id ?? NaN);
+    const cookieLoc = Number(getCookie("locId") || NaN);
+
+    const empresaId = ADMIN_OR_COORD.includes(role)
+      ? Number(form.empresaId ?? NaN)
+      : Number(isFinite(forcedEmpresa) ? forcedEmpresa : NaN);
+
     const creadoPorId = Number(form.creadoPorId ?? user?.id ?? NaN);
-    const localidadId = Number(form.selectedLocalityId ?? Number(getCookie("locId") || NaN));
+
+    const localidadId = ADMIN_OR_COORD.includes(role)
+      ? Number(form.selectedLocalityId ?? NaN)
+      : Number(isFinite(cookieLoc) ? cookieLoc : NaN);
+
     return { empresaId, creadoPorId, localidadId };
-  }, [form.empresaId, form.creadoPorId, form.selectedLocalityId, user]);
+  }, [form.empresaId, form.creadoPorId, form.selectedLocalityId, user, rol]);
 
   /** Cargar combos + draft + outbox */
   useEffect(() => {
+    let alive = true;
+
     initFormLocked();
+
     (async () => {
       try {
-        const [e, l] = await Promise.all([fetchJSON(`${API_BASE}/empresas`).catch(() => []), fetchJSON(`${API_BASE}/localidades`).catch(() => [])]);
+        const [e, l] = await Promise.all([
+          fetchJSON(`${API_BASE}/empresas`).catch(() => []),
+          fetchJSON(`${API_BASE}/localidades`).catch(() => []),
+        ]);
+        if (!alive) return;
+
         const eList: Empresa[] = Array.isArray(e) ? e : [];
         const lList: Localidad[] = Array.isArray(l) ? l : [];
         setEmpresas(eList);
         setLocalidades(lList);
+
         setForm((p) => {
           let empresaId = p.empresaId ?? (user?.empresaId ?? user?.empresa?.id ?? null);
-          if (!Number.isFinite(Number(empresaId)) && eList.length === 1) empresaId = eList[0].id;
+          if (ADMIN_OR_COORD.includes(String(getRoleClient()).toUpperCase())) {
+            // Admin/Coord elige libremente; si hay 1 sola opción, autoselecciona.
+            if (!Number.isFinite(Number(empresaId)) && eList.length === 1) empresaId = eList[0].id;
+          }
           let localidadId = p.selectedLocalityId;
-          const canAll = ADMIN_OR_COORD.includes(String(getCookie("role") || "").toUpperCase());
-          if (!Number.isFinite(Number(localidadId)) && !canAll && lList.length === 1) localidadId = lList[0].id;
-          return { ...p, empresaId: Number(empresaId) || p.empresaId, selectedLocalityId: (Number(localidadId) || p.selectedLocalityId) ?? null };
+          const role = getRoleClient();
+          const canAll = ADMIN_OR_COORD.includes(String(role).toUpperCase());
+          if (!Number.isFinite(Number(localidadId)) && canAll && lList.length === 1) localidadId = lList[0].id;
+
+          return {
+            ...p,
+            empresaId: Number.isFinite(Number(empresaId)) ? Number(empresaId) : p.empresaId,
+            selectedLocalityId: Number.isFinite(Number(localidadId)) ? Number(localidadId) : (p.selectedLocalityId ?? null),
+          };
         });
-      } catch { }
+      } catch {}
 
       try {
         const raw = typeof window !== "undefined" ? localStorage.getItem(DRAFT_KEY) : null;
-        if (raw) {
+        if (raw && alive) {
           const d = JSON.parse(raw);
           setForm((p) => ({ ...p, ...d.form }));
           setFromSection(d.fromSection);
           setToSection(d.toSection);
           setLocoLockedBy(d.locoLockedBy || null);
         }
-      } catch { }
+      } catch {}
 
       try {
         const q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]");
-        setPendingCount(Array.isArray(q) ? q.length : 0);
-      } catch { }
+        if (alive) setPendingCount(Array.isArray(q) ? q.length : 0);
+      } catch {
+        if (alive) setPendingCount(0);
+      }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    return () => { alive = false; };
   }, [initFormLocked]);
 
-  /** Enforce cliente localidad fija si aplica */
+  /** Revalida rol y localidad bloqueada si aplica */
   useEffect(() => {
-    const roleCookie = String(getCookie("role") || "").trim().toUpperCase();
-    if (roleCookie) setRol(roleCookie as Rol);
+    setRol(getRoleClient());
     if (!canManageAll) {
       const locCookie = Number(getCookie("locId") || NaN);
       setForm((p) => ({ ...p, selectedLocalityId: Number.isFinite(locCookie) ? locCookie : p.selectedLocalityId }));
@@ -281,7 +331,7 @@ export default function CrearMovimiento() {
   useEffect(() => {
     const payload = { form, fromSection, toSection, locoLockedBy };
     if (draftTimer.current) clearTimeout(draftTimer.current);
-    draftTimer.current = setTimeout(() => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(payload)); } catch { } }, 350);
+    draftTimer.current = setTimeout(() => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(payload)); } catch {} }, 350);
     return () => { if (draftTimer.current) clearTimeout(draftTimer.current); };
   }, [form, fromSection, toSection, locoLockedBy]);
 
@@ -296,7 +346,7 @@ export default function CrearMovimiento() {
   const flushOutbox = useCallback(async () => {
     if (!online) return;
     let q: any[] = [];
-    try { q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch { }
+    try { q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch {}
     if (!Array.isArray(q) || q.length === 0) return;
 
     const keep: any[] = [];
@@ -400,7 +450,7 @@ export default function CrearMovimiento() {
             setForm((p) => ({ ...p, locomotiveNumber: String(loco) }));
             setLocoLockedBy({ movimientoId: s.movimientoId!, viaId: form.fromTrack!, numero: s.numero });
           }
-        } catch { }
+        } catch {}
       }
     } else {
       if (locoLockedBy && locoLockedBy.viaId === form.fromTrack && locoLockedBy.numero === s.numero) setLocoLockedBy(null);
@@ -448,7 +498,7 @@ export default function CrearMovimiento() {
   /** OUTBOX helper */
   const pushOutbox = (payload: any) => {
     let q: any[] = [];
-    try { q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch { }
+    try { q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch {}
     const item = { id: `${Date.now()}_${Math.random().toString(36).slice(2)}`, payload, createdAt: Date.now() };
     const next = [...(Array.isArray(q) ? q : []), item];
     localStorage.setItem(OUTBOX_KEY, JSON.stringify(next));
@@ -457,10 +507,10 @@ export default function CrearMovimiento() {
     setTimeout(() => setBanner(null), 3500);
   };
 
-  /** Submit (con offline y asignación de sección) */
   const submit = useCallback(async () => {
     const { empresaId, creadoPorId, localidadId } = resolvedIds;
 
+    // Validaciones duras
     if (!Number.isFinite(empresaId) || !Number.isFinite(creadoPorId) || !Number.isFinite(localidadId)) {
       alert("Faltan IDs requeridos (empresa, usuario o localidad).");
       return;
@@ -470,14 +520,16 @@ export default function CrearMovimiento() {
       return;
     }
 
+    // Vías según modo
     const fromTrack = (!form.service || selectionMode === "de_via") ? form.fromTrack : null;
-    const toTrack = (!form.service || selectionMode === "para_via") ? form.toTrack : null;
+    const toTrack   = (!form.service || selectionMode === "para_via") ? form.toTrack : null;
 
     if (!fromTrack && !toTrack) {
       alert("Debe seleccionar al menos una vía según el modo de selección.");
       return;
     }
 
+    // Mensaje e instrucciones
     const meta: string[] = [];
     if (typeof toSection === "number")   meta.push(`[META DESTINO:${toSection}]`);
     if (typeof fromSection === "number") meta.push(`[META ORIGEN:${fromSection}]`);
@@ -497,11 +549,13 @@ export default function CrearMovimiento() {
       .join(" ")
       .trim();
 
+    // Sección explícita para servicios
     const numeroSeccion =
       form.service && (typeof toSection === "number" || typeof fromSection === "number")
         ? Number(typeof toSection === "number" ? toSection : (fromSection as number))
         : undefined;
 
+    // Cuerpo listo para API (con empresa/localidad blindados por permisos)
     const payload: Record<string, any> = {
       empresaId: Number(empresaId),
       creadoPorId: Number(creadoPorId),
@@ -536,6 +590,13 @@ export default function CrearMovimiento() {
 
     try {
       setSending(true);
+
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        pushOutbox(payload);
+        setSending(false);
+        return;
+      }
+
       const res = await fetchWithTimeout(`${API_BASE}/movimientos`, {
         method: "POST",
         credentials: "include",
@@ -554,9 +615,9 @@ export default function CrearMovimiento() {
       const movimientoId = Number((created as any)?.id || 0);
 
       const viaParaAsignar =
-        typeof toSection === "number" && toTrack
-          ? toTrack
-          : (typeof fromSection === "number" && fromTrack ? fromTrack : null);
+        typeof toSection === "number" && form.toTrack
+          ? form.toTrack
+          : (typeof fromSection === "number" && form.fromTrack ? form.fromTrack : null);
 
       const numeroParaAsignar =
         typeof toSection === "number" ? toSection :
@@ -568,24 +629,24 @@ export default function CrearMovimiento() {
           credentials: "include",
           headers: { "Content-Type": "application/json", ...tokenHeader() },
           body: JSON.stringify({ numero: Number(numeroParaAsignar), movimientoId }),
-        }).catch(() => { });
+        }).catch(() => {});
       }
 
-      try { localStorage.removeItem(DRAFT_KEY); } catch { }
+      try { localStorage.removeItem(DRAFT_KEY); } catch {}
       setFromSection(undefined);
       setToSection(undefined);
       setLocoLockedBy(null);
       setStep(1);
 
-      const roleToPath = (r?: string) => {
-        const R = String(r || "").toUpperCase();
-        if (R === "COORDINADOR") return "/coordinador/movimientos";
-        if (R === "ADMINISTRADOR") return "/administrador/movimientos";
-        if (R === "SUPERVISOR") return "/supervisor/movimientos";
-        return "/cliente/movimientos";
-      };
-      window.location.assign(roleToPath(rol));
+      window.location.assign(`${roleBase(rol)}/movimientos`);
     } catch (e: any) {
+      const msg = String(e?.name || "").toLowerCase();
+      const isAbort = msg.includes("abort");
+      const isTypeErr = String(e?.message || "").toLowerCase().includes("failed to fetch");
+      if (isAbort || isTypeErr) {
+        pushOutbox(payload);
+        return;
+      }
       alert(e?.message || "Error al crear movimiento");
     } finally {
       setSending(false);
@@ -614,7 +675,7 @@ export default function CrearMovimiento() {
     return () => window.removeEventListener("keydown", onKey);
   }, [step, sending, submit]);
 
-  const goSalir = () => window.location.assign("/cliente/movimientos");
+  const goSalir = () => window.location.assign(`${roleBase(rol)}/movimientos`);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -633,6 +694,7 @@ export default function CrearMovimiento() {
 
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <Badge tone={online ? "ok" : "error"}>{online ? "En línea" : "Sin conexión"}</Badge>
+          <RoleBadge rol={rol} canManageAll={canManageAll} />
           {pendingCount > 0 && (
             <>
               <Badge tone="warn">{pendingCount} pendiente(s)</Badge>
@@ -654,10 +716,11 @@ export default function CrearMovimiento() {
           Nuevo Movimiento <span className="text-slate-500 dark:text-slate-400">({label})</span>
         </h1>
 
-        {!canManageAll && (
-          <div className="mt-3 rounded-lg border-l-4 border-sky-400 bg-sky-50 p-3 text-sm dark:border-sky-600 dark:bg-sky-900/20">
-            <div className="font-medium text-sky-800 dark:text-sky-200">CLIENTE</div>
-            {lockedClienteMissingData && <div className="mt-2 text-rose-700 dark:text-rose-300">No se encontró una sesión activa. Por favor inicia sesión nuevamente.</div>}
+        {lockedClienteMissingData && (
+          <div className="mt-3 rounded-lg border-l-4 border-rose-500 bg-rose-50 p-3 text-sm dark:border-rose-600 dark:bg-rose-900/20">
+            <div className="font-medium text-rose-800 dark:text-rose-200">
+              Sesión inválida. Inicia sesión nuevamente.
+            </div>
           </div>
         )}
 
@@ -707,7 +770,7 @@ export default function CrearMovimiento() {
         <div className="mt-4 flex flex-wrap gap-3">
           <button
             onClick={() => {
-              try { localStorage.removeItem(DRAFT_KEY); } catch { }
+              try { localStorage.removeItem(DRAFT_KEY); } catch {}
               setForm((prev) => ({ ...baseInitialForm, selectedLocalityId: canManageAll ? null : prev.selectedLocalityId }));
               setFromSection(undefined);
               setToSection(undefined);
@@ -752,7 +815,6 @@ export default function CrearMovimiento() {
         ) : null}
       </div>
     </div>
-
   );
 }
 
@@ -908,13 +970,24 @@ function StepOne(props: {
     const anyOcc: boolean | null = Array.isArray(secs) ? secs.some((x) => x.ocupada) : null;
     const label = anyOcc === null ? "—" : anyOcc ? "OCUPADA" : "LIBRE";
     const tone = anyOcc === null ? "text-slate-500" : anyOcc ? "text-rose-600" : "text-emerald-600";
+    const isSelected = form.fromTrack === v.id;
+    
     return (
       <button
         key={v.id}
         onClick={() => setForm((p) => ({ ...p, fromTrack: p.fromTrack === v.id ? null : v.id }))}
-        className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+        className={clsx(
+          "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left transition-colors",
+          isSelected 
+            ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" 
+            : "border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800",
+          isSelected && "ring-2 ring-emerald-400/50"
+        )}
       >
-        <span className="truncate">Vía {v.nombre}</span>
+        <span className={clsx("truncate font-medium", isSelected && "text-emerald-700 dark:text-emerald-300")}>
+          Vía {v.nombre}
+          {isSelected && <span className="ml-2 text-xs text-emerald-600 dark:text-emerald-400">(Seleccionada)</span>}
+        </span>
         <span className={clsx("ml-3 text-xs font-semibold", tone)}>{label}</span>
       </button>
     );
@@ -925,16 +998,26 @@ function StepOne(props: {
     const allOcc: boolean | null = Array.isArray(secs) ? secs.length > 0 && secs.every((x) => x.ocupada) : null;
     const label = allOcc === null ? "—" : allOcc ? "SIN SECC. LIBRES" : "HAY LIBRES";
     const tone = allOcc === null ? "text-slate-500" : allOcc ? "text-rose-600" : "text-emerald-600";
+    const isSelected = form.toTrack === v.id;
+    
     return (
       <button
         key={v.id}
         onClick={() => setForm((p) => ({ ...p, toTrack: p.toTrack === v.id ? null : v.id }))}
         className={clsx(
-          "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800",
-          allOcc === true && "opacity-60"
+          "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left transition-colors",
+          isSelected 
+            ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" 
+            : "border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800",
+          allOcc === true && "opacity-60",
+          isSelected && "ring-2 ring-emerald-400/50"
         )}
+        disabled={allOcc === true}
       >
-        <span className="truncate">Vía {v.nombre}</span>
+        <span className={clsx("truncate font-medium", isSelected && "text-emerald-700 dark:text-emerald-300")}>
+          Vía {v.nombre}
+          {isSelected && <span className="ml-2 text-xs text-emerald-600 dark:text-emerald-400">(Seleccionada)</span>}
+        </span>
         <span className={clsx("ml-3 text-xs font-semibold", tone)}>{label}</span>
       </button>
     );
@@ -1053,7 +1136,7 @@ function StepOne(props: {
         </div>
       </div>
 
-      {/* Modo de selección - solo visible cuando hay servicio seleccionado */}
+      {/* Modo de selección - solo visible cuando hay servicio */}
       {form.service && (
         <div className="sm:col-span-2">
           <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Modo de selección</span>
@@ -1133,7 +1216,24 @@ function StepOne(props: {
             {errors.fromTrack ? <span className="self-center text-xs text-rose-600 dark:text-rose-400">{errors.fromTrack}</span> : null}
           </div>
 
-          {showFromOpts && <div className="mt-2 grid gap-2 sm:grid-cols-2">{vias.map((v) => (<div key={v.id}>{viaOption(v)}</div>))}</div>}
+          {showFromOpts && (
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {[...vias]
+                // Hide the corresponding via when a service is selected
+                .filter(via => !form.service || !via.nombre.toLowerCase().includes(form.service.toLowerCase()))
+                .sort((a, b) => {
+                  // Extract numbers from the via names for numeric comparison
+                  const numA = parseInt(a.nombre.replace(/\D/g, '')) || 0;
+                  const numB = parseInt(b.nombre.replace(/\D/g, '')) || 0;
+                  if (numA !== numB) return numA - numB;
+                  // If numbers are equal, sort alphabetically
+                  return a.nombre.localeCompare(b.nombre);
+                })
+                .map((v) => (
+                  <div key={v.id}>{viaOption(v)}</div>
+                ))}
+            </div>
+          )}
 
           <SectionsPills kind="from" viaId={form.fromTrack} />
         </div>
@@ -1153,7 +1253,24 @@ function StepOne(props: {
             {errors.toTrack ? <span className="self-center text-xs text-rose-600 dark:text-rose-400">{errors.toTrack}</span> : null}
           </div>
 
-          {showToOpts && <div className="mt-2 grid gap-2 sm:grid-cols-2">{vias.map((v) => (<div key={v.id}>{viaOptionTo(v)}</div>))}</div>}
+          {showToOpts && (
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {[...vias]
+                // Filter out 'Torno' and 'Lavado' vias when a service is selected
+                .filter(via => !form.service || !['Torno', 'Lavado'].some(service => via.nombre.toLowerCase().includes(service.toLowerCase())))
+                .sort((a, b) => {
+                  // Extract numbers from the via names for numeric comparison
+                  const numA = parseInt(a.nombre.replace(/\D/g, '')) || 0;
+                  const numB = parseInt(b.nombre.replace(/\D/g, '')) || 0;
+                  if (numA !== numB) return numA - numB;
+                  // If numbers are equal, sort alphabetically
+                  return a.nombre.localeCompare(b.nombre);
+                })
+                .map((v) => (
+                  <div key={v.id}>{viaOptionTo(v)}</div>
+                ))}
+            </div>
+          )}
 
           <SectionsPills kind="to" viaId={form.toTrack} />
         </div>
@@ -1410,7 +1527,7 @@ function StepThree({
         <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Comentarios / instrucciones</span>
         <textarea
           rows={6}
-          className={clsx(inputBase, "min-h-[120px]")}
+          className={clsx(inputBase, "min-h[120px] min-h-[120px]")}
           value={form.comments}
           onChange={(e) => setForm((p) => ({ ...p, comments: e.target.value }))}
           placeholder="Escribe comentarios; agregaremos las secciones seleccionadas automáticamente."
@@ -1433,4 +1550,15 @@ function Badge({ tone, children }: { tone: "ok" | "warn" | "error" | "muted"; ch
     muted: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
   } as const;
   return <span className={clsx(chipBase, map[tone])}>{children}</span>;
+}
+
+/** Badge de Rol con permisos visibles */
+function RoleBadge({ rol, canManageAll }: { rol: string; canManageAll: boolean }) {
+  const R = String(rol || "").toUpperCase();
+  const tone = canManageAll ? "ok" : (R === "SUPERVISOR" ? "warn" : "muted");
+  const text =
+    canManageAll
+      ? `${R} · puede elegir empresa y localidad`
+      : `${R} · solo su empresa${R === "CLIENTE" || R === "SUPERVISOR" ? " y localidad asignada" : ""}`;
+  return <Badge tone={tone as any}>{text}</Badge>;
 }
