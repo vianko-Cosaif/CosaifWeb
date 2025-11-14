@@ -971,17 +971,21 @@ function StepOne(props: {
     const label = anyOcc === null ? "—" : anyOcc ? "OCUPADA" : "LIBRE";
     const tone = anyOcc === null ? "text-slate-500" : anyOcc ? "text-rose-600" : "text-emerald-600";
     const isSelected = form.fromTrack === v.id;
+    const isServiceVia = ['Torno', 'Lavado'].some(service => v.nombre.toLowerCase().includes(service.toLowerCase()));
+    const isDisabled = !form.service && isServiceVia;
     
     return (
       <button
         key={v.id}
         onClick={() => setForm((p) => ({ ...p, fromTrack: p.fromTrack === v.id ? null : v.id }))}
+        disabled={isDisabled}
         className={clsx(
           "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left transition-colors",
           isSelected 
             ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" 
             : "border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800",
-          isSelected && "ring-2 ring-emerald-400/50"
+          isSelected && "ring-2 ring-emerald-400/50",
+          isDisabled && "opacity-50 cursor-not-allowed"
         )}
       >
         <span className={clsx("truncate font-medium", isSelected && "text-emerald-700 dark:text-emerald-300")}>
@@ -999,6 +1003,8 @@ function StepOne(props: {
     const label = allOcc === null ? "—" : allOcc ? "SIN SECC. LIBRES" : "HAY LIBRES";
     const tone = allOcc === null ? "text-slate-500" : allOcc ? "text-rose-600" : "text-emerald-600";
     const isSelected = form.toTrack === v.id;
+    const isServiceVia = ['Torno', 'Lavado'].some(service => v.nombre.toLowerCase().includes(service.toLowerCase()));
+    const isDisabled = !form.service && isServiceVia;
     
     return (
       <button
@@ -1009,10 +1015,10 @@ function StepOne(props: {
           isSelected 
             ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" 
             : "border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800",
-          allOcc === true && "opacity-60",
+          (allOcc === true || isDisabled) && "opacity-60",
           isSelected && "ring-2 ring-emerald-400/50"
         )}
-        disabled={allOcc === true}
+        disabled={allOcc === true || isDisabled}
       >
         <span className={clsx("truncate font-medium", isSelected && "text-emerald-700 dark:text-emerald-300")}>
           Vía {v.nombre}
