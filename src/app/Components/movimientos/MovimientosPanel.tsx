@@ -1,1098 +1,472 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+// src/app/Components/movimientos/MovimientosPanel.tsx
 "use client";
 
-// Roles soportados: CLIENTE, SUPERVISOR, COORDINADOR, ADMINISTRADOR
-// Reglas:
-// - CLIENTE: ve solo su empresa, solo "Actuales", puede EDITAR sus movimientos y puede CREAR.
-// - SUPERVISOR: ve TODAS las empresas/localidades, solo "Actuales", NO edita. Crear si allowCreate.
-// - COORDINADOR/ADMINISTRADOR: ve TODO (Actuales y Pasados), NO edita. Crear si allowCreate.
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import Nav from "./Nav";
+import Filtros from "./Filtros";
+import Tabla from "./Tabla";
+import Detalle from "./Detalle";
+import { useMovimientos, Rol } from "./useMovimientos";
+import { useRouter } from "next/navigation"; // ⬅️ ESTA
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import {
-  CalendarDays,
-  Filter,
-  RefreshCw,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  Search,
-  Plus,
-  WifiOff,
-  ArrowUpDown,
-  Shield,
-  MapPin,
-} from "lucide-react";
-import dynamic from "next/dynamic";
+/* ================== HELPERS SESIÓN ================== */
 
-const EditarMovimiento = dynamic(() => import("src/app/movimientos/editar/EditarMovimiento"), { ssr: false });
-
-/* ===== Tipos ===== */
-export type Movement = {
-  id: number;
-  locomotora: string;
-  localidadId: number;
-  localidadNombre?: string;
-  localidadEstado?: string;
-  viaOrigen: string;
-  viaDestino: string;
-  tipoAccion: string;
-  prioridad: string;
-  tipoMovimiento: string;
-  clienteId: number | string | null;
-  supervisorId: number | string | null;
-  coordinadorId: number | string | null;
-  operadorId: number | string | null;
-  maquinistaId: number | string | null;
-  empresaId: number;
-  empresaNombre?: string;
-  fechaSolicitud: string | null;
-  fechaInicio: string | null;
-  fechaFin: string | null;
-  estado: string;
-  instrucciones?: string;
-  incidenteGlobal: boolean;
-  finalizado: boolean;
-  lavado: boolean;
-  torno: boolean;
-  posicionCabina?: string;
-  posicionChimenea?: string;
-  direccionEmpuje?: string;
-  comentarioPostergacion?: string;
-  nuevaFechaPostergacion?: string | null;
-};
-
-type Option = { id: number; nombre: string };
-
-export interface MovimientosPanelProps {
-  apiBase?: string;
-  empresas?: Option[];
-  localidades?: Option[];
-  defaultEmpresaId?: number | null;
-  defaultLocalidadId?: number | null;
-  role?: string;
-  allowCreate?: boolean;
-}
-
-/* ===== Utils ===== */
-const fmtDateTime = (s?: string | null) => (s ? new Date(s).toLocaleString("es-MX") : "—");
-const fmtDate = (s?: string | null) => (s ? new Date(s).toLocaleDateString("es-MX") : "—");
-const todayISO = () => new Date().toISOString().slice(0, 10);
-const clsx = (...xs: Array<string | false | null | undefined>) => xs.filter(Boolean).join(" ");
-const toText = (v: unknown) =>
-  v == null
-    ? "—"
-    : typeof v === "object"
-    ? (v as { nombre?: string; numero?: string; code?: string; id?: string })?.nombre ??
-      (v as { nombre?: string; numero?: string; code?: string; id?: string })?.numero ??
-      (v as { nombre?: string; numero?: string; code?: string; id?: string })?.code ??
-      (v as { nombre?: string; numero?: string; code?: string; id?: string })?.id ??
-      JSON.stringify(v)
-    : String(v);
-
-const getCookie = (name: string) => {
+function getCookie(name: string): string {
   if (typeof document === "undefined") return "";
   const m = document.cookie.match(new RegExp("(^|; )" + name + "=([^;]*)"));
   return m ? decodeURIComponent(m[2]) : "";
-};
+}
 
-function getUserMeta() {
+function getRoleFromSession(): Rol {
+  const c = (getCookie("role") || "").trim().toUpperCase();
+  if (c) return c as Rol;
+
   try {
-    const raw = localStorage.getItem("user");
-    return raw ? JSON.parse(raw) : {};
+    const raw =
+      typeof window !== "undefined" ? localStorage.getItem("user") : null;
+    if (raw) {
+      const u = JSON.parse(raw);
+      const r = String(u?.rol || u?.role || "").toUpperCase();
+      if (r) return r as Rol;
+    }
   } catch {
-    return {};
+    // silencioso
   }
+  return "CLIENTE";
 }
 
-/* Debounce para búsqueda */
-function useDebouncedValue<T>(value: T, delay = 250) {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const id = setTimeout(() => setV(value), delay);
-    return () => clearTimeout(id);
-  }, [value, delay]);
-  return v;
+/* ================== PROPS ================== */
+
+interface MovimientosPanelProps {
+  rol?: Rol;      // si no viene, se toma de cookie/localStorage
+  token?: string; // si no viene, se toma de cookie "token"
+  puedeCrear?: boolean;
+
+  apiBase?: string;
+  empresaIdUsuario?: number | null;
+  intervaloAutoMs?: number;
 }
 
-/* Intervalo sólo si pestaña visible */
-function useVisibleInterval(cb: () => void, ms: number | null) {
+/* ================== COMPONENTE ================== */
+
+export default function MovimientosPanel(props: MovimientosPanelProps) {
+  const { rol: rolProp, token: tokenProp, puedeCrear = false } = props;
+  const router = useRouter(); 
+
+  // Rol/token efectivos
+  const [rol, setRol] = useState<Rol>(() => rolProp ?? getRoleFromSession());
+  const [token, setToken] = useState<string | undefined>(() => tokenProp);
+
+  const [userEmpresaId, setUserEmpresaId] = useState<number | null>(null);
+  const [userLocalidadId, setUserLocalidadId] = useState<number | null>(null);
+
+  /* ================== RESOLVER SESIÓN ================== */
+
+  // Resolver token desde cookie si no lo pasaron
   useEffect(() => {
-    if (!ms) return;
-    const id = window.setInterval(() => {
-      if (document.visibilityState === "visible") cb();
-    }, ms);
-    const onVis = () => {
-      if (document.visibilityState === "visible") cb();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", onVis);
-    };
-  }, [cb, ms]);
-}
-
-/* ===== Componente ===== */
-export default function MovimientosPanel({
-  apiBase = "/bff",
-  empresas = [],
-  localidades = [],
-  defaultEmpresaId = null,
-  defaultLocalidadId = null,
-  role = "",
-  allowCreate = false,
-}: MovimientosPanelProps) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
-  // rol / cookies
-  const userMeta = useMemo(getUserMeta, []);
-  const cookieRole = (getCookie("role") || (userMeta as { rol?: string })?.rol || role || "CLIENTE").toString();
-  const roleUp = cookieRole.toUpperCase();
-
-  // Flags por rol
-  const isClient = roleUp === "CLIENTE";
-  const isSupervisor = roleUp === "SUPERVISOR";
-  const isCoordinator = roleUp === "COORDINADOR" || roleUp === "COORDINADORES";
-  const isAdmin = roleUp === "ADMINISTRADOR" || roleUp === "ADMIN";
-
-  const canEdit = isClient; // Solo cliente edita
-  const canSeePast = isCoordinator || isAdmin; // Past para coordinador/admin
-  const canSeeAllLocalidades = isSupervisor || isCoordinator || isAdmin; // cliente queda atado
-
-  const cookieLocId = Number(getCookie("locId") || "") || null;
-
-  // filtros
-  const [empId, setEmpId] = useState<number | null>(defaultEmpresaId ?? null);
-  const [locId, setLocId] = useState<number | null>(defaultLocalidadId ?? cookieLocId ?? null);
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [q, setQ] = useState("");
-  const qDeb = useDebouncedValue(q, 250);
-  const [tab, setTab] = useState<"Actuales" | "Pasados">("Actuales");
-
-  // combos
-  const [empOpts, setEmpOpts] = useState<Option[]>(empresas);
-  const [locOpts, setLocOpts] = useState<Option[]>(localidades);
-  const [, setCombosReady] = useState(false);
-
-  useEffect(() => {
-    let ignore = false;
-    async function loadCombos() {
-      try {
-        const headers: HeadersInit = {};
-        if (!empresas.length) {
-          const r = await fetch(`${apiBase}/empresas`, {
-            cache: "no-store",
-            credentials: "include",
-            headers,
-          });
-          if (r.ok) {
-            const data = await r.json();
-            if (!ignore) setEmpOpts(data.map((x: Option) => ({ id: x.id, nombre: x.nombre })));
-          }
-        }
-        if (!localidades.length) {
-          const r = await fetch(`${apiBase}/localidades`, {
-            cache: "no-store",
-            credentials: "include",
-            headers,
-          });
-          if (r.ok) {
-            const data = await r.json();
-            if (!ignore) setLocOpts(data.map((x: Option) => ({ id: x.id, nombre: x.nombre })));
-          }
-        }
-      } catch {}
-      if (!ignore) setCombosReady(true);
+    if (tokenProp) {
+      setToken(tokenProp);
+      return;
     }
-    loadCombos();
-    return () => {
-      ignore = true;
-    };
-  }, [apiBase, empresas.length, localidades.length]);
+    const t = getCookie("token");
+    if (t) setToken(t);
+  }, [tokenProp]);
 
-  // derivar empresaId del CLIENTE
+  // Resolver rol desde sesión si no lo pasaron
   useEffect(() => {
-    if (!isClient || empId != null) return;
+    if (rolProp) {
+      setRol(rolProp);
+      return;
+    }
+    setRol(getRoleFromSession());
+  }, [rolProp]);
+
+  // Cargar empresa/localidad asignadas al usuario (CLIENTE / SUPERVISOR)
+  useEffect(() => {
     try {
-      const name = ((userMeta as any)?.empresa?.nombre || "").toLowerCase().trim();
-      if (!name) return;
-
-      const byOpts = empOpts.find((e) => e.nombre.toLowerCase().trim() === name);
-      if (byOpts) {
-        setEmpId(byOpts.id);
-        return;
-      }
-
-      const raw = localStorage.getItem("cached_companies_v2");
+      const raw =
+        typeof window !== "undefined" ? localStorage.getItem("user") : null;
       if (raw) {
-        const parsed = JSON.parse(raw);
-        const arr: Option[] = parsed?.data ?? [];
-        const found = arr.find((e) => e.nombre.toLowerCase().trim() === name);
-        if (found) {
-          setEmpId(found.id);
-          return;
-        }
+        const u = JSON.parse(raw);
+        const empId = Number(u?.empresaId ?? u?.empresa?.id ?? NaN);
+        if (Number.isFinite(empId)) setUserEmpresaId(empId);
       }
-    } catch {}
-  }, [isClient, empId, empOpts, userMeta]);
-
-  // nombre de localidad bloqueada
-  const [locName, setLocName] = useState<string>("");
-  useEffect(() => {
-    if (locId == null) {
-      setLocName("");
-      return;
+    } catch {
+      // nada
     }
-    const found = locOpts.find((o) => o.id === locId);
-    if (found) {
-      setLocName(found.nombre);
-      return;
-    }
-    (async () => {
-      try {
-        const r = await fetch(`${apiBase}/localidades/${locId}`, { credentials: "include", cache: "no-store" });
-        if (r.ok) {
-          const d = await r.json();
-          setLocName(d?.nombre || String(locId));
-        } else {
-          setLocName(String(locId));
-        }
-      } catch {
-        setLocName(String(locId));
-      }
-    })();
-  }, [locId, locOpts, apiBase]);
 
-  // paginación / datos
-  const [pageSize, setPageSize] = useState<number>(() => {
-    if (typeof window === "undefined") return 50;
-    const saved = Number(localStorage.getItem("mov:pageSize") || 50);
-    return [25, 50, 100].includes(saved) ? saved : 50;
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem("mov:pageSize", String(pageSize));
-    } catch {}
-  }, [pageSize]);
+    const locIdCookie = Number(getCookie("locId") || NaN);
+    if (Number.isFinite(locIdCookie)) setUserLocalidadId(locIdCookie);
+  }, []);
 
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [items, setItems] = useState<Movement[]>([]);
-  const [total, setTotal] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  /* ================== DATOS (HOOK) ================== */
 
-  // auto-refresh
-  const [auto, setAuto] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    return localStorage.getItem("mov:auto") !== "0";
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem("mov:auto", auto ? "1" : "0");
-    } catch {}
-  }, [auto]);
+  const {
+    filas,
+    total,
+    cargando,
+    ambito,
+    setAmbito,
+    filtros,
+    setFiltros,
+    empresas,
+    localidades,
+    recargar,
+    tab,
+    setTab,
+    badges,
+    emptyText,
+  } = useMovimientos(rol, token);
 
-  // CLIENTE y SUPERVISOR no ven "Pasados"
-  useEffect(() => {
-    if (!canSeePast && tab !== "Actuales") setTab("Actuales");
-  }, [canSeePast, tab]);
+  const [detalleAbierto, setDetalleAbierto] = useState(false);
+  const [movimientoSeleccionado, setMovimientoSeleccionado] =
+    useState<number | null>(null);
 
-  // ordenamiento simple
-  const [sortBy, setSortBy] = useState<"id" | "fechaSolicitud" | "fechaInicio" | "fechaFin">("id");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const toggleSort = (k: typeof sortBy) => {
-    setSortBy((prev) => (prev === k ? prev : k));
-    setSortDir((prev) => (sortBy === k ? (prev === "asc" ? "desc" : "asc") : "desc"));
-  };
+  /* ================== PERMISOS POR ROL ================== */
 
-  // carga con cancelación
-  const reqSeq = useRef(0);
-  const abortRef = useRef<AbortController | null>(null);
-
-  const load = useCallback(
-    async (showRefreshing = false) => {
-      if (isClient && empId == null) return;
-
-      abortRef.current?.abort();
-      abortRef.current = new AbortController();
-
-      const my = ++reqSeq.current;
-      showRefreshing ? setRefreshing(true) : setLoading(true);
-      setError(null);
-      try {
-        const headers: HeadersInit = { "Content-Type": "application/json" };
-
-        const qs = new URLSearchParams();
-        if (from) qs.append("fechaInicio", from);
-        if (to) qs.append("fechaFin", to);
-        qs.append("page", String(page));
-        qs.append("pageSize", String(pageSize));
-        if (!isClient && tab === "Pasados") qs.append("finalizado", "true");
-
-        let url = "";
-        if (isClient) {
-          url = `${apiBase}/movimientos/empresa/${empId}${locId != null ? `/localidad/${locId}` : ""}?${qs.toString()}`;
-        } else {
-          if (empId != null) qs.append("empresaId", String(empId));
-          if (locId != null) qs.append("localidadId", String(locId));
-          url = `${apiBase}/movimientos?${qs.toString()}`;
-        }
-
-        const r = await fetch(url, {
-          cache: "no-store",
-          credentials: "include",
-          headers,
-          signal: abortRef.current.signal,
-        });
-        if (!r.ok) throw new Error(String(r.status));
-        const data = await r.json();
-
-        if (my !== reqSeq.current) return;
-
-        const raw = Array.isArray((data as any)?.rows) ? (data as any).rows : Array.isArray(data) ? data : [];
-        const rows: Movement[] = raw.map((m: any): Movement => {
-          const estadoCalc = m.estado ?? m.status ?? (m.finalizado ? "CONCLUIDO" : "PENDIENTE");
-          const finalizadoCalc = m.finalizado ?? (String(estadoCalc).toUpperCase() === "CONCLUIDO");
-          return {
-            id: m.id,
-            locomotora: toText(m.locomotora ?? m.locomotiveNumber ?? m.loco ?? m.locomotoraNumero),
-            localidadId: m.localidadId ?? m.localidad?.id ?? 0,
-            localidadNombre: m.localidadNombre ?? m.localidad?.nombre ?? (typeof m.localidad === "string" ? m.localidad : undefined),
-            localidadEstado: m.localidadEstado ?? m.localidad?.estado,
-            viaOrigen: toText(m.viaOrigen),
-            viaDestino: toText(m.viaDestino),
-            tipoAccion: m.tipoAccion ?? m.accion ?? m.action ?? "—",
-            prioridad: m.prioridad ?? m.priority ?? "MEDIA",
-            tipoMovimiento: m.tipoMovimiento ?? m.movementType ?? "—",
-            clienteId: m.clienteId ?? null,
-            supervisorId: m.supervisorId ?? null,
-            coordinadorId: m.coordinadorId ?? null,
-            operadorId: m.operadorId ?? null,
-            maquinistaId: m.maquinistaId ?? null,
-            empresaId: m.empresaId,
-            empresaNombre: m.empresaNombre ?? m.empresa?.nombre ?? (userMeta as any)?.empresa?.nombre ?? undefined,
-            fechaSolicitud: m.fechaSolicitud ?? m.createdAt ?? null,
-            fechaInicio: m.fechaInicio ?? null,
-            fechaFin: m.fechaFin ?? null,
-            estado: estadoCalc,
-            instrucciones: m.instrucciones,
-            incidenteGlobal: !!m.incidenteGlobal,
-            finalizado: !!finalizadoCalc,
-            lavado: !!m.lavado,
-            torno: !!m.torno,
-            posicionCabina: m.posicionCabina,
-            posicionChimenea: m.posicionChimenea,
-            direccionEmpuje: m.direccionEmpuje,
-            comentarioPostergacion: m.comentarioPostergacion,
-            nuevaFechaPostergacion: m.nuevaFechaPostergacion ?? null,
-          };
-        });
-
-        const securedRows = isClient
-          ? rows.filter((r) => r.empresaId === empId && (locId == null || r.localidadId === locId))
-          : rows;
-
-        const baseRows = isClient
-          ? securedRows.filter((r) => !r.finalizado)
-          : tab === "Actuales"
-          ? securedRows.filter((r) => !r.finalizado)
-          : securedRows.filter((r) => r.finalizado);
-
-        setItems(baseRows);
-        setTotal(Number((data as any)?.total ?? baseRows.length));
-      } catch (e: any) {
-        if (e?.name === "AbortError") return;
-        setItems([]);
-        setTotal(0);
-        setError(e?.message || "Error al cargar datos");
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [apiBase, empId, locId, from, to, page, pageSize, tab, isClient, userMeta]
+  const puedeElegirEmpresa = useMemo(
+    () =>
+      ["ADMINISTRADOR", "COORDINADOR"].includes(
+        String(rol || "").toUpperCase()
+      ),
+    [rol]
   );
 
+  // Forzar empresa/localidad para CLIENTE / SUPERVISOR
   useEffect(() => {
-    load(false);
-  }, [load]);
-  useVisibleInterval(() => auto && load(false), auto ? 20000 : null);
+    if (puedeElegirEmpresa) return;
 
-  // búsqueda + ordenamiento local
-  const filtered = useMemo(() => {
-    const qx = (qDeb || "").trim().toLowerCase();
-    const hay = (s: any) => String(s ?? "").toLowerCase().includes(qx);
-    let list = !qx
-      ? items
-      : items.filter((m) => hay(m.id) || hay(m.locomotora) || hay(m.empresaNombre) || hay(m.localidadNombre) || hay(m.viaOrigen) || hay(m.viaDestino) || hay(m.estado) || hay(m.tipoAccion) || hay(m.tipoMovimiento));
+    setFiltros((prev) => ({
+      ...prev,
+      empresaId:
+        userEmpresaId != null ? userEmpresaId : prev.empresaId ?? undefined,
+      localidadId:
+        userLocalidadId != null
+          ? userLocalidadId
+          : prev.localidadId ?? undefined,
+      pagina: 1,
+    }));
+  }, [puedeElegirEmpresa, userEmpresaId, userLocalidadId, setFiltros]);
 
-    const getKey = (m: Movement) => {
-      if (sortBy === "id") return m.id;
-      const v = sortBy === "fechaSolicitud" ? m.fechaSolicitud : sortBy === "fechaInicio" ? m.fechaInicio : m.fechaFin;
-      return v ? new Date(v).getTime() : 0;
-    };
-    list = list.slice().sort((a, b) => {
-      const ka = getKey(a);
-      const kb = getKey(b);
-      const cmp = ka < kb ? -1 : ka > kb ? 1 : 0;
-      return sortDir === "asc" ? cmp : -cmp;
-    });
+  // Listas de empresas/localidades vistas en filtros
+  const listaEmpresas = useMemo(() => {
+    if (puedeElegirEmpresa) return empresas;
+    if (userEmpresaId != null) {
+      const e = empresas.find((x) => x.id === userEmpresaId);
+      return e ? [e] : empresas;
+    }
+    return empresas;
+  }, [empresas, puedeElegirEmpresa, userEmpresaId]);
 
-    return list;
-  }, [items, qDeb, sortBy, sortDir]);
+  const listaLocalidades = useMemo(() => {
+    if (puedeElegirEmpresa) return localidades;
+    if (userLocalidadId != null) {
+      const l = localidades.find((x) => x.id === userLocalidadId);
+      return l ? [l] : localidades;
+    }
+    return localidades;
+  }, [localidades, puedeElegirEmpresa, userLocalidadId]);
 
-  // detalle (bloqueado para CLIENTE)
-  const [detail, setDetail] = useState<Movement | null>(null);
-  const openDetail = (m: Movement) => {
-    if (canEdit) return; // clientes no ven detalle admin
-    setDetail(m);
-  };
+  /* ================== HANDLERS ================== */
 
-  // editar (solo CLIENTE)
-  const [editId, setEditId] = useState<number | null>(null);
-  const openEdit = (m: Movement) => {
-    if (!canEdit) return;
-    setEditId(m.id);
-    setDetail(null);
-  };
+  const handleCambiarAmbito = useCallback(
+    (nuevoAmbito: typeof ambito) => {
+      setAmbito(nuevoAmbito);
+      setFiltros((prev) => ({ ...prev, pagina: 1 }));
+    },
+    [setAmbito, setFiltros]
+  );
 
-  // badges / resets
-  const tabBadges = useMemo(() => ({ Actuales: filtered.filter((x) => !x.finalizado).length }), [filtered]);
-  useEffect(() => {
-    setPage(1);
-  }, [empId, locId, from, to, tab, pageSize]);
+  const handleBuscar = useCallback(
+    (texto: string) => {
+      setFiltros((prev) => ({
+        ...prev,
+        pagina: 1,
+        busqueda: texto,
+      }));
+    },
+    [setFiltros]
+  );
 
-  const lockedEmpresa = isClient;
-  const lockedLocalidad = isClient && !canSeeAllLocalidades;
+  const handleCambiarEmpresaId = useCallback(
+    (empresaId: number | null) => {
+      setFiltros((prev) => ({
+        ...prev,
+        pagina: 1,
+        empresaId: empresaId ?? undefined,
+      }));
+    },
+    [setFiltros]
+  );
 
-  const showClear = !!from || !!to || !!q || (!lockedLocalidad && locId != null) || (!lockedEmpresa && empId != null);
+  const handleCambiarLocalidadId = useCallback(
+    (localidadId: number | null) => {
+      setFiltros((prev) => ({
+        ...prev,
+        pagina: 1,
+        localidadId: localidadId ?? undefined,
+      }));
+    },
+    [setFiltros]
+  );
 
-  const tabs: Array<"Actuales" | "Pasados"> = canSeePast ? ["Actuales", "Pasados"] : ["Actuales"];
+  const handleCambiarRangoFechas = useCallback(
+    (desde: string | null, hasta: string | null) => {
+      setFiltros((prev) => ({
+        ...prev,
+        pagina: 1,
+        desde: desde ?? undefined,
+        hasta: hasta ?? undefined,
+      }));
+    },
+    [setFiltros]
+  );
 
-  // rutas por rol + visibilidad de crear
-  const baseByRole: Record<string, string> = {
-    ADMINISTRADOR: "/administrador",
-    COORDINADOR: "/coordinador",
-    SUPERVISOR: "/supervisor",
-    CLIENTE: "/cliente",
-  };
-  const showCreate = isClient || !!allowCreate; // cliente siempre; otros si allowCreate
-  const createHref = `/movimientos/crear`;
+  const handleCambiarTamPagina = useCallback(
+    (tamPagina: number) => {
+      setFiltros((prev) => ({
+        ...prev,
+        pagina: 1,
+        tamPagina,
+      }));
+    },
+    [setFiltros]
+  );
 
-  // atajos: / busca, r refresh, a auto
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "/" && (e.target as HTMLElement)?.tagName !== "INPUT") {
-        e.preventDefault();
-        const el = document.getElementById("search-mov") as HTMLInputElement | null;
-        el?.focus();
-      }
-      if (e.key.toLowerCase() === "r" && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        load(true);
-      }
-      if (e.key.toLowerCase() === "a" && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        setAuto((v) => !v);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [load]);
+  const handleLimpiarFiltros = useCallback(() => {
+    setFiltros((prev) => ({
+      ...prev,
+      pagina: 1,
+      empresaId: puedeElegirEmpresa
+        ? undefined
+        : prev.empresaId ?? undefined,
+      localidadId: puedeElegirEmpresa
+        ? undefined
+        : prev.localidadId ?? undefined,
+      desde: undefined,
+      hasta: undefined,
+    }));
+  }, [setFiltros, puedeElegirEmpresa]);
 
-  /* ===== Render ===== */
-  const panelTitle =
-    isClient ? "Panel de Cliente" :
-    isSupervisor ? "Panel de Supervisor" :
-    isCoordinator ? "Panel de Coordinación" :
-    isAdmin ? "Panel de Administrador" : "Panel";
+  const handlePagina = useCallback(
+    (pagina: number) => {
+      setFiltros((prev) => ({
+        ...prev,
+        pagina,
+      }));
+    },
+    [setFiltros]
+  );
+
+const handleEditar = useCallback(
+  (id: number) => {
+    if (rol === "CLIENTE") {
+      // OJO: aquí ya no va /movimientos
+      window.location.assign(`/cliente/editar?id=${id}`);
+      return;
+    }
+
+    // Para otros roles sigues usando el drawer
+    setMovimientoSeleccionado(id);
+    setDetalleAbierto(true);
+  },
+  [rol, setMovimientoSeleccionado, setDetalleAbierto]
+);
+
+
+
+  const handleCerrarDetalle = useCallback(() => {
+    setDetalleAbierto(false);
+    setMovimientoSeleccionado(null);
+  }, []);
+
+  const handleToggleAuto = useCallback((_activo: boolean) => {
+    // El auto-refresh ya lo maneja useMovimientos en "actuales"
+  }, []);
+
+  const handleNuevo = useCallback(() => {
+    window.location.assign("/movimientos/crear");
+  }, []);
+
+  /* ================== RENDER ================== */
 
   return (
-    <section className="w-full max-w-screen-2xl mx-auto px-3 sm:px-4 lg:px-6 space-y-3">
-   
-
-      {/* Toolbar */}
-      <div className="pane sticky z-10 top-[max(0px,env(safe-area-inset-top))] flex flex-wrap items-center gap-2 backdrop-blur supports-[backdrop-filter]:bg-white/70 dark:supports-[backdrop-filter]:bg-slate-900/70">
-        <div className="inline-flex rounded-lg border overflow-hidden">
-          {tabs.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={clsx("px-3 py-2 text-sm md:text-[13px] min-h-10 transition-colors", tab === t ? "bg-sky-600 text-white" : "bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800")}
-              aria-pressed={tab === t}
-            >
-              {t}
-              {t === "Actuales" && tabBadges.Actuales > 0 ? <span className="ml-1 rounded-full bg-white/20 px-1.5 text-[10px]">{tabBadges.Actuales}</span> : null}
-            </button>
-          ))}
-        </div>
-
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <div className="relative w-full sm:w-56 md:w-72">
-            <Search className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              id="search-mov"
-              className="input pl-8 w-full text-sm md:text-base min-h-10"
-              placeholder="Buscar…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              aria-label="Buscar movimientos"
-            />
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setAuto((v) => !v)}
-            className={clsx("rounded-md border px-3 py-2 text-sm md:text-[13px] min-h-10", auto ? "border-emerald-300 text-emerald-700 dark:text-emerald-300" : "")}
-            aria-pressed={auto}
-            title="Auto-actualizar"
-          >
-            {auto ? "⏸️ Auto" : "▶️ Auto"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => load(true)}
-            disabled={refreshing}
-            className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm md:text-[13px] min-h-10 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-60"
-            aria-busy={refreshing}
-            title="Refrescar"
-          >
-            <RefreshCw className="h-4 w-4" />
-            {refreshing ? "Actualizando…" : "Actualizar"}
-          </button>
-
-          {showCreate && (
-            <Link href={createHref} className="btn-primary !w-auto min-h-10 text-sm md:text-[13px] inline-flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              Nuevo movimiento
-            </Link>
-          )}
-        </div>
-      </div>
-
-      {/* Error red */}
-      {error && (
-        <div className="pane flex items-center gap-2 rounded-lg border border-rose-300 bg-rose-50 p-2 text-sm text-rose-700 dark:border-rose-800 dark:bg-rose-900/20 dark:text-rose-200" role="status" aria-live="polite">
-          <WifiOff className="h-4 w-4" /> {error}
-          <button onClick={() => load(true)} className="ml-auto rounded-md border px-2 py-0.5 text-xs hover:bg-white/50 dark:hover:bg-slate-800">
-            Reintentar
-          </button>
-        </div>
-      )}
-
-      {/* Filtros */}
-      <div className="pane">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
-            <Filter className="h-4 w-4" /> Filtros
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-500">
-              Tamaño página
-              <select className="ml-2 input min-h-8 py-1 text-xs" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
-                <option>25</option>
-                <option>50</option>
-                <option>100</option>
-              </select>
-            </label>
-            {showClear && (
-              <button
-                type="button"
-                className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm md:text-[13px] hover:bg-slate-50 dark:hover:bg-slate-800"
-                onClick={() => {
-                  if (!lockedEmpresa) setEmpId(null);
-                  if (!lockedLocalidad) setLocId(null);
-                  setFrom("");
-                  setTo("");
-                  setQ("");
-                  setPage(1);
-                }}
-              >
-                <X className="h-4 w-4" /> Limpiar
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-          {/* Empresa */}
-          <div className="lg:col-span-2">
-            <label className="mb-1 block text-xs text-slate-500">Empresa</label>
-            {lockedEmpresa ? (
-              <input className="input min-h-10" value={empOpts.find((o) => o.id === empId)?.nombre ?? (userMeta as any)?.empresa?.nombre ?? "Mi empresa"} disabled />
-            ) : (
-              <select className="input min-h-10" value={empId ?? ""} onChange={(e) => setEmpId(e.target.value ? Number(e.target.value) : null)}>
-                <option value="">Todas</option>
-                {empOpts.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.nombre}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-
-          {/* Localidad */}
-          <div className="lg:col-span-2">
-            <label className="mb-1 block text-xs text-slate-500">Localidad</label>
-            {lockedLocalidad ? (
-              <input className="input min-h-10" value={locName || "—"} disabled />
-            ) : (
-              <select className="input min-h-10" value={locId ?? ""} onChange={(e) => setLocId(e.target.value ? Number(e.target.value) : null)}>
-                <option value="">Todas</option>
-                {locOpts.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.nombre}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-
-          {/* Desde */}
+    <section
+      className="
+        w-full 
+        rounded-3xl 
+        border border-slate-200 dark:border-slate-800 
+        bg-white/95 dark:bg-slate-950/90 
+        text-slate-900 dark:text-slate-100
+        shadow-md sm:shadow-lg
+        overflow-hidden
+      "
+    >
+      {/* El max-w lo controla la página padre (cliente/movimientos) */}
+      <div className="flex flex-col gap-4 px-3 py-4 sm:px-4 sm:py-6 lg:px-6 lg:py-7">
+        {/* Header */}
+        <header className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between">
           <div>
-            <label className="mb-1 block text-xs text-slate-500">Desde</label>
-            <div className="relative">
-              <CalendarDays className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input type="date" className="input pl-8 min-h-10" max={to || undefined} value={from} onChange={(e) => setFrom(e.target.value)} />
-            </div>
+            <h1 className="text-lg sm:text-2xl font-semibold tracking-tight">
+              Movimientos
+            </h1>
+            <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+              Gestión de movimientos ferroviarios · {tab}
+            </p>
           </div>
+          <RolePill rol={rol} puedeElegirEmpresa={puedeElegirEmpresa} />
+        </header>
 
-          {/* Hasta */}
-          <div>
-            <label className="mb-1 block text-xs text-slate-500">Hasta</label>
-            <div className="relative">
-              <CalendarDays className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input type="date" className="input pl-8 min-h-10" min={from || undefined} value={to} onChange={(e) => setTo(e.target.value)} max={todayISO()} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Tarjetas móvil */}
-      <div className="grid gap-3 md:hidden" aria-live="polite">
-        {!mounted || loading ? (
-          <CardSkeleton count={4} />
-        ) : filtered.length === 0 ? (
-          <EmptyBox text="Sin resultados">
-            {showCreate && (
-              <Link href={createHref} className="mt-4 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">
-                <Plus className="h-4 w-4" /> Crear movimiento
-              </Link>
-            )}
-          </EmptyBox>
-        ) : (
-          filtered.map((m) => (
-            <article key={m.id} className="rounded-xl border bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <h3 className="font-semibold text-base">
-                  #{m.id} · {m.localidadNombre ?? "—"}
-                </h3>
-                <Badge
-                  tone={
-                    m.estado?.toUpperCase() === "CONCLUIDO"
-                      ? "ok"
-                      : m.estado?.toUpperCase() === "DETENIDO"
-                      ? "error"
-                      : m.estado?.toUpperCase() === "EN_PROCESO"
-                      ? "warn"
-                      : "muted"
-                  }
-                >
-                  {m.estado || (m.finalizado ? "CONCLUIDO" : "PENDIENTE")}
-                </Badge>
-              </div>
-
-              <dl className="grid grid-cols-2 gap-3 text-[13px]">
-                <InfoItem k="Empresa" v={m.empresaNombre ?? "—"} />
-                <InfoItem k="Locomotora" v={m.locomotora} />
-                <InfoItem k="Acción" v={m.tipoAccion} />
-                <InfoItem k="Tipo" v={m.tipoMovimiento} />
-                <InfoItem k="Vía Origen" v={m.viaOrigen} />
-                <InfoItem k="Vía Destino" v={m.viaDestino} />
-                <InfoItem k="Solicitud" v={fmtDate(m.fechaSolicitud)} />
-                <InfoItem k="Inicio" v={fmtDateTime(m.fechaInicio)} />
-                <InfoItem k="Fin" v={fmtDateTime(m.fechaFin)} />
-              </dl>
-
-              <div className="mt-3 flex items-center justify-between">
-                <Badge tone={m.prioridad === "ALTA" ? "warn" : m.prioridad === "BAJA" ? "muted" : "ok"}>{m.prioridad || "—"}</Badge>
-
-                {canEdit ? (
-                  <button
-                    type="button"
-                    onClick={() => openEdit(m)}
-                    className="rounded-md border px-3 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
-                    title={`Editar #${m.id}`}
-                  >
-                    Editar
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => openDetail(m)}
-                    className="rounded-md border px-3 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
-                  >
-                    Detalle
-                  </button>
-                )}
-              </div>
-            </article>
-          ))
-        )}
-      </div>
-
-      {/* Tabla desktop */}
-      <div className="hidden md:block overflow-x-auto rounded-xl border bg-white dark:border-slate-700 dark:bg-slate-900">
-        <table className="w-full text-[13px] md:text-sm table-auto">
-          <colgroup>
-            <col className="w-16" />
-            <col className="hidden lg:table-column w-[220px]" />
-            <col className="hidden lg:table-column w-[220px]" />
-            <col className="w-28" />
-            <col className="w-28" />
-            <col className="w-28" />
-            <col className="hidden xl:table-column w-[260px]" />
-            <col className="hidden xl:table-column w-[200px]" />
-            <col className="w-28" />
-            <col className="w-28" />
-            {canEdit && <col className="w-24" />}
-            <col className="hidden 2xl:table-column w-32" />
-            <col className="hidden lg:table-column w-32" />
-            <col className="hidden lg:table-column w-32" />
-            <col className="w-28" />
-          </colgroup>
-          <thead className="bg-slate-50 dark:bg-slate-800/60">
-            <tr className="text-left">
-              <Th onClick={() => toggleSort("id")} sortable sortBy={sortBy} selfKey="id" sortDir={sortDir}>
-                ID
-              </Th>
-              <Th className="hidden lg:table-cell">Empresa</Th>
-              <Th className="hidden lg:table-cell">Localidad</Th>
-              <Th onClick={() => toggleSort("id")} sortable sortBy={sortBy} selfKey="id" sortDir={sortDir}>
-                Locomotora
-              </Th>
-              <Th>Vía Origen</Th>
-              <Th>Vía Destino</Th>
-              <Th className="hidden xl:table-cell">Acción</Th>
-              <Th className="hidden xl:table-cell">Tipo mov.</Th>
-              <Th>Prioridad</Th>
-              <Th>Estado</Th>
-              {canEdit && <Th className="text-center">Editar</Th>}
-              <Th onClick={() => toggleSort("fechaSolicitud")} sortable sortBy={sortBy} selfKey="fechaSolicitud" sortDir={sortDir} className="hidden 2xl:table-cell">
-                Solicitud
-              </Th>
-              <Th onClick={() => toggleSort("fechaInicio")} sortable sortBy={sortBy} selfKey="fechaInicio" sortDir={sortDir} className="hidden lg:table-cell">
-                Inicio
-              </Th>
-              <Th onClick={() => toggleSort("fechaFin")} sortable sortBy={sortBy} selfKey="fechaFin" sortDir={sortDir} className="hidden lg:table-cell">
-                Fin
-              </Th>
-              {!canEdit && <Th className="text-right">&nbsp;</Th>}
-            </tr>
-          </thead>
-          <tbody className="divide-y dark:divide-slate-800">
-            {!mounted || loading ? (
-              <RowLoading colCount={canEdit ? 13 : 15} />
-            ) : filtered.length === 0 ? (
-              <tr>
-                <td colSpan={canEdit ? 13 : 15} className="p-6 text-center text-slate-500 dark:text-slate-400">
-                  Sin resultados
-                </td>
-              </tr>
-            ) : (
-              filtered.map((m) => (
-                <tr key={m.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/60">
-                  <Td>#{m.id}</Td>
-                  <Td className="hidden lg:table-cell max-w-[220px] truncate">{m.empresaNombre ?? "—"}</Td>
-                  <Td className="hidden lg:table-cell max-w-[220px] truncate">{m.localidadNombre ?? "—"}</Td>
-                  <Td>{m.locomotora ?? "—"}</Td>
-                  <Td>{m.viaOrigen ?? "—"}</Td>
-                  <Td>{m.viaDestino ?? "—"}</Td>
-                  <Td className="hidden xl:table-cell max-w-[260px] truncate">{m.tipoAccion}</Td>
-                  <Td className="hidden xl:table-cell max-w-[200px] truncate">{m.tipoMovimiento}</Td>
-                  <Td>
-                    <Badge tone={m.prioridad === "ALTA" ? "warn" : m.prioridad === "BAJA" ? "muted" : "ok"}>{m.prioridad || "—"}</Badge>
-                  </Td>
-                  <Td>
-                    <Badge
-                      tone={
-                        m.estado?.toUpperCase() === "CONCLUIDO"
-                          ? "ok"
-                          : m.estado?.toUpperCase() === "DETENIDO"
-                          ? "error"
-                          : m.estado?.toUpperCase() === "EN_PROCESO"
-                          ? "warn"
-                          : "muted"
-                      }
-                    >
-                      {m.estado || (m.finalizado ? "CONCLUIDO" : "PENDIENTE")}
-                    </Badge>
-                  </Td>
-
-                  {canEdit && (
-                    <Td className="text-center">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(m)}
-                        className="rounded-md border px-2 py-1 text-xs hover:bg-slate-50 dark:hover:bg-slate-800"
-                        title={`Editar #${m.id}`}
-                      >
-                        Editar
-                      </button>
-                    </Td>
-                  )}
-
-                  <Td className="hidden 2xl:table-cell whitespace-nowrap">{fmtDate(m.fechaSolicitud)}</Td>
-                  <Td className="hidden lg:table-cell whitespace-nowrap">{fmtDateTime(m.fechaInicio)}</Td>
-                  <Td className="hidden lg:table-cell whitespace-nowrap">{fmtDateTime(m.fechaFin)}</Td>
-                  {!canEdit && (
-                    <Td className="text-right">
-                      <button type="button" onClick={() => openDetail(m)} className="rounded-md border px-2 py-1 text-xs hover:bg-slate-50 dark:hover:bg-slate-800">
-                        Detalle
-                      </button>
-                    </Td>
-                  )}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Paginación */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-xs text-slate-500 dark:text-slate-400" aria-live="polite">
-          {filtered.length} / {total} items
-        </div>
-        <div className="inline-flex flex-wrap items-center gap-2 self-end sm:self-auto">
-          <button
-            className="rounded-md border px-2 py-1 text-sm disabled:opacity-60"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            title="Anterior"
-            aria-label="Página anterior"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <div className="text-sm tabular-nums">Página {page}</div>
-          <button
-            className="rounded-md border px-2 py-1 text-sm disabled:opacity-60"
-            disabled={filtered.length < pageSize}
-            onClick={() => setPage((p) => p + 1)}
-            title="Siguiente"
-            aria-label="Página siguiente"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Modal detalle (NO para CLIENTE) */}
-      {!canEdit && detail ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-2 sm:p-4 md:p-6" role="dialog" aria-modal="true">
-          <div className="w-full max-w-5xl max-h=[85svh] max-h-[85svh] overflow-y-auto rounded-2xl border bg-white p-3 sm:p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="text-lg font-semibold">Movimiento #{detail.id}</h3>
-              <button className="rounded-md border px-2 py-1 hover:bg-slate-50 dark:hover:bg-slate-800" onClick={() => setDetail(null)} aria-label="Cerrar">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <Info label="Empresa" value={detail.empresaNombre ?? detail.empresaId} />
-              <Info label="Localidad" value={detail.localidadNombre ?? "—"} />
-              <Info label="Estado" value={detail.estado ?? (detail.finalizado ? "CONCLUIDO" : "PENDIENTE")} />
-              <Info label="Prioridad" value={detail.prioridad} />
-              <Info label="Locomotora" value={detail.locomotora} />
-              <Info label="Acción" value={detail.tipoAccion} />
-              <Info label="Tipo movimiento" value={detail.tipoMovimiento} />
-              <Info label="Vía Origen" value={detail.viaOrigen} />
-              <Info label="Vía Destino" value={detail.viaDestino} />
-              <Info label="Solicitud" value={fmtDate(detail.fechaSolicitud)} />
-              <Info label="Inicio" value={fmtDateTime(detail.fechaInicio)} />
-              <Info label="Fin" value={fmtDateTime(detail.fechaFin)} />
-              <Info label="Incidente global" value={detail.incidenteGlobal ? "Sí" : "No"} />
-              <Info label="Lavado" value={detail.lavado ? "Sí" : "No"} />
-              <Info label="Torno" value={detail.torno ? "Sí" : "No"} />
-              <Info label="Posición cabina" value={detail.posicionCabina ?? "—"} />
-              <Info label="Posición chimenea" value={detail.posicionChimenea ?? "—"} />
-              <Info label="Dirección empuje" value={detail.direccionEmpuje ?? "—"} />
-              <Info label="Cliente" value={detail.clienteId ?? "—"} />
-              <Info label="Supervisor" value={detail.supervisorId ?? "—"} />
-              <Info label="Coordinador" value={detail.coordinadorId ?? "—"} />
-              <Info label="Operador" value={detail.operadorId ?? "—"} />
-              <Info label="Maquinista" value={detail.maquinistaId ?? "—"} />
-              <Info label="Nueva fecha" value={fmtDateTime(detail.nuevaFechaPostergacion)} />
-            </div>
-
-            {detail.instrucciones ? (
-              <div className="mt-4 rounded-lg border-l-4 border-sky-400 bg-slate-50 p-3 text-sm dark:border-sky-600 dark:bg-slate-800">
-                <div className="mb-1 text-xs font-semibold uppercase tracking-widest text-slate-500">Instrucciones</div>
-                <p className="text-slate-700 dark:text-slate-200">{detail.instrucciones}</p>
-              </div>
-            ) : null}
-
-            {detail.comentarioPostergacion ? (
-              <div className="mt-4 rounded-lg border-l-4 border-amber-400 bg-amber-50 p-3 text-sm dark:border-amber-600 dark:bg-amber-900/20">
-                <div className="mb-1 text-xs font-semibold uppercase tracking-widest text-amber-700 dark:text-amber-300">Comentario de postergación</div>
-                <p className="text-amber-900 dark:text-amber-100">{detail.comentarioPostergacion}</p>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
-      {/* Modal editar (CLIENTE) */}
-      {canEdit && editId !== null ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-2 sm:p-4 md:p-6" role="dialog" aria-modal="true">
-          <div className="w-full max-w-5xl max-h-[85svh] overflow-y-auto rounded-2xl border bg-white p-3 sm:p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="text-lg font-semibold">Editar movimiento #{editId}</h3>
-              <button className="rounded-md border px-2 py-1 hover:bg-slate-50 dark:hover:bg-slate-800" onClick={() => setEditId(null)} aria-label="Cerrar">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <EditarMovimiento
-              movimientoId={editId}
-              onClose={() => setEditId(null)}
-              onSaved={() => {
-                setEditId(null);
-                load(true);
-              }}
-            />
-          </div>
-        </div>
-      ) : null}
-
-      {/* FAB móvil para crear */}
-      {showCreate && (
-        <Link
-          href={createHref}
-          className="md:hidden fixed bottom-5 right-5 inline-flex items-center justify-center rounded-full bg-sky-600 text-white shadow-lg hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 h-12 w-12"
-          aria-label="Crear movimiento"
-          title="Crear movimiento"
+        {/* Card: Nav + Filtros */}
+        <section
+          className="
+            space-y-3 
+            rounded-2xl 
+            border border-slate-100 dark:border-slate-800 
+            bg-slate-50/90 dark:bg-slate-900/80 
+            px-3 py-3 sm:px-4 sm:py-4 
+            shadow-sm
+          "
         >
-          <Plus className="h-5 w-5" />
-        </Link>
-      )}
+          <Nav
+            ambito={ambito}
+            busqueda={filtros.busqueda}
+            autoActualizacion={ambito === "actuales"}
+            estaCargando={cargando}
+            contadores={{
+              actuales: badges.Actuales ?? 0,
+              pasados: ambito === "pasados" ? total : 0,
+            }}
+            puedeCrear={puedeCrear}
+            onCambiarAmbito={(nuevo) => {
+              handleCambiarAmbito(nuevo);
+              setTab(nuevo === "actuales" ? "Actuales" : "Pasados");
+            }}
+            onBuscar={handleBuscar}
+            onToggleAuto={handleToggleAuto}
+            onRefrescar={recargar}
+            onNuevo={handleNuevo}
+          />
+
+          <Filtros
+            filtros={{
+              empresaId: filtros.empresaId,
+              localidadId: filtros.localidadId,
+              desde: filtros.desde ?? null,
+              hasta: filtros.hasta ?? null,
+              tamPagina: filtros.tamPagina,
+            }}
+            listaEmpresas={listaEmpresas}
+            listaLocalidades={listaLocalidades}
+            puedeElegirEmpresa={puedeElegirEmpresa}
+            onCambiarEmpresaId={handleCambiarEmpresaId}
+            onCambiarLocalidadId={handleCambiarLocalidadId}
+            onCambiarRangoFechas={handleCambiarRangoFechas}
+            onCambiarTamPagina={handleCambiarTamPagina}
+            onLimpiarFiltros={handleLimpiarFiltros}
+            deshabilitado={cargando}
+          />
+        </section>
+
+        {/* Card: Tabla */}
+        <section
+          className="
+            flex-1 
+            rounded-2xl 
+            border border-slate-100 dark:border-slate-800 
+            bg-slate-50/90 dark:bg-slate-900/90 
+            px-2 py-2 sm:px-3 sm:py-3 lg:px-4 lg:py-4 
+            flex flex-col
+            overflow-hidden
+          "
+        >
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+            <span>
+              {total} registro{total === 1 ? "" : "s"} · página{" "}
+              {filtros.pagina}
+            </span>
+            {cargando && (
+              <span className="animate-pulse text-slate-600 dark:text-slate-300">
+                Actualizando…
+              </span>
+            )}
+          </div>
+
+          {filas.length === 0 && !cargando ? (
+            <div className="flex-1 flex items-center justify-center text-sm text-slate-500 dark:text-slate-400 px-2 text-center">
+              {emptyText}
+            </div>
+          ) : (
+            <div className="relative flex-1 min-h-0">
+              {/* Nada de -mx ni contenedores con min-width: el ancho lo manda el viewport */}
+              <Tabla
+                filas={filas}
+                pagina={filtros.pagina}
+                tamPagina={filtros.tamPagina}
+                total={total}
+                campoOrden={filtros.campoOrden}
+                direccionOrden={filtros.direccionOrden}
+                cargando={cargando}
+                onPagina={handlePagina}
+                onOrden={(campo, dir) =>
+                  setFiltros((prev) => ({
+                    ...prev,
+                    pagina: 1,
+                    campoOrden: campo,
+                    direccionOrden: dir,
+                  }))
+                }
+                onEditar={handleEditar}
+              />
+            </div>
+          )}
+        </section>
+
+        {/* Drawer / modal de detalle */}
+        <Detalle
+          abierto={detalleAbierto}
+          movimientoId={movimientoSeleccionado}
+          onCerrar={handleCerrarDetalle}
+        />
+      </div>
     </section>
   );
 }
 
-/* ===== Subcomponentes ===== */
-function Th({
-  children,
-  className = "",
-  sortable = false,
-  sortBy,
-  selfKey,
-  sortDir,
-  onClick,
+/* ================== SUBCOMPONENTES ================== */
+
+function RolePill({
+  rol,
+  puedeElegirEmpresa,
 }: {
-  children: React.ReactNode;
-  className?: string;
-  sortable?: boolean;
-  sortBy?: string;
-  selfKey?: string;
-  sortDir?: "asc" | "desc";
-  onClick?: () => void;
+  rol: Rol;
+  puedeElegirEmpresa: boolean;
 }) {
-  const active = sortable && sortBy === selfKey;
-  return (
-    <th
-      className={clsx(
-        "px-3 py-2 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300",
-        sortable && "cursor-pointer select-none",
-        className
-      )}
-      onClick={sortable ? onClick : undefined}
-      aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
-    >
-      <span className="inline-flex items-center gap-1">
-        {children}
-        {sortable && <ArrowUpDown className={clsx("h-3.5 w-3.5", active && "text-sky-600")} />}
-      </span>
-    </th>
-  );
-}
+  const R = String(rol || "").toUpperCase();
+  const base =
+    "inline-flex items-center rounded-full border px-3 py-1 text-[11px] sm:text-xs font-medium";
 
-function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <td className={clsx("px-3 py-2 align-middle", className)}>{children}</td>;
-}
+  let classes =
+    "border-slate-300 bg-slate-100 text-slate-700 shadow-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200";
 
-function Badge({ children, tone = "muted" }: { children: React.ReactNode; tone?: "ok" | "warn" | "error" | "muted" }) {
-  const map = {
-    ok: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-800",
-    warn: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-800",
-    error: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-200 dark:border-rose-800",
-    muted: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
-  } as const;
-  return <span className={clsx("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] sm:text-[11px] font-medium", map[tone])}>{children}</span>;
-}
+  if (puedeElegirEmpresa) {
+    classes =
+      "border-emerald-500/70 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200 shadow-sm shadow-emerald-900/40";
+  } else if (R === "SUPERVISOR") {
+    classes =
+      "border-amber-500/70 bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200 shadow-sm shadow-amber-900/40";
+  }
 
-function Info({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="rounded-md border bg-white p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
-      <div className="text-[11px] uppercase tracking-widest text-slate-500 dark:text-slate-400">{label}</div>
-      <div className="mt-0.5 font-medium text-slate-900 dark:text-slate-100">{value}</div>
-    </div>
-  );
-}
+  const text = puedeElegirEmpresa
+    ? `${R} · puede elegir empresa y localidad`
+    : `${R} · fijado a su empresa${
+        R === "CLIENTE" || R === "SUPERVISOR" ? " y localidad" : ""
+      }`;
 
-function InfoItem({ k, v, children }: { k: string; v?: React.ReactNode; children?: React.ReactNode }) {
-  return (
-    <div>
-      <div className="text-[11px] uppercase tracking-widest text-slate-500 dark:text-slate-400">{k}</div>
-      <div className="font-medium text-slate-900 dark:text-slate-100">{v ?? children}</div>
-    </div>
-  );
-}
-
-function RowLoading({ colCount = 14 }: { colCount?: number }) {
-  return (
-    <>
-      {Array.from({ length: 6 }).map((_, i) => (
-        <tr key={i} className="animate-pulse">
-          {Array.from({ length: colCount }).map((__, j) => (
-            <td key={j} className="p-2">
-              <div className="h-4 w-24 rounded bg-slate-200 dark:bg-slate-800" />
-            </td>
-          ))}
-        </tr>
-      ))}
-    </>
-  );
-}
-
-function CardSkeleton({ count = 4 }: { count?: number }) {
-  return (
-    <>
-      {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="h-28 rounded-xl border bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          <div className="h-4 w-40 rounded bg-slate-200 dark:bg-slate-800" />
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <div className="h-3.5 w-24 rounded bg-slate-200 dark:bg-slate-800" />
-            <div className="h-3.5 w-24 rounded bg-slate-200 dark:bg-slate-800" />
-          </div>
-        </div>
-      ))}
-    </>
-  );
-}
-
-function EmptyBox({ text, children }: { text: string; children?: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border bg-white p-8 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
-      <div>{text}</div>
-      {children}
-    </div>
-  );
+  return <span className={`${base} ${classes}`}>{text}</span>;
 }

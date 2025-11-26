@@ -422,12 +422,12 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
             itemsByLoc={itemsByLoc}
             info={info}
             loading={loading}
-            prefersReduced={prefersReduced}
+            prefersReduced={prefersReduced ?? false}
           />
         ) : (
           <SingleLocalidadBoard
             {...{
-              prefersReduced: useReducedMotion(),
+              prefersReduced: prefersReduced ?? false,
               loading,
               refreshing,
               nextCount,
