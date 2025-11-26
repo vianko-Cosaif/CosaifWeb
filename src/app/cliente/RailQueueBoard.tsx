@@ -20,8 +20,17 @@ type Ronda = {
     prioridad?: "BAJA" | "ALTA" | null;
     locomotiveNumber?: number | string | null;
     locomotora?: string | null;
+
+    fechaSolicitud?: string | null;
+    fechaInicio?: string | null;
+    fechaFin?: string | null;
+    instrucciones?: string | null;
   } | null;
   movimientoId?: number | null;
+
+  // IMPORTANTE: usamos esta como fecha de referencia (servidor) y la
+  // convertimos a hora de México para mostrarla.
+  createdAt?: string | null;
 };
 
 type RondaInfo = {
@@ -36,6 +45,11 @@ type RondaInfo = {
     prioridad?: "BAJA" | "ALTA";
     locomotiveNumber?: number | string;
     locomotora?: string | null;
+
+    fechaSolicitud?: string | null;
+    fechaInicio?: string | null;
+    fechaFin?: string | null;
+    instrucciones?: string | null;
   };
   movimientoId?: number;
 };
@@ -56,7 +70,12 @@ const fmtLoco = (v: unknown) => {
 };
 
 async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const r = await fetch(url, { cache: "no-store", credentials: "include", mode: "same-origin", signal });
+  const r = await fetch(url, {
+    cache: "no-store",
+    credentials: "include",
+    mode: "same-origin",
+    signal,
+  });
   if (!r.ok) {
     const txt = await r.text().catch(() => "");
     throw new Error(`${r.status} ${r.statusText} :: ${txt.slice(0, 200)}`);
@@ -64,53 +83,88 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   return (await r.json()) as T;
 }
 
-function useVisibleInterval(fn: () => void, delay: number | null, deps: React.DependencyList = []) {
+function useVisibleInterval(
+  fn: () => void,
+  delay: number | null,
+  deps: React.DependencyList = []
+) {
   useEffect(() => {
     if (!delay) return;
-    const id = window.setInterval(() => { if (document.visibilityState === "visible") fn(); }, delay);
-    const onVis = () => { if (document.visibilityState === "visible") fn(); };
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") fn();
+    }, delay);
+    const onVis = () => {
+      if (document.visibilityState === "visible") fn();
+    };
     document.addEventListener("visibilitychange", onVis);
-    return () => { clearInterval(id); document.removeEventListener("visibilitychange", onVis); };
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [delay, ...deps]);
 }
+
 function useToasts() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const timers = useRef<number[]>([]);
-  useEffect(() => () => { timers.current.forEach(clearTimeout); timers.current = []; }, []);
+  useEffect(
+    () => () => {
+      timers.current.forEach(clearTimeout);
+      timers.current = [];
+    },
+    []
+  );
   const push = (text: string, kind: ToastKind) => {
     const id = Date.now() + Math.random();
     setToasts((t) => [...t, { id, text, kind }]);
-    const tid = window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5000);
+    const tid = window.setTimeout(
+      () => setToasts((t) => t.filter((x) => x.id !== id)),
+      5000
+    );
     timers.current.push(tid);
   };
-  const dismiss = (id: number) => setToasts((t) => t.filter((x) => x.id !== id));
+  const dismiss = (id: number) =>
+    setToasts((t) => t.filter((x) => x.id !== id));
   return { toasts, push, dismiss, setToasts };
 }
+
 function useLocalStorageBoolean(key: string, initial = false) {
   const [v, setV] = useState<boolean>(() => {
     if (typeof window === "undefined") return initial;
     const raw = window.localStorage.getItem(key);
     return raw === null ? initial : raw === "1";
   });
-  useEffect(() => { try { window.localStorage.setItem(key, v ? "1" : "0"); } catch { } }, [key, v]);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(key, v ? "1" : "0");
+    } catch {}
+  }, [key, v]);
   return [v, setV] as const;
 }
+
 function useOnline() {
-  const [online, setOnline] = useState<boolean>(typeof navigator === "undefined" ? true : navigator.onLine);
+  const [online, setOnline] = useState<boolean>(
+    typeof navigator === "undefined" ? true : navigator.onLine
+  );
   useEffect(() => {
     const on = () => setOnline(true);
     const off = () => setOnline(false);
     window.addEventListener("online", on);
     window.addEventListener("offline", off);
-    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
   }, []);
   return online;
 }
+
 function useRelativeClock(periodMs = 30_000) {
   const [, force] = useState(0);
   useVisibleInterval(() => force((x) => x + 1), periodMs, [periodMs]);
 }
+
 function timeAgo(ts?: number | null) {
   if (!ts) return "—";
   const s = Math.max(1, Math.floor((Date.now() - ts) / 1000));
@@ -121,16 +175,33 @@ function timeAgo(ts?: number | null) {
   return `${h}h`;
 }
 
+// Fecha/hora siempre en horario de México, sin confiar en el timezone del navegador.
+function formatDateTimeMX(iso?: string | null) {
+  if (!iso) return "Sin fecha";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "Sin fecha";
+  return new Intl.DateTimeFormat("es-MX", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "America/Mexico_City",
+  }).format(d);
+}
+
 /* ===== Carga dinámica del editor ===== */
-const EditRondas = dynamic(() => import("../Components/EditRondas"), { ssr: false });
+const EditRondas = dynamic(() => import("../Components/EditRondas"), {
+  ssr: false,
+});
 
 /* ===== Componente ===== */
-export default function RailQueueBoard(
-  {
-    localidadId,
-    autoMs = 120_000,
-    nextCount = 5,
-  }: { localidadId: number; autoMs?: number; nextCount?: number }) {
+export default function RailQueueBoard({
+  localidadId,
+  autoMs = 120_000,
+  nextCount = 5,
+}: {
+  localidadId: number;
+  autoMs?: number;
+  nextCount?: number;
+}) {
   const prefersReduced = useReducedMotion();
   const online = useOnline();
   useRelativeClock();
@@ -142,9 +213,15 @@ export default function RailQueueBoard(
   const [info, setInfo] = useState<Record<number, RondaInfo>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [polling, setPolling] = useLocalStorageBoolean("rail-queue:polling", true);
+  const [polling, setPolling] = useLocalStorageBoolean(
+    "rail-queue:polling",
+    true
+  );
 
-  const [soundOn, setSoundOn] = useLocalStorageBoolean("rail-queue:soundOn", false);
+  const [soundOn, setSoundOn] = useLocalStorageBoolean(
+    "rail-queue:soundOn",
+    false
+  );
   const bellRef = useRef<HTMLAudioElement | null>(null);
 
   const { toasts, push: pushToast, dismiss } = useToasts();
@@ -156,9 +233,13 @@ export default function RailQueueBoard(
 
   const reqSeq = useRef(120);
   const abortRef = useRef<AbortController | null>(null);
-  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+    },
+    []
+  );
 
-  // ⬇️ NUEVO: estado para abrir/cerrar editor 
   const [openEditor, setOpenEditor] = useState(false);
 
   useEffect(() => {
@@ -180,7 +261,25 @@ export default function RailQueueBoard(
     try {
       const url = `/api/cliente/rondas?localidadId=${localidadId}`;
       const data = await fetchJson<Ronda[]>(url, ac.signal);
-      data.sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden);
+
+      // LOG BRUTO
+      console.groupCollapsed("[RailQueueBoard] Rondas crudas desde API");
+      console.log("URL:", url);
+      console.log("Total rondas:", data.length);
+      data.forEach((r) => {
+        console.log("Ronda:", r.id, {
+          rondaNumero: r.rondaNumero,
+          orden: r.orden,
+          movimientoId: r.movimientoId,
+          createdAt: r.createdAt,
+          movimiento: r.movimiento,
+        });
+      });
+      console.groupEnd();
+
+      data.sort(
+        (a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden
+      );
 
       const prev = prevIdsRef.current;
       const nextIds = data.map((d) => d.id);
@@ -188,14 +287,20 @@ export default function RailQueueBoard(
       if (!firstLoad.current) {
         if (prev.length && nextIds[0] && nextIds[0] !== prev[0]) {
           const curR = data[0];
-          const curCode = String(curR.movimiento?.id ?? curR.movimientoId ?? curR.id);
+          const curCode = String(
+            curR.movimiento?.id ?? curR.movimientoId ?? curR.id
+          );
           pushToast(`Se movió la orden a ${curCode}`, "move");
         }
         const prevSet = new Set(prev);
         const created = nextIds.filter((id) => !prevSet.has(id));
         const removed = prev.filter((id) => !nextIds.includes(id));
         if (created.length) {
-          const codes = created.map((id) => String(data.find((r) => r.id === id)?.movimiento?.id ?? id));
+          const codes = created.map((id) =>
+            String(
+              data.find((r) => r.id === id)?.movimiento?.id ?? id
+            )
+          );
           pushToast(`Nueva(s) orden(es): ${fmtList.format(codes)}`, "new");
         }
         if (removed.length) {
@@ -209,11 +314,22 @@ export default function RailQueueBoard(
 
       setItems(data);
 
-      // map info
       const mapFromList: Record<number, RondaInfo> = {};
       for (const r of data) {
         const mv = (r.movimiento ?? null) as Ronda["movimiento"];
         const emp = r.empresa ?? null;
+
+        console.groupCollapsed(
+          `[RailQueueBoard] Movimiento crudo para ronda ${r.id}`
+        );
+        console.log("movimiento.id:", mv?.id);
+        console.log("movimiento.fechaSolicitud:", mv?.fechaSolicitud);
+        console.log("movimiento.fechaInicio:", mv?.fechaInicio);
+        console.log("movimiento.fechaFin:", (mv as any)?.fechaFin);
+        console.log("movimiento.estado:", mv?.estado);
+        console.log("movimiento.prioridad:", mv?.prioridad);
+        console.groupEnd();
+
         mapFromList[r.id] = {
           empresa: { id: emp?.id ?? 0, nombre: emp?.nombre ?? "—" },
           movimiento: {
@@ -223,13 +339,36 @@ export default function RailQueueBoard(
             lavado: Boolean(mv?.lavado),
             torno: Boolean(mv?.torno),
             estado: mv?.estado ?? undefined,
-            prioridad: (mv?.prioridad as "BAJA" | "ALTA" | undefined) ?? undefined,
-            locomotiveNumber: mv?.locomotiveNumber ?? mv?.locomotora ?? undefined,
+            prioridad:
+              (mv?.prioridad as "BAJA" | "ALTA" | undefined) ?? undefined,
+            locomotiveNumber:
+              mv?.locomotiveNumber ?? mv?.locomotora ?? undefined,
             locomotora: mv?.locomotora ?? undefined,
+
+            fechaSolicitud: mv?.fechaSolicitud ?? null,
+            fechaInicio: mv?.fechaInicio ?? null,
+            fechaFin: (mv as any)?.fechaFin ?? null,
+            instrucciones: mv?.instrucciones ?? null,
           },
-          movimientoId: (mv?.id ?? r.movimientoId ?? undefined) as number | undefined,
+          movimientoId: (mv?.id ?? r.movimientoId ?? undefined) as
+            | number
+            | undefined,
         };
       }
+
+      console.groupCollapsed(
+        "[RailQueueBoard] Map info (fechas movimiento, solo log)"
+      );
+      Object.entries(mapFromList).forEach(([rid, inf]) => {
+        console.log("rondaId:", rid, {
+          movId: inf.movimiento.id,
+          fechaSolicitud: inf.movimiento.fechaSolicitud,
+          fechaInicio: inf.movimiento.fechaInicio,
+          fechaFin: inf.movimiento.fechaFin,
+        });
+      });
+      console.groupEnd();
+
       startTransition(() => setInfo(mapFromList));
       lastOkAt.current = Date.now();
     } catch (err) {
@@ -253,7 +392,7 @@ export default function RailQueueBoard(
     try {
       if (document.fullscreenElement) document.exitFullscreen();
       else boardRef.current?.requestFullscreen();
-    } catch { }
+    } catch {}
   };
 
   // Shortcuts (deshabilitados cuando el editor está abierto)
@@ -261,75 +400,136 @@ export default function RailQueueBoard(
     const onKey = (e: KeyboardEvent) => {
       if (openEditor) return;
       const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-      if (e.key === "r") { e.preventDefault(); load(true); }
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.isContentEditable)
+      )
+        return;
+      if (e.key === "r") {
+        e.preventDefault();
+        load(true);
+      }
       if (e.key === "a") setPolling((p) => !p);
       if (e.key === "s") setSoundOn((s) => !s);
       if (e.key === "f") toggleFullscreen();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openEditor]); // include openEditor
+  }, [openEditor]);
 
-  useEffect(() => { firstLoad.current = true; prevIdsRef.current = []; setInfo({}); setItems([]); setLoading(true); load(); }, [localidadId]);
-  useVisibleInterval(() => polling && online && load(), polling ? autoMs || null : null, [autoMs, localidadId, polling, online]);
+  useEffect(() => {
+    firstLoad.current = true;
+    prevIdsRef.current = [];
+    setInfo({});
+    setItems([]);
+    setLoading(true);
+    load();
+  }, [localidadId]);
+
+  useVisibleInterval(
+    () => polling && online && load(),
+    polling ? autoMs || null : null,
+    [autoMs, localidadId, polling, online]
+  );
 
   useEffect(() => {
     const curId = items[0]?.id ?? null;
-    if (soundOn && curId && lastCurrentId.current && curId !== lastCurrentId.current) {
+    if (
+      soundOn &&
+      curId &&
+      lastCurrentId.current &&
+      curId !== lastCurrentId.current
+    ) {
       const el = bellRef.current;
-      try { el?.pause?.(); if (el) { el.currentTime = 0; void el.play(); } } catch { }
+      try {
+        el?.pause?.();
+        if (el) {
+          el.currentTime = 0;
+          void el.play();
+        }
+      } catch {}
     }
     lastCurrentId.current = curId;
   }, [items, soundOn]);
 
   const current = items[0];
   const curInfo = current ? info[current.id] : undefined;
-  const next = useMemo(() => items.slice(1, nextCount + 1), [items, nextCount]);
+  const next = useMemo(
+    () => items.slice(1, nextCount + 1),
+    [items, nextCount]
+  );
 
   const lastAgo = timeAgo(lastOkAt.current);
 
   const curMov = curInfo?.movimiento;
-  const locoText = fmtLoco(curMov?.locomotiveNumber ?? curMov?.locomotora);
+  const locoText = fmtLoco(
+    curMov?.locomotiveNumber ?? curMov?.locomotora
+  );
   const viaO = curMov?.viaOrigen?.nombre || "";
   const viaD = curMov?.viaDestino?.nombre || "";
 
   const hasService = !!(curMov?.torno || curMov?.lavado);
-  const serviceOrigin = curMov?.torno ? "Torno" : (curMov?.lavado ? "Lavado" : "");
+  const serviceOrigin = curMov?.torno
+    ? "Torno"
+    : curMov?.lavado
+    ? "Lavado"
+    : "";
   const desdeLbl = viaO || serviceOrigin;
   const hasAny = !!(desdeLbl || viaD || hasService);
+
+  // NUEVO: usamos solo createdAt de la ronda como fecha de referencia, en MX.
+  const creadoText = current?.createdAt
+    ? formatDateTimeMX(current.createdAt)
+    : "Sin fecha";
 
   return (
     <main
       ref={boardRef}
       className="min-h-svh md:min-h-dvh bg-white text-slate-900 dark:bg-neutral-950 dark:text-slate-100"
     >
-      {/* TOASTS: Responsive positioning */}
-      <div className="fixed z-50 flex justify-center px-3 
+      {/* TOASTS */}
+      <div
+        className="fixed z-50 flex justify-center px-3 
                       inset-x-0 bottom-2 
                       sm:inset-auto sm:right-2 sm:top-2 sm:bottom-auto sm:left-auto sm:px-0
-                      md:bottom-4 md:right-4 md:top-auto">
+                      md:bottom-4 md:right-4 md:top-auto"
+      >
         <div className="space-y-2 w-full max-w-[min(95vw,420px)]">
           <AnimatePresence>
             {toasts.map((t) => {
               const bar =
-                t.kind === "move" ? "border-l-4 border-emerald-500/80" :
-                  t.kind === "new" ? "border-l-4 border-sky-500/80" :
-                    t.kind === "warning" ? "border-l-4 border-amber-500/80" :
-                      "border-l-4 border-slate-400/70";
+                t.kind === "move"
+                  ? "border-l-4 border-emerald-500/80"
+                  : t.kind === "new"
+                  ? "border-l-4 border-sky-500/80"
+                  : t.kind === "warning"
+                  ? "border-l-4 border-amber-500/80"
+                  : "border-l-4 border-slate-400/70";
               const tone =
-                t.kind === "move" ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200" :
-                  t.kind === "new" ? "bg-sky-50 text-sky-900 dark:bg-sky-950/40 dark:text-sky-200" :
-                    t.kind === "warning" ? "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200" :
-                      "bg-slate-50 text-slate-900 dark:bg-slate-800 dark:text-slate-100";
+                t.kind === "move"
+                  ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+                  : t.kind === "new"
+                  ? "bg-sky-50 text-sky-900 dark:bg-sky-950/40 dark:text-sky-200"
+                  : t.kind === "warning"
+                  ? "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+                  : "bg-slate-50 text-slate-900 dark:bg-slate-800 dark:text-slate-100";
               return (
                 <motion.button
                   key={t.id}
                   initial={{ y: 20, opacity: 0, scale: 0.95 }}
                   animate={{ y: 0, opacity: 1, scale: 1 }}
-                  exit={{ y: 20, opacity: 0, scale: 0.95, transition: { duration: 0.18 } }}
+                  exit={{
+                    y: 20,
+                    opacity: 0,
+                    scale: 0.95,
+                    transition: { duration: 0.18 },
+                  }}
                   role={t.kind === "warning" ? "alert" : "status"}
-                  aria-live={t.kind === "warning" ? "assertive" : "polite"}
+                  aria-live={
+                    t.kind === "warning" ? "assertive" : "polite"
+                  }
                   onClick={() => dismiss(t.id)}
                   className={`w-full text-left rounded-lg px-3 py-2.5 text-sm shadow-lg border ${bar} ${tone} 
                              hover:scale-[1.02] transition-transform duration-150`}
@@ -337,7 +537,13 @@ export default function RailQueueBoard(
                 >
                   <div className="flex items-center">
                     <span className="mr-2 text-base">
-                      {t.kind === "move" ? "🔄" : t.kind === "new" ? "🆕" : t.kind === "warning" ? "⚠️" : "✅"}
+                      {t.kind === "move"
+                        ? "🔄"
+                        : t.kind === "new"
+                        ? "🆕"
+                        : t.kind === "warning"
+                        ? "⚠️"
+                        : "✅"}
                     </span>
                     <span className="flex-1">{t.text}</span>
                   </div>
@@ -348,51 +554,67 @@ export default function RailQueueBoard(
         </div>
       </div>
 
-      {/* TOOLBAR - Completamente responsive */}
-      <div className="sticky top-0 z-40 border-b border-slate-200/60 bg-white/90 backdrop-blur-md 
+      {/* TOOLBAR */}
+      <div
+        className="sticky top-0 z-40 border-b border-slate-200/60 bg-white/90 backdrop-blur-md 
                       dark:border-slate-800/60 dark:bg-neutral-950/90
-                      pt-[env(safe-area-inset-top)]">
+                      pt-[env(safe-area-inset-top)]"
+      >
         <div className="mx-auto w-full max-w-screen-2xl">
-          <div className="flex flex-wrap items-center justify-between gap-2 p-3 
+          <div
+            className="flex flex-wrap items-center justify-between gap-2 p-3 
                           sm:justify-end sm:gap-3 sm:px-4 
-                          md:px-6 md:py-2">
-
-            {/* Left side - Status info */}
+                          md:px-6 md:py-2"
+          >
             <div className="flex items-center gap-2 flex-1 min-w-[150px]">
-              <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs
-                                ${polling ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
-                  : "border-slate-300 bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
-                <span className={`inline-block h-2 w-2 rounded-full ${polling ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} aria-hidden />
+              <span
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs
+                                ${
+                                  polling
+                                    ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
+                                    : "border-slate-300 bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                                }`}
+              >
+                <span
+                  className={`inline-block h-2 w-2 rounded-full ${
+                    polling ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
+                  }`}
+                  aria-hidden
+                />
                 {polling ? "LIVE" : "PAUSED"}
               </span>
-
               <span className="hidden xs:inline text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
                 Últ. act: {lastAgo}
               </span>
             </div>
 
-            {/* Right side - Controls */}
             <div className="flex items-center gap-1 flex-wrap justify-end">
               {!online && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
+                <span
+                  className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200"
+                >
                   ⚠️ Offline
                 </span>
               )}
 
-              {/* Mobile first button sizing */}
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => setSoundOn((s) => !s)}
                   className={`rounded-lg border px-2.5 py-1.5 text-xs transition-all duration-200 flex items-center gap-1
-                             ${soundOn
-                      ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
-                      : "border-slate-300 bg-white text-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                    } hover:scale-105 active:scale-95`}
+                             ${
+                               soundOn
+                                 ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
+                                 : "border-slate-300 bg-white text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                             } hover:scale-105 active:scale-95`}
                   title="Pitido al cambiar la orden actual"
                   aria-pressed={soundOn}
                 >
-                  <span className="text-sm">{soundOn ? "🔔" : "🔕"}</span>
-                  <span className="hidden sm:inline">{soundOn ? "Sonido" : "Silencio"}</span>
+                  <span className="text-sm">
+                    {soundOn ? "🔔" : "🔕"}
+                  </span>
+                  <span className="hidden sm:inline">
+                    {soundOn ? "Sonido" : "Silencio"}
+                  </span>
                 </button>
 
                 <button
@@ -403,7 +625,9 @@ export default function RailQueueBoard(
                   title="Activar/pausar auto-actualización"
                   aria-pressed={polling}
                 >
-                  <span className="text-sm">{polling ? "⏸️" : "▶️"}</span>
+                  <span className="text-sm">
+                    {polling ? "⏸️" : "▶️"}
+                  </span>
                   <span className="hidden sm:inline">Auto</span>
                 </button>
 
@@ -416,8 +640,12 @@ export default function RailQueueBoard(
                   aria-busy={refreshing}
                   title="Refrescar"
                 >
-                  <span className="text-sm">{refreshing ? "⟳" : "↻"}</span>
-                  <span className="hidden sm:inline">{refreshing ? "Actualizando…" : "Actualizar"}</span>
+                  <span className="text-sm">
+                    {refreshing ? "⟳" : "↻"}
+                  </span>
+                  <span className="hidden sm:inline">
+                    {refreshing ? "Actualizando…" : "Actualizar"}
+                  </span>
                 </button>
 
                 <button
@@ -429,19 +657,22 @@ export default function RailQueueBoard(
                   aria-pressed={isFs}
                 >
                   <span className="text-sm">⤢</span>
-                  <span className="hidden sm:inline">{isFs ? "Salir" : "Full"}</span>
+                  <span className="hidden sm:inline">
+                    {isFs ? "Salir" : "Full"}
+                  </span>
                 </button>
 
-                {/* ⬇️ NUEVO: Botón para abrir el editor */}
                 <button
                   onClick={() => setOpenEditor(true)}
                   className="rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1.5 text-xs 
-                             text-sky-700 hover:scale-105 active:scale-95 transition-all duration-200
+                             text-sky-700 hover:scale-105 active:scale-95 transition-all duración-200
                              dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-200"
                   title="Editar rondas"
                 >
                   <span className="text-sm">✏️</span>
-                  <span className="hidden sm:inline ml-1">Editar rondas</span>
+                  <span className="hidden sm:inline ml-1">
+                    Editar rondas
+                  </span>
                 </button>
               </div>
             </div>
@@ -458,14 +689,13 @@ export default function RailQueueBoard(
         aria-busy={loading || refreshing}
       >
         <div className="grid gap-4 md:gap-6 lg:gap-8 lg:grid-cols-3">
-
           {/* COLUMNA IZQUIERDA - ORDEN ACTUAL */}
-          <div className="lg:col-span-2 rounded-2xl p-4 sm:p-6 
+          <div
+            className="lg:col-span-2 rounded-2xl p-4 sm:p-6 
                           bg-gradient-to-br from-white via-sky-50 to-white text-slate-800 
                           shadow-lg border border-slate-200
-                          dark:from-neutral-900 dark:via-neutral-800 dark:to-neutral-900 dark:text-slate-100 dark:border-slate-700">
-
-            {/* Header */}
+                          dark:from-neutral-900 dark:via-neutral-800 dark:to-neutral-900 dark:text-slate-100 dark:border-slate-700"
+          >
             <div className="mb-4 flex flex-col xs:flex-row xs:items-center xs:justify-between gap-3">
               <div>
                 <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight bg-gradient-to-r from-sky-600 to-emerald-600 bg-clip-text text-transparent">
@@ -478,7 +708,7 @@ export default function RailQueueBoard(
 
               <button
                 onClick={() => load(true)}
-                className="text-xs rounded-full px-4 py-2 border bg-white hover:bg-slate-50 transition-all duration-200 
+                className="text-xs rounded-full px-4 py-2 border bg-white hover:bg-slate-50 transition-all duración-200 
                            dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-600
                            hover:scale-105 active:scale-95 flex items-center gap-2"
                 disabled={refreshing}
@@ -486,14 +716,18 @@ export default function RailQueueBoard(
                 title="Refrescar"
               >
                 <span>{refreshing ? "⟳" : "↻"}</span>
-                <span>{refreshing ? "Actualizando…" : "Actualizar"}</span>
+                <span>
+                  {refreshing ? "Actualizando…" : "Actualizar"}
+                </span>
               </button>
             </div>
 
-            {/* Contenido de la orden actual */}
             <motion.div
               key={current?.id ?? "empty"}
-              initial={{ scale: prefersReduced ? 1 : 0.985, opacity: prefersReduced ? 1 : 0 }}
+              initial={{
+                scale: prefersReduced ? 1 : 0.985,
+                opacity: prefersReduced ? 1 : 0,
+              }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ type: "spring", stiffness: 260, damping: 26 }}
               className="rounded-xl bg-white p-4 sm:p-6 border shadow-sm border-slate-200 
@@ -507,8 +741,16 @@ export default function RailQueueBoard(
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                     <div className="flex items-center gap-3 sm:gap-4">
                       <motion.div
-                        animate={prefersReduced ? {} : { scale: [1, 1.05, 1] }}
-                        transition={prefersReduced ? {} : { repeat: Infinity, duration: 3 }}
+                        animate={
+                          prefersReduced
+                            ? {}
+                            : { scale: [1, 1.05, 1] }
+                        }
+                        transition={
+                          prefersReduced
+                            ? {}
+                            : { repeat: Infinity, duration: 3 }
+                        }
                         className="grid h-12 w-12 sm:h-14 sm:w-14 place-items-center rounded-full 
                                    bg-gradient-to-br from-sky-100 to-emerald-100 border border-slate-200 
                                    dark:from-slate-800 dark:to-slate-700 dark:border-slate-600"
@@ -529,9 +771,13 @@ export default function RailQueueBoard(
                     </div>
 
                     <div className="text-right">
-                      <div className="text-xs text-slate-500 dark:text-slate-400">Código</div>
-                      <div className="font-black tracking-widest bg-gradient-to-r from-sky-600 to-emerald-600 bg-clip-text text-transparent
-                                     text-3xl xs:text-4xl sm:text-5xl md:text-6xl lg:text-7xl">
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
+                        Código
+                      </div>
+                      <div
+                        className="font-black tracking-widest bg-gradient-to-r from-sky-600 to-emerald-600 bg-clip-text text-transparent
+                                     text-3xl xs:text-4xl sm:text-5xl md:text-6xl lg:text-7xl"
+                      >
                         {codeFrom(curInfo, current.id)}
                       </div>
                     </div>
@@ -539,9 +785,10 @@ export default function RailQueueBoard(
 
                   {/* Grid de información principal */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-                    {/* Vía Origen */}
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 
-                                    dark:border-slate-700 dark:bg-slate-800/50">
+                    <div
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-3 
+                                    dark:border-slate-700 dark:bg-slate-800/50"
+                    >
                       <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
                         <span>↖️</span> Vía Origen
                       </div>
@@ -550,9 +797,10 @@ export default function RailQueueBoard(
                       </div>
                     </div>
 
-                    {/* Vía Destino */}
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 
-                                    dark:border-slate-700 dark:bg-slate-800/50">
+                    <div
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-3 
+                                    dark:border-slate-700 dark:bg-slate-800/50"
+                    >
                       <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
                         <span>↘️</span> Vía Destino
                       </div>
@@ -561,43 +809,114 @@ export default function RailQueueBoard(
                       </div>
                     </div>
 
-                    {/* Servicios */}
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 
-                                    dark:border-slate-700 dark:bg-slate-800/50">
+                    <div
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-3 
+                                    dark:border-slate-700 dark:bg-slate-800/50"
+                    >
                       <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
                         <span>⚙️</span> Servicios
                       </div>
                       <div className="flex gap-2">
-                        <Chip ok={!!curMov?.lavado} icon="💧">Lavado</Chip>
-                        <Chip ok={!!curMov?.torno} icon="⚙️">Torno</Chip>
+                        <Chip ok={!!curMov?.lavado} icon="💧">
+                          Lavado
+                        </Chip>
+                        <Chip ok={!!curMov?.torno} icon="⚙️">
+                          Torno
+                        </Chip>
                       </div>
                     </div>
                   </div>
 
                   {/* Información secundaria */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
-                    <InfoBadge label="Estado" value={curMov?.estado ?? "—"} icon="📌" />
-                    <InfoBadge label="Prioridad" value={curMov?.prioridad ?? "—"} icon="⚑" />
-                    <InfoBadge label="Orden" value={String(current?.orden ?? "—")} icon="№" />
-                    <InfoBadge label="Ronda" value={String(current?.rondaNumero ?? "—")} icon="🔁" />
+                    <InfoBadge
+                      label="Estado"
+                      value={curMov?.estado ?? "—"}
+                      icon="📌"
+                    />
+                    <InfoBadge
+                      label="Prioridad"
+                      value={curMov?.prioridad ?? "—"}
+                      icon="⚑"
+                    />
+                    <InfoBadge
+                      label="Orden"
+                      value={String(current?.orden ?? "—")}
+                      icon="№"
+                    />
+                    <InfoBadge
+                      label="Ronda"
+                      value={String(current?.rondaNumero ?? "—")}
+                      icon="🔁"
+                    />
                   </div>
 
-                  {/* Instrucción */}
+                  {/* Detalle + Fecha única + Instrucciones */}
                   <motion.div
-                    initial={{ x: prefersReduced ? 0 : -8, opacity: prefersReduced ? 1 : 0 }}
+                    initial={{
+                      x: prefersReduced ? 0 : -8,
+                      opacity: prefersReduced ? 1 : 0,
+                    }}
                     animate={{ x: 0, opacity: 1 }}
-                    transition={{ delay: prefersReduced ? 0 : 0.1 }}
+                    transition={{
+                      delay: prefersReduced ? 0 : 0.1,
+                    }}
                     className="rounded-xl bg-gradient-to-r from-sky-100 to-emerald-100 text-slate-900 
                                p-4 border border-slate-200 dark:from-slate-800 dark:to-slate-700 
                                dark:text-slate-100 dark:border-slate-600"
                   >
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1">
+                      Detalle del movimiento
+                    </p>
+
                     <p className="text-sm font-medium">
                       {hasAny ? (
-                        <>Mover locomotora <b className="text-sky-700 dark:text-sky-300">{locoText}</b> desde <b className="text-emerald-700 dark:text-emerald-300">{desdeLbl || "—"}</b> hacia <b className="text-emerald-700 dark:text-emerald-300">{viaD || "—"}</b>.</>
+                        <>
+                          Mover locomotora{" "}
+                          <b className="text-sky-700 dark:text-sky-300">
+                            {locoText}
+                          </b>{" "}
+                          desde{" "}
+                          <b className="text-emerald-700 dark:text-emerald-300">
+                            {desdeLbl || "—"}
+                          </b>{" "}
+                          hacia{" "}
+                          <b className="text-emerald-700 dark:text-emerald-300">
+                            {viaD || "—"}
+                          </b>
+                          .
+                        </>
                       ) : (
-                        <>Mover locomotora <b className="text-sky-700 dark:text-sky-300">{locoText}</b> entre <b>—</b> y <b>—</b>.</>
+                        <>
+                          Mover locomotora{" "}
+                          <b className="text-sky-700 dark:text-sky-300">
+                            {locoText}
+                          </b>{" "}
+                          entre <b>—</b> y <b>—</b>.
+                        </>
                       )}
                     </p>
+
+                    {/* SOLO UNA FECHA: creada, con horario de México */}
+                    <div className="mt-3 grid grid-cols-1 gap-2">
+                      <div className="rounded-lg bg-white/70 px-3 py-2 text-xs sm:text-sm border border-slate-200 dark:bg-slate-900/60 dark:border-slate-600">
+                        <div className="font-semibold text-slate-700 dark:text-slate-200">
+                          Creado
+                        </div>
+                        <div className="mt-0.5 text-slate-700 dark:text-slate-300">
+                          {creadoText}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 text-xs sm:text-sm text-slate-700 dark:text-slate-200">
+                      <span className="font-semibold">Instrucciones: </span>
+                      <span>
+                        {curMov?.instrucciones?.trim()
+                          ? curMov.instrucciones.trim()
+                          : "Sin instrucciones adicionales."}
+                      </span>
+                    </div>
                   </motion.div>
                 </>
               ) : (
@@ -615,52 +934,69 @@ export default function RailQueueBoard(
           </div>
 
           {/* COLUMNA DERECHA - PRÓXIMAS ÓRDENES */}
-          <aside className="rounded-2xl bg-white text-slate-900 shadow-lg border border-slate-200 
+          <aside
+            className="rounded-2xl bg-white text-slate-900 shadow-lg border border-slate-200 
                             p-4 sm:p-6 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-700
-                            h-fit max-h-[calc(100vh-200px)] overflow-y-auto">
-
-            {/* Header del aside */}
+                            h-fit max-h-[calc(100vh-200px)] overflow-y-auto"
+          >
             <div className="mb-4 flex items-center justify-between sticky top-0 bg-white dark:bg-slate-900 pb-2">
               <h3 className="flex items-center gap-2 font-bold text-lg">
                 <span className="text-xl">📋</span> Próximas Órdenes
               </h3>
-              <span className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs 
-                               text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              <span
+                className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs 
+                               text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+              >
                 {next.length}/{nextCount}
               </span>
             </div>
 
-            {/* Lista de próximas órdenes */}
             <div className="space-y-3">
               <AnimatePresence initial={false}>
                 {loading && next.length === 0 ? (
                   <>
-                    {Array.from({ length: nextCount }).map((_, i) => <SkeletonNext key={i} />)}
+                    {Array.from({ length: nextCount }).map((_, i) => (
+                      <SkeletonNext key={i} />
+                    ))}
                   </>
                 ) : (
                   next.map((n, index) => {
                     const inf = info[n.id];
                     const mv = inf?.movimiento;
-                    const loco = fmtLoco(mv?.locomotiveNumber ?? mv?.locomotora);
+                    const loco = fmtLoco(
+                      mv?.locomotiveNumber ?? mv?.locomotora
+                    );
                     return (
                       <motion.div
                         key={n.id}
-                        initial={{ y: prefersReduced ? 0 : 14, opacity: prefersReduced ? 1 : 0 }}
+                        initial={{
+                          y: prefersReduced ? 0 : 14,
+                          opacity: prefersReduced ? 1 : 0,
+                        }}
                         animate={{ y: 0, opacity: 1 }}
-                        exit={{ y: prefersReduced ? 0 : -14, opacity: prefersReduced ? 1 : 0 }}
-                        transition={{ duration: prefersReduced ? 0 : 0.25, delay: prefersReduced ? 0 : index * 0.04 }}
-                        className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 transition-all duration-200 
+                        exit={{
+                          y: prefersReduced ? 0 : -14,
+                          opacity: prefersReduced ? 1 : 0,
+                        }}
+                        transition={{
+                          duration: prefersReduced ? 0 : 0.25,
+                          delay: prefersReduced ? 0 : index * 0.04,
+                        }}
+                        className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 transition-all duración-200 
                                    hover:bg-white hover:shadow-md hover:border-slate-300
                                    dark:border-slate-700 dark:bg-slate-800/60 dark:hover:bg-slate-800"
                       >
-                        {/* Header de la tarjeta */}
                         <div className="flex items-center gap-3 mb-3">
-                          <div className="grid h-10 w-10 place-items-center rounded-full 
-                                         border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+                          <div
+                            className="grid h-10 w-10 place-items-center rounded-full 
+                                         border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800"
+                          >
                             <span className="text-lg">🚆</span>
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="text-xs text-slate-500 dark:text-slate-400">Código</div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                              Código
+                            </div>
                             <div className="truncate font-bold tracking-wide text-slate-900 dark:text-slate-100">
                               {codeFrom(inf, n.id)}
                             </div>
@@ -673,50 +1009,82 @@ export default function RailQueueBoard(
                           </div>
                         </div>
 
-                        {/* Vías */}
                         <div className="grid grid-cols-2 gap-2 mb-3">
-                          <div className="rounded-lg border border-slate-200 bg-white p-2 
-                                         dark:border-slate-700 dark:bg-slate-900">
-                            <div className="text-xs text-slate-500 dark:text-slate-400">Origen</div>
+                          <div
+                            className="rounded-lg border border-slate-200 bg-white p-2 
+                                         dark:border-slate-700 dark:bg-slate-900"
+                          >
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                              Origen
+                            </div>
                             <div className="truncate text-sm font-medium">
                               {mv?.viaOrigen?.nombre || "—"}
                             </div>
                           </div>
-                          <div className="rounded-lg border border-slate-200 bg-white p-2 
-                                         dark:border-slate-700 dark:bg-slate-900">
-                            <div className="text-xs text-slate-500 dark:text-slate-400">Destino</div>
+                          <div
+                            className="rounded-lg border border-slate-200 bg-white p-2 
+                                         dark:border-slate-700 dark:bg-slate-900"
+                          >
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                              Destino
+                            </div>
                             <div className="truncate text-sm font-medium">
                               {mv?.viaDestino?.nombre || "—"}
                             </div>
                           </div>
                         </div>
 
-                        {/* Estado y Prioridad */}
                         <div className="grid grid-cols-2 gap-2 mb-3">
-                          <div className="rounded-lg border border-slate-300 bg-white p-2 
-                                         dark:border-slate-600 dark:bg-slate-900">
-                            <div className="text-xs text-slate-500 dark:text-slate-400">Estado</div>
-                            <div className="text-sm font-medium">{mv?.estado || "—"}</div>
+                          <div
+                            className="rounded-lg border border-slate-300 bg-white p-2 
+                                         dark:border-slate-600 dark:bg-slate-900"
+                          >
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                              Estado
+                            </div>
+                            <div className="text-sm font-medium">
+                              {mv?.estado || "—"}
+                            </div>
                           </div>
-                          <div className="rounded-lg border border-slate-200 bg-white p-2 
-                                         dark:border-slate-700 dark:bg-slate-900">
-                            <div className="text-xs text-slate-500 dark:text-slate-400">Prioridad</div>
-                            <div className={`text-sm font-medium ${mv?.prioridad === 'ALTA' ? 'text-red-600 dark:text-red-400' :
-                              mv?.prioridad === 'BAJA' ? 'text-green-600 dark:text-green-400' : ''
-                              }`}>
+                          <div
+                            className="rounded-lg border border-slate-200 bg-white p-2 
+                                         dark:border-slate-700 dark:bg-slate-900"
+                          >
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                              Prioridad
+                            </div>
+                            <div
+                              className={`text-sm font-medium ${
+                                mv?.prioridad === "ALTA"
+                                  ? "text-red-600 dark:text-red-400"
+                                  : mv?.prioridad === "BAJA"
+                                  ? "text-green-600 dark:text-green-400"
+                                  : ""
+                              }`}
+                            >
                               {mv?.prioridad || "—"}
                             </div>
                           </div>
                         </div>
 
-                        {/* Footer */}
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="text-xs text-slate-500 dark:text-slate-400">
-                            Loco: <span className="font-medium text-slate-700 dark:text-slate-200">{loco}</span>
+                            Loco:{" "}
+                            <span className="font-medium text-slate-700 dark:text-slate-200">
+                              {loco}
+                            </span>
                           </div>
                           <div className="flex gap-1">
-                            <ServiceChip active={!!mv?.lavado} icon="💧" text="Lavado" />
-                            <ServiceChip active={!!mv?.torno} icon="⚙️" text="Torno" />
+                            <ServiceChip
+                              active={!!mv?.lavado}
+                              icon="💧"
+                              text="Lavado"
+                            />
+                            <ServiceChip
+                              active={!!mv?.torno}
+                              icon="⚙️"
+                              text="Torno"
+                            />
                           </div>
                         </div>
                       </motion.div>
@@ -739,15 +1107,15 @@ export default function RailQueueBoard(
         </div>
       </section>
 
-      {/* Audio para notificaciones */}
       <audio ref={bellRef} preload="auto" aria-hidden="true">
         <source src="/sounds/notification.mp3" type="audio/mp3" />
       </audio>
 
-      {/* ⬇️ Modal del editor (wrapper más compacto) */}
       {openEditor && (
-        <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm p-2 sm:p-4 
-            flex items-start justify-center pt-12 sm:pt-16">
+        <div
+          className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm p-2 sm:p-4 
+            flex items-start justify-center pt-12 sm:pt-16"
+        >
           <div className="w-full max-w-[1000px] h-auto max-h-[85vh] overflow-hidden rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-700">
             <div className="h-full overflow-auto">
               <EditRondas
@@ -755,7 +1123,7 @@ export default function RailQueueBoard(
                 onClose={() => setOpenEditor(false)}
                 onSaved={() => {
                   setOpenEditor(false);
-                  load(true); // refresca tablero al guardar
+                  load(true);
                 }}
               />
             </div>
@@ -766,13 +1134,25 @@ export default function RailQueueBoard(
   );
 }
 
-/* ===== Subcomponentes Mejorados ===== */
-function InfoBadge({ label, value, icon }: { label: string; value: string; icon: string }) {
+/* ===== Subcomponentes ===== */
+function InfoBadge({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string;
+  icon: string;
+}) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-2 text-center
-                    dark:border-slate-700 dark:bg-slate-900">
-      <div className="flex items-center justify-center gap-1 text-[10px] uppercase tracking-wider 
-                      text-slate-500 dark:text-slate-400">
+    <div
+      className="rounded-lg border border-slate-200 bg-white p-2 text-center
+                    dark:border-slate-700 dark:bg-slate-900"
+    >
+      <div
+        className="flex items-center justify-center gap-1 text-[10px] uppercase tracking-wider 
+                      text-slate-500 dark:text-slate-400"
+      >
         {icon} {label}
       </div>
       <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
@@ -782,25 +1162,45 @@ function InfoBadge({ label, value, icon }: { label: string; value: string; icon:
   );
 }
 
-function Chip({ ok, icon, children }: { ok: boolean; icon: string; children: React.ReactNode }) {
+function Chip({
+  ok,
+  icon,
+  children,
+}: {
+  ok: boolean;
+  icon: string;
+  children: React.ReactNode;
+}) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border transition-all duration-200 ${ok
-        ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
-        : "border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-        }`}
+      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border transition-all duration-200 ${
+        ok
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
+          : "border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+      }`}
     >
       {icon} {children}
     </span>
   );
 }
 
-function ServiceChip({ active, icon, text }: { active: boolean; icon: string; text: string }) {
+function ServiceChip({
+  active,
+  icon,
+  text,
+}: {
+  active: boolean;
+  icon: string;
+  text: string;
+}) {
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] border ${active
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
-      : "border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
-      }`}>
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] border ${
+        active
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
+          : "border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+      }`}
+    >
       {icon} {text}
     </span>
   );
@@ -822,12 +1222,18 @@ function SkeletonCurrent() {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-16 rounded-xl bg-slate-200 dark:bg-slate-800" />
+          <div
+            key={i}
+            className="h-16 rounded-xl bg-slate-200 dark:bg-slate-800"
+          />
         ))}
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-12 rounded-lg bg-slate-200 dark:bg-slate-800" />
+          <div
+            key={i}
+            className="h-12 rounded-lg bg-slate-200 dark:bg-slate-800"
+          />
         ))}
       </div>
       <div className="h-16 rounded-xl bg-slate-200 dark:bg-slate-800" />
