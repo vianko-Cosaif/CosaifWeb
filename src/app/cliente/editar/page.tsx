@@ -3,12 +3,14 @@ import { redirect } from "next/navigation";
 import EditarMovimiento from "./EditarMovimiento";
 
 export const dynamic = "force-dynamic";
+
 interface PageProps {
-  searchParams: { id?: string };
+  // Next está esperando un Promise aquí
+  searchParams: Promise<{ id?: string }>;
 }
 
-
 export default async function Page({ searchParams }: PageProps) {
+  // cookies() en Next 15 es async, esto está bien
   const c = await cookies();
   const token = c.get(process.env.JWT_COOKIE_NAME ?? "token")?.value;
 
@@ -25,7 +27,10 @@ export default async function Page({ searchParams }: PageProps) {
     redirect("/login?loc=cliente");
   }
 
-  const id = Number(searchParams.id ?? "");
+  // Resolvem​os el Promise de searchParams
+  const { id: idStr } = await searchParams;
+  const id = Number(idStr ?? "");
+
   if (!id) {
     redirect("/cliente/movimientos");
   }
