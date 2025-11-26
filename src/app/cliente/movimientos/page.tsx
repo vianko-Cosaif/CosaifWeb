@@ -10,9 +10,28 @@ export default async function Page() {
   const token = c.get(process.env.JWT_COOKIE_NAME ?? "token")?.value;
   if (!token) redirect("/login?loc=cliente");
 
+  const empIdCookie =
+    Number(c.get("empId")?.value ?? "") ||
+    Number(c.get("empresaId")?.value ?? "") ||
+    null;
+
+  if (empIdCookie == null) {
+    redirect("/login?loc=cliente");
+  }
+
   return (
-    <section className="mx-auto w-full max-w-7xl p-4 sm:p-6">
-      <MovimientosPanel apiBase="/bff" allowCreate role="COORDINADOR" />
+    // Contenedor de página: no permite scroll horizontal global
+    <section className="w-full min-h-screen overflow-x-hidden">
+      {/* Contenedor centrado del panel */}
+      <div className="mx-auto w-full max-w-5xl px-3 sm:px-4 lg:px-6">
+        <MovimientosPanel
+          apiBase="/bff"
+          rol="CLIENTE"
+          empresaIdUsuario={empIdCookie}
+          puedeCrear
+          intervaloAutoMs={15000}
+        />
+      </div>
     </section>
   );
 }

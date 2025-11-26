@@ -17,6 +17,8 @@ const ALTA_PASSWORDS: Record<number, string> = {
   1: "ALTA-EMPRESA-1",
   2: "ALTA-EMPRESA-2",
   3: "ALTA-EMPRESA-3",
+  4:"ALTA-EMPRESA-4",
+  5: "ALTA-EMPRESA-5"
 };
 
 /** ======= TIPOS ======= */
@@ -970,28 +972,13 @@ function StepOne(props: {
     const anyOcc: boolean | null = Array.isArray(secs) ? secs.some((x) => x.ocupada) : null;
     const label = anyOcc === null ? "—" : anyOcc ? "OCUPADA" : "LIBRE";
     const tone = anyOcc === null ? "text-slate-500" : anyOcc ? "text-rose-600" : "text-emerald-600";
-    const isSelected = form.fromTrack === v.id;
-    const isServiceVia = ['Torno', 'Lavado'].some(service => v.nombre.toLowerCase().includes(service.toLowerCase()));
-    const isDisabled = !form.service && isServiceVia;
-    
     return (
       <button
         key={v.id}
         onClick={() => setForm((p) => ({ ...p, fromTrack: p.fromTrack === v.id ? null : v.id }))}
-        disabled={isDisabled}
-        className={clsx(
-          "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left transition-colors",
-          isSelected 
-            ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" 
-            : "border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800",
-          isSelected && "ring-2 ring-emerald-400/50",
-          isDisabled && "opacity-50 cursor-not-allowed"
-        )}
+        className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
       >
-        <span className={clsx("truncate font-medium", isSelected && "text-emerald-700 dark:text-emerald-300")}>
-          Vía {v.nombre}
-          {isSelected && <span className="ml-2 text-xs text-emerald-600 dark:text-emerald-400">(Seleccionada)</span>}
-        </span>
+        <span className="truncate">Vía {v.nombre}</span>
         <span className={clsx("ml-3 text-xs font-semibold", tone)}>{label}</span>
       </button>
     );
@@ -1002,28 +989,16 @@ function StepOne(props: {
     const allOcc: boolean | null = Array.isArray(secs) ? secs.length > 0 && secs.every((x) => x.ocupada) : null;
     const label = allOcc === null ? "—" : allOcc ? "SIN SECC. LIBRES" : "HAY LIBRES";
     const tone = allOcc === null ? "text-slate-500" : allOcc ? "text-rose-600" : "text-emerald-600";
-    const isSelected = form.toTrack === v.id;
-    const isServiceVia = ['Torno', 'Lavado'].some(service => v.nombre.toLowerCase().includes(service.toLowerCase()));
-    const isDisabled = !form.service && isServiceVia;
-    
     return (
       <button
         key={v.id}
         onClick={() => setForm((p) => ({ ...p, toTrack: p.toTrack === v.id ? null : v.id }))}
         className={clsx(
-          "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left transition-colors",
-          isSelected 
-            ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" 
-            : "border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800",
-          (allOcc === true || isDisabled) && "opacity-60",
-          isSelected && "ring-2 ring-emerald-400/50"
+          "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800",
+          allOcc === true && "opacity-60"
         )}
-        disabled={allOcc === true || isDisabled}
       >
-        <span className={clsx("truncate font-medium", isSelected && "text-emerald-700 dark:text-emerald-300")}>
-          Vía {v.nombre}
-          {isSelected && <span className="ml-2 text-xs text-emerald-600 dark:text-emerald-400">(Seleccionada)</span>}
-        </span>
+        <span className="truncate">Vía {v.nombre}</span>
         <span className={clsx("ml-3 text-xs font-semibold", tone)}>{label}</span>
       </button>
     );
@@ -1222,24 +1197,7 @@ function StepOne(props: {
             {errors.fromTrack ? <span className="self-center text-xs text-rose-600 dark:text-rose-400">{errors.fromTrack}</span> : null}
           </div>
 
-          {showFromOpts && (
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {[...vias]
-                // Hide the corresponding via when a service is selected
-                .filter(via => !form.service || !via.nombre.toLowerCase().includes(form.service.toLowerCase()))
-                .sort((a, b) => {
-                  // Extract numbers from the via names for numeric comparison
-                  const numA = parseInt(a.nombre.replace(/\D/g, '')) || 0;
-                  const numB = parseInt(b.nombre.replace(/\D/g, '')) || 0;
-                  if (numA !== numB) return numA - numB;
-                  // If numbers are equal, sort alphabetically
-                  return a.nombre.localeCompare(b.nombre);
-                })
-                .map((v) => (
-                  <div key={v.id}>{viaOption(v)}</div>
-                ))}
-            </div>
-          )}
+          {showFromOpts && <div className="mt-2 grid gap-2 sm:grid-cols-2">{vias.map((v) => (<div key={v.id}>{viaOption(v)}</div>))}</div>}
 
           <SectionsPills kind="from" viaId={form.fromTrack} />
         </div>
@@ -1259,24 +1217,7 @@ function StepOne(props: {
             {errors.toTrack ? <span className="self-center text-xs text-rose-600 dark:text-rose-400">{errors.toTrack}</span> : null}
           </div>
 
-          {showToOpts && (
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {[...vias]
-                // Filter out 'Torno' and 'Lavado' vias when a service is selected
-                .filter(via => !form.service || !['Torno', 'Lavado'].some(service => via.nombre.toLowerCase().includes(service.toLowerCase())))
-                .sort((a, b) => {
-                  // Extract numbers from the via names for numeric comparison
-                  const numA = parseInt(a.nombre.replace(/\D/g, '')) || 0;
-                  const numB = parseInt(b.nombre.replace(/\D/g, '')) || 0;
-                  if (numA !== numB) return numA - numB;
-                  // If numbers are equal, sort alphabetically
-                  return a.nombre.localeCompare(b.nombre);
-                })
-                .map((v) => (
-                  <div key={v.id}>{viaOptionTo(v)}</div>
-                ))}
-            </div>
-          )}
+          {showToOpts && <div className="mt-2 grid gap-2 sm:grid-cols-2">{vias.map((v) => (<div key={v.id}>{viaOptionTo(v)}</div>))}</div>}
 
           <SectionsPills kind="to" viaId={form.toTrack} />
         </div>
