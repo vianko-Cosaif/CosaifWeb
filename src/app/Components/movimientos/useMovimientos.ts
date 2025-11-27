@@ -409,43 +409,43 @@ export function useMovimientos(rol: Rol, token?: string) {
     [token]
   );
 
-  /* ---------- QUERYSTRING PARA EL BACK (OPCIONAL) ---------- */
-  const queryString = useMemo(() => {
-    const qs = new URLSearchParams();
+const queryString = useMemo(() => {
+  const qs = new URLSearchParams();
 
-    qs.set("page", String(filtros.pagina));
-    qs.set("pageSize", String(filtros.tamPagina));
+  // Pedimos siempre la primera página grande al backend.
+  // La paginación REAL la hacemos nosotros en el front.
+  qs.set("page", "1");
+  qs.set("pageSize", "1000"); // o 2000 si quieres más margen
 
-    if (filtros.busqueda.trim()) qs.set("q", filtros.busqueda.trim());
-    if (filtros.empresaId) qs.set("empresaId", String(filtros.empresaId));
-    if (filtros.localidadId)
-      qs.set("localidadId", String(filtros.localidadId));
-    if (filtros.desde) qs.set("fechaInicio", filtros.desde);
-    if (filtros.hasta) qs.set("fechaFin", filtros.hasta);
+  if (filtros.busqueda.trim()) qs.set("q", filtros.busqueda.trim());
+  if (filtros.empresaId) qs.set("empresaId", String(filtros.empresaId));
+  if (filtros.localidadId)
+    qs.set("localidadId", String(filtros.localidadId));
+  if (filtros.desde) qs.set("fechaInicio", filtros.desde);
+  if (filtros.hasta) qs.set("fechaFin", filtros.hasta);
 
-    if (filtros.campoOrden) qs.set("orderBy", filtros.campoOrden);
-    if (filtros.direccionOrden) qs.set("orderDir", filtros.direccionOrden);
+  if (filtros.campoOrden) qs.set("orderBy", filtros.campoOrden);
+  if (filtros.direccionOrden) qs.set("orderDir", filtros.direccionOrden);
 
-    if (ambito === "actuales") {
-      qs.append("estado", "SOLICITADO");
-      qs.append("estado", "EN_PROCESO");
-    } else {
-      qs.set("finalizado", "true");
-    }
+  if (ambito === "actuales") {
+    qs.append("estado", "SOLICITADO");
+    qs.append("estado", "EN_PROCESO");
+  } else {
+    qs.set("finalizado", "true");
+  }
 
-    return qs.toString();
-  }, [
-    filtros.pagina,
-    filtros.tamPagina,
-    filtros.busqueda,
-    filtros.empresaId,
-    filtros.localidadId,
-    filtros.desde,
-    filtros.hasta,
-    filtros.campoOrden,
-    filtros.direccionOrden,
-    ambito,
-  ]);
+  return qs.toString();
+}, [
+  filtros.busqueda,
+  filtros.empresaId,
+  filtros.localidadId,
+  filtros.desde,
+  filtros.hasta,
+  filtros.campoOrden,
+  filtros.direccionOrden,
+  ambito,
+]);
+
 
   /* ---------- Catálogos (empresas/localidades) ---------- */
   useEffect(() => {

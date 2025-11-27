@@ -40,13 +40,12 @@ export default function Filtros({
   deshabilitado = false,
 }: FiltrosProps) {
   const handleEmpresaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!puedeElegirEmpresa) return;
     const val = e.target.value;
     onCambiarEmpresaId(val === "" ? null : Number(val));
   };
 
   const handleLocalidadChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!puedeElegirEmpresa) return;
+    if (!puedeElegirEmpresa) return; // CLIENTE/SUPERVISOR no cambian localidad
     const val = e.target.value;
     onCambiarLocalidadId(val === "" ? null : Number(val));
   };
@@ -71,12 +70,6 @@ export default function Filtros({
       aria-label="Filtros de movimientos"
       className="w-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 p-3 sm:p-4 mb-4 shadow-sm"
     >
-      {/* 
-        Mobile-first:
-        - 1 columna en XS
-        - 2 columnas en SM
-        - 12 columnas en XL para layout fino de escritorio
-      */}
       <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-12 items-end">
         {/* Empresa */}
         <div className="min-w-0 xl:col-span-3">
@@ -85,10 +78,12 @@ export default function Filtros({
           </label>
           <select
             className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-800 dark:text-slate-100 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500/80 focus:border-emerald-500"
-            disabled={!puedeElegirEmpresa || deshabilitado}
+            disabled={deshabilitado}
             value={stringOrVacio(filtros.empresaId ?? null)}
             onChange={handleEmpresaChange}
           >
+            {/* Siempre: "Todas" + las que vengan en listaEmpresas.
+                Para CLIENTE, listaEmpresas ya viene recortada a SU empresa. */}
             <option value="">Todas</option>
             {listaEmpresas.map((e) => (
               <option key={e.id} value={e.id}>
@@ -109,7 +104,9 @@ export default function Filtros({
             value={stringOrVacio(filtros.localidadId ?? null)}
             onChange={handleLocalidadChange}
           >
-            <option value="">Todas</option>
+            {/* Solo ADMIN/COORD ven "Todas" en localidad.
+               CLIENTE/SUPERVISOR verán solo su localidad en listaLocalidades. */}
+            {puedeElegirEmpresa && <option value="">Todas</option>}
             {listaLocalidades.map((loc) => (
               <option key={loc.id} value={loc.id}>
                 {loc.nombre}
