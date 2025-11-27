@@ -12,7 +12,6 @@ import Filtros from "./Filtros";
 import Tabla from "./Tabla";
 import Detalle from "./Detalle";
 import { useMovimientos, Rol } from "./useMovimientos";
-import { useRouter } from "next/navigation"; // ⬅️ ESTA
 
 /* ================== HELPERS SESIÓN ================== */
 
@@ -56,7 +55,6 @@ interface MovimientosPanelProps {
 
 export default function MovimientosPanel(props: MovimientosPanelProps) {
   const { rol: rolProp, token: tokenProp, puedeCrear = false } = props;
-  const router = useRouter(); 
 
   // Rol/token efectivos
   const [rol, setRol] = useState<Rol>(() => rolProp ?? getRoleFromSession());
@@ -263,22 +261,20 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     [setFiltros]
   );
 
-const handleEditar = useCallback(
-  (id: number) => {
-    if (rol === "CLIENTE") {
-      // OJO: aquí ya no va /movimientos
-      window.location.assign(`/cliente/editar?id=${id}`);
-      return;
-    }
+  const handleEditar = useCallback(
+    (id: number) => {
+      if (rol === "CLIENTE") {
+        // Para CLIENTE, navega a pantalla de edición propia
+        window.location.assign(`/cliente/editar?id=${id}`);
+        return;
+      }
 
-    // Para otros roles sigues usando el drawer
-    setMovimientoSeleccionado(id);
-    setDetalleAbierto(true);
-  },
-  [rol, setMovimientoSeleccionado, setDetalleAbierto]
-);
-
-
+      // Para otros roles sigues usando el drawer/modal
+      setMovimientoSeleccionado(id);
+      setDetalleAbierto(true);
+    },
+    [rol]
+  );
 
   const handleCerrarDetalle = useCallback(() => {
     setDetalleAbierto(false);

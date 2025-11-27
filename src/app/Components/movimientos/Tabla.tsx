@@ -1,6 +1,7 @@
 "use client";
 
-import React, {
+import React,
+{
   useState,
   useMemo,
   useCallback,
@@ -81,66 +82,18 @@ function TablaInner({
     [total, tamPagina]
   );
 
-  // Ordenamiento local
-  const filasOrdenadas = useMemo(() => {
-    const data = [...filas];
+  // Importante: aquí YA NO se vuelve a paginar ni a ordenar.
+  // useMovimientos es el dueño del orden y la paginación.
+  const tieneFilas = filas.length > 0;
 
-    const getValue = (m: Movement): string | number | null => {
-      switch (campoOrden) {
-        case "id":
-          return m.id;
-        case "locomotora":
-          return m.locomotora;
-        case "localidad":
-          return m.localidadNombre ?? "";
-        case "empresa":
-          return m.empresaNombre ?? "";
-        case "solicitud":
-          return m.fechaSolicitud ?? "";
-        case "inicio":
-          return m.fechaInicio ?? "";
-        case "fin":
-          return m.fechaFin ?? "";
-        case "estado":
-          return m.estado ?? "";
-        case "prioridad":
-          return m.prioridad ?? "";
-        case "tipo":
-          return m.tipoMovimiento ?? "";
-        default:
-          return m.id;
-      }
-    };
-
-    data.sort((a, b) => {
-      const va = getValue(a);
-      const vb = getValue(b);
-
-      if (va == null && vb == null) return 0;
-      if (va == null) return direccionOrden === "asc" ? -1 : 1;
-      if (vb == null) return direccionOrden === "asc" ? 1 : -1;
-
-      if (typeof va === "number" && typeof vb === "number") {
-        return direccionOrden === "asc" ? va - vb : vb - va;
-      }
-
-      const sa = String(va).toLowerCase();
-      const sb = String(vb).toLowerCase();
-
-      if (sa < sb) return direccionOrden === "asc" ? -1 : 1;
-      if (sa > sb) return direccionOrden === "asc" ? 1 : -1;
-      return 0;
-    });
-
-    return data;
-  }, [filas, campoOrden, direccionOrden]);
-
-  // Paginación local
-  const filasPagina = useMemo(() => {
-    const start = (pagina - 1) * tamPagina;
-    const end = start + tamPagina;
-    return filasOrdenadas.slice(start, end);
-  }, [filasOrdenadas, pagina, tamPagina]);
+  const startIndex = useMemo(
+    () => (total === 0 ? 0 : (pagina - 1) * tamPagina + 1),
+    [pagina, tamPagina, total]
+  );
+  const endIndex = useMemo(
+    () => (total === 0 ? 0 : startIndex + filas.length - 1),
+    [startIndex, filas.length, total]
+  );
 
   const toggle = useCallback((id: number) => {
     setExpanded((prev) => ({
@@ -266,7 +219,7 @@ function TablaInner({
             </thead>
 
             <tbody className="divide-y divide-slate-100 text-[11px] dark:divide-slate-800/50 sm:text-xs md:text-sm">
-              {filasPagina.length === 0 ? (
+              {!tieneFilas ? (
                 <tr>
                   <td colSpan={12} className="py-16 text-center sm:py-20">
                     <div className="flex flex-col items-center justify-center gap-3">
@@ -280,7 +233,7 @@ function TablaInner({
                   </td>
                 </tr>
               ) : (
-                filasPagina.map((movement) => (
+                filas.map((movement) => (
                   <MovimientoRow
                     key={movement.id}
                     movement={movement}
@@ -297,14 +250,29 @@ function TablaInner({
         {/* Footer */}
         <div className="flex flex-col items-center justify-between gap-4 rounded-b-2xl border-t border-slate-200 bg-slate-50 p-3 text-[11px] dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:p-4 sm:text-xs">
           <p className="order-2 font-medium text-slate-500 dark:text-slate-400 sm:order-1">
-            Mostrando{" "}
-            <span className="font-bold text-slate-900 dark:text-slate-200">
-              {pagina}
-            </span>{" "}
-            de {totalPaginas} · Total:{" "}
-            <span className="font-bold text-emerald-600 dark:text-emerald-500">
-              {total}
-            </span>
+            {total === 0 ? (
+              "Sin registros"
+            ) : (
+              <>
+                Mostrando{" "}
+                <span className="font-bold text-slate-900 dark:text-slate-200">
+                  {startIndex}
+                </span>{" "}
+                –{" "}
+                <span className="font-bold text-slate-900 dark:text-slate-200">
+                  {endIndex}
+                </span>{" "}
+                de{" "}
+                <span className="font-bold text-emerald-600 dark:text-emerald-500">
+                  {total}
+                </span>{" "}
+                · página{" "}
+                <span className="font-bold text-slate-900 dark:text-slate-200">
+                  {pagina}
+                </span>{" "}
+                de {totalPaginas}
+              </>
+            )}
           </p>
 
           <div className="order-1 flex gap-2 sm:order-2">
