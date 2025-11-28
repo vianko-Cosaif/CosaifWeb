@@ -171,68 +171,19 @@ export default function ClientPageWrapper({ localidadId, empresaId }: ClientPage
 }
 
 /* ================= Componente de Carga Optimizado (Alternativa) ================= */
-// Versión alternativa con carga progresiva y mejor manejo de estado
-function RailQueueBoardWrapper({ localidadId }: { localidadId: number }) {
-  const [RailQueueBoard, setRailQueueBoard] = React.useState<React.ComponentType<unknown> | null>(null);
-  const [loadingState, setLoadingState] = React.useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+/* ================= Tipo del componente dinámico ================= */
+type RailQueueBoardProps = {
+  localidadId: number;
+  autoMs?: number;
+  nextCount?: number;
+};
 
-  const loadComponent = useCallback(async () => {
-    setLoadingState('loading');
-    try {
-      const module = await import("./RailQueueBoard");
-      setRailQueueBoard(() => module.default);
-      setLoadingState('success');
-    } catch (error) {
-      console.error("Error loading RailQueueBoard:", error);
-      setLoadingState('error');
-    }
-  }, []);
+/* ================= Componente de Carga Optimizado (Alternativa) ================= */
 
-  React.useEffect(() => {
-    loadComponent();
-  }, [loadComponent]);
-
-  // Estados de carga mejorados
-  if (loadingState === 'loading') {
-    return <LoadingFallback />;
-  }
-
-  if (loadingState === 'error') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] p-6 text-center">
-        <div className="text-6xl mb-4">❌</div>
-        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
-          Error de carga
-        </h3>
-        <p className="text-slate-600 dark:text-slate-400 mb-4">
-          No se pudo cargar el panel de control.
-        </p>
-        <button
-          onClick={loadComponent}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          Reintentar carga
-        </button>
-      </div>
-    );
-  }
-
-}
-
-/* ================= Componente de Selección Mejorado ================= */
-// Wrapper mejorado para SelectLocalidad con mejor UX
-function EnhancedSelectLocalidad() {
-  return (
-    <div className="animate-fade-in">
-      <SelectLocalidad />
-    </div>
-  );
-}
 
 // Exportación de componentes auxiliares para testing
 export { 
   LoadingFallback, 
   ErrorBoundary, 
-  RailQueueBoardWrapper,
-  EnhancedSelectLocalidad 
+
 };
