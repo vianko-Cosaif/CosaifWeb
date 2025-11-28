@@ -2,7 +2,7 @@
 import React, { useCallback, Suspense, lazy } from "react";
 import SelectLocalidad from "@/app/Components/cliente/SelectLocalidad";
 import type { IncidenteEmergente } from "@/app/hooks/useIncidentMonitor";
-
+import Noticias from "./Noticias";
 /* ================= Tipos ================= */
 interface ClientPageWrapperProps {
   localidadId: number | null;
@@ -118,7 +118,11 @@ export default function ClientPageWrapper({ localidadId, empresaId }: ClientPage
 
 
       {/* Contenido principal */}
+      
       <main className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
+        <div className="mb-6">
+          <Noticias /> {/* 👈 Rectángulo de Hola arriba del panel */}
+        </div>
         <ErrorBoundary>
           {localidadId ? (
             <Suspense fallback={<LoadingFallback />}>
@@ -135,7 +139,7 @@ export default function ClientPageWrapper({ localidadId, empresaId }: ClientPage
                     Selecciona una Localidad
                   </h2>
                   <p className="text-slate-600 dark:text-slate-400">
-                    Para comenzar, elige la localidad donde deseas monitorear las operaciones ferroviarias.
+
                   </p>
                 </div>
                 <SelectLocalidad />
@@ -169,7 +173,7 @@ export default function ClientPageWrapper({ localidadId, empresaId }: ClientPage
 /* ================= Componente de Carga Optimizado (Alternativa) ================= */
 // Versión alternativa con carga progresiva y mejor manejo de estado
 function RailQueueBoardWrapper({ localidadId }: { localidadId: number }) {
-  const [RailQueueBoard, setRailQueueBoard] = React.useState<React.ComponentType<any> | null>(null);
+  const [RailQueueBoard, setRailQueueBoard] = React.useState<React.ComponentType<unknown> | null>(null);
   const [loadingState, setLoadingState] = React.useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
   const loadComponent = useCallback(async () => {
@@ -213,11 +217,6 @@ function RailQueueBoardWrapper({ localidadId }: { localidadId: number }) {
     );
   }
 
-  if (RailQueueBoard && loadingState === 'success') {
-    return <RailQueueBoard localidadId={localidadId} />;
-  }
-
-  return null;
 }
 
 /* ================= Componente de Selección Mejorado ================= */
