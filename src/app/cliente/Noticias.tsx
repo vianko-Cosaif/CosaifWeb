@@ -4,7 +4,7 @@ import React from "react";
 import "./Noticias/Noticias.scss";
 
 const MENSAJE =
-  "Estimados clientes se les informa que el dia 1 de diciembre  del presente año  se realizara un mantenimiento programado en el sistema, por lo que el servicio estara interrumpido desde las 01:00 am hasta las 02:30 am. Agradecemos su comprensión y les pedimos disculpas por cualquier inconveniente que esto pueda causar.";
+  "Se acerca navidad, Vianko te desea prosperidad y felicidad a tu hogar. ¡Felices fiestas! 🎄​🎄​​🎅🏼​🤶🏻​ ";
 
 function TrainMini() {
   return (
