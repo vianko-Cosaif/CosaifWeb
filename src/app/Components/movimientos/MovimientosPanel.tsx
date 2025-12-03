@@ -315,7 +315,6 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
               Gestión de movimientos ferroviarios · {tab}
             </p>
           </div>
-          <RolePill rol={rol} puedeElegirEmpresa={puedeElegirEmpresa} />
         </header>
 
         {/* Card: Nav + Filtros */}
@@ -436,33 +435,4 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
 
 /* ================== SUBCOMPONENTES ================== */
 
-function RolePill({
-  rol,
-  puedeElegirEmpresa,
-}: {
-  rol: Rol;
-  puedeElegirEmpresa: boolean;
-}) {
-  const R = String(rol || "").toUpperCase();
-  const base =
-    "inline-flex items-center rounded-full border px-3 py-1 text-[11px] sm:text-xs font-medium";
 
-  let classes =
-    "border-slate-300 bg-slate-100 text-slate-700 shadow-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200";
-
-  if (puedeElegirEmpresa) {
-    classes =
-      "border-emerald-500/70 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200 shadow-sm shadow-emerald-900/40";
-  } else if (R === "SUPERVISOR") {
-    classes =
-      "border-amber-500/70 bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200 shadow-sm shadow-amber-900/40";
-  }
-
-  const text = puedeElegirEmpresa
-    ? `${R} · puede elegir empresa y localidad`
-    : `${R} · fijado a su empresa${
-        R === "CLIENTE" || R === "SUPERVISOR" ? " y localidad" : ""
-      }`;
-
-  return ;
-}
