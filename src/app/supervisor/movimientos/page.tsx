@@ -16,7 +16,7 @@ export default async function Page() {
     null;
 
   if (empIdCookie == null) {
-    redirect("/login?loc=supervisor");
+    redirect("/login");
   }
 
   return (

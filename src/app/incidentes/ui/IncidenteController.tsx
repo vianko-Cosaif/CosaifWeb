@@ -1,7 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import IncidentesTable from "./IncidentesTable";
 import SmartIncidentBlocker from "./SmartIncidentBlocker";
 import type { IncidenteRow, Meta, Role } from "./types";
@@ -50,11 +57,13 @@ const withCreds = <T = any,>(url: string, init: RequestInit = {}) =>
 
 type DropdownOption = { id: number; nombre: string };
 type Tab = "Actuales" | "Pasados";
+
 type FilterState = {
   empresaId: number | null;
   localidadId: number | null;
   searchQuery: string;
 };
+
 type NotificationState = {
   show: boolean;
   type: "success" | "error" | "info";
@@ -73,18 +82,21 @@ function prettyError(object: any): string {
 class DetailCache {
   private cache = new Map<number, { data: any; timestamp: number }>();
   private TTL = 5 * 60 * 1000; // 5 minutos
+
   set(id: number, data: any) {
     this.cache.set(id, { data, timestamp: Date.now() });
   }
+
   get(id: number) {
     const entry = this.cache.get(id);
     if (!entry) return null;
     if (Date.now() - entry.timestamp > this.TTL) {
-      this.cache.delete(id);
+    
       return null;
     }
     return entry.data;
   }
+
   clear() {
     this.cache.clear();
   }
@@ -92,7 +104,10 @@ class DetailCache {
 
 const detailCache = new DetailCache();
 
-async function fetchIncidenteDetailsBulk(ids: number[], maxConcurrency = 6): Promise<Record<number, any>> {
+async function fetchIncidenteDetailsBulk(
+  ids: number[],
+  maxConcurrency = 6
+): Promise<Record<number, any>> {
   const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
   const result: Record<number, any> = {};
   const pendingIds: number[] = [];
@@ -126,15 +141,27 @@ async function fetchIncidenteDetailsBulk(ids: number[], maxConcurrency = 6): Pro
 
 function formatDate(dateString: string): string {
   try {
-    return new Date(dateString).toLocaleDateString("es-ES", { year: "numeric", month: "2-digit", day: "2-digit" });
+    return new Date(dateString).toLocaleDateString("es-ES", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
   } catch {
     return "Fecha inválida";
   }
 }
 
 // Hook usuario (lee cookies primero)
-function useUserRole(): { role: Role; empresaId: number | null; localidadId: number | null } {
-  const [userInfo, setUserInfo] = useState<{ role: Role; empresaId: number | null; localidadId: number | null }>({
+function useUserRole(): {
+  role: Role;
+  empresaId: number | null;
+  localidadId: number | null;
+} {
+  const [userInfo, setUserInfo] = useState<{
+    role: Role;
+    empresaId: number | null;
+    localidadId: number | null;
+  }>({
     role: "CLIENTE",
     empresaId: null,
     localidadId: null,
@@ -142,7 +169,8 @@ function useUserRole(): { role: Role; empresaId: number | null; localidadId: num
 
   useEffect(() => {
     try {
-      const userString = typeof window !== "undefined" ? localStorage.getItem("user") : null;
+      const userString =
+        typeof window !== "undefined" ? localStorage.getItem("user") : null;
       const user = userString ? JSON.parse(userString) : {};
       const roleCookie = (getCookie("role") || user.rol || "CLIENTE") as Role;
       const locFromCookie = Number(getCookie("locId") || "") || null;
@@ -162,38 +190,71 @@ function useUserRole(): { role: Role; empresaId: number | null; localidadId: num
 
 // Hook para notificaciones
 function useNotifications() {
-  const [notification, setNotification] = useState<NotificationState>({ show: false, type: "info", message: "" });
-  const showNotification = useCallback((type: NotificationState["type"], message: string) => {
-    setNotification({ show: true, type, message });
-    setTimeout(() => setNotification((prev) => ({ ...prev, show: false })), 5000);
-  }, []);
-  const hideNotification = useCallback(() => setNotification((prev) => ({ ...prev, show: false })), []);
+  const [notification, setNotification] = useState<NotificationState>({
+    show: false,
+    type: "info",
+    message: "",
+  });
+
+  const showNotification = useCallback(
+    (type: NotificationState["type"], message: string) => {
+      setNotification({ show: true, type, message });
+      setTimeout(
+        () =>
+          setNotification((prev) => ({
+            ...prev,
+            show: false,
+          })),
+        5000
+      );
+    },
+    []
+  );
+
+  const hideNotification = useCallback(
+    () =>
+      setNotification((prev) => ({
+        ...prev,
+        show: false,
+      })),
+    []
+  );
+
   return { notification, showNotification, hideNotification };
 }
 
 export default function IncidenteController() {
-  const { role, empresaId: userEmpresaId, localidadId: userLocalidadId } = useUserRole();
-  const { notification, showNotification, hideNotification } = useNotifications();
+  const { role, empresaId: userEmpresaId, localidadId: userLocalidadId } =
+    useUserRole();
+  const { notification, showNotification, hideNotification } =
+    useNotifications();
 
-  const isClient = role === "CLIENTE" || role === "SUPERVISOR";
-  const tabs: Tab[] = isClient ? ["Actuales"] : ["Actuales", "Pasados"];
+  const isLimitedClientView = role === "CLIENTE";
+
+  const canSeeEverything =
+    role === "ADMINISTRADOR" ||
+    role === "SUPERVISOR" ||
+    role === "COORDINADOR";
+
+  const tabs: Tab[] = ["Actuales", "Pasados"];
   const [activeTab, setActiveTab] = useState<Tab>("Actuales");
 
-  // Catalogues state
-  const [catalogues, setCatalogues] = useState<{ empresas: DropdownOption[]; localidades: DropdownOption[]; loading: boolean }>({
+  const [catalogues, setCatalogues] = useState<{
+    empresas: DropdownOption[];
+    localidades: DropdownOption[];
+    loading: boolean;
+  }>({
     empresas: [],
     localidades: [],
     loading: false,
   });
 
-  // Filters state
   const [filters, setFilters] = useState<FilterState>({
-    empresaId: userEmpresaId,
-    localidadId: userLocalidadId,
+    empresaId: isLimitedClientView ? userEmpresaId : null,
+    localidadId: isLimitedClientView ? userLocalidadId : null,
     searchQuery: "",
   });
 
-  // Data state
   const [incidentData, setIncidentData] = useState<{
     data: IncidenteRow[];
     meta: Meta;
@@ -208,8 +269,12 @@ export default function IncidenteController() {
     lastUpdated: null,
   });
 
-  // UI state
-  const [uiState, setUiState] = useState<{ refreshing: boolean; autoRefresh: boolean; selectedIncident: any | null; blockerVisible: boolean }>({
+  const [uiState, setUiState] = useState<{
+    refreshing: boolean;
+    autoRefresh: boolean;
+    selectedIncident: any | null;
+    blockerVisible: boolean;
+  }>({
     refreshing: false,
     autoRefresh: false,
     selectedIncident: null,
@@ -220,35 +285,110 @@ export default function IncidenteController() {
   const searchRef = useRef<HTMLInputElement>(null);
   const [isPending, startTransition] = useTransition();
 
-  // Update filters when user info changes
+  /** Sincroniza filtros iniciales cuando llegue user info (solo cliente) */
   useEffect(() => {
-    if (isClient) {
-      setFilters((prev) => ({ ...prev, empresaId: userEmpresaId, localidadId: userLocalidadId }));
+    if (isLimitedClientView) {
+      setFilters((prev) => ({
+        ...prev,
+        empresaId: userEmpresaId ?? prev.empresaId,
+        localidadId: userLocalidadId ?? prev.localidadId,
+      }));
     }
-  }, [isClient, userEmpresaId, userLocalidadId]);
+  }, [isLimitedClientView, userEmpresaId, userLocalidadId]);
 
-  // Load catalogues for ADMINS; for CLIENTE cargar solo sus nombres por id (cookies)
+  /** Carga catálogos de empresas y localidades */
   useEffect(() => {
     const load = async () => {
       setCatalogues((p) => ({ ...p, loading: true }));
       try {
-        if (!isClient) {
-          const [empresasResponse, localidadesResponse] = await Promise.all([withCreds<any>(EMPRESAS), withCreds<any>(LOCALIDADES)]);
-          const empresasArray = Array.isArray(empresasResponse) ? empresasResponse : (empresasResponse as any)?.data;
-          const localidadesArray = Array.isArray(localidadesResponse) ? localidadesResponse : (localidadesResponse as any)?.data;
+        if (!isLimitedClientView) {
+          const [empresasResponse, localidadesResponse] = await Promise.all([
+            withCreds<any>(EMPRESAS),
+            withCreds<any>(LOCALIDADES),
+          ]);
+
+          console.log("[INCIDENTES] /bff/empresas (raw):", empresasResponse);
+          console.log(
+            "[INCIDENTES] /bff/localidades (raw):",
+            localidadesResponse
+          );
+
+          const empresasArray = Array.isArray(empresasResponse)
+            ? empresasResponse
+            : (empresasResponse as any)?.data;
+          const localidadesArray = Array.isArray(localidadesResponse)
+            ? localidadesResponse
+            : (localidadesResponse as any)?.data;
+
+          console.log(
+            "[INCIDENTES] empresasArray (normalizado):",
+            empresasArray
+          );
+          console.log(
+            "[INCIDENTES] localidadesArray (normalizado):",
+            localidadesArray
+          );
+
           setCatalogues({
-            empresas: (empresasArray || []).map((e: any) => ({ id: e.id, nombre: e.nombre })),
-            localidades: (localidadesArray || []).map((l: any) => ({ id: l.id, nombre: l.nombre })),
+            empresas: (empresasArray || []).map((e: any) => ({
+              id: e.id,
+              nombre: e.nombre,
+            })),
+            localidades: (localidadesArray || []).map((l: any) => ({
+              id: l.id,
+              nombre: l.nombre,
+            })),
             loading: false,
           });
         } else {
-          const [emp, loc] = await Promise.all([
+          const [empRes, locRes] = await Promise.all([
             userEmpresaId ? withCreds<any>(`${EMPRESAS}/${userEmpresaId}`) : null,
-            userLocalidadId ? withCreds<any>(`${LOCALIDADES}/${userLocalidadId}`) : null,
+            userLocalidadId
+              ? withCreds<any>(`${LOCALIDADES}/${userLocalidadId}`)
+              : null,
           ]);
+
+          console.log(
+            "[INCIDENTES] /bff/empresas/:id (raw):",
+            userEmpresaId,
+            empRes
+          );
+          console.log(
+            "[INCIDENTES] /bff/localidades/:id (raw):",
+            userLocalidadId,
+            locRes
+          );
+
+          const unwrapSingle = (res: any) => {
+            if (!res) return null;
+            const data = res.data ?? res;
+            if (Array.isArray(data)) return data[0] ?? null;
+            return data;
+          };
+
+          const emp = unwrapSingle(empRes);
+          const loc = unwrapSingle(locRes);
+
+          console.log("[INCIDENTES] empresa unwrapped:", emp);
+          console.log("[INCIDENTES] localidad unwrapped:", loc);
+
           setCatalogues({
-            empresas: emp?.id ? [{ id: emp.id, nombre: emp.nombre ?? `Empresa #${emp.id}` }] : [],
-            localidades: loc?.id ? [{ id: loc.id, nombre: loc.nombre ?? `Localidad #${loc.id}` }] : [],
+            empresas: emp?.id
+              ? [
+                  {
+                    id: emp.id,
+                    nombre: emp.nombre ?? `Empresa #${emp.id}`,
+                  },
+                ]
+              : [],
+            localidades: loc?.id
+              ? [
+                  {
+                    id: loc.id,
+                    nombre: loc.nombre ?? `Localidad #${loc.id}`,
+                  },
+                ]
+              : [],
             loading: false,
           });
         }
@@ -259,34 +399,71 @@ export default function IncidenteController() {
       }
     };
     load();
-  }, [isClient, userEmpresaId, userLocalidadId, showNotification]);
+  }, [isLimitedClientView, userEmpresaId, userLocalidadId, showNotification]);
 
-  // Build API URL
+  /** Construye URL del API de incidentes */
   const buildApiUrl = useCallback(
     (page = 1) => {
-      const estadoParam = isClient || activeTab === "Actuales" ? "ABIERTO" : "PASADOS";
-      const searchParams = new URLSearchParams({ page: String(page), pageSize: "20", estado: estadoParam });
-      if (filters.empresaId) searchParams.set("empresaId", String(filters.empresaId));
-      if (filters.localidadId) searchParams.set("localidadId", String(filters.localidadId));
+      const estadoParam = activeTab === "Actuales" ? "ABIERTO" : "PASADOS";
+
+      const searchParams = new URLSearchParams({
+        page: String(page),
+        pageSize: "20",
+        estado: estadoParam,
+      });
+
+      if (filters.empresaId)
+        searchParams.set("empresaId", String(filters.empresaId));
+      if (filters.localidadId)
+        searchParams.set("localidadId", String(filters.localidadId));
+
       return `${INCIDENTES}?${searchParams.toString()}`;
     },
-    [isClient, activeTab, filters.empresaId, filters.localidadId]
+    [activeTab, filters.empresaId, filters.localidadId]
   );
 
-  // Fetch incident data
+  /** Fetch de incidentes + detalle, con logs de empresas */
   const fetchIncidents = useCallback(
     async (page = 1, showLoading = true) => {
       try {
-        setIncidentData((prev) => ({ ...prev, error: null, loading: showLoading }));
+        setIncidentData((prev) => ({
+          ...prev,
+          error: null,
+          loading: showLoading,
+        }));
+
         const url = buildApiUrl(page);
         const response: any = await withCreds(url);
 
+        console.log("[INCIDENTES] /bff/incidentes response.raw:", response);
+
         if (!response?.success || !Array.isArray(response.data)) {
-          throw new Error((response as any)?.error || "Formato de respuesta inesperado");
+          throw new Error(
+            (response as any)?.error || "Formato de respuesta inesperado"
+          );
         }
 
-        const incidentIds = response.data.map((x: any) => Number(x.id)).filter(Boolean);
+        const incidentIds = response.data
+          .map((x: any) => Number(x.id))
+          .filter(Boolean);
+
         const detailsMap = await fetchIncidenteDetailsBulk(incidentIds);
+
+        console.log(
+          "[INCIDENTES] empresas desde /bff/incidentes (por incidente):",
+          response.data.map((incident: any) => {
+            const det = detailsMap[incident.id] || {};
+            const movDet = det.movimiento || {};
+            const mov = incident.movimiento || {};
+            return {
+              incidenteId: incident.id,
+              empresaId_mov: mov.empresaId,
+              empresa_mov: mov.empresa,
+              empresaId_detalle: movDet.empresaId,
+              empresa_detalle: movDet.empresa,
+            };
+          })
+        );
 
         const statusDisplayMap: Record<string, string> = {
           ABIERTO: "Activo",
@@ -294,28 +471,45 @@ export default function IncidenteController() {
           RESUELTO: "Resuelto",
         };
 
-        const enrichedIncidents: IncidenteRow[] = response.data.map((incident: any) => {
-          const details = detailsMap[incident.id] || {};
-          const movement = details.movimiento || incident.movimiento || {};
-          return {
-            id: incident.id,
-            empresa: movement?.empresa?.nombre ?? incident?.movimiento?.empresa?.nombre,
-            locomotora: movement?.locomotiveNumber ?? incident?.movimiento?.locomotiveNumber,
-            origen: movement?.viaOrigen?.nombre ?? incident?.movimiento?.viaOrigen?.nombre,
-            destino: movement?.viaDestino?.nombre ?? incident?.movimiento?.viaDestino?.nombre,
-            descripcion: details.descripcion ?? incident.descripcion,
-            fecha: incident.fechaInicio ? formatDate(incident.fechaInicio) : "—",
-            estatus: statusDisplayMap[incident.estado] || "Desconocido",
-            estadoRaw: incident.estado,
-            usuario: details?.usuario?.nombre ?? incident?.usuario?.nombre,
-            _original: { ...incident, _detalle: details },
-          };
-        });
+        const enrichedIncidents: IncidenteRow[] = response.data.map(
+          (incident: any) => {
+            const details = detailsMap[incident.id] || {};
+            const movement = details.movimiento || incident.movimiento || {};
+
+            return {
+              id: incident.id,
+              empresa:
+                movement?.empresa?.nombre ??
+                incident?.movimiento?.empresa?.nombre,
+              locomotora:
+                movement?.locomotiveNumber ??
+                incident?.movimiento?.locomotiveNumber,
+              origen:
+                movement?.viaOrigen?.nombre ??
+                incident?.movimiento?.viaOrigen?.nombre,
+              destino:
+                movement?.viaDestino?.nombre ??
+                incident?.movimiento?.viaDestino?.nombre,
+              descripcion: details.descripcion ?? incident.descripcion,
+              fecha: incident.fechaInicio
+                ? formatDate(incident.fechaInicio)
+                : "—",
+              estatus: statusDisplayMap[incident.estado] || "Desconocido",
+              estadoRaw: incident.estado,
+              usuario:
+                details?.usuario?.nombre ?? incident?.usuario?.nombre,
+              _original: { ...incident, _detalle: details },
+            };
+          }
+        );
 
         const filteredIncidents: IncidenteRow[] =
           activeTab === "Actuales"
             ? enrichedIncidents.filter((x) => x.estadoRaw === "ABIERTO")
-            : enrichedIncidents.filter((x) => x.estadoRaw === "CERRADO" || x.estadoRaw === "RESUELTO");
+            : enrichedIncidents.filter(
+                (x) =>
+                  x.estadoRaw === "CERRADO" || x.estadoRaw === "RESUELTO"
+              );
 
         setIncidentData({
           data: filteredIncidents,
@@ -330,7 +524,12 @@ export default function IncidenteController() {
           lastUpdated: new Date(),
         });
       } catch (error: any) {
-        setIncidentData((prev) => ({ ...prev, error: error?.message || "Error desconocido", data: [], loading: false }));
+        setIncidentData((prev) => ({
+          ...prev,
+          error: error?.message || "Error desconocido",
+          data: [],
+          loading: false,
+        }));
         showNotification("error", "Error al cargar incidentes");
       } finally {
         setUiState((prev) => ({ ...prev, refreshing: false }));
@@ -339,18 +538,23 @@ export default function IncidenteController() {
     [buildApiUrl, activeTab, showNotification]
   );
 
-  // (fix) arreglo del nombre mal escrito en la línea anterior
-  const enrichedIncents = undefined as never;
-
-  // Load data when filters change
+  /** Carga datos cuando cambian filtros / tab */
   useEffect(() => {
-    if (isClient && (!filters.empresaId || !filters.localidadId)) return;
+    if (isLimitedClientView && (!filters.empresaId || !filters.localidadId))
+      return;
+
     startTransition(() => {
       fetchIncidents(1);
     });
-  }, [isClient, filters.empresaId, filters.localidadId, activeTab, fetchIncidents]);
+  }, [
+    isLimitedClientView,
+    filters.empresaId,
+    filters.localidadId,
+    activeTab,
+    fetchIncidents,
+  ]);
 
-  // Auto-refresh
+  /** Auto-refresh */
   useEffect(() => {
     if (!uiState.autoRefresh) return;
     const id = setInterval(() => {
@@ -359,13 +563,25 @@ export default function IncidenteController() {
     return () => clearInterval(id);
   }, [uiState.autoRefresh, fetchIncidents, incidentData.meta.page]);
 
-  // Shortcuts
+  /** Handlers */
+  const handleRefresh = useCallback(() => {
+    setUiState((prev) => ({ ...prev, refreshing: true }));
+    fetchIncidents(incidentData.meta.page);
+  }, [fetchIncidents, incidentData.meta.page]);
+
+  /** Atajos de teclado (usa handleRefresh, por eso va después) */
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      if (
+        event.key === "/" &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey
+      ) {
         event.preventDefault();
         searchRef.current?.focus();
       }
+
       if (event.key.toLowerCase() === "r" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         handleRefresh();
@@ -373,7 +589,7 @@ export default function IncidenteController() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [incidentData.meta.page]);
+  }, [handleRefresh]);
 
   const handlePageChange = useCallback(
     (page: number) => {
@@ -383,40 +599,59 @@ export default function IncidenteController() {
     [fetchIncidents]
   );
 
-  const handleRefresh = useCallback(() => {
-    setUiState((prev) => ({ ...prev, refreshing: true }));
-    fetchIncidents(incidentData.meta.page);
-  }, [fetchIncidents, incidentData.meta.page]);
-
   const handleTabChange = useCallback((tab: Tab) => setActiveTab(tab), []);
-  const handleFilterChange = useCallback((filterKey: keyof FilterState, value: any) => {
-    setFilters((prev) => ({ ...prev, [filterKey]: value }));
-  }, []);
+
+  const handleFilterChange = useCallback(
+    (filterKey: keyof FilterState, value: any) => {
+      setFilters((prev) => ({ ...prev, [filterKey]: value }));
+    },
+    []
+  );
+
   const handleClearFilters = useCallback(() => {
-    setFilters((prev) => ({ ...prev, empresaId: null, localidadId: null }));
+    setFilters((prev) => ({
+      ...prev,
+      empresaId: null,
+      localidadId: null,
+    }));
   }, []);
 
   const handleIncidentSelect = useCallback((incident: any) => {
-    setUiState((prev) => ({ ...prev, selectedIncident: incident._original, blockerVisible: true }));
+    setUiState((prev) => ({
+      ...prev,
+      selectedIncident: incident._original,
+      blockerVisible: true,
+    }));
     setModalKey((k) => k + 1);
   }, []);
 
   const handleIncidentAction = useCallback(
     async (action: "resolve" | "skip", comments?: string) => {
       if (!uiState.selectedIncident) return;
+
       try {
-        setUiState((prev) => ({ ...prev, blockerVisible: false, selectedIncident: null }));
+        setUiState((prev) => ({
+          ...prev,
+          blockerVisible: false,
+          selectedIncident: null,
+        }));
         setModalKey((k) => k + 1);
 
         if (action === "resolve") {
           await withCreds(`${INCIDENTES}/${uiState.selectedIncident.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ estado: "RESUELTO", comentario: comments }),
+            body: JSON.stringify({
+              estado: "RESUELTO",
+              comentario: comments,
+            }),
           });
           showNotification("success", "Incidente resuelto correctamente");
         } else {
-          await withCreds(`${INCIDENTES}/${uiState.selectedIncident.id}/cerrar`, { method: "POST" });
+          await withCreds(
+            `${INCIDENTES}/${uiState.selectedIncident.id}/cerrar`,
+            { method: "POST" }
+          );
           showNotification("success", "Incidente cerrado");
         }
 
@@ -429,21 +664,33 @@ export default function IncidenteController() {
     [uiState.selectedIncident, fetchIncidents, incidentData.meta.page, showNotification]
   );
 
-  // Filter incidents locally by search query
+  /** Filtro local por búsqueda */
   const filteredIncidents = useMemo(() => {
     if (!filters.searchQuery.trim()) return incidentData.data;
     const searchTerm = filters.searchQuery.toLowerCase();
     return incidentData.data.filter((incident) =>
-      [incident.id, incident.fecha, incident.empresa, incident.origen, incident.destino, incident.locomotora, incident.estatus, incident.descripcion]
+      [
+        incident.id,
+        incident.fecha,
+        incident.empresa,
+        incident.origen,
+        incident.destino,
+        incident.locomotora,
+        incident.estatus,
+        incident.descripcion,
+      ]
         .map((v) => String(v ?? "").toLowerCase())
         .some((t) => t.includes(searchTerm))
     );
   }, [incidentData.data, filters.searchQuery]);
 
-  // Notification UI
   const renderNotification = () => {
     if (!notification.show) return null;
-    const iconMap = { success: CheckCircle, error: AlertCircle, info: AlertCircle };
+    const iconMap = {
+      success: CheckCircle,
+      error: AlertCircle,
+      info: AlertCircle,
+    };
     const colorMap = {
       success:
         "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-200",
@@ -453,37 +700,54 @@ export default function IncidenteController() {
         "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-950/40 dark:border-blue-800 dark:text-blue-200",
     } as const;
     const Icon = iconMap[notification.type];
+
     return (
-      <div className={`fixed top-4 right-4 z-50 flex items-center gap-3 rounded-xl border p-4 shadow-lg ${colorMap[notification.type]}`}>
+      <div
+        className={`fixed top-4 right-4 z-50 flex items-center gap-3 rounded-xl border p-4 shadow-lg ${colorMap[notification.type]}`}
+      >
         <Icon className="h-5 w-5" />
         <span className="font-medium">{notification.message}</span>
-        <button onClick={hideNotification} className="ml-2 rounded p-1 hover:bg-black/10 dark:hover:bg-white/10">
+        <button
+          onClick={hideNotification}
+          className="ml-2 rounded p-1 hover:bg-black/10 dark:hover:bg-white/10"
+        >
           <X className="h-4 w-4" />
         </button>
       </div>
     );
   };
 
-  const hasActiveFilters = filters.empresaId || filters.localidadId;
+  const hasActiveFilters = Boolean(filters.empresaId || filters.localidadId);
+
+  const totalActivos = incidentData.data.filter(
+    (i) => i.estadoRaw === "ABIERTO"
+  ).length;
+  const totalResueltos = incidentData.data.filter(
+    (i) => i.estadoRaw === "RESUELTO"
+  ).length;
+  const totalEmpresas = new Set(
+    incidentData.data.map((i) => i.empresa).filter(Boolean)
+  ).size;
 
   return (
-    <div className="min-h-dvh w-full flex flex-col bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950">
+    <div className="min-h-dvh w-full flex flex-col bg-slate-50 dark:bg-slate-950">
       {renderNotification()}
 
       {/* Top bar */}
-      <div className="sticky top-0 z-30 w-full border-b bg-white/95 dark:bg-slate-900/80 backdrop-blur-sm shadow-sm dark:border-slate-800">
+      <div className="sticky top-0 z-30 w-full border-b bg-white/95 dark:bg-slate-900/90 backdrop-blur-sm shadow-sm dark:border-slate-800">
         <div className="w-full px-3 sm:px-6 py-4">
-          <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            {/* Tabs + estado */}
             <div className="flex flex-wrap items-center gap-3">
               <div className="inline-flex overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800 p-1">
                 {tabs.map((tab) => (
                   <button
                     key={tab}
-                    onClick={() => setActiveTab(tab)}
+                    onClick={() => handleTabChange(tab)}
                     className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${
                       activeTab === tab
                         ? "bg-white text-emerald-700 shadow-sm dark:bg-slate-900 dark:text-emerald-300"
-                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-700/60"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-700/60"
                     }`}
                   >
                     {tab}
@@ -492,34 +756,46 @@ export default function IncidenteController() {
               </div>
 
               {hasActiveFilters && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200">
                   <SlidersHorizontal className="h-3.5 w-3.5" />
                   Filtros activos
                 </span>
               )}
 
+              {canSeeEverything && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  Vista global: todas las empresas y localidades
+                </span>
+              )}
+
               {incidentData.lastUpdated && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                   <Clock className="h-3.5 w-3.5" />
-                  {incidentData.lastUpdated.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+                  {incidentData.lastUpdated.toLocaleTimeString("es-ES", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </span>
               )}
 
               {uiState.refreshing && (
-                <span className="inline-flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-300">
+                <span className="inline-flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-300">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Actualizando...
                 </span>
               )}
             </div>
 
+            {/* Search + controles rápidos */}
             <div className="flex flex-wrap items-center gap-3">
               <div className="relative w-full xs:w-auto sm:w-72 md:w-80">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
                 <input
                   ref={searchRef}
                   value={filters.searchQuery}
-                  onChange={(e) => handleFilterChange("searchQuery", e.target.value)}
+                  onChange={(e) =>
+                    handleFilterChange("searchQuery", e.target.value)
+                  }
                   placeholder="Buscar incidentes... (/)"
                   className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-4 text-sm shadow-sm outline-none transition-colors
                              focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100
@@ -529,17 +805,26 @@ export default function IncidenteController() {
               </div>
 
               <button
-                onClick={() => setUiState((prev) => ({ ...prev, autoRefresh: !prev.autoRefresh }))}
+                onClick={() =>
+                  setUiState((prev) => ({
+                    ...prev,
+                    autoRefresh: !prev.autoRefresh,
+                  }))
+                }
                 className={`h-11 rounded-xl border px-4 text-sm font-semibold transition-colors
-                  ${uiState.autoRefresh
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200 dark:hover:bg-emerald-900/30"
-                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"}`}
+                  ${
+                    uiState.autoRefresh
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200 dark:hover:bg-emerald-900/30"
+                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                  }`}
                 aria-pressed={uiState.autoRefresh}
                 title="Auto refresh cada 30 segundos"
               >
                 <div className="inline-flex items-center gap-2">
-                  <SlidersHorizontal className="h-4 w-4" />
-                  <span className="hidden sm:inline">Auto</span>
+                  <Clock className="h-4 w-4" />
+                  <span className="hidden sm:inline">
+                    Auto {uiState.autoRefresh ? "ON" : "OFF"}
+                  </span>
                 </div>
               </button>
 
@@ -550,7 +835,11 @@ export default function IncidenteController() {
                 title="Actualizar (Ctrl/⌘+R)"
               >
                 <div className="inline-flex items-center gap-2">
-                  <RefreshCw className={`h-4 w-4 ${uiState.refreshing ? "animate-spin" : ""}`} />
+                  <RefreshCw
+                    className={`h-4 w-4 ${
+                      uiState.refreshing ? "animate-spin" : ""
+                    }`}
+                  />
                   <span className="hidden sm:inline">Actualizar</span>
                 </div>
               </button>
@@ -561,18 +850,29 @@ export default function IncidenteController() {
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {/* Empresa */}
             <div className="flex flex-col">
-              <label className="mb-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Empresa</label>
-              {isClient ? (
+              <label className="mb-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+                Empresa
+              </label>
+              {isLimitedClientView ? (
                 <div className="h-11 rounded-xl border border-slate-300 bg-slate-50 px-4 flex items-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                   <BriefcaseBusiness className="h-4 w-4 text-emerald-600 dark:text-emerald-300 mr-3 flex-shrink-0" />
                   <span className="truncate">
-                    {filters.empresaId ? catalogues.empresas.find((o) => o.id === filters.empresaId)?.nombre || `Empresa #${filters.empresaId}` : "Todas las empresas"}
+                    {filters.empresaId
+                      ? catalogues.empresas.find(
+                          (o) => o.id === filters.empresaId
+                        )?.nombre || `Empresa #${filters.empresaId}`
+                      : "Todas las empresas"}
                   </span>
                 </div>
               ) : (
                 <select
                   value={filters.empresaId ?? ""}
-                  onChange={(e) => handleFilterChange("empresaId", e.target.value === "" ? null : Number(e.target.value))}
+                  onChange={(e) =>
+                    handleFilterChange(
+                      "empresaId",
+                      e.target.value === "" ? null : Number(e.target.value)
+                    )
+                  }
                   className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm shadow-sm outline-none transition-colors
                              focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100
                              dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-emerald-900/40"
@@ -590,18 +890,29 @@ export default function IncidenteController() {
 
             {/* Localidad */}
             <div className="flex flex-col">
-              <label className="mb-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Localidad</label>
-              {isClient ? (
+              <label className="mb-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+                Localidad
+              </label>
+              {isLimitedClientView ? (
                 <div className="h-11 rounded-xl border border-slate-300 bg-slate-50 px-4 flex items-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                   <MapPin className="h-4 w-4 text-emerald-600 dark:text-emerald-300 mr-3 flex-shrink-0" />
                   <span className="truncate">
-                    {filters.localidadId ? catalogues.localidades.find((o) => o.id === filters.localidadId)?.nombre || `Localidad #${filters.localidadId}` : "Todas las localidades"}
+                    {filters.localidadId
+                      ? catalogues.localidades.find(
+                          (o) => o.id === filters.localidadId
+                        )?.nombre || `Localidad #${filters.localidadId}`
+                      : "Todas las localidades"}
                   </span>
                 </div>
               ) : (
                 <select
                   value={filters.localidadId ?? ""}
-                  onChange={(e) => handleFilterChange("localidadId", e.target.value === "" ? null : Number(e.target.value))}
+                  onChange={(e) =>
+                    handleFilterChange(
+                      "localidadId",
+                      e.target.value === "" ? null : Number(e.target.value)
+                    )
+                  }
                   className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm shadow-sm outline-none transition-colors
                              focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100
                              dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-emerald-900/40"
@@ -617,7 +928,7 @@ export default function IncidenteController() {
               )}
             </div>
 
-            {!isClient && (filters.empresaId || filters.localidadId) && (
+            {!isLimitedClientView && hasActiveFilters && (
               <div className="flex flex-col justify-end">
                 <button
                   onClick={handleClearFilters}
@@ -633,18 +944,27 @@ export default function IncidenteController() {
       </div>
 
       {/* Main */}
-      <div className="flex-1 w-full px-3 sm:px-6 py-6">
+      <div className="flex-1 w-full px-3 sm:px-6 py-6 space-y-6">
         {incidentData.error ? (
           <div className="flex flex-col items-center justify-center gap-6 rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-rose-100 p-8 text-center dark:border-rose-900 dark:from-rose-950/40 dark:to-transparent">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-rose-100 dark:bg-rose-900/40">
               <AlertTriangle className="h-8 w-8 text-rose-600 dark:text-rose-300" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-rose-800 dark:text-rose-200 mb-2">Error de conectividad</h3>
-              <p className="text-rose-600 dark:text-rose-300 mb-4 max-w-md">No se pudieron cargar los incidentes. Verifique su conexión e intente nuevamente.</p>
+              <h3 className="text-lg font-bold text-rose-800 dark:text-rose-200 mb-2">
+                Error de conectividad
+              </h3>
+              <p className="text-rose-600 dark:text-rose-300 mb-4 max-w-md">
+                No se pudieron cargar los incidentes. Verifica tu conexión e
+                intenta nuevamente.
+              </p>
               <details className="text-left">
-                <summary className="cursor-pointer text-sm text-rose-500 hover:text-rose-600 dark:text-rose-300 dark:hover:text-rose-200 mb-2">Ver detalles técnicos</summary>
-                <pre className="text-xs bg-rose-50 dark:bg-rose-950/30 p-3 rounded-lg overflow-auto max-h-32 text-rose-700 dark:text-rose-200">{prettyError(incidentData.error)}</pre>
+                <summary className="cursor-pointer text-sm text-rose-500 hover:text-rose-600 dark:text-rose-300 dark:hover:text-rose-200 mb-2">
+                  Ver detalles técnicos
+                </summary>
+                <pre className="text-xs bg-rose-50 dark:bg-rose-950/30 p-3 rounded-lg overflow-auto max-h-32 text-rose-700 dark:text-rose-200">
+                  {prettyError(incidentData.error)}
+                </pre>
               </details>
             </div>
             <button
@@ -652,17 +972,23 @@ export default function IncidenteController() {
               disabled={incidentData.loading}
               className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors dark:bg-emerald-700 dark:hover:bg-emerald-600"
             >
-              {incidentData.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {incidentData.loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
               Reintentar
             </button>
           </div>
         ) : (
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden relative dark:border-slate-700 dark:bg-slate-900">
             {(incidentData.loading || isPending) && (
-              <div className="absolute inset-0 bg-white/80 dark:bg-slate-900/70 backdrop-blur-sm z-10 flex items-center justify-center">
+              <div className="absolute inset-0 bg-white/75 dark:bg-slate-900/70 backdrop-blur-[1px] z-10 flex items-center justify-center">
                 <div className="flex flex-col items-center gap-3">
-                  <Loader2 className="h-8 w-8 animate-spin text-emerald-600 dark:text-emerald-300" />
-                  <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Cargando incidentes...</span>
+                  <Loader2 className="h-7 w-7 animate-spin text-emerald-600 dark:text-emerald-300" />
+                  <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                    Cargando incidentes...
+                  </span>
                 </div>
               </div>
             )}
@@ -673,7 +999,9 @@ export default function IncidenteController() {
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                       {filteredIncidents.length === incidentData.data.length
-                        ? `${incidentData.data.length} incidente${incidentData.data.length !== 1 ? "s" : ""}`
+                        ? `${incidentData.data.length} incidente${
+                            incidentData.data.length !== 1 ? "s" : ""
+                          }`
                         : `${filteredIncidents.length} de ${incidentData.data.length} incidentes`}
                     </span>
                     {filters.searchQuery && (
@@ -685,7 +1013,9 @@ export default function IncidenteController() {
                   </div>
                   {incidentData.meta.total && (
                     <span className="text-xs text-slate-500 dark:text-slate-400">
-                      Página {incidentData.meta.page} de {incidentData.meta.totalPages} ({incidentData.meta.total} total)
+                      Página {incidentData.meta.page} de{" "}
+                      {incidentData.meta.totalPages} ({incidentData.meta.total}{" "}
+                      total)
                     </span>
                   )}
                 </div>
@@ -702,20 +1032,29 @@ export default function IncidenteController() {
                   onPageChange={handlePageChange}
                   onRefresh={handleRefresh}
                   refreshing={uiState.refreshing}
-                  emptyStateText={activeTab === "Actuales" ? "No hay incidentes activos en este momento" : "No hay incidentes pasados registrados"}
+                  emptyStateText={
+                    activeTab === "Actuales"
+                      ? "No hay incidentes activos en este momento"
+                      : "No hay incidentes pasados registrados"
+                  }
                 />
               </div>
             </div>
           </div>
         )}
 
+        {/* Resumen rápido */}
         {incidentData.data.length > 0 && !incidentData.error && (
-          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="rounded-xl bg-white border border-slate-200 p-4 dark:bg-slate-900 dark:border-slate-700">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Total</p>
-                  <p className="text-2xl font-bold text-slate-900 dark:text-white">{incidentData.data.length}</p>
+                  <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+                    Total visibles
+                  </p>
+                  <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                    {incidentData.data.length}
+                  </p>
                 </div>
                 <div className="h-10 w-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
                   <AlertTriangle className="h-5 w-5 text-slate-600 dark:text-slate-300" />
@@ -726,9 +1065,11 @@ export default function IncidenteController() {
             <div className="rounded-xl bg-white border border-slate-200 p-4 dark:bg-slate-900 dark:border-slate-700">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-bold text-emerald-600 dark:text-emerald-300 uppercase tracking-wide">Activos</p>
+                  <p className="text-xs font-bold text-emerald-600 dark:text-emerald-300 uppercase tracking-wide">
+                    Activos
+                  </p>
                   <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
-                    {incidentData.data.filter((i) => i.estadoRaw === "ABIERTO").length}
+                    {totalActivos}
                   </p>
                 </div>
                 <div className="h-10 w-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
@@ -740,9 +1081,11 @@ export default function IncidenteController() {
             <div className="rounded-xl bg-white border border-slate-200 p-4 dark:bg-slate-900 dark:border-slate-700">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-bold text-blue-600 dark:text-blue-300 uppercase tracking-wide">Resueltos</p>
+                  <p className="text-xs font-bold text-blue-600 dark:text-blue-300 uppercase tracking-wide">
+                    Resueltos
+                  </p>
                   <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">
-                    {incidentData.data.filter((i) => i.estadoRaw === "RESUELTO").length}
+                    {totalResueltos}
                   </p>
                 </div>
                 <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
@@ -754,9 +1097,11 @@ export default function IncidenteController() {
             <div className="rounded-xl bg-white border border-slate-200 p-4 dark:bg-slate-900 dark:border-slate-700">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Empresas</p>
+                  <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+                    Empresas en vista
+                  </p>
                   <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                    {new Set(incidentData.data.map((i) => i.empresa).filter(Boolean)).size}
+                    {totalEmpresas}
                   </p>
                 </div>
                 <div className="h-10 w-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
@@ -768,6 +1113,7 @@ export default function IncidenteController() {
         )}
       </div>
 
+      {/* Bloqueador inteligente */}
       {uiState.blockerVisible && uiState.selectedIncident && (
         <SmartIncidentBlocker
           key={`${uiState.selectedIncident.id}-${modalKey}`}
@@ -775,7 +1121,11 @@ export default function IncidenteController() {
           operatorComment={uiState.selectedIncident.operadorComentario}
           onResolve={(comments) => handleIncidentAction("resolve", comments)}
           onContinue={() => {
-            setUiState((prev) => ({ ...prev, blockerVisible: false, selectedIncident: null }));
+            setUiState((prev) => ({
+              ...prev,
+              blockerVisible: false,
+              selectedIncident: null,
+            }));
             setModalKey((k) => k + 1);
           }}
           onSkip={() => handleIncidentAction("skip")}

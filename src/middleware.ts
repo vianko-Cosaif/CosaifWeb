@@ -10,12 +10,10 @@ const HOME: Record<string, string> = {
 };
 // reglas por ruta
 const RULES: [RegExp, string[]][] = [
-  [/^\/cliente(\/|$)/i, ["CLIENTE", "ADMINISTRADOR", "SUPERVISOR"]],
-  [/^\/supervisor(\/|$)/i, ["SUPERVISOR", "ADMINISTRADOR"]],
-  [/^\/maquinista(\/|$)/i, ["MAQUINISTA", "ADMINISTRADOR"]],
-  [/^\/operador(\/|$)/i, ["OPERADOR", "ADMINISTRADOR"]],
-  [/^\/admin(\/|$)/i, ["ADMINISTRADOR"]],
-  [/^\/coordinador(\/|$)/i, ["COORDINADOR", "ADMINISTRADOR"]],
+  [/^\/cliente(\/|$)/i, ["CLIENTE"]],
+  [/^\/supervisor(\/|$)/i, ["SUPERVISOR"]],
+  [/^\/administrador(\/|$)/i, ["ADMINISTRADOR"]],
+  [/^\/coordinador(\/|$)/i, ["COORDINADOR"]],
 ];
 
 export function middleware(req: NextRequest) {
@@ -45,12 +43,21 @@ export function middleware(req: NextRequest) {
     }
   }
 
-  // ya logueado y entra a / -> mándalo a su home
   if (pathname === "/") {
     const url = new URL(HOME[role] ?? "/cliente", req.url);
     return NextResponse.redirect(url);
-  }
 
+  }if(pathname === "/"){
+    const url = new URL (HOME [role] ?? "/supervisor", req.url);
+    return NextResponse.redirect (url);
+  }if(pathname === "/"){
+    const url = new URL (HOME [role] ?? "/administrador", req.url);
+    return NextResponse.redirect (url);
+
+  } if (pathname === "/") { 
+    const url = new  URL  (HOME [role] ?? "/coordinador", req.url);
+    return NextResponse.redirect (url);
+  } 
   return NextResponse.next();
 }
 

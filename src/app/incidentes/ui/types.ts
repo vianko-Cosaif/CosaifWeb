@@ -20,4 +20,4 @@ export type Meta = {
   totalPages: number;
 };
 
-export type Role = "ADMIN" | "COOORDINADOR" | "CLIENTE" | "SUPERVISOR";
+export type Role = "CLIENTE" | "ADMINISTRADOR" | "SUPERVISOR" | "COORDINADOR";
