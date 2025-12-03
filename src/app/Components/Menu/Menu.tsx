@@ -398,29 +398,17 @@ export default function SidebarMenu({
           label: "Usuarios",
           href: `${BASE}/usuarios`,
           icon: <Users className="h-5 w-5" />,
-          show: normRol !== "CLIENTE",
+          show: normRol !== "CLIENTE" && normRol !=="SUPERVISOR",
         },
-        {
-          id: "Localidad",
-          label: "Localidad y Vías",
-          href: `${BASE}/localidad`,
-          icon: <MapPinned className="h-5 w-5" />,
-          show: normRol !== "CLIENTE",
-        },
+     
         {
           id: "Incidente",
           label: "Registro de Incidentes",
-          href: `/incidentes`,
+          href: `${BASE}/incidentes`,
           icon: <TriangleAlert className="h-5 w-5" />,
           show: true,
         },
-        {
-          id: "Terminal",
-          label: "Terminal",
-          href: `${BASE}/terminal`,
-          icon: <Terminal className="h-5 w-5" />,
-          show: normRol !== "CLIENTE",
-        },
+   
       ]
         .filter((i) => i.show)
         .map((it) => ({

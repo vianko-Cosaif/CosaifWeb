@@ -16,7 +16,7 @@ export default async function Page() {
     null;
 
   if (empIdCookie == null) {
-    redirect("/login?loc=supervisor");
+    redirect("/login");
   }
 
   return (
@@ -26,7 +26,7 @@ export default async function Page() {
       <div className="mx-auto w-full max-w-5xl px-3 sm:px-4 lg:px-6">
         <MovimientosPanel
           apiBase="/bff"
-          rol="SUPERVISOR"
+          rol="COORDINADOR"
           empresaIdUsuario={empIdCookie}
           puedeCrear
           intervaloAutoMs={15000}

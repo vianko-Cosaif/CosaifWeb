@@ -464,5 +464,5 @@ function RolePill({
         R === "CLIENTE" || R === "SUPERVISOR" ? " y localidad" : ""
       }`;
 
-  return <span className={`${base} ${classes}`}>{text}</span>;
+  return ;
 }
