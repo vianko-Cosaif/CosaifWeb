@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
   CalendarDays,
@@ -11,6 +12,20 @@ import {
   ChevronDown,
 } from "lucide-react";
 
+/**
+ * ✅ Next.js App Router:
+ * page.tsx NO puede exportar por default un componente con props custom.
+ * Por eso exportamos Page() y adentro montamos ReporteriaClient.
+ */
+export default function Page() {
+  // Si luego quieres meter ids reales, aquí los sacas de donde sea (cookies, store, etc.)
+  return (
+    <div className="w-full">
+      <ReporteriaClient apiBase="/bff" empresaIdUsuario={null} localidadIdUsuario={null} />
+    </div>
+  );
+}
+
 type PeriodoUI = "dia" | "semana" | "mes" | "bimestre" | "semestre" | "anual";
 type PeriodoBack = "DIA" | "SEMANA" | "MES" | "BIMESTRE" | "SEMESTRE" | "ANUAL";
 
@@ -18,7 +33,7 @@ type Card = {
   id: PeriodoUI;
   title: string;
   desc: string;
-  icon: any;
+  icon: LucideIcon;
   backPeriodo: PeriodoBack;
 };
 
@@ -31,7 +46,7 @@ function todayISO() {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-function clampInt(v: any, min: number, max: number) {
+function clampInt(v: unknown, min: number, max: number) {
   const x = Number.parseInt(String(v), 10);
   if (!Number.isFinite(x)) return min;
   return Math.min(max, Math.max(min, x));
@@ -59,7 +74,7 @@ function buildAnchorFecha(params: {
 
   if (periodo === "dia") return params.diaISO;
 
-  // SEMANA: el backend calcula el rango usando la fecha ancla. Nosotros solo mandamos YYYY-MM-DD.
+  // SEMANA: backend arma el rango con esta fecha ancla
   if (periodo === "semana") return params.semanaISO;
 
   if (periodo === "mes") return `${params.mesYM}-01`;
@@ -88,6 +103,7 @@ function buildFileName(periodo: PeriodoBack, fecha: string) {
 function parseContentDispositionFilename(cd: string | null) {
   if (!cd) return null;
 
+  // filename*=UTF-8''...
   const star = cd.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
   if (star?.[1]) {
     try {
@@ -97,6 +113,7 @@ function parseContentDispositionFilename(cd: string | null) {
     }
   }
 
+  // filename="..."
   const plain = cd.match(/filename\s*=\s*"?([^"]+)"?/i);
   if (plain?.[1]) return plain[1];
 
@@ -130,7 +147,7 @@ function withQs(url: string, qs: URLSearchParams) {
   return `${url}${sep}${qs.toString()}`;
 }
 
-export default function ReporteriaClient({
+function ReporteriaClient({
   apiBase = "/bff",
   empresaIdUsuario = null,
   localidadIdUsuario = null,
@@ -209,7 +226,6 @@ export default function ReporteriaClient({
 
   const [anio, setAnio] = useState<number>(thisYear);
 
-  // Estado UX
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
@@ -284,13 +300,15 @@ export default function ReporteriaClient({
         qs.set("localidadId", String(localidadIdUsuario));
       }
 
-      // Tu error real fue de RUTA. Así que el front prueba las rutas más comunes.
+      // Front “inteligente”: prueba rutas típicas (porque ya te pegó 404).
       const candidates = [
         `${apiBase}/reporteria/movimientos/pdf`,
         `${apiBase}/reporteria/pdf`,
+        `${apiBase}/reporteria/movimientos`, // por si lo montaron distinto
       ].map((u) => withQs(u, qs));
 
       let lastErr: any = null;
+
       for (const url of candidates) {
         try {
           const { blob, fileName } = await fetchPdf(url);
@@ -409,7 +427,7 @@ export default function ReporteriaClient({
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
                       />
                       <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                        El backend toma esa fecha y arma el rango semanal. Tú solo le das el “punto de caída”.
+                        El backend toma esa fecha y arma el rango semanal.
                       </div>
                     </div>
                   )}
