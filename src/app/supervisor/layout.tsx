@@ -38,7 +38,7 @@ export default function SupervisorLayout({
                  dark:from-[#050014] dark:via-[#050018] dark:to-black"
     >
       {/* Sidebar fijo morado */}
-      <SidebarMenu rol={rol} defaultOpen />
+      <SidebarMenu  />
 
       {/* Grid de fondo con tono violeta */}
       <div
