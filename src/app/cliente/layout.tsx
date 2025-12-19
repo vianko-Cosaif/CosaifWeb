@@ -36,7 +36,7 @@ export default function ClienteLayout({ children }: { children: React.ReactNode 
   return (
     <div className="relative flex min-h-svh bg-gradient-to-b from-emerald-50 to-sky-50 dark:from-slate-900 dark:to-slate-950">
       {/* Sidebar fijo + spacer responsivo dentro del propio componente */}
-      <SidebarMenu rol={rol} defaultOpen />
+      <SidebarMenu />
 
       {/* Grid de fondo */}
       <div
