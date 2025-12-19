@@ -238,7 +238,7 @@ export default function RailQueueBoard({
             lavado: Boolean(mv?.lavado),
             torno: Boolean(mv?.torno),
             estado: mv?.estado ?? undefined,
-            prioridad: (mv?.prioridad as any) ?? undefined,
+            prioridad: mv?.prioridad === "BAJA" || mv?.prioridad === "ALTA" ? mv?.prioridad : undefined,
             locomotiveNumber: mv?.locomotiveNumber ?? mv?.locomotora ?? undefined,
             locomotora: mv?.locomotora ?? undefined,
             fechaSolicitud: mv?.fechaSolicitud,
@@ -255,7 +255,7 @@ export default function RailQueueBoard({
     } catch (err) {
       if (err instanceof Error && err.name !== 'AbortError') {
         console.error(err);
-      }
+      } 
     } finally {
       if (mySeq === reqSeq.current) {
         setLoading(false);
@@ -532,7 +532,7 @@ export default function RailQueueBoard({
                                 {inf?.movimiento?.instrucciones && (
                                    <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/20 p-2 rounded-lg">
                                       <p className="text-[10px] text-amber-800 dark:text-amber-500 italic">
-                                         "{inf.movimiento.instrucciones}"
+                                         {inf.movimiento.instrucciones}&quot;
                                       </p>
                                    </div>
                                 )}
