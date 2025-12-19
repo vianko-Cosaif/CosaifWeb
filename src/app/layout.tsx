@@ -18,11 +18,10 @@ export const viewport: Viewport = {
   ],
 };
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es" className={`${inter.variable} h-full`} suppressHydrationWarning>
+    <html lang="es" >
       <head>
         {/* Evita FOUC de tema antes de hidratar */}
         <script dangerouslySetInnerHTML={{ __html: initThemeSSRScript() }} />
