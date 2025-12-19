@@ -1,827 +1,338 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
-  Menu as MenuIcon,
+  Menu,
   Users,
-  MapPinned,
   TriangleAlert,
-  Terminal,
   Home,
   LogOut,
   Train,
   Building2,
   ShieldHalf,
   LayoutDashboard,
+  X,
+  ChevronLeft,
+  BarChart3,
 } from "lucide-react";
 
-/* ===== Tipos ===== */
+/* ==========================================================================
+   INTERFACES (Basadas en tu captura de LocalStorage)
+   ========================================================================== */
 export type Rol = "ADMINISTRADOR" | "COORDINADOR" | "SUPERVISOR" | "CLIENTE";
 
-type Theme = {
-  bg: string;
-  text: string;
-  accent: string;
-  border: string;
-  glass: string;
-  roleBg: string;
-  roleBorder: string;
-  roleText: string;
-};
-
-type SidebarCSSVars = React.CSSProperties & {
-  "--sb-bg": string;
-  "--sb-text": string;
-  "--sb-accent": string;
-  "--sb-border": string;
-  "--sb-glass": string;
-  "--sb-role-bg": string;
-  "--sb-role-border": string;
-  "--sb-role-text": string;
-  "--sbw-open": string;
-  "--sbw-collapsed": string;
-};
-
-export interface SidebarMenuProps {
-  rol?: Rol | string;
-  nombre?: string;
-  empresa?: string;
-  version?: string;
-  defaultOpen?: boolean;
-  expandedWidth?: number;
-  collapsedWidth?: number;
-  /** "auto" respeta el SO. No afecta nada fuera del sidebar. */
-  appearance?: "auto" | "light" | "dark";
-}
-
-/* ===== Helpers ===== */
-function getCookie(name: string): string {
-  if (typeof document === "undefined") return "";
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
-  return m ? decodeURIComponent(m[1]) : "";
-}
-
-/* ===== Tema por rol (light) ===== */
-const ROLE_THEME_LIGHT = {
-  ADMINISTRADOR: {
-    bg: "#0D2818",
-    text: "#E9F5ED",
-    accent: "#40916C",
-    border: "#1B4332",
-    glass: "rgba(255,255,255,0.06)",
-    roleBg: "rgba(64,145,108,0.15)",
-    roleBorder: "#2D6A4F",
-    roleText: "#74C69D",
-  },
-  COORDINADOR: {
-    bg: "#1E2B3A",
-    text: "#E0ECF7",
-    accent: "#36B4C6",
-    border: "#253648",
-    glass: "rgba(255,255,255,0.05)",
-    roleBg: "rgba(54,180,198,0.15)",
-    roleBorder: "#2a6f7f",
-    roleText: "#9adbe5",
-  },
-  SUPERVISOR: {
-    bg: "#232038",
-    text: "#ECE9FE",
-    accent: "#7C3AED",
-    border: "#2F2A4E",
-    glass: "rgba(255,255,255,0.06)",
-    roleBg: "rgba(124,58,237,0.15)",
-    roleBorder: "#5B21B6",
-    roleText: "#C4B5FD",
-  },
-  CLIENTE: {
-    bg: "#1E3B2E",
-    text: "#E0F5E9",
-    accent: "#4AC27D",
-    border: "#25483A",
-    glass: "rgba(255,255,255,0.05)",
-    roleBg: "rgba(74,194,125,0.15)",
-    roleBorder: "#2E6F53",
-    roleText: "#B7E4C7",
-  },
-} satisfies Record<Rol, Theme>;
-
-/* ===== Tema por rol (dark) ===== */
-const ROLE_THEME_DARK = {
-  ADMINISTRADOR: {
-    bg: "#0B2217",
-    text: "#E6F7EE",
-    accent: "#5ED3A5",
-    border: "#13432E",
-    glass: "rgba(255,255,255,0.08)",
-    roleBg: "rgba(94,211,165,0.16)",
-    roleBorder: "#1E5A40",
-    roleText: "#A6F0D3",
-  },
-  COORDINADOR: {
-    bg: "#0F1722",
-    text: "#E8F4FB",
-    accent: "#57D8E8",
-    border: "#1B2A3A",
-    glass: "rgba(255,255,255,0.08)",
-    roleBg: "rgba(57,216,232,0.16)",
-    roleBorder: "#2D7E90",
-    roleText: "#BCEFF6",
-  },
-  SUPERVISOR: {
-    bg: "#18132B",
-    text: "#EEE9FF",
-    accent: "#A78BFA",
-    border: "#241C43",
-    glass: "rgba(255,255,255,0.08)",
-    roleBg: "rgba(167,139,250,0.16)",
-    roleBorder: "#4C1D95",
-    roleText: "#DDD6FE",
-  },
-  CLIENTE: {
-    bg: "#0F241B",
-    text: "#E6F7EE",
-    accent: "#5ED3A5",
-    border: "#174635",
-    glass: "rgba(255,255,255,0.08)",
-    roleBg: "rgba(94,211,165,0.16)",
-    roleBorder: "#2B6E55",
-    roleText: "#BFF3DD",
-  },
-} satisfies Record<Rol, Theme>;
-
-/* Sin namespace JSX */
-const ROLE_ICON: Record<Rol, React.ReactNode> = {
-  ADMINISTRADOR: <ShieldHalf className="h-4 w-4" />,
-  COORDINADOR: <Train className="h-4 w-4" />,
-  SUPERVISOR: <Users className="h-4 w-4" />,
-  CLIENTE: <Building2 className="h-4 w-4" />,
-};
-
-/* ===== Normalizador ===== */
-function normalizeRole(r?: string): Rol {
-  const s = (r || "").toUpperCase().trim();
-  if (s === "ADMINISTRADOR" || s === "ADMIN") return "ADMINISTRADOR";
-  if (s === "COORDINADOR" || s === "COORDINADORES" || s === "COORD") return "COORDINADOR";
-  if (s === "SUPERVISOR" || s === "SUPERVISORES" || s === "SUP") return "SUPERVISOR";
-  return "CLIENTE";
-}
-
-/* ===== Utils ===== */
-function useMediaQuery(q: string) {
-  const [ok, setOk] = useState(false);
-  useEffect(() => {
-    const m = window.matchMedia(q);
-    const on = () => setOk(m.matches);
-    on();
-    m.addEventListener("change", on);
-    return () => m.removeEventListener("change", on);
-  }, [q]);
-  return ok;
-}
-function usePrefersDark() {
-  return useMediaQuery("(prefers-color-scheme: dark)");
-}
-function useBodyScrollLock(lock: boolean) {
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    if (lock) document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [lock]);
-}
-function useLocalStorageBool(key: string, initial = true) {
-  const [v, setV] = useState(initial);
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw !== null) setV(raw === "1");
-    } catch {}
-  }, [key]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(key, v ? "1" : "0");
-    } catch {}
-  }, [key, v]);
-  return [v, setV] as const;
-}
-function initialsFrom(name?: string) {
-  const n = (name || "?").trim();
-  return (
-    n
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((s) => s[0]?.toUpperCase())
-      .slice(0, 2)
-      .join("") || "?"
-  );
-}
-function broadcastLogout() {
-  try {
-    const k = "auth:logout";
-    localStorage.setItem(k, String(Date.now()));
-    setTimeout(() => {
-      try {
-        localStorage.removeItem(k);
-      } catch {}
-    }, 500);
-  } catch {}
-}
-function deleteClientCookies(names: string[]) {
-  try {
-    const host = location.hostname;
-    const parts = host.split(".");
-    const domains = new Set<string>([host]);
-    for (let i = 0; i < parts.length - 1; i++) domains.add("." + parts.slice(i).join("."));
-    const paths = ["/", "/cliente", "/administrador", "/coordinador", "/supervisor", "/operador", "/maquinista"];
-    names.forEach((name) => {
-      document.cookie = `${name}=; Max-Age=0; path=/;`;
-      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;`;
-      domains.forEach((d) =>
-        paths.forEach(
-          (p) => (document.cookie = `${name}=; Max-Age=0; path=${p}; domain=${d}`)
-        )
-      );
-    });
-  } catch {}
-}
-
-/* Lee localStorage.theme = "light" | "dark" | "system" y reacciona a cambios */
-function useThemePref(key: string = "theme") {
-  type Pref = "light" | "dark" | "system";
-  const read = (): Pref | null => {
-    try {
-      const v = localStorage.getItem(key);
-      return v === "light" || v === "dark" || v === "system" ? v : null;
-    } catch {
-      return null;
-    }
+interface UserSession {
+  id: number;
+  rol: Rol | string;
+  nombre: string;
+  empresaId: number;
+  empresa: {
+    id: number;
+    nombre: string;
   };
-  const [pref, setPref] = React.useState<Pref | null>(read);
-
-  useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === key) setPref(read());
-    };
-    window.addEventListener("storage", onStorage);
-    const i = window.setInterval(() => setPref((p) => {
-      const r = read();
-      return r !== p ? r : p;
-    }), 300);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      clearInterval(i);
-    };
-  }, [key]);
-
-  return pref;
 }
 
-/* Sigue la clase <html class="dark"> si existe */
-function useDarkFromClass(cls = "dark") {
-  const [isDark, set] = useState<boolean>(
-    () =>
-      typeof document !== "undefined" &&
-      document.documentElement.classList.contains(cls)
-  );
-  useEffect(() => {
-    const el = document.documentElement;
-    const update = () => set(el.classList.contains(cls));
-    update();
-    const obs = new MutationObserver(update);
-    obs.observe(el, { attributes: true, attributeFilter: ["class"] });
-    return () => obs.disconnect();
-  }, [cls]);
-  return isDark;
-}
+const THEMES: Record<"light" | "dark", Record<Rol, any>> = {
+  light: {
+    ADMINISTRADOR: {
+      bg: "#0D2818",
+      text: "#E9F5ED",
+      accent: "#40916C",
+      border: "#1B4332",
+      roleBg: "rgba(64,145,108,0.15)",
+      roleText: "#74C69D",
+      roleBorder: "rgba(64,145,108,0.25)",
+    },
+    COORDINADOR: {
+      bg: "#1E2B3A",
+      text: "#E0ECF7",
+      accent: "#36B4C6",
+      border: "#253648",
+      roleBg: "rgba(54,180,198,0.15)",
+      roleText: "#9adbe5",
+      roleBorder: "rgba(54,180,198,0.25)",
+    },
+    SUPERVISOR: {
+      bg: "#232038",
+      text: "#ECE9FE",
+      accent: "#7C3AED",
+      border: "#2F2A4E",
+      roleBg: "rgba(124,58,237,0.15)",
+      roleText: "#C4B5FD",
+      roleBorder: "rgba(124,58,237,0.25)",
+    },
+    CLIENTE: {
+      bg: "#1E3B2E",
+      text: "#E0F5E9",
+      accent: "#4AC27D",
+      border: "#25483A",
+      roleBg: "rgba(74,194,125,0.15)",
+      roleText: "#B7E4C7",
+      roleBorder: "rgba(74,194,125,0.25)",
+    },
+  },
+  dark: {
+    ADMINISTRADOR: {
+      bg: "#0B2217",
+      text: "#E6F7EE",
+      accent: "#5ED3A5",
+      border: "#13432E",
+      roleBg: "rgba(94,211,165,0.16)",
+      roleText: "#A6F0D3",
+      roleBorder: "rgba(94,211,165,0.28)",
+    },
+    COORDINADOR: {
+      bg: "#0F1722",
+      text: "#E8F4FB",
+      accent: "#57D8E8",
+      border: "#1B2A3A",
+      roleBg: "rgba(87,216,232,0.16)",
+      roleText: "#BCEFF6",
+      roleBorder: "rgba(87,216,232,0.28)",
+    },
+    SUPERVISOR: {
+      bg: "#18132B",
+      text: "#EEE9FF",
+      accent: "#A78BFA",
+      border: "#241C43",
+      roleBg: "rgba(167,139,250,0.16)",
+      roleText: "#DDD6FE",
+      roleBorder: "rgba(167,139,250,0.28)",
+    },
+    CLIENTE: {
+      bg: "#0F241B",
+      text: "#E6F7EE",
+      accent: "#5ED3A5",
+      border: "#174635",
+      roleBg: "rgba(94,211,165,0.16)",
+      roleText: "#BFF3DD",
+      roleBorder: "rgba(94,211,165,0.28)",
+    },
+  },
+};
 
-/* ===== Componente ===== */
-export default function SidebarMenu({
-  rol,
-  nombre = "Usuario",
-  empresa = "Empresa",
-  version = "v1.2.0",
-  defaultOpen = true,
-  expandedWidth = 300,
-  collapsedWidth = 76,
-  appearance = "auto",
-}: SidebarMenuProps) {
+const ROLE_ICONS: Record<Rol, any> = {
+  ADMINISTRADOR: ShieldHalf,
+  COORDINADOR: Train,
+  SUPERVISOR: Users,
+  CLIENTE: Building2,
+};
+
+export default function SidebarMenu({ version = "v1.2.0" }: { version?: string }) {
   const router = useRouter();
   const pathname = usePathname();
-  const isDesktop = useMediaQuery("(min-width: 768px)");
-  const prefersDark = usePrefersDark();
-  const classDark = useDarkFromClass("dark");
-  const themePref = useThemePref("theme");
 
-  // Prioridad: prop explícita > localStorage.theme > .dark global > SO
-  const isDark =
-    appearance === "dark"
-      ? true
-      : appearance === "light"
-      ? false
-      : themePref === "dark"
-      ? true
-      : themePref === "light"
-      ? false
-      : themePref === "system"
-      ? prefersDark
-      : classDark ?? prefersDark;
-
-  const [open, setOpen] = useLocalStorageBool("sidebar:open", defaultOpen);
+  const [isOpen, setIsOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
+  const [session, setSession] = useState<UserSession | null>(null);
+  const [isDark, setIsDark] = useState(false);
 
-  useBodyScrollLock(mobileOpen && !isDesktop);
-
-  // Detecta rol: prop -> cookie -> localStorage.user.rol
-  const cookieRole = useMemo(() => getCookie("role"), []);
-  const localRole = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem("user") || "{}")?.rol as
-        | string
-        | undefined;
-    } catch {
-      return undefined;
+  useEffect(() => {
+    const rawUser = localStorage.getItem("user");
+    if (rawUser) {
+      try {
+        setSession(JSON.parse(rawUser));
+      } catch (e) {
+        console.error(e);
+      }
     }
+
+    const rawTheme = localStorage.getItem("theme");
+    setIsDark(rawTheme === "dark" || document.documentElement.classList.contains("dark"));
   }, []);
-  const normRol = useMemo<Rol>(
-    () => normalizeRole((rol as string) || cookieRole || localRole),
-    [rol, cookieRole, localRole]
-  );
 
-  const theme: Theme = useMemo(
-    () => (isDark ? ROLE_THEME_DARK[normRol] : ROLE_THEME_LIGHT[normRol]),
-    [normRol, isDark]
-  );
+  const normRol = useMemo<Rol>(() => {
+    const r = String(session?.rol || "").toUpperCase();
+    if (r.includes("ADMIN")) return "ADMINISTRADOR";
+    if (r.includes("COORD")) return "COORDINADOR";
+    if (r.includes("SUP")) return "SUPERVISOR";
+    return "CLIENTE";
+  }, [session]);
 
-  const openW = useMemo(
-    () => Math.round(Math.min(Math.max(expandedWidth, 240), 420)),
-    [expandedWidth]
-  );
-  const colW = useMemo(
-    () => Math.round(Math.min(Math.max(collapsedWidth, 64), 104)),
-    [collapsedWidth]
-  );
+  const theme = isDark ? THEMES.dark[normRol] : THEMES.light[normRol];
+  const RoleIcon = ROLE_ICONS[normRol] || Users;
 
-  const asideId = "sidebar-mobile";
+  const base = useMemo(() => `/${normRol.toLowerCase()}`, [normRol]);
 
-  // Base por rol
-  const BASE_BY_ROLE: Record<Rol, string> = {
-    CLIENTE: "/cliente",
-    COORDINADOR: "/coordinador",
-    SUPERVISOR: "/supervisor",
-    ADMINISTRADOR: "/administrador",
-  };
-  const BASE = BASE_BY_ROLE[normRol];
+  const navigation = useMemo(() => {
+    return [
+      { id: "dash", label: "Dashboard", href: base, icon: LayoutDashboard },
+      { id: "movs", label: "Movimientos", href: `${base}/movimientos`, icon: Train },
+      {
+        id: "users",
+        label: "Gestión Usuarios",
+        href: `${base}/usuarios`,
+        hide: ["CLIENTE", "SUPERVISOR"].includes(normRol),
+        icon: Users,
+      },
+      { id: "inc", label: "Incidentes", href: `${base}/incidentes`, icon: TriangleAlert },
 
-  const NAV = useMemo(
-    () =>
-      [
-        {
-          id: "Panel",
-          label: "Panel",
-          href: BASE,
-          icon: <LayoutDashboard className="h-5 w-5" />,
-          show: true,
-          exact: true,
-        },
-        {
-          id: "Movimientos",
-          label: "Movimientos",
-          href: `${BASE}/movimientos`,
-          icon: <Train className="h-5 w-5" />,
-          show: true,
-        },
-        {
-          id: "Usuario",
-          label: "Usuarios",
-          href: `${BASE}/usuarios`,
-          icon: <Users className="h-5 w-5" />,
-          show: normRol !== "CLIENTE" && normRol !=="SUPERVISOR",
-        },
-     
-        {
-          id: "Incidente",
-          label: "Registro de Incidentes",
-          href: `${BASE}/incidentes`,
-          icon: <TriangleAlert className="h-5 w-5" />,
-          show: true,
-        },
-   
-      ]
-        .filter((i) => i.show)
-        .map((it) => ({
-          ...it,
-          isActive: it.exact ? pathname === it.href : pathname.startsWith(it.href),
-        })),
-    [normRol, pathname, BASE]
-  );
+      // ✅ SOLO UNA OPCIÓN NUEVA (sin submenú): Reportería (Admin/Coord)
+      {
+        id: "reporteria",
+        label: "Reportería",
+        href: `${base}/reporteria`,
+        hide: !["ADMINISTRADOR", "COORDINADOR"].includes(normRol),
+        icon: BarChart3,
+      },
+    ].filter((i: any) => !i.hide);
+  }, [normRol, base]);
 
-  const vars: SidebarCSSVars = {
-    "--sb-bg": theme.bg,
-    "--sb-text": theme.text,
-    "--sb-accent": theme.accent,
-    "--sb-border": theme.border,
-    "--sb-glass": theme.glass,
-    "--sb-role-bg": theme.roleBg,
-    "--sb-role-border": theme.roleBorder,
-    "--sb-role-text": theme.roleText,
-    "--sbw-open": `${openW}px`,
-    "--sbw-collapsed": `${colW}px`,
-  };
+  if (!session) return null;
 
-  async function handleLogoutLocal() {
-    if (loggingOut) return;
-    setLoggingOut(true);
-    try {
-      try {
-        localStorage.removeItem("user");
-      } catch {}
-      try {
-        localStorage.removeItem("token");
-      } catch {}
-      try {
-        sessionStorage.clear();
-      } catch {}
-      deleteClientCookies(["auth", "role", "session", "token"]);
-      broadcastLogout();
-    } finally {
-      setMobileOpen(false);
-      try {
-        router.replace("/login");
-      } catch {}
-      setTimeout(() => {
-        if (location.pathname !== "/login") location.replace("/login");
-      }, 80);
-      setTimeout(() => setLoggingOut(false), 400);
-    }
-  }
+  const asideStyles = {
+    "--sb-bg": theme?.bg || "#1e293b",
+    "--sb-text": theme?.text || "#f8fafc",
+    "--sb-accent": theme?.accent || "#38bdf8",
+    "--sb-border": theme?.border || "rgba(255,255,255,0.1)",
+    "--sb-role-bg": theme?.roleBg || "rgba(255,255,255,0.1)",
+    "--sb-role-text": theme?.roleText || "#f8fafc",
+    "--sb-role-border": theme?.roleBorder || "rgba(255,255,255,0.18)",
+  } as React.CSSProperties;
 
-  useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === "auth:logout") router.replace("/login");
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, [router]);
-
-  /* ===== Desktop ===== */
-  const Desktop = (
-    <aside
-      data-appearance={isDark ? "dark" : "light"}
-      style={vars}
-      className="fixed left-0 top-0 z-40 hidden h-svh border-r md:flex"
-      aria-label="Barra lateral"
-    >
-      <div
-        className="flex h-full flex-col border-r text-[var(--sb-text)] shadow-xl"
-        style={{
-          width: open ? "var(--sbw-open)" : "var(--sbw-collapsed)",
-          background: "var(--sb-bg)",
-          borderColor: "var(--sb-border)",
-        }}
-      >
-        {/* Header */}
-        <div
-          className="flex items-center gap-2 border-b px-4 pt-6 pb-4"
-          style={{
-            borderColor: "var(--sb-border)",
-            paddingTop: "max(1rem, env(safe-area-inset-top))",
-          }}
-        >
-          <Home className="h-5 w-5" />
-          {open && (
-            <div className="min-w-0 flex-1">
-              <div className="font-semibold tracking-wide">COSAIF LOGISTICS</div>
-              <div className="text-xs opacity-70">Panel</div>
-            </div>
-          )}
-          <button
-            type="button"
-            aria-label={open ? "Colapsar menú" : "Expandir menú"}
-            aria-expanded={open}
-            onClick={() => setOpen((v) => !v)}
-            className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md border"
-            style={{
-              borderColor: "var(--sb-border)",
-              background: "var(--sb-glass)",
-              color: "var(--sb-text)",
-            }}
-          >
-            <MenuIcon className="h-4 w-4" />
-          </button>
-        </div>
-
-        {/* User */}
-        <div
-          className="flex items-center gap-3 border-b px-4 py-4"
-          style={{ borderColor: "var(--sb-border)" }}
-        >
-          <div
-            className="grid h-10 w-10 place-items-center rounded-full border-2 font-bold"
-            style={{
-              borderColor: "var(--sb-role-text)",
-              background: "var(--sb-accent)",
-              color: "var(--sb-bg)",
-            }}
-            aria-hidden="true"
-          >
-            {initialsFrom(nombre)}
-          </div>
-          {open && (
-            <div className="min-w-0">
-              <div className="truncate font-medium" title={nombre}>
-                {nombre}
-              </div>
-              <div className="truncate text-xs opacity-80" title={empresa}>
-                {empresa}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Rol */}
-        {open && (
-          <div
-            className="mx-4 mt-3 rounded-full border px-3 py-1 text-xs"
-            style={{
-              background: "var(--sb-role-bg)",
-              borderColor: "var(--sb-role-border)",
-              color: "var(--sb-role-text)",
-            }}
-          >
-            <span className="inline-flex items-center gap-2">
-              {ROLE_ICON[normRol]} {normRol}
-            </span>
-          </div>
-        )}
-
-        {/* Items */}
-        <nav
-          className="mt-3 flex-1 overflow-y-auto px-2"
-          role="navigation"
-          aria-label="Navegación principal"
-        >
-          {NAV.map((it) => (
-            <button
-              key={it.id}
-              type="button"
-              onClick={() => router.push(it.href)}
-              aria-current={it.isActive ? "page" : undefined}
-              className={[
-                "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors motion-safe:duration-200",
-                it.isActive
-                  ? "bg-white/10 ring-1 ring-inset ring-[var(--sb-accent)]"
-                  : "hover:bg-white/5",
-              ].join(" ")}
-              style={{ color: "var(--sb-text)" }}
-            >
-              <span className="shrink-0 opacity-90">{it.icon}</span>
-              {open && <span className="truncate">{it.label}</span>}
-            </button>
-          ))}
-        </nav>
-
-        {/* Footer */}
-        <div
-          className="mt-auto border-t px-3 py-4 text-xs opacity-80"
-          style={{
-            borderColor: "var(--sb-border)",
-            paddingBottom: "max(1rem, env(safe-area-inset-bottom))",
-          }}
-        >
-          {open ? (
-            <div className="flex items-center justify-between">
-              <span>{version}</span>
-              <button
-                type="button"
-                onClick={handleLogoutLocal}
-                disabled={loggingOut}
-                aria-busy={loggingOut}
-                className="inline-flex items-center gap-2 rounded-md border px-2 py-1 disabled:opacity-60"
-                style={{
-                  borderColor: "var(--sb-border)",
-                  background: "var(--sb-glass)",
-                  color: "var(--sb-text)",
-                }}
-              >
-                <LogOut className="h-4 w-4" />{" "}
-                {loggingOut ? "Saliendo…" : "Cerrar sesión"}
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center justify-center">
-              <button
-                type="button"
-                onClick={handleLogoutLocal}
-                disabled={loggingOut}
-                aria-busy={loggingOut}
-                className="inline-flex items-center justify-center rounded-md border p-2 disabled:opacity-60"
-                style={{
-                  borderColor: "var(--sb-border)",
-                  background: "var(--sb-glass)",
-                  color: "var(--sb-text)",
-                }}
-                title="Cerrar sesión"
-              >
-                <LogOut className="h-5 w-5" />
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </aside>
-  );
-
-  /* ===== Mobile ===== */
-  const closeBtnRef = useRef<HTMLButtonElement | null>(null);
-  useEffect(() => {
-    if (mobileOpen) closeBtnRef.current?.focus();
-  }, [mobileOpen]);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMobileOpen(false);
-    };
-    if (mobileOpen) window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [mobileOpen]);
-
-  const Mobile = (
+  return (
     <>
+      {/* TRIGGER MÓVIL */}
       <button
-        type="button"
-        aria-controls={asideId}
-        aria-expanded={mobileOpen}
         onClick={() => setMobileOpen(true)}
-        className="fixed left-3 top-[max(0.5rem,env(safe-area-inset-top))] z-30 inline-flex h-10 w-10 items-center justify-center rounded-md border shadow md:hidden"
-        style={{
-          background: "var(--sb-glass)",
-          color: "var(--sb-text)",
-          borderColor: "var(--sb-border)",
-        }}
+        className="fixed left-4 top-4 z-[60] flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-lg md:hidden dark:bg-slate-900 border border-slate-200 dark:border-slate-800"
       >
-        <MenuIcon className="h-5 w-5" />
-        <span className="sr-only">Abrir menú</span>
+        <Menu className="h-6 w-6 text-slate-600 dark:text-slate-300" />
       </button>
 
+      {/* OVERLAY MÓVIL */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
+          className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm md:hidden transition-opacity"
           onClick={() => setMobileOpen(false)}
-          aria-hidden="true"
         />
       )}
 
+      {/* SIDEBAR */}
       <aside
-        id={asideId}
-        data-appearance={isDark ? "dark" : "light"}
-        style={vars}
-        role="dialog"
-        aria-modal="true"
-        aria-hidden={!mobileOpen}
-        className={[
-          "fixed inset-y-0 left-0 z-50 md:hidden",
-          "text-[var(--sb-text)] shadow-2xl transition-transform motion-safe:duration-200 ease-out will-change-transform",
-          mobileOpen ? "translate-x-0" : "-translate-x-full",
-        ].join(" ")}
+        style={asideStyles}
+        className={`
+          fixed inset-y-0 left-0 z-[100] flex flex-col border-r border-[var(--sb-border)] bg-[var(--sb-bg)] text-[var(--sb-text)]
+          transition-all duration-300 ease-in-out
+          ${mobileOpen ? "translate-x-0 w-[min(85vw,320px)] shadow-2xl" : "-translate-x-full md:translate-x-0"}
+          ${!mobileOpen && (isOpen ? "md:w-[280px]" : "md:w-[88px]")}
+        `}
       >
+        {/* HEADER */}
+        <div className="flex h-20 items-center justify-between px-6 shrink-0">
+          <div className={`flex items-center gap-3 ${(isOpen || mobileOpen) ? "" : "mx-auto"}`}>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--sb-accent)] text-white shadow-lg">
+              <Home className="h-5 w-5" />
+            </div>
+
+            {(isOpen || mobileOpen) && (
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold uppercase tracking-widest opacity-50">Logistics</span>
+                <span className="text-lg font-black tracking-tight leading-none">COSAIF</span>
+              </div>
+            )}
+          </div>
+
+          {/* Colapsar (desktop) */}
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className="hidden md:flex h-8 w-8 items-center justify-center rounded-lg hover:bg-white/10"
+          >
+            <ChevronLeft className={`h-5 w-5 transition-transform ${isOpen ? "" : "rotate-180"}`} />
+          </button>
+
+          {/* Cerrar (móvil) */}
+          <button onClick={() => setMobileOpen(false)} className="md:hidden p-2 hover:bg-white/10 rounded-lg">
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+
+        {/* PERFIL */}
         <div
-          className="flex h-full w-[min(92vw,360px)] md:w-auto flex-col"
-          style={{ background: "var(--sb-bg)" }}
+          className={`mx-4 mb-6 rounded-2xl border border-[var(--sb-border)] bg-white/5 p-4 transition-all overflow-hidden ${
+            !isOpen && !mobileOpen ? "px-2" : ""
+          }`}
         >
-          <div
-            className="flex items-center gap-2 border-b px-4 py-4"
-            style={{
-              borderColor: "var(--sb-border)",
-              paddingTop: "max(0.5rem, env(safe-area-inset-top))",
-            }}
-          >
-            <Home className="h-5 w-5" />
-            <div className="flex-1">
-              <div className="font-semibold tracking-wide">COSAIF LOGISTICS</div>
-              <div className="text-xs opacity-70">Panel</div>
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-[var(--sb-role-text)] bg-[var(--sb-accent)] font-bold text-[var(--sb-bg)] shadow-md text-xl">
+              {session.nombre?.charAt(0)?.toUpperCase()}
             </div>
-            <button
-              ref={closeBtnRef}
-              type="button"
-              aria-label="Cerrar menú"
-              onClick={() => setMobileOpen(false)}
-              className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md border"
-              style={{
-                borderColor: "var(--sb-border)",
-                background: "var(--sb-glass)",
-                color: "var(--sb-text)",
-              }}
-            >
-              ✕
-            </button>
+
+            {(isOpen || mobileOpen) && (
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold leading-tight uppercase">{session.nombre}</p>
+                <p className="truncate text-[11px] font-medium opacity-60 uppercase tracking-tighter">
+                  {session.empresa?.nombre || "Sin Empresa"}
+                </p>
+              </div>
+            )}
           </div>
 
-          <div
-            className="flex items-center gap-3 border-b px-4 py-4"
-            style={{ borderColor: "var(--sb-border)" }}
-          >
-            <div
-              className="grid h-10 w-10 place-items-center rounded-full border-2 font-bold"
-              style={{
-                borderColor: "var(--sb-role-text)",
-                background: "var(--sb-accent)",
-                color: "var(--sb-bg)",
-              }}
-              aria-hidden="true"
-            >
-              {initialsFrom(nombre)}
+          {(isOpen || mobileOpen) && (
+            <div className="mt-4 flex items-center gap-2 rounded-xl border border-[var(--sb-role-border)] bg-[var(--sb-role-bg)] px-3 py-2 text-[10px] font-black text-[var(--sb-role-text)] uppercase tracking-[0.1em]">
+              <RoleIcon className="h-4 w-4" />
+              <span>{normRol}</span>
             </div>
-            <div className="min-w-0">
-              <div className="truncate font-medium">{nombre}</div>
-              <div className="truncate text-xs opacity-80">{empresa}</div>
-            </div>
-          </div>
+          )}
+        </div>
 
-          <div
-            className="mx-4 mt-3 rounded-full border px-3 py-1 text-xs"
-            style={{
-              background: "var(--sb-role-bg)",
-              borderColor: "var(--sb-role-border)",
-              color: "var(--sb-role-text)",
-            }}
-          >
-            <span className="inline-flex items-center gap-2">
-              {ROLE_ICON[normRol]} {normRol}
-            </span>
-          </div>
+        {/* NAVEGACIÓN */}
+        <nav className="flex-1 space-y-2 overflow-y-auto px-3 scrollbar-hide">
+          {navigation.map((item) => {
+            const active =
+              pathname === item.href ||
+              (item.href !== `/${normRol.toLowerCase()}` && pathname.startsWith(item.href));
+            const Icon = item.icon || Users;
 
-          <nav
-            className="mt-3 flex-1 overflow-y-auto px-2"
-            role="navigation"
-            aria-label="Navegación principal"
-          >
-            {NAV.map((it) => (
+            return (
               <button
-                key={it.id}
-                type="button"
+                key={item.id}
                 onClick={() => {
-                  router.push(it.href);
+                  router.push(item.href);
                   setMobileOpen(false);
                 }}
-                aria-current={it.isActive ? "page" : undefined}
-                className={[
-                  "group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors motion-safe:duration-200",
-                  it.isActive
-                    ? "bg-white/10 ring-1 ring-inset ring-[var(--sb-accent)]"
-                    : "hover:bg-white/5",
-                ].join(" ")}
-                style={{ color: "var(--sb-text)" }}
+                className={`
+                  group relative flex w-full items-center gap-4 rounded-xl px-3 py-3.5 transition-all
+                  ${active ? "bg-white/10 text-[var(--sb-accent)] shadow-sm" : "text-[var(--sb-text)] opacity-60 hover:bg-white/5 hover:opacity-100"}
+                  ${!isOpen && !mobileOpen ? "justify-center" : ""}
+                `}
               >
-                <span className="shrink-0 opacity-90">{it.icon}</span>
-                <span className="truncate">{it.label}</span>
+                <Icon className={`h-5 w-5 shrink-0 ${active ? "scale-110" : ""}`} />
+                {(isOpen || mobileOpen) && <span className="text-sm font-semibold tracking-wide">{item.label}</span>}
+                {active && (
+                  <div className="absolute left-0 h-6 w-1 rounded-r-full bg-[var(--sb-accent)] shadow-[0_0_12px_var(--sb-accent)]" />
+                )}
               </button>
-            ))}
-          </nav>
+            );
+          })}
+        </nav>
 
-          <div
-            className="mt-auto border-t px-3 py-4"
-            style={{
-              borderColor: "var(--sb-border)",
-              paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))",
+        {/* FOOTER */}
+        <div className="border-t border-[var(--sb-border)] p-4 shrink-0">
+          <button
+            onClick={() => {
+              localStorage.clear();
+              router.replace("/login");
             }}
+            className={`flex w-full items-center gap-3 rounded-xl p-3 text-sm font-bold transition-all hover:bg-red-500/20 hover:text-red-400 ${
+              !isOpen && !mobileOpen ? "justify-center" : ""
+            }`}
           >
-            <button
-              type="button"
-              onClick={handleLogoutLocal}
-              disabled={loggingOut}
-              aria-busy={loggingOut}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm disabled:opacity-60"
-              style={{
-                borderColor: "var(--sb-border)",
-                background: "var(--sb-glass)",
-                color: "var(--sb-text)",
-              }}
-            >
-              <LogOut className="h-4 w-4" />{" "}
-              {loggingOut ? "Saliendo…" : "Cerrar sesión"}
-            </button>
-            <div
-              className="mt-2 text-center text-xs opacity-70"
-              style={{ color: "var(--sb-text)" }}
-            >
-              {version}
-            </div>
-          </div>
+            <LogOut className="h-5 w-5" />
+            {(isOpen || mobileOpen) && <span>Cerrar Sesión</span>}
+          </button>
+
+          {(isOpen || mobileOpen) && (
+            <p className="mt-4 text-center text-[9px] opacity-30 font-mono uppercase tracking-widest">{version}</p>
+          )}
         </div>
       </aside>
-    </>
-  );
 
-  return (
-    <>
-      {Desktop}
-      {Mobile}
-      {/* Spacer solo desktop */}
+      {/* ESPACIADOR DESKTOP */}
       <div
-        className="hidden md:block"
-        style={{ width: open ? openW : colW }}
+        className="hidden shrink-0 transition-all duration-300 md:block"
+        style={{ width: isOpen ? "280px" : "88px" }}
       />
     </>
   );

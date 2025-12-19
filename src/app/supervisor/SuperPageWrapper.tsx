@@ -18,12 +18,7 @@ function LoadingFallback() {
         <div className="h-12 w-12 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600 mx-auto mb-4" />
         <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-400 animate-ping" />
       </div>
-      <p className="text-slate-600 dark:text-slate-400 text-lg font-medium mb-2">
-        Cargando panel de supervisor
-      </p>
-      <p className="text-slate-500 dark:text-slate-500 text-sm">
-        Preparando el tablero de supervisión en tiempo real...
-      </p>
+  
     </div>
   );
 }
