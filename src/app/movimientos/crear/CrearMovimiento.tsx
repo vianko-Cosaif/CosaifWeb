@@ -2,6 +2,8 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useMounted } from "@/app/hooks/useMounted";
+import { getInitialTheme, applyTheme, onThemeChange } from "@/lib/theme";
 
 /** ======= CONFIG ======= */
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "/xapi";
@@ -180,6 +182,21 @@ const chipBase = "inline-flex items-center rounded-full border px-2.5 py-1 text-
 
 /** ======= COMPONENTE ======= */
 export default function CrearMovimiento() {
+  const mounted = useMounted();
+  
+  // Manejo del tema
+  useEffect(() => {
+    if (!mounted) return;
+    const initial = getInitialTheme();
+    applyTheme(initial, { persist: false });
+    
+    // Sincronizar cambios de tema entre pestañas
+    const unsubscribe = onThemeChange((newTheme) => {
+      applyTheme(newTheme, { persist: false });
+    });
+    
+    return () => unsubscribe();
+  }, [mounted]);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [form, setForm] = useState<MovementFormData>(baseInitialForm);
   const [sending, setSending] = useState(false);
@@ -376,7 +393,25 @@ export default function CrearMovimiento() {
       try {
         const data = await fetchJSON(`${API_BASE}/vias/localidad/${form.selectedLocalityId}`);
         const list: Via[] = (data || []).map((v: any) => ({ id: v.id, nombre: v.nombre }));
-        list.sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
+        
+        // Ordenar vías numéricamente si son números, alfabéticamente si no
+        list.sort((a, b) => {
+          const numA = Number(a.nombre);
+          const numB = Number(b.nombre);
+          
+          // Si ambos son números, ordenar numéricamente
+          if (!isNaN(numA) && !isNaN(numB)) {
+            return numA - numB;
+          }
+          
+          // Si solo uno es número, poner primero los números
+          if (!isNaN(numA)) return -1;
+          if (!isNaN(numB)) return 1;
+          
+          // Si ninguno es número, ordenar alfabéticamente
+          return String(a.nombre).localeCompare(String(b.nombre));
+        });
+        
         setVias(list);
       } catch { setVias([]); }
     })();
@@ -679,8 +714,10 @@ export default function CrearMovimiento() {
 
   const goSalir = () => window.location.assign(`${roleBase(rol)}/movimientos`);
 
+  if (!mounted) return null;
+  
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
+    <div className="min-h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-white transition-colors duration-200 p-4 md:p-6 lg:p-8">
       <style jsx global>{`
         @media (max-width: 640px) {
           select, select option { font-size: 16px !important; line-height: 1.45 !important; }
@@ -692,7 +729,7 @@ export default function CrearMovimiento() {
         aria-hidden
         className="pointer-events-none absolute inset-0 z-0 bg-[linear-gradient(to_right,rgba(0,0,0,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.05)_1px,transparent_1px)] bg-[size:24px_24px] dark:opacity-[0.07]"
       />
-      <div className="relative z-10">
+      <div className="relative z-10 max-w-4xl mx-auto">
 
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <Badge tone={online ? "ok" : "error"}>{online ? "En línea" : "Sin conexión"}</Badge>
@@ -972,14 +1009,28 @@ function StepOne(props: {
     const anyOcc: boolean | null = Array.isArray(secs) ? secs.some((x) => x.ocupada) : null;
     const label = anyOcc === null ? "—" : anyOcc ? "OCUPADA" : "LIBRE";
     const tone = anyOcc === null ? "text-slate-500" : anyOcc ? "text-rose-600" : "text-emerald-600";
+    
+    const isServiceVia = ['torno', 'lavado'].includes(v.nombre.toLowerCase());
+    const isDisabled = !form.service && isServiceVia;
+    
     return (
       <button
         key={v.id}
-        onClick={() => setForm((p) => ({ ...p, fromTrack: p.fromTrack === v.id ? null : v.id }))}
-        className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+        onClick={() => !isDisabled && setForm((p) => ({ ...p, fromTrack: p.fromTrack === v.id ? null : v.id }))}
+        disabled={isDisabled}
+        className={clsx(
+          "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left transition-colors duration-200",
+          isDisabled 
+            ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-500"
+            : form.fromTrack === v.id
+              ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-500 dark:text-emerald-300"
+              : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+        )}
       >
-        <span className="truncate">Vía {v.nombre}</span>
-        <span className={clsx("ml-3 text-xs font-semibold", tone)}>{label}</span>
+        <span className="truncate">Vía {isDisabled ? `${v.nombre} (solo servicio)` : v.nombre}</span>
+        <span className={clsx("ml-3 text-xs font-semibold", isDisabled ? "text-slate-400 dark:text-slate-500" : tone)}>
+          {isDisabled ? "NO DISPONIBLE" : label}
+        </span>
       </button>
     );
   };
@@ -994,8 +1045,11 @@ function StepOne(props: {
         key={v.id}
         onClick={() => setForm((p) => ({ ...p, toTrack: p.toTrack === v.id ? null : v.id }))}
         className={clsx(
-          "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800",
-          allOcc === true && "opacity-60"
+          "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left transition-colors duration-200",
+          allOcc === true ? "opacity-60" : "",
+          form.toTrack === v.id
+            ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-500 dark:text-emerald-300"
+            : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
         )}
       >
         <span className="truncate">Vía {v.nombre}</span>
@@ -1190,14 +1244,40 @@ function StepOne(props: {
           <div className="flex gap-2">
             <button
               onClick={() => { setShowFromOpts(!showFromOpts); if (form.fromTrack) ensureSections(form.fromTrack); }}
-              className="min-w-[220px] rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              className={clsx(
+                "min-w-[220px] rounded-md border px-3 py-2 text-left transition-colors duration-200",
+                form.fromTrack 
+                  ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-500 dark:text-emerald-300"
+                  : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              )} 
             >
               {form.fromTrack ? `Vía ${viaName(form.fromTrack)}` : "Selecciona una vía"}
             </button>
             {errors.fromTrack ? <span className="self-center text-xs text-rose-600 dark:text-rose-400">{errors.fromTrack}</span> : null}
           </div>
 
-          {showFromOpts && <div className="mt-2 grid gap-2 sm:grid-cols-2">{vias.map((v) => (<div key={v.id}>{viaOption(v)}</div>))}</div>}
+          {showFromOpts && (
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {vias
+                .filter(v => {
+                  const viaNameLower = v.nombre.toLowerCase();
+                  // If in de_via mode and service is lavado, only show vias that are not lavado
+                  if (selectionMode === 'de_via' && form.service === 'Lavado') {
+                    return viaNameLower !== 'lavado';
+                  }
+                  // If in de_via mode and service is torno, only show vias that are not torno
+                  if (selectionMode === 'de_via' && form.service === 'Torno') {
+                    return viaNameLower !== 'torno';
+                  }
+                  return true;
+                })
+                .map((v) => (
+                  <div key={v.id}>
+                    {viaOption(v)}
+                  </div>
+                ))}
+            </div>
+          )}
 
           <SectionsPills kind="from" viaId={form.fromTrack} />
         </div>
@@ -1210,14 +1290,33 @@ function StepOne(props: {
           <div className="flex gap-2">
             <button
               onClick={() => { setShowToOpts(!showToOpts); if (form.toTrack) ensureSections(form.toTrack); }}
-              className="min-w-[220px] rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              className={clsx(
+                "min-w-[220px] rounded-md border px-3 py-2 text-left transition-colors duration-200",
+                form.toTrack 
+                  ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-500 dark:text-emerald-300"
+                  : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              )}
             >
               {form.toTrack ? `Vía ${viaName(form.toTrack)}` : "Selecciona una vía"}
             </button>
             {errors.toTrack ? <span className="self-center text-xs text-rose-600 dark:text-rose-400">{errors.toTrack}</span> : null}
           </div>
 
-          {showToOpts && <div className="mt-2 grid gap-2 sm:grid-cols-2">{vias.map((v) => (<div key={v.id}>{viaOptionTo(v)}</div>))}</div>}
+          {showToOpts && (
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {vias
+                .filter(v => {
+                  const viaNameLower = v.nombre.toLowerCase();
+                  // Always exclude 'torno' and 'lavado' from 'para_via' dropdown
+                  return viaNameLower !== 'torno' && viaNameLower !== 'lavado';
+                })
+                .map((v) => (
+                  <div key={v.id}>
+                    {viaOptionTo(v)}
+                  </div>
+                ))}
+            </div>
+          )}
 
           <SectionsPills kind="to" viaId={form.toTrack} />
         </div>
