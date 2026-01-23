@@ -18,7 +18,7 @@ export function useAuthErrorHandler() {
     } catch (error: any) {
       // Verificar si es error HTTP 401
       if (error?.message?.includes("401") || error?.status === 401) {
-        console.warn("🔒 Error de autenticación (401) detectado, limpiando sesión...");
+        console.warn(" Error de autenticación (401) detectado, limpiando sesión...");
         handleAuthError();
         throw error;
       }
@@ -38,7 +38,7 @@ export function useAuthErrorHandler() {
 
       // Si la respuesta es 401, limpiar autenticación y redirigir
       if (response.status === 401) {
-        console.warn("🔒 Error de autenticación (401) detectado en respuesta, limpiando sesión...");
+        console.warn("Error de autenticación (401) detectado en respuesta, limpiando sesión...");
         handleAuthError();
         throw new Error(`Error HTTP: ${response.status}`);
       }

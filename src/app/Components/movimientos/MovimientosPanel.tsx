@@ -7,10 +7,10 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { useRouter } from "next/navigation";
 import Nav from "./Nav";
 import Filtros from "./Filtros";
 import Tabla from "./Tabla";
-import Detalle from "./Detalle";
 import { useMovimientos, Rol } from "./useMovimientos";
 
 /* ================== HELPERS SESIÓN ================== */
@@ -55,6 +55,7 @@ interface MovimientosPanelProps {
 
 export default function MovimientosPanel(props: MovimientosPanelProps) {
   const { rol: rolProp, token: tokenProp, puedeCrear = false } = props;
+  const router = useRouter();
 
   // Rol/token efectivos
   const [rol, setRol] = useState<Rol>(() => rolProp ?? getRoleFromSession());
@@ -121,7 +122,6 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     emptyText,
   } = useMovimientos(rol, token);
 
-  const [detalleAbierto, setDetalleAbierto] = useState(false);
   const [movimientoSeleccionado, setMovimientoSeleccionado] =
     useState<number | null>(null);
 
@@ -263,31 +263,19 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
 
   const handleEditar = useCallback(
     (id: number) => {
-      if (rol === "CLIENTE") {
-        // Para CLIENTE, navega a pantalla de edición propia
-        window.location.assign(`/cliente/editar?id=${id}`);
-        return;
-      }
-
-      // Para otros roles sigues usando el drawer/modal
-      setMovimientoSeleccionado(id);
-      setDetalleAbierto(true);
+      // Siempre navegar a edición sin importar el rol
+      router.push(`/cliente/editar?id=${id}`);
     },
-    [rol]
+    [router]
   );
-
-  const handleCerrarDetalle = useCallback(() => {
-    setDetalleAbierto(false);
-    setMovimientoSeleccionado(null);
-  }, []);
 
   const handleToggleAuto = useCallback((_activo: boolean) => {
     // El auto-refresh ya lo maneja useMovimientos en "actuales"
   }, []);
 
   const handleNuevo = useCallback(() => {
-    window.location.assign("/movimientos/crear");
-  }, []);
+    router.push("/movimientos/crear");
+  }, [router]);
 
   /* ================== RENDER ================== */
 
@@ -421,13 +409,6 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
             </div>
           )}
         </section>
-
-        {/* Drawer / modal de detalle */}
-        <Detalle
-          abierto={detalleAbierto}
-          movimientoId={movimientoSeleccionado}
-          onCerrar={handleCerrarDetalle}
-        />
       </div>
     </section>
   );
