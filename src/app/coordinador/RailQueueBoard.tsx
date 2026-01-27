@@ -1,9 +1,11 @@
+// page.tsx
 "use client";
 
 import type React from "react";
 import { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { S } from "./RailQueueBoard.styles";
 
 /* ===== Tipos ===== */
 type Ronda = {
@@ -29,9 +31,6 @@ type Ronda = {
     instrucciones?: string | null;
   } | null;
   movimientoId?: number | null;
-
-  // IMPORTANTE: usamos esta como fecha de referencia (servidor) y la
-  // convertimos a hora de México para mostrarla.
   createdAt?: string | null;
 };
 
@@ -60,9 +59,10 @@ type ToastKind = "move" | "new" | "done" | "warning";
 type Toast = { id: number; text: string; kind: ToastKind };
 
 /* ===== Utils ===== */
-const fmtList = new Intl.ListFormat("es", { style: "short", type: "conjunction" });
-const codeFrom = (inf?: RondaInfo, fallbackId?: number) =>
-  String(inf?.movimientoId ?? inf?.movimiento?.id ?? fallbackId ?? "—");
+const fmtList = new Intl.ListFormat("es", {
+  style: "short",
+  type: "conjunction",
+});
 
 const fmtLoco = (v: unknown) => {
   if (v == null) return "N/D";
@@ -126,8 +126,7 @@ function useToasts() {
     );
     timers.current.push(tid);
   };
-  const dismiss = (id: number) =>
-    setToasts((t) => t.filter((x) => x.id !== id));
+  const dismiss = (id: number) => setToasts((t) => t.filter((x) => x.id !== id));
   return { toasts, push, dismiss, setToasts };
 }
 
@@ -177,7 +176,7 @@ function timeAgo(ts?: number | null) {
   return `${h}h`;
 }
 
-// Fecha/hora siempre en horario de México, sin confiar en el timezone del navegador.
+// Fecha/hora siempre en horario de México.
 function formatDateTimeMX(iso?: string | null) {
   if (!iso) return "Sin fecha";
   const d = new Date(iso);
@@ -194,8 +193,8 @@ const EditRondas = dynamic(() => import("../Components/EditRondas"), {
   ssr: false,
 });
 
-/* ===== Componente ===== */
-export default function RailQueueBoard({
+/* ===== Página/Componente ===== */
+export default function RailQueueBoardPage({
   localidadId,
   autoMs = 120_000,
   nextCount = 5,
@@ -215,15 +214,9 @@ export default function RailQueueBoard({
   const [info, setInfo] = useState<Record<number, RondaInfo>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [polling, setPolling] = useLocalStorageBoolean(
-    "rail-queue:polling",
-    true
-  );
+  const [polling, setPolling] = useLocalStorageBoolean("rail-queue:polling", true);
 
-  const [soundOn, setSoundOn] = useLocalStorageBoolean(
-    "rail-queue:soundOn",
-    false
-  );
+  const [soundOn, setSoundOn] = useLocalStorageBoolean("rail-queue:soundOn", false);
   const bellRef = useRef<HTMLAudioElement | null>(null);
 
   const { toasts, push: pushToast, dismiss } = useToasts();
@@ -238,44 +231,20 @@ export default function RailQueueBoard({
 
   const [openEditor, setOpenEditor] = useState(false);
 
-  useEffect(() => {
-    // mount
-  }, [localidadId]);
-
   async function load(showRefreshing = false) {
     const mySeq = ++reqSeq.current;
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
 
-    if (showRefreshing) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
+    if (showRefreshing) setRefreshing(true);
+    else setLoading(true);
 
     try {
       const url = `/api/cliente/rondas?localidadId=${localidadId}`;
       const data = await fetchJson<Ronda[]>(url, ac.signal);
 
-      // LOG BRUTO
-      console.groupCollapsed("[RailQueueBoard] Rondas crudas desde API");
-      console.log("URL:", url);
-      console.log("Total rondas:", data.length);
-      data.forEach((r) => {
-        console.log("Ronda:", r.id, {
-          rondaNumero: r.rondaNumero,
-          orden: r.orden,
-          movimientoId: r.movimientoId,
-          createdAt: r.createdAt,
-          movimiento: r.movimiento,
-        });
-      });
-      console.groupEnd();
-
-      data.sort(
-        (a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden
-      );
+      data.sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden);
 
       const prev = prevIdsRef.current;
       const nextIds = data.map((d) => d.id);
@@ -283,19 +252,17 @@ export default function RailQueueBoard({
       if (!firstLoad.current) {
         if (prev.length && nextIds[0] && nextIds[0] !== prev[0]) {
           const curR = data[0];
-          const curCode = String(
-            curR.movimiento?.id ?? curR.movimientoId ?? curR.id
-          );
+          const curCode = String(curR.movimiento?.id ?? curR.movimientoId ?? curR.id);
           pushToast(`Se movió la orden a ${curCode}`, "move");
         }
+
         const prevSet = new Set(prev);
         const created = nextIds.filter((id) => !prevSet.has(id));
         const removed = prev.filter((id) => !nextIds.includes(id));
+
         if (created.length) {
           const codes = created.map((id) =>
-            String(
-              data.find((r) => r.id === id)?.movimiento?.id ?? id
-            )
+            String(data.find((r) => r.id === id)?.movimiento?.id ?? id)
           );
           pushToast(`Nueva(s) orden(es): ${fmtList.format(codes)}`, "new");
         }
@@ -315,17 +282,6 @@ export default function RailQueueBoard({
         const mv = (r.movimiento ?? null) as Ronda["movimiento"];
         const emp = r.empresa ?? null;
 
-        console.groupCollapsed(
-          `[RailQueueBoard] Movimiento crudo para ronda ${r.id}`
-        );
-        console.log("movimiento.id:", mv?.id);
-        console.log("movimiento.fechaSolicitud:", mv?.fechaSolicitud);
-        console.log("movimiento.fechaInicio:", mv?.fechaInicio);
-        console.log("movimiento.fechaFin:", mv?.fechaFin);
-        console.log("movimiento.estado:", mv?.estado);
-        console.log("movimiento.prioridad:", mv?.prioridad);
-        console.groupEnd();
-
         mapFromList[r.id] = {
           empresa: { id: emp?.id ?? 0, nombre: emp?.nombre ?? "—" },
           movimiento: {
@@ -335,35 +291,17 @@ export default function RailQueueBoard({
             lavado: Boolean(mv?.lavado),
             torno: Boolean(mv?.torno),
             estado: mv?.estado ?? undefined,
-            prioridad:
-              (mv?.prioridad as "BAJA" | "ALTA" | undefined) ?? undefined,
-            locomotiveNumber:
-              mv?.locomotiveNumber ?? mv?.locomotora ?? undefined,
+            prioridad: (mv?.prioridad as "BAJA" | "ALTA" | undefined) ?? undefined,
+            locomotiveNumber: mv?.locomotiveNumber ?? mv?.locomotora ?? undefined,
             locomotora: mv?.locomotora ?? undefined,
-
             fechaSolicitud: mv?.fechaSolicitud ?? null,
             fechaInicio: mv?.fechaInicio ?? null,
             fechaFin: mv?.fechaFin ?? null,
             instrucciones: mv?.instrucciones ?? null,
           },
-          movimientoId: (mv?.id ?? r.movimientoId ?? undefined) as
-            | number
-            | undefined,
+          movimientoId: (mv?.id ?? r.movimientoId ?? undefined) as number | undefined,
         };
       }
-
-      console.groupCollapsed(
-        "[RailQueueBoard] Map info (fechas movimiento, solo log)"
-      );
-      Object.entries(mapFromList).forEach(([rid, inf]) => {
-        console.log("rondaId:", rid, {
-          movId: inf.movimiento.id,
-          fechaSolicitud: inf.movimiento.fechaSolicitud,
-          fechaInicio: inf.movimiento.fechaInicio,
-          fechaFin: inf.movimiento.fechaFin,
-        });
-      });
-      console.groupEnd();
 
       startTransition(() => setInfo(mapFromList));
       lastOkAt.current = Date.now();
@@ -384,6 +322,7 @@ export default function RailQueueBoard({
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
+
   const toggleFullscreen = () => {
     try {
       if (document.fullscreenElement) document.exitFullscreen();
@@ -398,11 +337,10 @@ export default function RailQueueBoard({
       const t = e.target as HTMLElement | null;
       if (
         t &&
-        (t.tagName === "INPUT" ||
-          t.tagName === "TEXTAREA" ||
-          t.isContentEditable)
+        (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
       )
         return;
+
       if (e.key === "r") {
         e.preventDefault();
         load(true);
@@ -413,6 +351,7 @@ export default function RailQueueBoard({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openEditor]);
 
   useEffect(() => {
@@ -422,6 +361,7 @@ export default function RailQueueBoard({
     setItems([]);
     setLoading(true);
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localidadId]);
 
   useVisibleInterval(
@@ -432,12 +372,7 @@ export default function RailQueueBoard({
 
   useEffect(() => {
     const curId = items[0]?.id ?? null;
-    if (
-      soundOn &&
-      curId &&
-      lastCurrentId.current &&
-      curId !== lastCurrentId.current
-    ) {
+    if (soundOn && curId && lastCurrentId.current && curId !== lastCurrentId.current) {
       const el = bellRef.current;
       try {
         el?.pause?.();
@@ -452,30 +387,20 @@ export default function RailQueueBoard({
 
   const current = items[0];
   const curInfo = current ? info[current.id] : undefined;
-  const next = useMemo(
-    () => items.slice(1, nextCount + 1),
-    [items, nextCount]
-  );
+  const next = useMemo(() => items.slice(1, nextCount + 1), [items, nextCount]);
 
   const lastAgo = timeAgo(lastOkAt.current);
 
   const curMov = curInfo?.movimiento;
-  const locoText = fmtLoco(
-    curMov?.locomotiveNumber ?? curMov?.locomotora
-  );
+  const locoText = fmtLoco(curMov?.locomotiveNumber ?? curMov?.locomotora);
   const viaO = curMov?.viaOrigen?.nombre || "";
   const viaD = curMov?.viaDestino?.nombre || "";
 
   const hasService = !!(curMov?.torno || curMov?.lavado);
-  const serviceOrigin = curMov?.torno
-    ? "Torno"
-    : curMov?.lavado
-    ? "Lavado"
-    : "";
+  const serviceOrigin = curMov?.torno ? "Torno" : curMov?.lavado ? "Lavado" : "";
   const desdeLbl = viaO || serviceOrigin;
   const hasAny = !!(desdeLbl || viaD || hasService);
 
-  // Fecha principal a mostrar: creado (ronda) con fallback a fechas del movimiento
   const creadoText = formatDateTimeMX(
     current?.createdAt ??
       curMov?.fechaSolicitud ??
@@ -485,18 +410,10 @@ export default function RailQueueBoard({
   );
 
   return (
-    <main
-      ref={boardRef}
-      className="min-h-svh md:min-h-dvh bg-white text-slate-900 dark:bg-neutral-950 dark:text-slate-100"
-    >
+    <main ref={boardRef} className={S.main}>
       {/* TOASTS */}
-      <div
-        className="fixed z-50 flex justify-center px-3 
-                      inset-x-0 bottom-2 
-                      sm:inset-auto sm:right-2 sm:top-2 sm:bottom-auto sm:left-auto sm:px-0
-                      md:bottom-4 md:right-4 md:top-auto"
-      >
-        <div className="space-y-2 w-full max-w-[min(95vw,420px)]">
+      <div className={S.toastsWrap}>
+        <div className={S.toastsList}>
           <AnimatePresence>
             {toasts.map((t) => {
               const bar =
@@ -507,6 +424,7 @@ export default function RailQueueBoard({
                   : t.kind === "warning"
                   ? "border-l-4 border-amber-500/80"
                   : "border-l-4 border-slate-400/70";
+
               const tone =
                 t.kind === "move"
                   ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
@@ -515,28 +433,21 @@ export default function RailQueueBoard({
                   : t.kind === "warning"
                   ? "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
                   : "bg-slate-50 text-slate-900 dark:bg-slate-800 dark:text-slate-100";
+
               return (
                 <motion.button
                   key={t.id}
                   initial={{ y: 20, opacity: 0, scale: 0.95 }}
                   animate={{ y: 0, opacity: 1, scale: 1 }}
-                  exit={{
-                    y: 20,
-                    opacity: 0,
-                    scale: 0.95,
-                    transition: { duration: 0.18 },
-                  }}
+                  exit={{ y: 20, opacity: 0, scale: 0.95, transition: { duration: 0.18 } }}
                   role={t.kind === "warning" ? "alert" : "status"}
-                  aria-live={
-                    t.kind === "warning" ? "assertive" : "polite"
-                  }
+                  aria-live={t.kind === "warning" ? "assertive" : "polite"}
                   onClick={() => dismiss(t.id)}
-                  className={`w-full text-left rounded-lg px-3 py-2.5 text-sm shadow-lg border ${bar} ${tone} 
-                             hover:scale-[1.02] transition-transform duration-150`}
+                  className={`${S.toastBtn} ${bar} ${tone}`}
                   title="Clic para cerrar"
                 >
-                  <div className="flex items-center">
-                    <span className="mr-2 text-base">
+                  <div className={S.toastRow}>
+                    <span className={S.toastIcon}>
                       {t.kind === "move"
                         ? "🔄"
                         : t.kind === "new"
@@ -545,7 +456,7 @@ export default function RailQueueBoard({
                         ? "⚠️"
                         : "✅"}
                     </span>
-                    <span className="flex-1">{t.text}</span>
+                    <span className={S.toastText}>{t.text}</span>
                   </div>
                 </motion.button>
               );
@@ -555,111 +466,62 @@ export default function RailQueueBoard({
       </div>
 
       {/* TOOLBAR */}
-      <div
-        className="sticky top-0 z-40 border-b border-slate-200/60 bg-white/90 backdrop-blur-md 
-                      dark:border-slate-800/60 dark:bg-neutral-950/90
-                      pt-[env(safe-area-inset-top)]"
-      >
-        <div className="mx-auto w-full max-w-screen-2xl">
-          <div
-            className="flex flex-wrap items-center justify-between gap-2 p-3 
-                          sm:justify-end sm:gap-3 sm:px-4 
-                          md:px-6 md:py-2"
-          >
-            <div className="flex items-center gap-2 flex-1 min-w-[150px]">
-              <span
-                className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs
-                                ${
-                                  polling
-                                    ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
-                                    : "border-slate-300 bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                                }`}
-              >
-                <span
-                  className={`inline-block h-2 w-2 rounded-full ${
-                    polling ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
-                  }`}
-                  aria-hidden
-                />
+      <div className={S.toolbar}>
+        <div className={S.toolbarInner}>
+          <div className={S.toolbarRow}>
+            <div className={S.toolbarLeft}>
+              <span className={S.liveChip(polling)}>
+                <span className={S.liveDot(polling)} aria-hidden />
                 {polling ? "LIVE" : "PAUSED"}
               </span>
-              <span className="hidden xs:inline text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                Últ. act: {lastAgo}
-              </span>
+              <span className={S.lastUpdate}>Últ. act: {lastAgo}</span>
             </div>
 
-            <div className="flex items-center gap-1 flex-wrap justify-end">
-              {!online && (
-                <span
-                  className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200"
-                >
-                  ⚠️ Offline
-                </span>
-              )}
+            <div className={S.toolbarRight}>
+              {!online && <span className={S.offlineChip}>⚠️ Offline</span>}
 
-              <div className="flex items-center gap-1">
+              <div className={S.toolbarButtons}>
                 <button
                   onClick={() => setSoundOn((s) => !s)}
-                  className={`rounded-lg border px-2.5 py-1.5 text-xs transition-all duración-200 flex items-center gap-1
-                             ${
-                               soundOn
-                                 ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
-                                 : "border-slate-300 bg-white text-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                             } hover:scale-105 active:scale-95`}
+                  className={S.btnSound(soundOn)}
                   title="Pitido al cambiar la orden actual"
                   aria-pressed={soundOn}
                 >
-                  <span className="text-sm">
-                    {soundOn ? "🔔" : "🔕"}
-                  </span>
-                  <span className="hidden sm:inline">
-                    {soundOn ? "Sonido" : "Silencio"}
-                  </span>
+                  <span className={S.btnIcon}>{soundOn ? "🔔" : "🔕"}</span>
+                  <span className={S.btnLabel}>{soundOn ? "Sonido" : "Silencio"}</span>
                 </button>
 
                 <button
                   onClick={() => setPolling((p) => !p)}
-                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs transition-all duración-200 
-                             hover:scale-105 active:scale-95 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300
-                             flex items-center gap-1"
+                  className={S.btnCommon}
                   title="Activar/pausar auto-actualización"
                   aria-pressed={polling}
                 >
-                  <span className="text-sm">
-                    {polling ? "⏸️" : "▶️"}
-                  </span>
-                  <span className="hidden sm:inline">Auto</span>
+                  <span className={S.btnIcon}>{polling ? "⏸️" : "▶️"}</span>
+                  <span className={S.btnLabel}>Auto</span>
                 </button>
 
                 <button
                   onClick={() => load(true)}
                   disabled={refreshing}
-                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs transition-all duración-200 
-                             hover:scale-105 active:scale-95 disabled:opacity-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300
-                             flex items-center gap-1"
+                  className={`${S.btnCommon} ${S.btnDisabled}`}
                   aria-busy={refreshing}
                   title="Refrescar"
                 >
-                  <span className="text-sm">
-                    {refreshing ? "⟳" : "↻"}
-                  </span>
-                  <span className="hidden sm:inline">
+                  <span className={S.btnIcon}>{refreshing ? "⟳" : "↻"}</span>
+                  <span className={S.btnLabel}>
                     {refreshing ? "Actualizando…" : "Actualizar"}
                   </span>
                 </button>
 
                 <button
                   onClick={toggleFullscreen}
-                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs transition-all duración-200 
-                             hover:scale-105 active:scale-95 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300
-                             flex items-center gap-1"
+                  className={S.btnCommon}
                   title="Pantalla completa (f)"
                   aria-pressed={isFs}
                 >
-                  <span className="text-sm">⤢</span>
-                  <span className="hidden sm:inline">
-                    {isFs ? "Salir" : "Full"}
-                  </span>
+                  <span className={S.btnIcon}>⤢</span>
+                  <span className={S.btnLabel}>{isFs ? "Salir" : "Full"}</span>
                 </button>
               </div>
             </div>
@@ -668,142 +530,82 @@ export default function RailQueueBoard({
       </div>
 
       {/* CONTENIDO PRINCIPAL */}
-      <section
-        className="mx-auto w-full max-w-screen-2xl
-                   px-3 sm:px-4 md:px-6 lg:px-8
-                   py-4 sm:py-6 md:py-8
-                   pb-[env(safe-area-inset-bottom)]"
-        aria-busy={loading || refreshing}
-      >
-        <div className="grid gap-4 md:gap-6 lg:gap-8 lg:grid-cols-3">
+      <section className={S.section} aria-busy={loading || refreshing}>
+        <div className={S.grid}>
           {/* COLUMNA IZQUIERDA - ORDEN ACTUAL */}
-          <div
-            className="lg:col-span-2 rounded-2xl p-4 sm:p-6 
-                          bg-gradient-to-br from-white via-sky-50 to-white text-slate-800 
-                          shadow-lg border border-slate-200
-                          dark:from-neutral-900 dark:via-neutral-800 dark:to-neutral-900 dark:text-slate-100 dark:border-slate-700"
-          >
-            <div className="mb-4 flex flex-col xs:flex-row xs:items-center xs:justify-between gap-3">
+          <div className={S.leftCol}>
+            <div className={S.leftHeader}>
               <div>
-                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight bg-gradient-to-r from-sky-600 to-emerald-600 bg-clip-text text-transparent">
-                  Tablero de Rondas
-                </h1>
-                <div className="mt-1 text-xs tracking-widest font-medium text-slate-500 dark:text-slate-400 uppercase">
-                  Orden Actual • Current Move
-                </div>
+                <h1 className={S.title}>Tablero de Rondas</h1>
+                <div className={S.subtitle}>Orden Actual • Current Move</div>
               </div>
 
               <button
                 onClick={() => load(true)}
-                className="text-xs rounded-full px-4 py-2 border bg-white hover:bg-slate-50 transition-all duración-200 
-                           dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-600
-                           hover:scale-105 active:scale-95 flex items-center gap-2"
+                className={S.refreshPill}
                 disabled={refreshing}
                 aria-busy={refreshing}
                 title="Refrescar"
               >
                 <span>{refreshing ? "⟳" : "↻"}</span>
-                <span>
-                  {refreshing ? "Actualizando…" : "Actualizar"}
-                </span>
+                <span>{refreshing ? "Actualizando…" : "Actualizar"}</span>
               </button>
             </div>
 
             <motion.div
               key={current?.id ?? "empty"}
-              initial={{
-                scale: prefersReduced ? 1 : 0.985,
-                opacity: prefersReduced ? 1 : 0,
-              }}
+              initial={{ scale: prefersReduced ? 1 : 0.985, opacity: prefersReduced ? 1 : 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ type: "spring", stiffness: 260, damping: 26 }}
-              className="rounded-xl bg-white p-4 sm:p-6 border shadow-sm border-slate-200 
-                         dark:bg-slate-900 dark:border-slate-700 min-h-[200px]"
+              className={S.currentCard}
             >
               {loading && !current ? (
                 <SkeletonCurrent />
               ) : current ? (
                 <>
-                  {/* Header con locomotora y código */}
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-                    <div className="flex items-center gap-3 sm:gap-4">
+                  {/* Header con locomotora */}
+                  <div className={S.currentTop}>
+                    <div className={S.currentTopLeft}>
                       <motion.div
-                        animate={
-                          prefersReduced
-                            ? {}
-                            : { scale: [1, 1.05, 1] }
-                        }
-                        transition={
-                          prefersReduced
-                            ? {}
-                            : { repeat: Infinity, duration: 3 }
-                        }
-                        className="grid h-12 w-12 sm:h-14 sm:w-14 place-items-center rounded-full 
-                                   bg-gradient-to-br from-sky-100 to-emerald-100 border border-slate-200 
-                                   dark:from-slate-800 dark:to-slate-700 dark:border-slate-600"
+                        animate={prefersReduced ? {} : { scale: [1, 1.05, 1] }}
+                        transition={prefersReduced ? {} : { repeat: Infinity, duration: 3 }}
+                        className={S.locoBubble}
                       >
                         <span className="text-xl sm:text-2xl">🚆</span>
                       </motion.div>
+
                       <div>
-                        <div className="text-xs uppercase tracking-widest text-slate-500 dark:text-slate-400">
-                          Locomotora
-                        </div>
-                        <div className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                          {locoText}
-                        </div>
-                        <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                          {curInfo?.empresa?.nombre ?? "—"}
-                        </div>
+                        <div className={S.companyName}>{curInfo?.empresa?.nombre ?? "—"}</div>
                       </div>
                     </div>
 
-                    <div className="text-right">
-                      <div className="text-xs text-slate-500 dark:text-slate-400">
-                        Código
-                      </div>
-                      <div
-                        className="font-black tracking-widest bg-gradient-to-r from-sky-600 to-emerald-600 bg-clip-text text-transparent
-                                     text-3xl xs:text-4xl sm:text-5xl md:text-6xl lg:text-7xl"
-                      >
-                        {codeFrom(curInfo, current.id)}
-                      </div>
+                    <div className={S.currentTopRight}>
+                      <div className={S.locoLabel}>LOCOMOTORA</div>
+                      <div className={S.locoValue}>{locoText}</div>
                     </div>
                   </div>
 
                   {/* Grid de información principal */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-                    <div
-                      className="rounded-xl border border-slate-200 bg-slate-50 p-3 
-                                    dark:border-slate-700 dark:bg-slate-800/50"
-                    >
-                      <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                  <div className={S.infoGrid}>
+                    <div className={S.infoCard}>
+                      <div className={S.infoCardLabel}>
                         <span>↖️</span> Vía Origen
                       </div>
-                      <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
-                        {viaO || "—"}
-                      </div>
+                      <div className={S.infoCardValue}>{viaO || "—"}</div>
                     </div>
 
-                    <div
-                      className="rounded-xl border border-slate-200 bg-slate-50 p-3 
-                                    dark:border-slate-700 dark:bg-slate-800/50"
-                    >
-                      <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                    <div className={S.infoCard}>
+                      <div className={S.infoCardLabel}>
                         <span>↘️</span> Vía Destino
                       </div>
-                      <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
-                        {viaD || "—"}
-                      </div>
+                      <div className={S.infoCardValue}>{viaD || "—"}</div>
                     </div>
 
-                    <div
-                      className="rounded-xl border border-slate-200 bg-slate-50 p-3 
-                                    dark:border-slate-700 dark:bg-slate-800/50"
-                    >
-                      <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                    <div className={S.infoCard}>
+                      <div className={S.infoCardLabel}>
                         <span>⚙️</span> Servicios
                       </div>
-                      <div className="flex gap-2">
+                      <div className={S.serviceRow}>
                         <Chip ok={!!curMov?.lavado} icon="💧">
                           Lavado
                         </Chip>
@@ -815,81 +617,47 @@ export default function RailQueueBoard({
                   </div>
 
                   {/* Información secundaria */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
-                    <InfoBadge
-                      label="Estado"
-                      value={curMov?.estado ?? "—"}
-                      icon="📌"
-                    />
-                    <InfoBadge
-                      label="Prioridad"
-                      value={curMov?.prioridad ?? "—"}
-                      icon="⚑"
-                    />
-                    <InfoBadge
-                      label="Orden"
-                      value={String(current?.orden ?? "—")}
-                      icon="№"
-                    />
-                    <InfoBadge
-                      label="Ronda"
-                      value={String(current?.rondaNumero ?? "—")}
-                      icon="🔁"
-                    />
+                  <div className={S.badgeGrid}>
+                    <InfoBadge label="Estado" value={curMov?.estado ?? "—"} icon="📌" />
+                    <InfoBadge label="Prioridad" value={curMov?.prioridad ?? "—"} icon="⚑" />
+                    <InfoBadge label="Orden" value={String(current?.orden ?? "—")} icon="№" />
+                    <InfoBadge label="Ronda" value={String(current?.rondaNumero ?? "—")} icon="🔁" />
                   </div>
 
                   {/* Detalle + Fecha Creado + Instrucciones */}
                   <motion.div
-                    initial={{
-                      x: prefersReduced ? 0 : -8,
-                      opacity: prefersReduced ? 1 : 0,
-                    }}
+                    initial={{ x: prefersReduced ? 0 : -8, opacity: prefersReduced ? 1 : 0 }}
                     animate={{ x: 0, opacity: 1 }}
-                    transition={{
-                      delay: prefersReduced ? 0 : 0.1,
-                    }}
-                    className="rounded-xl bg-gradient-to-r from-sky-100 to-emerald-100 text-slate-900 
-                               p-4 border border-slate-200 dark:from-slate-800 dark:to-slate-700 
-                               dark:text-slate-100 dark:border-slate-600"
+                    transition={{ delay: prefersReduced ? 0 : 0.1 }}
+                    className={S.detailBox}
                   >
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1">
-                      Detalle del movimiento
-                    </p>
+                    <p className={S.detailLabel}>Detalle del movimiento</p>
 
-                    <p className="text-sm font-medium">
+                    <p className={S.detailText}>
                       {hasAny ? (
                         <>
                           Mover locomotora{" "}
-                          <b className="text-sky-700 dark:text-sky-300">
-                            {locoText}
-                          </b>{" "}
-                          desde{" "}
+                          <b className="text-sky-700 dark:text-sky-300">{locoText}</b> desde{" "}
                           <b className="text-emerald-700 dark:text-emerald-300">
                             {desdeLbl || "—"}
                           </b>{" "}
                           hacia{" "}
-                          <b className="text-emerald-700 dark:text-emerald-300">
-                            {viaD || "—"}
-                          </b>
-                          .
+                          <b className="text-emerald-700 dark:text-emerald-300">{viaD || "—"}</b>.
                         </>
                       ) : (
                         <>
                           Mover locomotora{" "}
-                          <b className="text-sky-700 dark:text-sky-300">
-                            {locoText}
-                          </b>{" "}
-                          entre <b>—</b> y <b>—</b>.
+                          <b className="text-sky-700 dark:text-sky-300">{locoText}</b> entre <b>—</b>{" "}
+                          y <b>—</b>.
                         </>
                       )}
                     </p>
 
-                    {/* Solo “Creado”, igual que en Cliente */}
-                    <div className="mt-3 max-w-xs">
+                    <div className={S.createdWrap}>
                       <DateBox label="Creado" value={creadoText} />
                     </div>
 
-                    <div className="mt-3 text-xs sm:text-sm text-slate-700 dark:text-slate-200">
+                    <div className={S.instructions}>
                       <span className="font-semibold">Instrucciones: </span>
                       <span>
                         {curMov?.instrucciones?.trim()
@@ -900,38 +668,27 @@ export default function RailQueueBoard({
                   </motion.div>
                 </>
               ) : (
-                <div className="py-12 text-center">
-                  <div className="mb-4 text-5xl">🗂️</div>
-                  <div className="text-lg font-semibold text-slate-700 dark:text-slate-300">
-                    Sin movimientos pendientes
-                  </div>
-                  <div className="text-sm text-slate-500 dark:text-slate-400 mt-2">
-                    No hay órdenes en la cola actualmente
-                  </div>
+                <div className={S.emptyWrap}>
+                  <div className={S.emptyIcon}>🗂️</div>
+                  <div className={S.emptyTitle}>Sin movimientos pendientes</div>
+                  <div className={S.emptyDesc}>No hay órdenes en la cola actualmente</div>
                 </div>
               )}
             </motion.div>
           </div>
 
           {/* COLUMNA DERECHA - PRÓXIMAS ÓRDENES */}
-          <aside
-            className="rounded-2xl bg-white text-slate-900 shadow-lg border border-slate-200 
-                            p-4 sm:p-6 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-700
-                            h-fit max-h-[calc(100vh-200px)] overflow-y-auto"
-          >
-            <div className="mb-4 flex items-center justify-between sticky top-0 bg-white dark:bg-slate-900 pb-2">
-              <h3 className="flex items-center gap-2 font-bold text-lg">
+          <aside className={S.aside}>
+            <div className={S.asideHeader}>
+              <h3 className={S.asideTitle}>
                 <span className="text-xl">📋</span> Próximas Órdenes
               </h3>
-              <span
-                className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs 
-                               text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-              >
+              <span className={S.asideCount}>
                 {next.length}/{nextCount}
               </span>
             </div>
 
-            <div className="space-y-3">
+            <div className={S.nextWrap}>
               <AnimatePresence initial={false}>
                 {loading && next.length === 0 ? (
                   <>
@@ -943,105 +700,57 @@ export default function RailQueueBoard({
                   next.map((n, index) => {
                     const inf = info[n.id];
                     const mv = inf?.movimiento;
-                    const loco = fmtLoco(
-                      mv?.locomotiveNumber ?? mv?.locomotora
-                    );
+                    const loco = fmtLoco(mv?.locomotiveNumber ?? mv?.locomotora); // ✅ por tarjeta
 
                     const creadoNext = formatDateTimeMX(
-                      n.createdAt ??
-                        mv?.fechaSolicitud ??
-                        mv?.fechaInicio ??
-                        mv?.fechaFin ??
-                        null
+                      n.createdAt ?? mv?.fechaSolicitud ?? mv?.fechaInicio ?? mv?.fechaFin ?? null
                     );
 
                     return (
                       <motion.div
                         key={n.id}
-                        initial={{
-                          y: prefersReduced ? 0 : 14,
-                          opacity: prefersReduced ? 1 : 0,
-                        }}
+                        initial={{ y: prefersReduced ? 0 : 14, opacity: prefersReduced ? 1 : 0 }}
                         animate={{ y: 0, opacity: 1 }}
-                        exit={{
-                          y: prefersReduced ? 0 : -14,
-                          opacity: prefersReduced ? 1 : 0,
-                        }}
+                        exit={{ y: prefersReduced ? 0 : -14, opacity: prefersReduced ? 1 : 0 }}
                         transition={{
                           duration: prefersReduced ? 0 : 0.25,
                           delay: prefersReduced ? 0 : index * 0.04,
                         }}
-                        className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 transition-all duración-200 
-                                   hover:bg-white hover:shadow-md hover:border-slate-300
-                                   dark:border-slate-700 dark:bg-slate-800/60 dark:hover:bg-slate-800"
+                        className={S.nextCard}
                       >
-                        <div className="flex items-center gap-3 mb-3">
-                          <div
-                            className="grid h-10 w-10 place-items-center rounded-full 
-                                         border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800"
-                          >
+                        <div className={S.nextHeader}>
+                          <div className={S.nextIconWrap}>
                             <span className="text-lg">🚆</span>
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-xs text-slate-500 dark:text-slate-400">
-                              Código
-                            </div>
-                            <div className="truncate font-bold tracking-wide text-slate-900 dark:text-slate-100">
-                              {codeFrom(inf, n.id)}
-                            </div>
-                            <div className="truncate text-xs text-slate-500 dark:text-slate-400">
-                              {inf?.empresa?.nombre ?? "—"}
-                            </div>
+
+                          <div className={S.nextMeta}>
+                            <div className={S.nextMetaLabel}>Locomotora</div>
+                            <div className={S.nextMetaValue}>{loco}</div> {/* ✅ FIX */}
+                            <div className={S.nextMetaLabel}>Empresa</div>
+                            <div className={S.nextMetaValue}>{inf?.empresa?.nombre ?? "—"}</div>
                           </div>
-                          <div className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
-                            Ronda #{n.rondaNumero}
+
+                          <div className={S.nextRight}>Ronda #{n.rondaNumero}</div>
+                        </div>
+
+                        <div className={S.kvGrid}>
+                          <div className={S.kvBox}>
+                            <div className={S.kvLabel}>Origen</div>
+                            <div className={S.kvValue}>{mv?.viaOrigen?.nombre || "—"}</div>
+                          </div>
+                          <div className={S.kvBox}>
+                            <div className={S.kvLabel}>Destino</div>
+                            <div className={S.kvValue}>{mv?.viaDestino?.nombre || "—"}</div>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2 mb-3">
-                          <div
-                            className="rounded-lg border border-slate-200 bg-white p-2 
-                                         dark:border-slate-700 dark:bg-slate-900"
-                          >
-                            <div className="text-xs text-slate-500 dark:text-slate-400">
-                              Origen
-                            </div>
-                            <div className="truncate text-sm font-medium">
-                              {mv?.viaOrigen?.nombre || "—"}
-                            </div>
+                        <div className={S.kvGrid}>
+                          <div className={S.kvBoxStrong}>
+                            <div className={S.kvLabel}>Estado</div>
+                            <div className="text-sm font-medium">{mv?.estado || "—"}</div>
                           </div>
-                          <div
-                            className="rounded-lg border border-slate-200 bg-white p-2 
-                                         dark:border-slate-700 dark:bg-slate-900"
-                          >
-                            <div className="text-xs text-slate-500 dark:text-slate-400">
-                              Destino
-                            </div>
-                            <div className="truncate text-sm font-medium">
-                              {mv?.viaDestino?.nombre || "—"}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2 mb-3">
-                          <div
-                            className="rounded-lg border border-slate-300 bg-white p-2 
-                                         dark:border-slate-600 dark:bg-slate-900"
-                          >
-                            <div className="text-xs text-slate-500 dark:text-slate-400">
-                              Estado
-                            </div>
-                            <div className="text-sm font-medium">
-                              {mv?.estado || "—"}
-                            </div>
-                          </div>
-                          <div
-                            className="rounded-lg border border-slate-200 bg-white p-2 
-                                         dark:border-slate-700 dark:bg-slate-900"
-                          >
-                            <div className="text-xs text-slate-500 dark:text-slate-400">
-                              Prioridad
-                            </div>
+                          <div className={S.kvBox}>
+                            <div className={S.kvLabel}>Prioridad</div>
                             <div
                               className={`text-sm font-medium ${
                                 mv?.prioridad === "ALTA"
@@ -1056,33 +765,19 @@ export default function RailQueueBoard({
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="text-xs text-slate-500 dark:text-slate-400">
-                            Loco:{" "}
-                            <span className="font-medium text-slate-700 dark:text-slate-200">
-                              {loco}
-                            </span>
+                        <div className={S.footerRow}>
+                          <div className={S.footerLeft}>
+                            Loco: <span className={S.footerLeftVal}>{loco}</span>
                           </div>
-                          <div className="flex gap-1">
-                            <ServiceChip
-                              active={!!mv?.lavado}
-                              icon="💧"
-                              text="Lavado"
-                            />
-                            <ServiceChip
-                              active={!!mv?.torno}
-                              icon="⚙️"
-                              text="Torno"
-                            />
+                          <div className={S.footerServices}>
+                            <ServiceChip active={!!mv?.lavado} icon="💧" text="Lavado" />
+                            <ServiceChip active={!!mv?.torno} icon="⚙️" text="Torno" />
                           </div>
                         </div>
 
-                        {/* Instrucciones + Fecha Creado para cada próxima orden */}
-                        <div className="mt-3 space-y-2 text-[11px] sm:text-xs text-slate-600 dark:text-slate-300">
+                        <div className={S.nextExtra}>
                           <div>
-                            <span className="font-semibold">
-                              Instrucciones:{" "}
-                            </span>
+                            <span className="font-semibold">Instrucciones: </span>
                             <span>
                               {mv?.instrucciones?.trim()
                                 ? mv.instrucciones.trim()
@@ -1098,13 +793,14 @@ export default function RailQueueBoard({
                     );
                   })
                 )}
+
                 {!loading && next.length === 0 && (
                   <motion.div
                     initial={{ opacity: prefersReduced ? 1 : 0 }}
                     animate={{ opacity: 1 }}
-                    className="py-8 text-center text-sm text-slate-500 dark:text-slate-400"
+                    className={S.nextEmpty}
                   >
-                    <div className="text-3xl mb-2">📭</div>
+                    <div className={S.nextEmptyIcon}>📭</div>
                     Sin movimientos pendientes
                   </motion.div>
                 )}
@@ -1119,12 +815,9 @@ export default function RailQueueBoard({
       </audio>
 
       {openEditor && (
-        <div
-          className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm p-2 sm:p-4 
-            flex items-start justify-center pt-12 sm:pt-16"
-        >
-          <div className="w-full max-w-[1000px] h-auto max-h-[85vh] overflow-hidden rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-700">
-            <div className="h-full overflow-auto">
+        <div className={S.modalOverlay}>
+          <div className={S.modalCard}>
+            <div className={S.modalScroll}>
               <EditRondas
                 localidadId={localidadId}
                 onClose={() => setOpenEditor(false)}
@@ -1142,29 +835,13 @@ export default function RailQueueBoard({
 }
 
 /* ===== Subcomponentes ===== */
-function InfoBadge({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value: string;
-  icon: string;
-}) {
+function InfoBadge({ label, value, icon }: { label: string; value: string; icon: string }) {
   return (
-    <div
-      className="rounded-lg border border-slate-200 bg-white p-2 text-center
-                    dark:border-slate-700 dark:bg-slate-900"
-    >
-      <div
-        className="flex items-center justify-center gap-1 text-[10px] uppercase tracking-wider 
-                      text-slate-500 dark:text-slate-400"
-      >
+    <div className={S.infoBadge}>
+      <div className={S.infoBadgeLabel}>
         {icon} {label}
       </div>
-      <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
-        {value}
-      </div>
+      <div className={S.infoBadgeValue}>{value}</div>
     </div>
   );
 }
@@ -1178,17 +855,7 @@ function Chip({
   icon: string;
   children: React.ReactNode;
 }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium border transition-all duration-200 ${
-        ok
-          ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
-          : "border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-      }`}
-    >
-      {icon} {children}
-    </span>
-  );
+  return <span className={S.chip(ok)}>{icon} {children}</span>;
 }
 
 function ServiceChip({
@@ -1200,17 +867,7 @@ function ServiceChip({
   icon: string;
   text: string;
 }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] border ${
-        active
-          ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
-          : "border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
-      }`}
-    >
-      {icon} {text}
-    </span>
-  );
+  return <span className={S.serviceChip(active)}>{icon} {text}</span>;
 }
 
 function SkeletonCurrent() {
@@ -1229,18 +886,12 @@ function SkeletonCurrent() {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div
-            key={i}
-            className="h-16 rounded-xl bg-slate-200 dark:bg-slate-800"
-          />
+          <div key={i} className="h-16 rounded-xl bg-slate-200 dark:bg-slate-800" />
         ))}
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div
-            key={i}
-            className="h-12 rounded-lg bg-slate-200 dark:bg-slate-800"
-          />
+          <div key={i} className="h-12 rounded-lg bg-slate-200 dark:bg-slate-800" />
         ))}
       </div>
       <div className="h-16 rounded-xl bg-slate-200 dark:bg-slate-800" />
@@ -1279,14 +930,9 @@ function SkeletonNext() {
 
 function DateBox({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-xs sm:text-sm dark:border-slate-700 dark:bg-slate-900/60">
-      <div className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
-        {label}
-      </div>
-      <div className="mt-0.5 text-[11px] sm:text-xs font-medium text-slate-800 dark:text-slate-100">
-        {value}
-      </div>
+    <div className={S.dateBox}>
+      <div className={S.dateBoxLabel}>{label}</div>
+      <div className={S.dateBoxValue}>{value}</div>
     </div>
   );
 }
-
