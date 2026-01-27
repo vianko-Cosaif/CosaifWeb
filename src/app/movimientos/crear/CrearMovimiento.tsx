@@ -920,7 +920,21 @@ function Select({
     </label>
   );
 }
-
+function TrackFilter(vias:Via[], selected:String, filter:String, service:Servicio|undefined):Via[]{
+  return vias
+    .filter(v => {
+      const viaNameLower = v.nombre.toLowerCase();
+      // If in de_via mode and service is lavado, only show vias that are not lavado
+      if (selected === filter && service === 'Lavado') {
+        return viaNameLower !== 'lavado';
+      }
+      // If in de_via mode and service is torno, only show vias that are not torno
+      if (selected === filter && service === 'Torno') {
+        return viaNameLower !== 'torno';
+      }
+      return true;
+    });
+}
 /** ------ Step 1 ------ */
 function StepOne(props: {
   form: MovementFormData;
@@ -959,7 +973,6 @@ function StepOne(props: {
     tapToggle, sectionsByVia, secLoading, ensureSections, fromSection, toSection,
     setFromSection, setToSection, viaName
   } = props;
-
   /** ===== Alta Password Modal State ===== */
   const [altaOpen, setAltaOpen] = useState(false);
   const [altaPwd, setAltaPwd] = useState("");
@@ -1258,19 +1271,7 @@ function StepOne(props: {
 
           {showFromOpts && (
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {vias
-                .filter(v => {
-                  const viaNameLower = v.nombre.toLowerCase();
-                  // If in de_via mode and service is lavado, only show vias that are not lavado
-                  if (selectionMode === 'de_via' && form.service === 'Lavado') {
-                    return viaNameLower !== 'lavado';
-                  }
-                  // If in de_via mode and service is torno, only show vias that are not torno
-                  if (selectionMode === 'de_via' && form.service === 'Torno') {
-                    return viaNameLower !== 'torno';
-                  }
-                  return true;
-                })
+              {TrackFilter(vias, selectionMode, "de_via", form.service)
                 .map((v) => (
                   <div key={v.id}>
                     {viaOption(v)}
@@ -1304,12 +1305,7 @@ function StepOne(props: {
 
           {showToOpts && (
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {vias
-                .filter(v => {
-                  const viaNameLower = v.nombre.toLowerCase();
-                  // Always exclude 'torno' and 'lavado' from 'para_via' dropdown
-                  return viaNameLower !== 'torno' && viaNameLower !== 'lavado';
-                })
+              {TrackFilter(vias, selectionMode, "para_via", form.service)
                 .map((v) => (
                   <div key={v.id}>
                     {viaOptionTo(v)}
@@ -1317,7 +1313,6 @@ function StepOne(props: {
                 ))}
             </div>
           )}
-
           <SectionsPills kind="to" viaId={form.toTrack} />
         </div>
       )}
