@@ -29,7 +29,7 @@ export default function EditarMovimiento({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState<"de_via" | "para_via">("de_via");
-  const [serviceVia, setServiceVia] = useState<Servicio>("");
+const [serviceVia, setServiceVia] = useState<Servicio | undefined>("");
   const [info, setInfo] = useState<InfoEdicion | null>(null);
   const [vias, setVias] = useState<Via[]>([]);
   const [sectionsByVia, setSectionsByVia] = useState<Record<number, Seccion[]>>({});
@@ -520,7 +520,7 @@ function Step1Edit({
   sectionsByVia: Record<number, Seccion[]>;
   secLoading: Record<number, boolean>;
   selectionMode: "de_via" | "para_via";
-  serviceVia:Servicio ;
+  serviceVia:Servicio | undefined ;
   setServiceVia: (v?: Servicio) => void;
   setSelectionMode: (mode: "de_via" | "para_via") => void;
   tapToggle: (key: string, onSingle: () => void, onDouble: () => void) => void;
