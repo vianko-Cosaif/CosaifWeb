@@ -515,6 +515,7 @@ const body = {
             localidades={localidades}
             initial={editing}
             onSubmit={async (values) => {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               await saveEdit({ ...editing, ...values, id: editing.id } as any);
               setEditing(null);
               await load();
