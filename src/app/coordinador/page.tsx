@@ -41,9 +41,8 @@ const CoordinadorPage: React.FC = () => {
       <div className="relative z-10 flex min-h-svh flex-1 flex-col">
         <main className="mx-auto w-full max-w-screen-2xl flex-1 p-4 sm:p-6 md:p-8">
           {localidadId && (
-  <div className="w-full py-4">
-
-            <RailQueueBoard localidadId={localidadId} />
+            <div className="w-full py-4">
+              <RailQueueBoard localidadId={localidadId} />
             </div>
           )}
         </main>

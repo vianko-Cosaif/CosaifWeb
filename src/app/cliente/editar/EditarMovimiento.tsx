@@ -2,120 +2,11 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
-/** ======= CONFIG ======= */
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "/xapi";
-const SECC_BASE = `${API_BASE}/secciones/secciones`;
-const FETCH_TIMEOUT_MS = 12000;
-
-/** ======= TIPOS ======= */
-type Direccion = "EMPUJAR" | "JALAR" | "Sin_Solicitar";
-type Posicion = "DENTRO" | "AFUERA" | "Sin_Solicitar";
-type Rol = "CLIENTE" | "ADMINISTRADOR" | "COORDINADOR" | "SUPERVISOR" | string;
-
-type Empresa = { id: number; nombre: string };
-type Localidad = { id: number; nombre: string; estado?: string };
-type Via = { id: number; nombre: string };
-type Seccion = {
-  id: number;
-  numero: number;
-  nombre?: string | null;
-  ocupada: boolean;
-  movimientoId?: number | null;
-  movimiento?: { id: number; locomotiveNumber?: string | null } | null;
-};
-
-type InfoEdicion = {
-  editable: boolean;
-  restricciones: {
-    motivo: string | null;
-    estadosPermitidos: string[];
-    mismaLocalidadParaVias: boolean;
-  };
-  movimiento: {
-    id: number;
-    empresa: Empresa | null;
-    localidad: Localidad;
-    estado: string;
-    finalizado: boolean;
-    instrucciones?: string | null;
-    locomotiveNumber?: number | null;
-    viaOrigen?: Via | null;
-    viaDestino?: Via | null;
-    tipoMovimiento?: "MD_TRABAJANDO" | "REMOLCADA" | null;
-    posicionCabina?: Posicion | null;
-    posicionChimenea?: Posicion | null;
-    direccionEmpuje?: Direccion | null;
-    polo?: "NORTE" | "SUR" | "Sin_Solicitar" | null;
-    meta?: { destinoId?: number; seccion?: number; liberar?: boolean };
-  };
-  editableKeys: Array<
-    | "instrucciones"
-    | "locomotiveNumber"
-    | "viaOrigenId"
-    | "viaDestinoId"
-    | "tipoMovimiento"
-    | "posicionCabina"
-    | "posicionChimenea"
-    | "direccionEmpuje"
-    | "polo"
-  >;
-};
-
-type EditablePayload = Partial<{
-  instrucciones: string;
-  locomotiveNumber: number;
-  viaOrigenId: number | null;
-  viaDestinoId: number | null;
-  tipoMovimiento: "MD_TRABAJANDO" | "REMOLCADA";
-  posicionCabina: Posicion;
-  posicionChimenea: Posicion;
-  direccionEmpuje: Direccion;
-}>;
-
+import { Movimiento } from './../../movimientos/Movimiento'; // <--- Único import
+import { API_BASE, SECC_BASE, DOUBLE_TAP_MS, Direccion, Posicion, Servicio, Rol, Polo, Via, Seccion,InfoEdicion, EditablePayload, MovementFormData, baseInitialForm
+ } from './../../movimientos/movimientos.shared'; // <--- Único import
 /** ======= UTILS ======= */
-const clsx = (...xs: Array<string | false | null | undefined>) => xs.filter(Boolean).join(" ");
-const safeJSON = (t: string) => { try { return JSON.parse(t); } catch { return null; } };
 
-const getCookie = (name: string) => {
-  if (typeof document === "undefined") return "";
-  const m = document.cookie.match(new RegExp("(^|; )" + name + "=([^;]*)"));
-  return m ? decodeURIComponent(m[2]) : "";
-};
-const tokenHeader = (): HeadersInit => {
-  const t = getCookie("token");
-  return t ? { Authorization: `Bearer ${t}` } : {};
-};
-
-const fetchWithTimeout = async (url: string, init: RequestInit = {}, timeoutMs = FETCH_TIMEOUT_MS) => {
-  const ctrl = new AbortController();
-  const to = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...init, signal: ctrl.signal });
-  } finally {
-    clearTimeout(to);
-  }
-};
-
-const fetchJSON = async (url: string, init: RequestInit = {}) => {
-  const isGet = !init.method || init.method.toUpperCase() === "GET";
-  const res = await fetchWithTimeout(url, {
-    credentials: "include",
-    cache: "no-store",
-    ...init,
-    headers: {
-      ...(isGet ? {} : { "Content-Type": "application/json" }),
-      Accept: "application/json",
-      ...(init.headers as any),
-      ...tokenHeader(),
-    },
-  });
-  const ct = res.headers.get("content-type") || "";
-  const txt = await res.text().catch(() => "");
-  const body = ct.includes("application/json") && txt ? safeJSON(txt) : null;
-  if (!res.ok) throw new Error((body as any)?.message || (body as any)?.error || txt || `HTTP ${res.status}`);
-  return body;
-};
 
 /** ======= ESTILOS ======= */
 const inputBase =
@@ -137,7 +28,8 @@ export default function EditarMovimiento({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
+  const [selectionMode, setSelectionMode] = useState<"de_via" | "para_via">("de_via");
+  const [serviceVia, setServiceVia] = useState<Servicio>("");
   const [info, setInfo] = useState<InfoEdicion | null>(null);
   const [vias, setVias] = useState<Via[]>([]);
   const [sectionsByVia, setSectionsByVia] = useState<Record<number, Seccion[]>>({});
@@ -152,8 +44,10 @@ export default function EditarMovimiento({
   const [posicionCabina, setPosicionCabina] = useState<Posicion>("Sin_Solicitar");
   const [posicionChimenea, setPosicionChimenea] = useState<Posicion>("Sin_Solicitar");
   const [direccionEmpuje, setDireccionEmpuje] = useState<Direccion>("Sin_Solicitar");
-  const [polo, setPolo] = useState<"NORTE" | "SUR" | "Sin_Solicitar">("Sin_Solicitar");
-
+  const [polo, setPolo] = useState<Polo>("Sin_Solicitar");
+  const [form, setForm] = useState<MovementFormData>(baseInitialForm);
+    const lastTap = useRef<Record<string, number>>({});
+  
   // Secciones elegidas para hint META (el backend solo las lee desde instrucciones)
   const [fromSection, setFromSection] = useState<number | undefined>(undefined);
   const [toSection, setToSection] = useState<number | undefined>(undefined);
@@ -176,7 +70,7 @@ export default function EditarMovimiento({
 
   // Rol y helpers
   const [rol, setRol] = useState<Rol>("CLIENTE");
-  useEffect(() => { const r = String(getCookie("role") || "").toUpperCase() as Rol; if (r) setRol(r); }, []);
+  useEffect(() => { const r = String(Movimiento.getCookie("role") || "").toUpperCase() as Rol; if (r) setRol(r); }, []);
   const roleToPath = (r?: string) => {
     const R = String(r || "").toUpperCase();
     if (R === "COORDINADOR") return "/coordinador/movimientos";
@@ -191,7 +85,7 @@ export default function EditarMovimiento({
     (async () => {
       try {
         setLoading(true);
-        const data = await fetchJSON(`${API_BASE}/movimientos/${movimientoId}/edicion`);
+        const data = await Movimiento.fetchJSON(`${API_BASE}/movimientos/${movimientoId}/edicion`);
         if (!mounted) return;
         setInfo(data);
 
@@ -205,6 +99,7 @@ export default function EditarMovimiento({
         setPosicionCabina((data.movimiento.posicionCabina as any) ?? "Sin_Solicitar");
         setPosicionChimenea((data.movimiento.posicionChimenea as any) ?? "Sin_Solicitar");
         setDireccionEmpuje((data.movimiento.direccionEmpuje as any) ?? "Sin_Solicitar");
+        setServiceVia((!data.movimiento.Lavado && !data.movimiento.torno)?"":(data.movimiento.torno?"Torno":"Lavado"));
 
         // Prefill secciones desde meta si aplica (el parser expone meta.seccion y meta.destinoId)
         if (data.movimiento.meta?.seccion) setToSection(Number(data.movimiento.meta.seccion));
@@ -212,7 +107,7 @@ export default function EditarMovimiento({
         // Cargar vías por localidad
         const locId = data.movimiento.localidad?.id;
         if (locId) {
-          const list = await fetchJSON(`${API_BASE}/vias/localidad/${locId}`).catch(() => []);
+          const list = await Movimiento.fetchJSON(`${API_BASE}/vias/localidad/${locId}`).catch(() => []);
           const vList: Via[] = Array.isArray(list)
             ? list.map((v: any) => ({ id: v.id, nombre: v.nombre }))
             : [];
@@ -238,7 +133,7 @@ export default function EditarMovimiento({
     secLoadingRef.current[viaId] = true;
     setSecLoading((s) => ({ ...s, [viaId]: true }));
     try {
-      const raw = await fetchJSON(`${SECC_BASE}/via/${viaId}`);
+      const raw = await Movimiento.fetchJSON(`${SECC_BASE}/via/${viaId}`);
       const arr: Seccion[] = Array.isArray(raw) ? raw : raw?.secciones ?? [];
       const ordered = arr.slice().sort((a, b) => a.numero - b.numero);
       setSectionsByVia((m) => ({ ...m, [viaId]: ordered }));
@@ -282,7 +177,12 @@ export default function EditarMovimiento({
     
     return partes.join(" ");
   };
-
+  const tapToggle = (key: string, onSingle: () => void, onDouble: () => void) => {
+    const now = Date.now();
+    const last = lastTap.current[key] || 0;
+    if (now - last < DOUBLE_TAP_MS) onDouble(); else onSingle();
+    lastTap.current[key] = now;
+  };
   const buildPayload = (): EditablePayload => {
     if (!info) return {} as EditablePayload;
 
@@ -318,6 +218,11 @@ export default function EditarMovimiento({
       payload.direccionEmpuje = direccionEmpuje;
     }
 
+    if ((editableKeys.includes('torno') && editableKeys.includes('lavado'))) {
+      payload.torno =serviceVia === "Torno"
+      payload.lavado = serviceVia === "Lavado";
+    }
+
     // Polo is now included in the instructions, not in the payload
 
     // Construir instrucciones con metadatos
@@ -332,7 +237,7 @@ export default function EditarMovimiento({
       .trim();
 
     if (info.editableKeys.includes('instrucciones')) payload.instrucciones = finalInstr;
-
+    
     return payload;
   };
 
@@ -349,7 +254,7 @@ export default function EditarMovimiento({
 
     try {
       setSaving(true);
-      const updated = await fetchJSON(`${API_BASE}/movimientos/${movimientoId}/edicion`, {
+      const updated = await Movimiento.fetchJSON(`${API_BASE}/movimientos/${movimientoId}/edicion`, {
         method: "PATCH",
         body: JSON.stringify(payload),
       });
@@ -424,6 +329,10 @@ export default function EditarMovimiento({
               vias={vias}
               sectionsByVia={sectionsByVia}
               secLoading={secLoading}
+              selectionMode={selectionMode}
+              serviceVia={serviceVia}
+              setServiceVia={setServiceVia}
+              setSelectionMode={setSelectionMode}
               ensureSections={ensureSections}
               viaOrigenId={viaOrigenId}
               setViaOrigenId={setViaOrigenId}
@@ -435,8 +344,9 @@ export default function EditarMovimiento({
               setToSection={setToSection}
               locomotiveNumber={locomotiveNumber}
               setLocomotiveNumber={setLocomotiveNumber}
-              viaName={viaName}
-            />
+              viaName={viaName} 
+              tapToggle={tapToggle}
+              setForm={setForm} />
           )}
 
           {step === 2 && (
@@ -494,7 +404,7 @@ export default function EditarMovimiento({
                 if (step === 2 && !validateStep2()) return;
                 setStep((s) => ((s + 1) as 1 | 2 | 3));
               }}
-              className={clsx(
+              className={Movimiento.clsx(
                 "rounded-md px-4 py-2 text-white",
                 readOnly ? "bg-slate-400 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700"
               )}
@@ -529,7 +439,7 @@ function Field(props: React.InputHTMLAttributes<HTMLInputElement> & { label: str
         {...rest}
         aria-invalid={!!error}
         aria-describedby={error ? `${eid}_err` : undefined}
-        className={clsx(inputBase, error && "border-rose-500 focus:border-rose-500", className)}
+        className={Movimiento.clsx(inputBase, error && "border-rose-500 focus:border-rose-500", className)}
       />
       {error ? <span id={`${eid}_err`} className="mt-1 block text-xs text-rose-600 dark:text-rose-400">{error}</span> : null}
     </label>
@@ -562,7 +472,7 @@ function Select({
         disabled={disabled}
         aria-invalid={!!error}
         aria-describedby={error ? `${id}_err` : undefined}
-        className={clsx(
+        className={Movimiento.clsx(
           inputBase,
           "bg-white dark:bg-slate-900 appearance-none touch-manipulation",
           disabled && "cursor-not-allowed opacity-60",
@@ -586,6 +496,12 @@ function Step1Edit({
   vias,
   sectionsByVia,
   secLoading,
+  selectionMode,
+  serviceVia,
+  setServiceVia,
+  setSelectionMode,
+  tapToggle,
+  setForm,
   ensureSections,
   viaOrigenId,
   setViaOrigenId,
@@ -603,6 +519,12 @@ function Step1Edit({
   vias: Via[];
   sectionsByVia: Record<number, Seccion[]>;
   secLoading: Record<number, boolean>;
+  selectionMode: "de_via" | "para_via";
+  serviceVia:Servicio ;
+  setServiceVia: (v?: Servicio) => void;
+  setSelectionMode: (mode: "de_via" | "para_via") => void;
+  tapToggle: (key: string, onSingle: () => void, onDouble: () => void) => void;
+  setForm: React.Dispatch<React.SetStateAction<MovementFormData>>;
   ensureSections: (viaId: number) => void;
   viaOrigenId: number | null;
   setViaOrigenId: (v: number | null) => void;
@@ -621,7 +543,7 @@ function Step1Edit({
       key={v.id}
       disabled={readOnly}
       onClick={() => setViaOrigenId(viaOrigenId === v.id ? null : v.id)}
-      className={clsx(
+      className={Movimiento.clsx(
         "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800",
         viaOrigenId === v.id && "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
       )}
@@ -639,13 +561,13 @@ function Step1Edit({
         key={v.id}
         disabled={readOnly}
         onClick={() => setViaDestinoId(viaDestinoId === v.id ? null : v.id)}
-        className={clsx(
+        className={Movimiento.clsx(
           "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800",
           viaDestinoId === v.id && "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
         )}
       >
         <span className="truncate">Vía {v.nombre}</span>
-        <span className={clsx("ml-3 text-xs font-semibold", tone)}>{label}</span>
+        <span className={Movimiento.clsx("ml-3 text-xs font-semibold", tone)}>{label}</span>
       </button>
     );
   };
@@ -685,7 +607,7 @@ function Step1Edit({
                   key={s.id}
                   disabled={readOnly}
                   onClick={() => (kind === "from" ? setFromSection(active ? undefined : s.numero) : setToSection(active ? undefined : s.numero))}
-                  className={clsx("rounded-full border px-3 py-1 text-xs font-semibold", color, active && (s.ocupada ? "bg-rose-600 text-white" : "bg-emerald-600 text-white"))}
+                  className={Movimiento.clsx("rounded-full border px-3 py-1 text-xs font-semibold", color, active && (s.ocupada ? "bg-rose-600 text-white" : "bg-emerald-600 text-white"))}
                 >
                   #{s.numero}{s.nombre ? ` · ${s.nombre}` : ""}{s.ocupada ? " · OCUP" : ""}
                 </button>
@@ -713,9 +635,68 @@ function Step1Edit({
         }}
         disabled={readOnly}
       />
-
-      {/* Origen */}
+      {/* Modo de selección - solo visible cuando hay servicio */}
+      {/* Servicio */}
       <div className="sm:col-span-2">
+        <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Servicio</span>
+        <div className="flex flex-wrap gap-2">
+          {(["Lavado", "Torno"] as const).map((svc) => {
+            const active = serviceVia === svc;
+            return (
+              <button
+                key={svc}
+                onClick={() =>
+                    tapToggle(
+                      `svc:${svc}`,
+                      () => {setForm((p) => ({ ...p, service: svc, toTrack: null })); setServiceVia(svc)},
+                      () => {setForm((p) => ({ ...p, service: "", toTrack: p.toTrack })); setServiceVia("")}
+                    )
+                }
+                className={Movimiento.clsx(
+                  "rounded-md border px-3 py-2 text-sm",
+                  active ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                    : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                )}
+              >
+                {svc}
+              </button>
+            );
+          })}
+          {serviceVia ? <span className="self-center text-xs text-slate-500 dark:text-slate-400">Doble clic para desmarcar</span> : null}
+        </div>
+      </div>
+      {(serviceVia || selectionMode) && (
+        <div className="sm:col-span-2">
+          <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Modo de selección</span>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setSelectionMode("de_via")}
+              className={Movimiento.clsx(
+                "rounded-md border px-3 py-2 text-sm",
+                selectionMode === "de_via"
+                  ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                  : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              )}
+            >
+              De vía
+            </button>
+            <button
+              onClick={() => setSelectionMode("para_via")}
+              className={Movimiento.clsx(
+                "rounded-md border px-3 py-2 text-sm",
+                selectionMode === "para_via"
+                  ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                  : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              )}
+            >
+              Para vía
+            </button>
+          </div>
+        </div>
+      )}
+      {/* Origen */}
+      {(selectionMode === "de_via" || !serviceVia) && 
+      (<div className="sm:col-span-2">
         <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">De vía (origen)</span>
         <div className="flex gap-2">
           <button
@@ -727,12 +708,10 @@ function Step1Edit({
             {viaOrigenId ? `Vía ${viaName(viaOrigenId)}` : "Selecciona una vía"}
           </button>
         </div>
-        <div className="mt-2 grid gap-2 sm:grid-cols-2">{vias.map((v) => (<div key={v.id}>{optionFrom(v)}</div>))}</div>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">{Movimiento.TrackFilter(vias, selectionMode, "de_via", serviceVia).map((v) => (<div key={v.id}>{optionFrom(v)}</div>))}</div>
         <SectionsPills kind="from" viaId={viaOrigenId} />
-      </div>
-
-      {/* Destino */}
-      <div className="sm:col-span-2">
+      </div>)}
+      {(selectionMode === "para_via" || !serviceVia) && (<div className="sm:col-span-2">
         <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Para vía (destino)</span>
         <div className="flex gap-2">
           <button
@@ -744,9 +723,9 @@ function Step1Edit({
             {viaDestinoId ? `Vía ${viaName(viaDestinoId)}` : "Selecciona una vía"}
           </button>
         </div>
-        <div className="mt-2 grid gap-2 sm:grid-cols-2">{vias.map((v) => (<div key={v.id}>{optionTo(v)}</div>))}</div>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">{Movimiento.TrackFilter(vias, selectionMode, "para_via", serviceVia).map((v) => (<div key={v.id}>{optionTo(v)}</div>))}</div>
         <SectionsPills kind="to" viaId={viaDestinoId} />
-      </div>
+      </div>)}
     </div>
   );
 }
@@ -792,7 +771,7 @@ function Step2Edit({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={clsx(
+      className={Movimiento.clsx(
         "flex w-full items-center justify-between rounded-md border px-3 py-3 text-left",
         "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800",
         active && "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20",
@@ -800,7 +779,7 @@ function Step2Edit({
       )}
     >
       <span className="font-medium">{label}</span>
-      <span className={clsx("ml-3 rounded-full px-2 py-0.5 text-xs", active ? "border border-emerald-500 text-emerald-700 dark:text-emerald-300" : "border border-slate-300 text-slate-500")}>
+      <span className={Movimiento.clsx("ml-3 rounded-full px-2 py-0.5 text-xs", active ? "border border-emerald-500 text-emerald-700 dark:text-emerald-300" : "border border-slate-300 text-slate-500")}>
         {active ? "Seleccionado" : "Elegir"}
       </span>
     </button>
@@ -971,7 +950,7 @@ function Step3Edit({
         <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Comentarios / instrucciones</span>
         <textarea
           rows={6}
-          className={clsx(inputBase, "min-h-[120px]")}
+          className={Movimiento.clsx(inputBase, "min-h-[120px]")}
           value={instrucciones}
           onChange={(e) => setInstrucciones(e.target.value)}
           placeholder="Escribe comentarios; añadiremos pistas META si seleccionaste secciones."
@@ -985,7 +964,7 @@ function Step3Edit({
       <button
         onClick={onSubmit}
         disabled={readOnly || saving}
-        className={clsx(
+        className={Movimiento.clsx(
           "inline-flex items-center justify-center rounded-md px-4 py-2 font-medium text-white",
           readOnly ? "bg-slate-400 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700",
           saving && "opacity-60"
@@ -1005,5 +984,5 @@ function Badge({ tone, children }: { tone: "ok" | "warn" | "error" | "muted"; ch
     error: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-200 dark:border-rose-800",
     muted: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
   } as const;
-  return <span className={clsx(chipBase, map[tone])}>{children}</span>;
+  return <span className={Movimiento.clsx(chipBase, map[tone])}>{children}</span>;
 }

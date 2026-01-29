@@ -4,163 +4,13 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useMounted } from "@/app/hooks/useMounted";
 import { getInitialTheme, applyTheme, onThemeChange } from "@/lib/theme";
-
-/** ======= CONFIG ======= */
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "/xapi";
-const SECC_BASE = `${API_BASE}/secciones/secciones`;
-const DRAFT_KEY = "movement_draft_v3";
-const OUTBOX_KEY = "movement_outbox_v1";
-const DOUBLE_TAP_MS = 250;
-const FETCH_TIMEOUT_MS = 12000;
-const FLUSH_INTERVAL_MS = 15000;
-
-/** ======= CONTRASEÑAS DE ALTA POR EMPRESA ======= */
-const ALTA_PASSWORDS: Record<number, string> = {
-  1: "ALTA-EMPRESA-1",
-  2: "ALTA-EMPRESA-2",
-  3: "ALTA-EMPRESA-3",
-  4:"ALTA-EMPRESA-4",
-  5: "ALTA-EMPRESA-5"
-};
-
-/** ======= TIPOS ======= */
-type Servicio = "Lavado" | "Torno" | "";
-type Direccion = "EMPUJAR" | "JALAR" | "Sin_Solicitar";
-type Polo = "NORTE" | "SUR" | "Sin_Solicitar";
-type Posicion = "DENTRO" | "AFUERA" | "Sin_Solicitar";
-type Rol = "CLIENTE" | "ADMINISTRADOR" | "COORDINADOR" | "SUPERVISOR" | string;
-
-type Empresa = { id: number; nombre: string };
-type Localidad = { id: number; nombre: string; estado?: string };
-type Via = { id: number; nombre: string };
-type Seccion = {
-  id: number;
-  numero: number;
-  nombre?: string | null;
-  ocupada: boolean;
-  movimientoId?: number | null;
-  movimiento?: { id: number; locomotiveNumber?: string | null } | null;
-};
-
-type Option = { label: string; value: string };
-
-export interface MovementFormData {
-  empresaId: number | null;
-  locomotiveNumber: string;
-  priority: boolean;
-  fromTrack: number | null;
-  toTrack: number | null;
-  selectedLocalityId?: number | null;
-  cabinPosition: Posicion;
-  chimneyPosition: Posicion;
-  polo: Polo;
-  pushPull: "" | "EMPUJAR" | "JALAR";
-  movementType: "" | "MD_TRABAJANDO" | "REMOLCADA";
-  comments: string;
-  service?: Servicio;
-  creadoPorId: number | null;
-  clienteId: number | null;
-  fechaInicio: string;
-  fechaFin: string;
-  posicionChimenea?: Posicion | null;
-  direccionEmpuje?: Direccion;
-}
-
-/** ======= RUTAS POR ROL ======= */
-const BASE_BY_ROLE: Record<string, string> = {
-  ADMINISTRADOR: "/administrador",
-  COORDINADOR: "/coordinador",
-  SUPERVISOR: "/supervisor",
-  CLIENTE: "/cliente",
-};
-const roleBase = (r?: string) => BASE_BY_ROLE[String(r || "").toUpperCase()] || "/cliente";
-
-const baseInitialForm: MovementFormData = {
-  empresaId: null,
-  locomotiveNumber: "",
-  priority: false,
-  fromTrack: null,
-  toTrack: null,
-  selectedLocalityId: null,
-  cabinPosition: "Sin_Solicitar",
-  chimneyPosition: "Sin_Solicitar",
-  polo: "Sin_Solicitar",
-  pushPull: "",
-  movementType: "",
-  comments: "",
-  service: "",
-  creadoPorId: null,
-  clienteId: null,
-  fechaInicio: new Date().toISOString(),
-  fechaFin: new Date().toISOString(),
-  posicionChimenea: null,
-  direccionEmpuje: "Sin_Solicitar",
-};
-
-/** ======= UTILS ======= */
-const clsx = (...xs: Array<string | false | null | undefined>) => xs.filter(Boolean).join(" ");
-const pad2 = (n: number) => (n < 10 ? `0${n}` : `${n}`);
-const toInputDT = (iso?: string) => {
-  const d = iso ? new Date(iso) : new Date();
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-};
-const fromInputDT = (v: string) => (v ? new Date(v).toISOString() : new Date().toISOString());
-
-const safeJSON = (t: string) => { try { return JSON.parse(t); } catch { return null; } };
-
-const getCookie = (name: string) => {
-  if (typeof document === "undefined") return "";
-  const m = document.cookie.match(new RegExp("(^|; )" + name + "=([^;]*)"));
-  return m ? decodeURIComponent(m[2]) : "";
-};
-const tokenHeader = (): HeadersInit => {
-  const t = getCookie("token");
-  return t ? { Authorization: `Bearer ${t}` } : {};
-};
-
-const fetchWithTimeout = async (url: string, init: RequestInit = {}, timeoutMs = FETCH_TIMEOUT_MS) => {
-  const ctrl = new AbortController();
-  const to = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...init, signal: ctrl.signal });
-  } finally {
-    clearTimeout(to);
-  }
-};
-
-const fetchJSON = async (url: string, init: RequestInit = {}) => {
-  const isGet = !init.method || init.method.toUpperCase() === "GET";
-  const res = await fetchWithTimeout(url, {
-    credentials: "include",
-    cache: "no-store",
-    ...init,
-    headers: {
-      ...(isGet ? {} : { "Content-Type": "application/json" }),
-      Accept: "application/json",
-      ...(init.headers as any),
-      ...tokenHeader(),
-    },
-  });
-  const ct = res.headers.get("content-type") || "";
-  const txt = await res.text().catch(() => "");
-  const body = ct.includes("application/json") && txt ? safeJSON(txt) : null;
-  if (!res.ok) throw new Error((body as any)?.message || (body as any)?.error || txt || `HTTP ${res.status}`);
-  return body;
-};
-
-function useVisibleInterval(cb: () => void, ms: number | null) {
-  useEffect(() => {
-    if (!ms) return;
-    const id = window.setInterval(() => { if (document.visibilityState === "visible") cb(); }, ms);
-    const onVis = () => document.visibilityState === "visible" && cb();
-    document.addEventListener("visibilitychange", onVis);
-    return () => { clearInterval(id); document.removeEventListener("visibilitychange", onVis); };
-  }, [cb, ms]);
-}
+import { Movimiento } from './../Movimiento'; // <--- Único import
+import { API_BASE, SECC_BASE, DOUBLE_TAP_MS, FLUSH_INTERVAL_MS, DRAFT_KEY, OUTBOX_KEY, ALTA_PASSWORDS, Servicio, roleBase, Rol, Via, Empresa, Localidad, Seccion, MovementFormData, baseInitialForm
+ } from './../movimientos.shared'; // <--- Único import
 
 /** ======= RESOLVER ROL (cookie → localStorage) ======= */
 function getRoleClient(): Rol {
-  const c = String(getCookie("role") || "").trim().toUpperCase();
+  const c = String(Movimiento.getCookie("role") || "").trim().toUpperCase();
   if (c) return c as Rol;
   try {
     const raw = localStorage.getItem("user");
@@ -236,7 +86,7 @@ export default function CrearMovimiento() {
     const role = getRoleClient();
     setRol(role);
 
-    const locCookie = Number(getCookie("locId") || NaN);
+    const locCookie = Number(Movimiento.getCookie("locId") || NaN);
 
     const uRaw = typeof window !== "undefined" ? localStorage.getItem("user") : null;
     let u: any = null;
@@ -261,7 +111,7 @@ export default function CrearMovimiento() {
   const resolvedIds = useMemo(() => {
     const role = String(rol).toUpperCase();
     const forcedEmpresa = Number(user?.empresaId ?? user?.empresa?.id ?? NaN);
-    const cookieLoc = Number(getCookie("locId") || NaN);
+    const cookieLoc = Number(Movimiento.getCookie("locId") || NaN);
 
     const empresaId = ADMIN_OR_COORD.includes(role)
       ? Number(form.empresaId ?? NaN)
@@ -285,8 +135,8 @@ export default function CrearMovimiento() {
     (async () => {
       try {
         const [e, l] = await Promise.all([
-          fetchJSON(`${API_BASE}/empresas`).catch(() => []),
-          fetchJSON(`${API_BASE}/localidades`).catch(() => []),
+          Movimiento.fetchJSON(`${API_BASE}/empresas`).catch(() => []),
+          Movimiento.fetchJSON(`${API_BASE}/localidades`).catch(() => []),
         ]);
         if (!alive) return;
 
@@ -340,7 +190,7 @@ export default function CrearMovimiento() {
   useEffect(() => {
     setRol(getRoleClient());
     if (!canManageAll) {
-      const locCookie = Number(getCookie("locId") || NaN);
+      const locCookie = Number(Movimiento.getCookie("locId") || NaN);
       setForm((p) => ({ ...p, selectedLocalityId: Number.isFinite(locCookie) ? locCookie : p.selectedLocalityId }));
     }
   }, [canManageAll]);
@@ -371,10 +221,10 @@ export default function CrearMovimiento() {
     const keep: any[] = [];
     for (const item of q) {
       try {
-        const res = await fetchWithTimeout(`${API_BASE}/movimientos`, {
+        const res = await Movimiento.fetchWithTimeout(`${API_BASE}/movimientos`, {
           method: "POST",
           credentials: "include",
-          headers: { "Content-Type": "application/json", Accept: "application/json", ...tokenHeader() },
+          headers: { "Content-Type": "application/json", Accept: "application/json", ...Movimiento.tokenHeader() },
           body: JSON.stringify(item.payload),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -384,14 +234,14 @@ export default function CrearMovimiento() {
     setPendingCount(keep.length);
     if (keep.length === 0) { setBanner("Todos los envíos pendientes fueron sincronizados."); setTimeout(() => setBanner(null), 2500); }
   }, [online]);
-  useVisibleInterval(flushOutbox, online ? FLUSH_INTERVAL_MS : null);
+  Movimiento.useVisibleInterval(flushOutbox, online ? FLUSH_INTERVAL_MS : null);
 
   /** Vías por localidad */
   useEffect(() => {
     (async () => {
       if (!form.selectedLocalityId) { setVias([]); return; }
       try {
-        const data = await fetchJSON(`${API_BASE}/vias/localidad/${form.selectedLocalityId}`);
+        const data = await Movimiento.fetchJSON(`${API_BASE}/vias/localidad/${form.selectedLocalityId}`);
         const list: Via[] = (data || []).map((v: any) => ({ id: v.id, nombre: v.nombre }));
         
         // Ordenar vías numéricamente si son números, alfabéticamente si no
@@ -427,7 +277,7 @@ export default function CrearMovimiento() {
     secLoadingRef.current[viaId] = true;
     setSecLoading((s) => ({ ...s, [viaId]: true }));
     try {
-      const raw = await fetchJSON(`${SECC_BASE}/via/${viaId}`);
+      const raw = await Movimiento.fetchJSON(`${SECC_BASE}/via/${viaId}`);
       const arr: Seccion[] = Array.isArray(raw) ? raw : raw?.secciones ?? [];
       const ordered = arr.slice().sort((a, b) => a.numero - b.numero);
       setSectionsByVia((m) => ({ ...m, [viaId]: ordered }));
@@ -481,7 +331,7 @@ export default function CrearMovimiento() {
         setLocoLockedBy({ movimientoId: s.movimientoId!, viaId: form.fromTrack!, numero: s.numero });
       } else {
         try {
-          const mov = await fetchJSON(`${API_BASE}/movimientos/${s.movimientoId}`);
+          const mov = await Movimiento.fetchJSON(`${API_BASE}/movimientos/${s.movimientoId}`);
           const loco = Number((mov as any)?.locomotiveNumber ?? 0);
           if (loco > 0) {
             setForm((p) => ({ ...p, locomotiveNumber: String(loco) }));
@@ -634,10 +484,10 @@ export default function CrearMovimiento() {
         return;
       }
 
-      const res = await fetchWithTimeout(`${API_BASE}/movimientos`, {
+      const res = await Movimiento.fetchWithTimeout(`${API_BASE}/movimientos`, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json", Accept: "application/json", ...tokenHeader() },
+        headers: { "Content-Type": "application/json", Accept: "application/json", ...Movimiento.tokenHeader() },
         body: JSON.stringify(payload),
       });
 
@@ -648,7 +498,7 @@ export default function CrearMovimiento() {
         return;
       }
 
-      const created = txt ? safeJSON(txt) : {};
+      const created = txt ? Movimiento.safeJSON(txt) : {};
       const movimientoId = Number((created as any)?.id || 0);
 
       const viaParaAsignar =
@@ -661,10 +511,10 @@ export default function CrearMovimiento() {
         (typeof fromSection === "number" ? fromSection : undefined);
 
       if (movimientoId && viaParaAsignar && typeof numeroParaAsignar === "number") {
-        await fetchWithTimeout(`${API_BASE}/secciones/via/${viaParaAsignar}/asignar`, {
+        await Movimiento.fetchWithTimeout(`${API_BASE}/secciones/via/${viaParaAsignar}/asignar`, {
           method: "POST",
           credentials: "include",
-          headers: { "Content-Type": "application/json", ...tokenHeader() },
+          headers: { "Content-Type": "application/json", ...Movimiento.tokenHeader() },
           body: JSON.stringify({ numero: Number(numeroParaAsignar), movimientoId }),
         }).catch(() => {});
       }
@@ -698,7 +548,7 @@ export default function CrearMovimiento() {
   ] as const;
   const { label, percent } = STEP_CFG[step - 1];
 
-  const lockedClienteMissingData = !canManageAll && !Number.isFinite(Number(getCookie("locId") || NaN));
+  const lockedClienteMissingData = !canManageAll && !Number.isFinite(Number(Movimiento.getCookie("locId") || NaN));
 
   // Acceso rápido enviar
   useEffect(() => {
@@ -869,7 +719,7 @@ function Field(props: React.InputHTMLAttributes<HTMLInputElement> & { label: str
         {...rest}
         aria-invalid={!!error}
         aria-describedby={error ? `${eid}_err` : undefined}
-        className={clsx(inputBase, error && "border-rose-500 focus:border-rose-500", className)}
+        className={Movimiento.clsx(inputBase, error && "border-rose-500 focus:border-rose-500", className)}
       />
       {error ? <span id={`${eid}_err`} className="mt-1 block text-xs text-rose-600 dark:text-rose-400">{error}</span> : null}
     </label>
@@ -902,7 +752,7 @@ function Select({
         disabled={disabled}
         aria-invalid={!!error}
         aria-describedby={error ? `${id}_err` : undefined}
-        className={clsx(
+        className={Movimiento.clsx(
           inputBase,
           "bg-white dark:bg-slate-900 appearance-none touch-manipulation",
           disabled && "cursor-not-allowed opacity-60",
@@ -920,21 +770,7 @@ function Select({
     </label>
   );
 }
-function TrackFilter(vias:Via[], selected:String, filter:String, service:Servicio|undefined):Via[]{
-  return vias
-    .filter(v => {
-      const viaNameLower = v.nombre.toLowerCase();
-      // If in de_via mode and service is lavado, only show vias that are not lavado
-      if (selected === filter && service === 'Lavado') {
-        return viaNameLower !== 'lavado';
-      }
-      // If in de_via mode and service is torno, only show vias that are not torno
-      if (selected === filter && service === 'Torno') {
-        return viaNameLower !== 'torno';
-      }
-      return true;
-    });
-}
+
 /** ------ Step 1 ------ */
 function StepOne(props: {
   form: MovementFormData;
@@ -1031,7 +867,7 @@ function StepOne(props: {
         key={v.id}
         onClick={() => !isDisabled && setForm((p) => ({ ...p, fromTrack: p.fromTrack === v.id ? null : v.id }))}
         disabled={isDisabled}
-        className={clsx(
+        className={Movimiento.clsx(
           "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left transition-colors duration-200",
           isDisabled 
             ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-500"
@@ -1041,7 +877,7 @@ function StepOne(props: {
         )}
       >
         <span className="truncate">Vía {isDisabled ? `${v.nombre} (solo servicio)` : v.nombre}</span>
-        <span className={clsx("ml-3 text-xs font-semibold", isDisabled ? "text-slate-400 dark:text-slate-500" : tone)}>
+        <span className={Movimiento.clsx("ml-3 text-xs font-semibold", isDisabled ? "text-slate-400 dark:text-slate-500" : tone)}>
           {isDisabled ? "NO DISPONIBLE" : label}
         </span>
       </button>
@@ -1057,7 +893,7 @@ function StepOne(props: {
       <button
         key={v.id}
         onClick={() => setForm((p) => ({ ...p, toTrack: p.toTrack === v.id ? null : v.id }))}
-        className={clsx(
+        className={Movimiento.clsx(
           "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left transition-colors duration-200",
           allOcc === true ? "opacity-60" : "",
           form.toTrack === v.id
@@ -1066,7 +902,7 @@ function StepOne(props: {
         )}
       >
         <span className="truncate">Vía {v.nombre}</span>
-        <span className={clsx("ml-3 text-xs font-semibold", tone)}>{label}</span>
+        <span className={Movimiento.clsx("ml-3 text-xs font-semibold", tone)}>{label}</span>
       </button>
     );
   };
@@ -1105,7 +941,7 @@ function StepOne(props: {
                 <button
                   key={s.id}
                   onClick={() => (kind === "from" ? setFromSection(s) : setToSection(active ? undefined : s.numero))}
-                  className={clsx("rounded-full border px-3 py-1 text-xs font-semibold", color, active && (s.ocupada ? "bg-rose-600 text-white" : "bg-emerald-600 text-white"))}
+                  className={Movimiento.clsx("rounded-full border px-3 py-1 text-xs font-semibold", color, active && (s.ocupada ? "bg-rose-600 text-white" : "bg-emerald-600 text-white"))}
                 >
                   #{s.numero}{s.nombre ? ` · ${s.nombre}` : ""}{s.ocupada ? " · OCUP" : ""}
                 </button>
@@ -1170,7 +1006,7 @@ function StepOne(props: {
                     () => setForm((p) => ({ ...p, service: "", toTrack: p.toTrack }))
                   )
                 }
-                className={clsx(
+                className={Movimiento.clsx(
                   "rounded-md border px-3 py-2 text-sm",
                   active ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
                     : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
@@ -1191,7 +1027,7 @@ function StepOne(props: {
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setSelectionMode("de_via")}
-              className={clsx(
+              className={Movimiento.clsx(
                 "rounded-md border px-3 py-2 text-sm",
                 selectionMode === "de_via"
                   ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
@@ -1202,7 +1038,7 @@ function StepOne(props: {
             </button>
             <button
               onClick={() => setSelectionMode("para_via")}
-              className={clsx(
+              className={Movimiento.clsx(
                 "rounded-md border px-3 py-2 text-sm",
                 selectionMode === "para_via"
                   ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
@@ -1257,7 +1093,7 @@ function StepOne(props: {
           <div className="flex gap-2">
             <button
               onClick={() => { setShowFromOpts(!showFromOpts); if (form.fromTrack) ensureSections(form.fromTrack); }}
-              className={clsx(
+              className={Movimiento.clsx(
                 "min-w-[220px] rounded-md border px-3 py-2 text-left transition-colors duration-200",
                 form.fromTrack 
                   ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-500 dark:text-emerald-300"
@@ -1271,7 +1107,7 @@ function StepOne(props: {
 
           {showFromOpts && (
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {TrackFilter(vias, selectionMode, "de_via", form.service)
+              {Movimiento.TrackFilter(vias, selectionMode, "de_via", form.service)
                 .map((v) => (
                   <div key={v.id}>
                     {viaOption(v)}
@@ -1291,7 +1127,7 @@ function StepOne(props: {
           <div className="flex gap-2">
             <button
               onClick={() => { setShowToOpts(!showToOpts); if (form.toTrack) ensureSections(form.toTrack); }}
-              className={clsx(
+              className={Movimiento.clsx(
                 "min-w-[220px] rounded-md border px-3 py-2 text-left transition-colors duration-200",
                 form.toTrack 
                   ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-500 dark:text-emerald-300"
@@ -1305,7 +1141,7 @@ function StepOne(props: {
 
           {showToOpts && (
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {TrackFilter(vias, selectionMode, "para_via", form.service)
+              {Movimiento.TrackFilter(vias, selectionMode, "para_via", form.service)
                 .map((v) => (
                   <div key={v.id}>
                     {viaOptionTo(v)}
@@ -1328,7 +1164,7 @@ function StepOne(props: {
             <div className="mt-3">
               <input
                 type="password"
-                className={clsx(inputBase, altaErr && "border-rose-500 focus:border-rose-500")}
+                className={Movimiento.clsx(inputBase, altaErr && "border-rose-500 focus:border-rose-500")}
                 value={altaPwd}
                 onChange={(e) => { setAltaPwd(e.target.value); setAltaErr(null); }}
                 onKeyDown={(e) => { if (e.key === "Enter") confirmAltaPwd(); }}
@@ -1374,7 +1210,7 @@ function StepTwo({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={clsx(
+      className={Movimiento.clsx(
         "flex w-full items-center justify-between rounded-md border px-3 py-3 text-left",
         "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800",
         disabled && "opacity-50 cursor-not-allowed",
@@ -1383,7 +1219,7 @@ function StepTwo({
     >
       <span className="font-medium">{label}</span>
       <span
-        className={clsx(
+        className={Movimiento.clsx(
           "ml-3 rounded-full px-2 py-0.5 text-xs",
           active ? "border border-emerald-500 text-emerald-700 dark:text-emerald-300" : "border border-slate-300 text-slate-500"
         )}
@@ -1568,7 +1404,7 @@ function StepThree({
         <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Comentarios / instrucciones</span>
         <textarea
           rows={6}
-          className={clsx(inputBase, "min-h[120px] min-h-[120px]")}
+          className={Movimiento.clsx(inputBase, "min-h[120px] min-h-[120px]")}
           value={form.comments}
           onChange={(e) => setForm((p) => ({ ...p, comments: e.target.value }))}
           placeholder="Escribe comentarios; agregaremos las secciones seleccionadas automáticamente."
@@ -1590,7 +1426,7 @@ function Badge({ tone, children }: { tone: "ok" | "warn" | "error" | "muted"; ch
     error: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-200 dark:border-rose-800",
     muted: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
   } as const;
-  return <span className={clsx(chipBase, map[tone])}>{children}</span>;
+  return <span className={Movimiento.clsx(chipBase, map[tone])}>{children}</span>;
 }
 
 /** Badge de Rol con permisos visibles */

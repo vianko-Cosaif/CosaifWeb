@@ -54,7 +54,9 @@ export const S = {
 
   /* ===== LAYOUT ===== */
   section:
-    "mx-auto w-full max-w-screen-2xl px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8 pb-[env(safe-area-inset-bottom)]",
+    "mx-auto w-full max-w-screen-2xl px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8 pb-[env(safe-area-inset-bottom)]",  
+  banner:
+    "mx-auto w-full max-w-[1000px] h-auto max-h-[85vh] overflow-hidden rounded-2xl bg-white ",
   grid: "grid gap-4 md:gap-6 lg:gap-8 lg:grid-cols-3",
 
   /* ===== LEFT COLUMN ===== */

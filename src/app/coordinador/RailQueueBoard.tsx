@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { S } from "./RailQueueBoard.styles";
-
+import Noticias from "./../cliente/Noticias";
 /* ===== Tipos ===== */
 type Ronda = {
   id: number;
@@ -468,6 +468,7 @@ export default function RailQueueBoardPage({
       {/* TOOLBAR */}
       <div className={S.toolbar}>
         <div className={S.toolbarInner}>
+          
           <div className={S.toolbarRow}>
             <div className={S.toolbarLeft}>
               <span className={S.liveChip(polling)}>
@@ -528,7 +529,9 @@ export default function RailQueueBoardPage({
           </div>
         </div>
       </div>
-
+      <div className={S.banner} >
+      <Noticias/>
+      </div>
       {/* CONTENIDO PRINCIPAL */}
       <section className={S.section} aria-busy={loading || refreshing}>
         <div className={S.grid}>
