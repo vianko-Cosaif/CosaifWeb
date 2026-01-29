@@ -5,7 +5,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { useMounted } from "@/app/hooks/useMounted";
 import { getInitialTheme, applyTheme, onThemeChange } from "@/lib/theme";
 import { Movimiento } from './../Movimiento'; // <--- Único import
-import { API_BASE, SECC_BASE, DOUBLE_TAP_MS, FLUSH_INTERVAL_MS, DRAFT_KEY, OUTBOX_KEY, ALTA_PASSWORDS, Servicio, roleBase, Rol, Via, Empresa, Localidad, Seccion, MovementFormData, baseInitialForm
+import { API_BASE, SECC_BASE, DOUBLE_TAP_MS, FLUSH_INTERVAL_MS, DRAFT_KEY, OUTBOX_KEY, ALTA_PASSWORDS, Option, roleBase, Rol, Via, Empresa, Localidad, Seccion, MovementFormData, baseInitialForm
  } from './../movimientos.shared'; // <--- Único import
 
 /** ======= RESOLVER ROL (cookie → localStorage) ======= */

@@ -41,7 +41,7 @@ export type Direccion = "EMPUJAR" | "JALAR" | "Sin_Solicitar";
 export type Polo = "NORTE" | "SUR" | "Sin_Solicitar";
 export type Posicion = "DENTRO" | "AFUERA" | "Sin_Solicitar";
 export type Rol = keyof typeof BASE_BY_ROLE;
-
+export type Option = { label: string; value: string }
 export interface Empresa { id: number; nombre: string }
 export interface Localidad { id: number; nombre: string; estado?: string }
 export interface Via { id: number; nombre: string }
