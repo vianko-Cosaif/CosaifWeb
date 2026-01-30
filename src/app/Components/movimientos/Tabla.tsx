@@ -211,10 +211,10 @@ function TablaInner({
                 />
 
                 {onEditar && (
-                  <th className="px-2 py-2 text-right sm:px-4 sm:py-4">
-                    Acciones
-                  </th>
-                )}
+          <th className="px-2 py-2 text-center sm:px-4 sm:py-4">
+            Editar
+          </th>
+        )}
               </tr>
             </thead>
 
@@ -419,13 +419,15 @@ const MovimientoRow = memo(function MovimientoRow({
         </td>
 
         {onEditar && (
-          <td className="px-2 py-3 text-right align-middle sm:px-4 sm:py-4">
+          <td className="px-2 py-3 text-center align-middle sm:px-4 sm:py-4">
             <button
               type="button"
               onClick={handleEditClick}
-              className="rounded-lg p-2 text-slate-400 transition-all hover:bg-emerald-50 hover:text-emerald-600 active:scale-95 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400"
+              className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 transition-all hover:bg-emerald-100 hover:border-emerald-300 active:scale-95 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
+              title="Editar movimiento"
             >
-              <Edit3 size={16} />
+              <Edit3 size={14} />
+              <span className="hidden sm:inline">Editar</span>
             </button>
           </td>
         )}

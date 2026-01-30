@@ -11,10 +11,10 @@ export const clearAuthData = (): void => {
   // Limpiar cookies de autenticación
   const cookiesToDelete = ["token"];
   cookiesToDelete.forEach(cookieName => {
-    document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+    document.cookie = `${cookieName};`;
   });
 
-  // Limpiar localStorage si existe algún dato de sesión
+  // Limpiar localStorage 
   try {
     const keysToRemove = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -28,7 +28,7 @@ export const clearAuthData = (): void => {
     console.warn("Error limpiando localStorage:", error);
   }
 
-  // Limpiar sessionStorage también
+  // Limpiar sessionStorage 
   try {
     const keysToRemove = [];
     for (let i = 0; i < sessionStorage.length; i++) {

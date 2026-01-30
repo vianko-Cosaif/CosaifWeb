@@ -15,8 +15,8 @@ $wrapper-width: 175px;
 $steel: #2c2c2c;
 $steel-hi: #4a4a4a;
 $glass: #87ceeb;
-$engine-red: #b91c1c;
-$wheel-orange: #f59e0b;
+$engine-red: #ff0000;
+$wheel-orange: #ff0000;
 
 .newsBar {
   width: 100%;
@@ -29,7 +29,10 @@ $wheel-orange: #f59e0b;
   display: flex;
   align-items: center;
   font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
-  box-shadow: inset 0 0 10px rgba(0,0,0,0.03);
+  box-shadow: 5px -8px 7px -8px inset #d00000;
+  border-radius: 10px;
+  -webkit-mask-image: linear-gradient(to right, rgba(0, 0, 0, 0) 0%, rgb(0, 0, 0) 10%, rgb(0, 0, 0) 90%, rgb(0, 0, 0, 0) 100%);
+    mask-image: linear-gradient(to right, rgba(0, 0, 0, 0) 0%, rgb(0, 0, 0) 10%, rgb(0, 0, 0) 90%, rgb(0, 0, 0, 0) 100%);
 }
 
 .newsBar-track {
@@ -138,7 +141,7 @@ $wheel-orange: #f59e0b;
   bottom: 1.4rem;
   height: 7rem; 
   width: 5rem;
-  background: linear-gradient(90deg, darken($engine-red, 10%), $engine-red);
+  background: linear-gradient(90deg, $engine-red, #ffb9b9, $engine-red);
   border-radius: 0 0 .4rem 0;
   z-index: 2;
   border: 1px solid rgba(0,0,0,0.2);
@@ -271,7 +274,20 @@ $wheel-orange: #f59e0b;
   animation: joint-motion 0.8s linear infinite;
   z-index: 10;
 }
-
+/* === PIeza Brillante === */
+.shineLabel {
+    backdrop-filter: blur(1px);
+    background: linear-gradient(90deg, #ff000029, #ffc8c873, #ff00002b);
+    box-shadow: 0px 0px 11px 8px #ff000026;
+    height: 120%;
+    width: 20px;
+    position: absolute;
+    top: -10%;
+    left: -10px;
+    z-index: 1;
+    transform: rotate(10deg);
+    animation: shine-move 2s linear infinite, delay-animation 6s linear infinite
+}
 /* === ANIMACIONES === */
 @keyframes train-bounce {
   to { transform: scale($scale-factor) translateY(-6px); }
@@ -292,4 +308,26 @@ $wheel-orange: #f59e0b;
 @keyframes smoke-puff {
   0% { opacity: 0.8; transform: translateY(0) scale(1); }
   100% { opacity: 0; transform: translateY(-5rem) scale(2); }
+}
+@keyframes shine-move {
+  0% { left: -5; }
+  50% { left: 50%; }
+  100% { left: 105%; }
+}
+@keyframes delay-animation {
+  0% {
+    opacity: 0.5;
+  }
+  16% {
+    opacity: 1;
+  }
+  33% {
+    opacity: 0.5;
+  }
+  33.01% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
 }

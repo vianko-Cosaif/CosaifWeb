@@ -161,8 +161,7 @@ export async function apiSwapMovimientos(rondaAId: number | string, rondaBId: nu
 export async function apiCancelarMovimiento(movimientoId: number, razon?: string) {
   return patchJsonWithFallbacks(
     [
-      `movimientos/movimientos/${movimientoId}/cancelar`,  // MovimientoRoutes.ts
-      // '/movimientos/cancelar'                 // por si existiera alias legacy
+      `movimientos/movimientos/${movimientoId}/cancelar`,  
     ],
     { razon: razon ?? 'Sin motivo' }
   );

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -515,6 +516,7 @@ const body = {
             localidades={localidades}
             initial={editing}
             onSubmit={async (values) => {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               await saveEdit({ ...editing, ...values, id: editing.id } as any);
               setEditing(null);
               await load();
