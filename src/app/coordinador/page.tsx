@@ -22,7 +22,7 @@ const CoordinadorPage: React.FC = () => {
       num = 1;
       try {
         localStorage.setItem("locId", "1");
-      } catch {}
+      } catch { }
       setClientCookie("locId", "1", {
         path: "/",
         sameSite: "lax",
@@ -34,7 +34,7 @@ const CoordinadorPage: React.FC = () => {
   }, []);
 
   return (
-    <div className="relative flex min-h-svh bg-gradient-to-b from-emerald-50 to-sky-50 dark:from-slate-900 dark:to-slate-950">
+    <div className="relative flex min-h-svh bg-gradient-to-b from-emerald-50 to-sky-50 dark:from-zinc-900 dark:to-zinc-950">
       {/* Sidebar */}
 
       {/* Contenido principal */}

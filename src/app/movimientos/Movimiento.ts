@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { 
+import {
   MovementFormData, FETCH_TIMEOUT_MS, Via, Servicio
 } from './movimientos.shared'; // Mantén los tipos para el tipado fuerte
 
@@ -19,22 +19,22 @@ export class Movimiento {
   // El estado inicial como un método estático que devuelve un objeto nuevo
   static get INITIAL_FORM(): MovementFormData {
     return {
-    empresaId: null,
-    locomotiveNumber: '',
-    priority: false,
-    fromTrack: null,
-    toTrack: null,
-    cabinPosition: 'Sin_Solicitar',
-    chimneyPosition: 'Sin_Solicitar',
-    polo: 'Sin_Solicitar',
-    pushPull: '',
-    movementType: '',
-    comments: '',
-    creadoPorId: null,
-    clienteId: null,
-    fechaInicio: '',
-    fechaFin: ''
-};
+      empresaId: null,
+      locomotiveNumber: '',
+      priority: false,
+      fromTrack: null,
+      toTrack: null,
+      cabinPosition: 'Sin_Solicitar',
+      chimneyPosition: 'Sin_Solicitar',
+      polo: 'Sin_Solicitar',
+      pushPull: '',
+      movementType: '',
+      comments: '',
+      creadoPorId: null,
+      clienteId: null,
+      fechaInicio: '',
+      fechaFin: ''
+    };
   }
 
   // Métodos de utilidad (Lógica de negocio)
@@ -61,9 +61,9 @@ export class Movimiento {
     return `${d.getFullYear()}-${Movimiento.pad2(d.getMonth() + 1)}-${Movimiento.pad2(d.getDate())}T${Movimiento.pad2(d.getHours())}:${Movimiento.pad2(d.getMinutes())}`;
   };
   static fromInputDT = (v: string) => (v ? new Date(v).toISOString() : new Date().toISOString());
-  
+
   static safeJSON = (t: string) => { try { return JSON.parse(t); } catch { return null; } };
-  
+
   static getCookie = (name: string) => {
     if (typeof document === "undefined") return "";
     const m = document.cookie.match(new RegExp("(^|; )" + name + "=([^;]*)"));
@@ -73,7 +73,7 @@ export class Movimiento {
     const t = Movimiento.getCookie("token");
     return t ? { Authorization: `Bearer ${t}` } : {};
   };
-  
+
   static fetchWithTimeout = async (url: string, init: RequestInit = {}, timeoutMs = FETCH_TIMEOUT_MS) => {
     const ctrl = new AbortController();
     const to = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -83,7 +83,7 @@ export class Movimiento {
       clearTimeout(to);
     }
   };
-  
+
   static fetchJSON = async (url: string, init: RequestInit = {}) => {
     const isGet = !init.method || init.method.toUpperCase() === "GET";
     const res = await Movimiento.fetchWithTimeout(url, {
@@ -103,7 +103,7 @@ export class Movimiento {
     if (!res.ok) throw new Error((body as any)?.message || (body as any)?.error || txt || `HTTP ${res.status}`);
     return body;
   };
-  
+
   static useVisibleInterval(cb: () => void, ms: number | null) {
     useEffect(() => {
       if (!ms) return;
@@ -113,7 +113,7 @@ export class Movimiento {
       return () => { clearInterval(id); document.removeEventListener("visibilitychange", onVis); };
     }, [cb, ms]);
   }
-  static TrackFilter(vias:Via[]|any[], selected:String, filter:string, service:Servicio|undefined):Via[]{
+  static TrackFilter(vias: Via[] | any[], selected: String, filter: string, service: Servicio | undefined): Via[] {
     return vias
       .filter(v => {
         const viaNameLower = v.nombre.toLowerCase();
@@ -132,3 +132,5 @@ export class Movimiento {
       });
   }
 }
+
+export default Movimiento;

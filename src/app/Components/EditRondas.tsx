@@ -2,8 +2,29 @@
 'use client';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeftRight, MapPin, Save, X, CheckCircle, XCircle, Train, Info, Ban
+  ArrowLeftRight, MapPin, Save, X, CheckCircle, XCircle, Train, Info, Ban, LayoutList, GripVertical
 } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+  defaultDropAnimationSideEffects,
+  DragStartEvent,
+  DragEndEvent
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
 import {
   useRondaData,
   Ronda,
@@ -13,47 +34,27 @@ import {
 } from '@/app/hooks/useEditRonda';
 import { onThemeChange } from '@/lib/theme';
 
-/* =================== Config UI compacta con tema =================== */
-const COLORS = {
-  primary: 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600',
-  primaryDark: 'bg-blue-700 dark:bg-blue-600',
-  success: 'bg-green-600 hover:bg-green-700 text-green-600 dark:bg-green-500 dark:hover:bg-green-600 dark:text-green-400',
-  warning: 'bg-yellow-600 hover:bg-yellow-700 text-yellow-600 dark:bg-yellow-500 dark:hover:bg-yellow-600 dark:text-yellow-400',
-  error: 'bg-red-600 hover:bg-red-700 text-red-600 dark:bg-red-500 dark:hover:bg-red-600 dark:text-red-400',
+/* =================== Config UI Professional =================== */
+const THEME = {
+  primary: 'bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200',
+  accent: 'text-blue-600 dark:text-blue-400',
+  surface: 'bg-white dark:bg-[#161b22]',
+  surfaceAlt: 'bg-slate-50 dark:bg-[#0d1117]',
+  border: 'border-slate-200 dark:border-slate-800',
   text: 'text-slate-900 dark:text-slate-100',
-  textSecondary: 'text-slate-600 dark:text-slate-400',
-  border: 'border-slate-200 dark:border-slate-700',
-  surface: 'bg-white dark:bg-slate-800',
-  surfaceAlt: 'bg-slate-50 dark:bg-slate-700',
+  textMuted: 'text-slate-500 dark:text-slate-400',
+  danger: 'bg-red-600 hover:bg-red-700 text-white',
+  dangerSubtle: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400 border border-red-200 dark:border-red-500/20',
 };
 
-
-function getRondaColor(n: number) {
-  const palette = [
-    ['from-purple-600 to-purple-400', 'bg-purple-500', 'text-purple-600 dark:text-purple-400'],
-    ['from-blue-600 to-blue-400', 'bg-blue-500', 'text-blue-600 dark:text-blue-400'],
-    ['from-cyan-600 to-cyan-400', 'bg-cyan-500', 'text-cyan-600 dark:text-cyan-400'],
-    ['from-green-600 to-green-400', 'bg-green-500', 'text-green-600 dark:text-green-400'],
-    ['from-yellow-600 to-yellow-400', 'bg-yellow-500', 'text-yellow-600 dark:text-yellow-400'],
-    ['from-orange-600 to-orange-400', 'bg-orange-500', 'text-orange-600 dark:text-orange-400'],
-    ['from-red-600 to-red-400', 'bg-red-500', 'text-red-600 dark:text-red-400'],
-  ];
-  const [gradient, bg, text] = palette[(n - 1) % palette.length];
-  return {
-    gradient: `bg-gradient-to-r ${gradient}`,
-    bg,
-    text,
-  };
-}
-
-function priorityColors(p?: string | null) {
+function priorityBadge(p?: string | null) {
   const key = (p || '').toLowerCase();
-  const map: Record<string, { color: string; bg: string; label: string }> = {
-    alta: { color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/20', label: 'ALTA' },
-    media: { color: 'text-yellow-600 dark:text-yellow-400', bg: 'bg-yellow-50 dark:bg-yellow-900/20', label: 'MEDIA' },
-    baja: { color: 'text-green-600 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-900/20', label: 'BAJA' },
+  const map: Record<string, string> = {
+    alta: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20',
+    media: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
+    baja: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
   };
-  return map[key] || { color: 'text-slate-600 dark:text-slate-400', bg: 'bg-slate-50 dark:bg-slate-700', label: 'SIN PRIORIDAD' };
+  return map[key] || 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
 }
 
 function Toast({ show, message, onClose }: { show: boolean; message: string; onClose: () => void }) {
@@ -64,279 +65,296 @@ function Toast({ show, message, onClose }: { show: boolean; message: string; onC
   }, [show, onClose]);
   if (!show) return null;
   return (
-    <div className="fixed right-4 bottom-4 bg-blue-600 text-white px-3 py-2 rounded-lg shadow-lg z-50 text-sm font-semibold dark:bg-blue-500">
+    <div className="fixed right-6 bottom-6 bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-3 rounded-lg shadow-xl z-[100] text-sm font-medium flex items-center gap-2 animate-in slide-in-from-bottom-2 fade-in duration-200">
+      <CheckCircle size={16} />
       {message}
     </div>
   );
 }
 
 function SectionHeader({ rondaNumero, count }: { rondaNumero: number; count: number }) {
-  const color = getRondaColor(rondaNumero);
   return (
-    <div className={`bg-gradient-to-r ${color.gradient} rounded-xl flex items-center justify-between p-3 text-white mb-2`}>
-      <div className="flex items-center gap-3">
-        <div className={`bg-white ${color.text} rounded-full w-8 h-8 grid place-items-center font-bold text-sm`}>
-          {rondaNumero}
-        </div>
-        <div className="font-bold text-sm">Ronda {rondaNumero}</div>
+    <div className="flex items-center gap-3 py-3 border-b border-slate-200 dark:border-slate-800 mb-3 mt-4 first:mt-0">
+      <div className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-md px-2 py-1 text-xs font-mono font-bold">
+        #{rondaNumero}
       </div>
-      <div className="bg-white/25 rounded-lg px-2 py-1 font-bold text-xs">
-        {count}
-      </div>
+      <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wider flex-1">
+        Ronda {rondaNumero}
+      </h3>
+      <span className="text-xs text-slate-400 font-medium">
+        {count} movimiento{count !== 1 ? 's' : ''}
+      </span>
     </div>
   );
 }
 
-/* =============== Card compacta con detalles colapsables =============== */
-function RondaCard({
+/* =============== Sortable Card =============== */
+function SortableRondaCard({
   ronda,
   info,
   onSwapRequest,
-  onCancelRequest,    // ⬅️ NUEVO
-  isCancelling,       // ⬅️ NUEVO
+  onCancelRequest,
+  isCancelling,
 }: {
   ronda: Ronda;
   info?: InfoExtra;
   onSwapRequest: () => void;
-  onCancelRequest: () => void; // ⬅️ NUEVO
-  isCancelling: boolean;       // ⬅️ NUEVO
+  onCancelRequest: () => void;
+  isCancelling: boolean;
 }) {
-  const colors = getRondaColor(ronda.rondaNumero);
-  const pr = priorityColors(ronda.movimiento?.prioridad as any);
-  const [open, setOpen] = useState(false);
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: ronda.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 50 : "auto",
+  };
 
   return (
-    <div className={`rounded-xl p-3 shadow-sm mb-3 ${COLORS.surface} border ${COLORS.border}`}>
-      {/* Header compacto */}
-      <div className="flex items-center gap-3">
-        <div className={`${pr.bg} ${pr.color} rounded-lg px-2 py-1 text-xs font-bold`}>
-          {pr.label}
-        </div>
-        <div className={` ${colors.text} rounded-lg px-2 py-1 font-bold text-xs text-center min-w-[2rem]`}>
-          {ronda.orden}
-        </div>
-        <Train className={`${colors.text}`} size={16} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className={`${COLORS.text} font-bold text-sm whitespace-nowrap overflow-hidden text-ellipsis`}>
-              {ronda.movimiento?.title}
-            </div>
-            <div className={`${colors.bg} text-white rounded-md px-2 py-1 font-bold text-xs`}>
-              LOC-{ronda.movimiento?.locomotiveNumber ?? '—'}
-            </div>
-          </div>
-          {ronda.movimiento?.date && (
-            <div className={`${COLORS.textSecondary} text-xs mt-1`}>
-              {ronda.movimiento?.date}
-            </div>
-          )}
-        </div>
-        <button
-          onClick={() => setOpen(o => !o)}
-          title={open ? 'Ocultar detalles' : 'Ver detalles'}
-          className={`border ${COLORS.border} bg-white dark:bg-slate-800 ${COLORS.textSecondary} px-2 py-1 rounded-lg text-xs cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700`}
-        >
-          {open ? '−' : '+'}
-        </button>
-      </div>
-
-      {/* Línea principal muy compacta */}
-      <div className="grid grid-cols-2 gap-2 mt-3">
-        <div className="flex gap-2 items-center min-w-0">
-          <div className={`${colors.bg}/10 rounded-lg w-7 h-7 grid place-items-center`}>
-            <MapPin className={`${colors.text}`} size={12} />
-          </div>
-          <div className="min-w-0">
-            <div className={`${COLORS.textSecondary} text-xs`}>Origen</div>
-            <div className={`${COLORS.text} font-semibold text-sm whitespace-nowrap overflow-hidden text-ellipsis`}>
-              {ronda.movimiento?.viaOrigen?.nombre || '—'}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex gap-2 items-center min-w-0">
-          <div className={`${colors.bg}/10 rounded-lg w-7 h-7 grid place-items-center`}>
-            <MapPin className={`${colors.text}`} size={12} />
-          </div>
-          <div className="min-w-0">
-            <div className={`${COLORS.textSecondary} text-xs`}>Destino</div>
-            <div className={`${COLORS.text} font-semibold text-sm whitespace-nowrap overflow-hidden text-ellipsis`}>
-              {ronda.movimiento?.viaDestino?.nombre || '—'}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Detalles colapsables */}
-      {open && (
-        <div className="mt-3">
-          {/* descripción */}
-          {ronda.movimiento?.description && (
-            <div className={`${COLORS.textSecondary} text-sm`}>
-              {ronda.movimiento?.description}
-            </div>
-          )}
-
-          {/* estados */}
-          <div className="flex gap-4 mt-2">
-            <span className={`inline-flex items-center gap-2 text-sm ${ronda.movimiento?.lavado ? 'text-green-600 dark:text-green-400' : COLORS.textSecondary}`}>
-              {ronda.movimiento?.lavado ? <CheckCircle size={14} className="text-green-600 dark:text-green-400" /> : <XCircle size={14} className={COLORS.textSecondary} />}
-              Lavado
-            </span>
-            <span className={`inline-flex items-center gap-2 text-sm ${ronda.movimiento?.torno ? 'text-green-600 dark:text-green-400' : COLORS.textSecondary}`}>
-              {ronda.movimiento?.torno ? <CheckCircle size={14} className="text-green-600 dark:text-green-400" /> : <XCircle size={14} className={COLORS.textSecondary} />}
-              Torno
-            </span>
-          </div>
-
-          {/* extra */}
-          {info && (
-            <div className={`${COLORS.surfaceAlt} ${COLORS.border} border-dashed rounded-lg p-3 mt-3 text-sm`}>
-              <div className={`${COLORS.text} font-bold mb-2`}>Detalles adicionales</div>
-              <div className="flex gap-4 flex-wrap">
-                <div><span className={COLORS.textSecondary}>Empresa: </span>{info.empresa?.nombre}</div>
-                <div><span className={COLORS.textSecondary}>ID Movimiento: </span>{ronda.movimiento?.id ?? '—'}</div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* acciones */}
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-        <button
-          onClick={onSwapRequest}
-          className={`bg-blue-600 hover:bg-blue-700 text-white border-none rounded-full px-3 py-2 font-bold text-sm flex items-center gap-2 cursor-pointer dark:bg-blue-500 dark:hover:bg-blue-600`}
-        >
-          <ArrowLeftRight size={16} /> Cambiar de lugar
-        </button>
-
-        <button
-          onClick={onCancelRequest}
-          disabled={isCancelling}
-          className={`${
-            isCancelling ? 'opacity-70 cursor-wait' : 'cursor-pointer'
-          } bg-red-600 hover:bg-red-700 text-white rounded-full px-3 py-2 font-bold text-sm flex items-center gap-2 dark:bg-red-500 dark:hover:bg-red-600`}
-        >
-          {isCancelling ? (
-            <>
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4A4 4 0 008 12H4z"></path></svg>
-              Cancelando…
-            </>
-          ) : (
-            <>
-              <Ban size={16} /> Cancelar y quitar
-            </>
-          )}
-        </button>
-      </div>
+    <div ref={setNodeRef} style={style} className="touch-none">
+      <RondaCardContent
+        ronda={ronda}
+        info={info}
+        onSwapRequest={onSwapRequest}
+        onCancelRequest={onCancelRequest}
+        isCancelling={isCancelling}
+        dragHandleProps={{ ...attributes, ...listeners }}
+      />
     </div>
   );
 }
 
-/* ================= Modal de swap compacto ================= */
+function RondaCardContent({
+  ronda,
+  info,
+  onSwapRequest,
+  onCancelRequest,
+  isCancelling,
+  dragHandleProps,
+}: {
+  ronda: Ronda;
+  info?: InfoExtra;
+  onSwapRequest?: () => void;
+  onCancelRequest?: () => void;
+  isCancelling?: boolean;
+  dragHandleProps?: any;
+}) {
+  const [open, setOpen] = useState(false);
+  const badgeClass = priorityBadge(ronda.movimiento?.prioridad as any);
+
+  return (
+    <div className={`group relative rounded-lg border ${THEME.border} ${THEME.surface} p-3 mb-2 transition-all hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600`}>
+      {/* Main Row */}
+      <div className="flex items-start gap-3">
+        {/* Left: Drag Handle */}
+        <div
+          className="flex flex-col items-center justify-center gap-1 min-w-[2rem] pt-2 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 dark:text-slate-600 dark:hover:text-slate-400"
+          {...dragHandleProps}
+        >
+          <GripVertical size={20} />
+        </div>
+
+        {/* Center: Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
+              {ronda.movimiento?.title}
+            </h4>
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${badgeClass}`}>
+              {ronda.movimiento?.prioridad || 'NORMAL'}
+            </span>
+            <span className="text-[10px] font-mono text-slate-400 ml-auto">Ord: {ronda.orden}</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mb-2">
+            <span className="font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-slate-600 dark:text-slate-300">
+              LOC-{ronda.movimiento?.locomotiveNumber ?? '—'}
+            </span>
+            <span className="text-slate-300 dark:text-slate-600">|</span>
+            <span className="truncate">{info?.empresa?.nombre}</span>
+          </div>
+
+          {/* Route Grid */}
+          <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 dark:bg-slate-800/50 rounded p-2 border border-slate-100 dark:border-slate-800">
+            <div>
+              <span className="text-[10px] uppercase text-slate-400 font-bold block mb-0.5">Origen</span>
+              <span className="font-medium text-slate-700 dark:text-slate-300 truncate block">
+                {ronda.movimiento?.viaOrigen?.nombre || '—'}
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase text-slate-400 font-bold block mb-0.5">Destino</span>
+              <span className="font-medium text-slate-700 dark:text-slate-300 truncate block">
+                {ronda.movimiento?.viaDestino?.nombre || '—'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Actions */}
+        <div className="flex flex-col gap-1">
+          <button
+            onClick={() => setOpen(!open)}
+            className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+          >
+            {open ? <X size={16} /> : <Info size={16} />}
+          </button>
+        </div>
+      </div>
+
+      {/* Expanded Details */}
+      {open && (
+        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 animate-in slide-in-from-top-1 duration-200">
+          <div className="grid grid-cols-2 gap-4 text-xs mb-3">
+            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+              {ronda.movimiento?.lavado
+                ? <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><CheckCircle size={14} /> Lavado</span>
+                : <span className="flex items-center gap-1 text-slate-400"><XCircle size={14} /> Lavado</span>}
+            </div>
+            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+              {ronda.movimiento?.torno
+                ? <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><CheckCircle size={14} /> Torno</span>
+                : <span className="flex items-center gap-1 text-slate-400"><XCircle size={14} /> Torno</span>}
+            </div>
+          </div>
+
+          {ronda.movimiento?.description && (
+            <div className="text-xs text-slate-500 italic border-l-2 border-slate-200 pl-2 mb-3">
+              {ronda.movimiento.description}
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <button
+              onClick={onCancelRequest}
+              disabled={isCancelling}
+              className={`px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 transition-colors ${isCancelling
+                ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                : 'text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/10'
+                }`}
+            >
+              {isCancelling ? <span className="animate-spin">⏳</span> : <Ban size={14} />}
+              Remover
+            </button>
+            <button
+              onClick={onSwapRequest}
+              className="px-3 py-1.5 rounded text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition-colors"
+            >
+              <ArrowLeftRight size={14} /> Mover
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ================= Swap Modal ================= */
 function SwapModal({
-  visible, base, candidatos, onConfirm, onClose
+  visible, base, candidatos, infoMap, onConfirm, onClose
 }: {
   visible: boolean;
   base: Ronda | null;
   candidatos: Ronda[];
+  infoMap: Record<number, InfoExtra>;
   onConfirm: (target: Ronda) => void;
   onClose: () => void;
 }) {
   const [selected, setSelected] = useState<Ronda | null>(null);
-  useEffect(() => {
-    if (visible) setSelected(null);
-  }, [visible]);
+  const [filter, setFilter] = useState('');
+
+  useEffect(() => { if (visible) { setSelected(null); setFilter(''); } }, [visible]);
 
   if (!visible || !base) return null;
 
+  const filtered = candidatos
+    .filter(c => c.id !== base.id)
+    .filter(c => {
+      if (!filter) return true;
+      const s = filter.toLowerCase();
+      const info = infoMap[c.id];
+      return (
+        c.movimiento?.locomotiveNumber?.toString().includes(s) ||
+        c.movimiento?.title?.toLowerCase().includes(s) ||
+        info?.empresa?.nombre?.toLowerCase().includes(s)
+      );
+    });
+
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm grid place-items-center z-[999] p-3"
-    >
-      <div className="w-full max-w-[860px] bg-white dark:bg-slate-800 rounded-xl p-3 shadow-2xl border border-slate-200 dark:border-slate-700 grid grid-rows-[auto_1fr_auto] max-h-[72vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between p-2">
-          <div className="font-bold text-lg text-blue-600 dark:text-blue-400">
-            ¿Con cuál deseas intercambiar?
-          </div>
-          <button
-            onClick={onClose}
-            title="Cerrar"
-            className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg p-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700"
-          >
-            <X size={16} />
-          </button>
+    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className={`w-full max-w-2xl ${THEME.surface} rounded-lg shadow-2xl border ${THEME.border} flex flex-col max-h-[85vh]`}>
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+          <h3 className="font-semibold text-slate-900 dark:text-white">Seleccionar intercambio</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><X size={20} /></button>
         </div>
 
-        {/* Lista scrollable */}
-        <div className="overflow-auto p-2">
-          <div className="grid gap-2">
-            {candidatos.filter(c => c.id !== base.id).map((item) => {
-              const color = getRondaColor(item.rondaNumero);
-              const active = selected?.id === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setSelected(item)}
-                  className={`text-left border-2 rounded-lg p-3 cursor-pointer transition-all ${
-                    active
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-400'
-                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600'
+        <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
+          <input
+            type="text"
+            placeholder="Filtrar por locomotora..."
+            className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            autoFocus
+          />
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {filtered.map(item => {
+            const active = selected?.id === item.id;
+            const info = infoMap[item.id];
+            return (
+              <button
+                key={item.id}
+                onClick={() => setSelected(item)}
+                className={`w-full text-left p-3 rounded-md border transition-all flex items-center gap-3 ${active
+                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/10 ring-1 ring-blue-500'
+                  : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50'
                   }`}
-                >
-                  <div className="flex items-center gap-3 mb-2 min-w-0">
-                    <div className={`bg-gradient-to-r ${color.gradient} text-white rounded-md px-2 py-1 font-bold text-xs`}>
-                      Ronda {item.rondaNumero}
-                    </div>
-                    <Train className={`${color.text}`} size={16} />
-                    <div className={`${COLORS.text} font-bold text-sm whitespace-nowrap overflow-hidden text-ellipsis`}>
-                      {item.movimiento?.title}
-                    </div>
-                    <div className={`bg-blue-600 text-white rounded-md px-2 py-1 font-bold text-xs ml-auto`}>
-                      LOC-{item.movimiento?.locomotiveNumber ?? '—'}
-                    </div>
+              >
+                <div className="bg-slate-100 dark:bg-slate-700 text-slate-500 text-xs font-mono px-2 py-1 rounded">
+                  Loc-{item.movimiento?.locomotiveNumber || '?'}
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    {item.movimiento?.title}
                   </div>
-                  <div className={`flex items-center gap-2 text-xs flex-wrap ${COLORS.textSecondary}`}>
-                    <MapPin className="text-green-600 dark:text-green-400" size={14} />
-                    <span>{item.movimiento?.viaOrigen?.nombre || '¿?'}</span>
-                    <span className="opacity-50">→</span>
-                    <MapPin className="text-red-600 dark:text-red-400" size={14} />
-                    <span>{item.movimiento?.viaDestino?.nombre || '¿?'}</span>
-                    <span className={`ml-3 font-bold ${item.movimiento?.lavado ? 'text-green-600 dark:text-green-400' : COLORS.textSecondary}`}>
-                      {item.movimiento?.lavado ? 'Lavado ✓' : 'Lavado ×'}
-                    </span>
-                    <span className={`font-bold ${item.movimiento?.torno ? 'text-green-600 dark:text-green-400' : COLORS.textSecondary}`}>
-                      {item.movimiento?.torno ? 'Torno ✓' : 'Torno ×'}
-                    </span>
+                  <div className="text-xs text-slate-500 flex gap-2">
+                    <span className="font-semibold">Ronda {item.rondaNumero}</span>
+                    <span>•</span>
+                    {info?.empresa?.nombre}
                   </div>
-                </button>
-              );
-            })}
-          </div>
+                </div>
+                {active && <CheckCircle size={18} className="text-blue-600 dark:text-blue-400" />}
+              </button>
+            )
+          })}
+          {filtered.length === 0 && (
+            <div className="text-center py-8 text-slate-400 text-sm">No se encontraron resultados</div>
+          )}
         </div>
 
-        {/* Footer */}
-        <div className="flex gap-2 justify-end p-2">
-          <button
-            onClick={onClose}
-            className={`bg-white dark:bg-slate-800 ${COLORS.textSecondary} border ${COLORS.border} px-4 py-2 rounded-lg font-bold cursor-pointer text-sm hover:bg-slate-50 dark:hover:bg-slate-700`}
-          >
+        <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/30 flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white">
             Cancelar
           </button>
           <button
-            disabled={!selected}
             onClick={() => selected && onConfirm(selected)}
-            className={`px-4 py-2 rounded-lg font-bold cursor-pointer text-sm ${
-              selected
-                ? 'bg-green-600 hover:bg-green-700 text-white dark:bg-green-500 dark:hover:bg-green-600'
-                : `${COLORS.textSecondary} cursor-not-allowed`
-            }`}
+            disabled={!selected}
+            className={`px-4 py-2 rounded-md text-sm font-semibold shadow-sm transition-all ${selected
+              ? 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200'
+              : 'bg-slate-200 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-600'
+              }`}
           >
-            Cambiar
+            Confirmar Cambio
           </button>
         </div>
       </div>
@@ -344,7 +362,7 @@ function SwapModal({
   );
 }
 
-/* ================== Componente principal ================== */
+/* ================== Main Component ================== */
 type Props = {
   localidadId: number | string;
   onClose: () => void;
@@ -353,64 +371,57 @@ type Props = {
 
 const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
   const {
-    user,
-    list,
-    infoMap,
-    loading,
-    groupedByRonda,
-    setGroupedByRonda,
-    setList,
+    user, list, infoMap, loading, groupedByRonda, setGroupedByRonda, setList, persistOrden
   } = useRondaData(Number(localidadId), onClose);
 
   const [originalState, setOriginalState] = useState<Record<number, Ronda[]>>({});
+
   useEffect(() => {
     if (!loading && Object.keys(groupedByRonda).length > 0 && Object.keys(originalState).length === 0) {
       setOriginalState(JSON.parse(JSON.stringify(groupedByRonda)));
     }
   }, [loading, groupedByRonda, originalState]);
 
-  const todasLasRondas = useMemo(
-    () => Object.values(groupedByRonda).flat().sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden),
+  const todasLasRondas = useMemo(() =>
+    Object.values(groupedByRonda).flat().sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden),
     [groupedByRonda]
   );
 
-  const hasRealChanges = useMemo(
-    () => Object.keys(originalState).length > 0 && JSON.stringify(groupedByRonda) !== JSON.stringify(originalState),
-    [groupedByRonda, originalState]
-  );
+  const hasRealChanges = useMemo(() => {
+    // Comparar estructura profunda
+    return Object.keys(originalState).length > 0 && JSON.stringify(groupedByRonda) !== JSON.stringify(originalState)
+  }, [groupedByRonda, originalState]);
 
   const [swapModal, setSwapModal] = useState<{ visible: boolean; base: Ronda | null }>({ visible: false, base: null });
   const [toast, setToast] = useState<{ show: boolean; message: string }>({ show: false, message: '' });
   const [themeKey, setThemeKey] = useState(0);
-  const [cancellingId, setCancellingId] = useState<number | null>(null); // ⬅️ NUEVO
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [activeDragId, setActiveDragId] = useState<number | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const showToast = (m: string) => setToast({ show: true, message: m });
 
-  // Escuchar cambios de tema y forzar re-render
   useEffect(() => {
-    const unsubscribe = onThemeChange(() => {
-      setThemeKey(prev => prev + 1);
-    });
+    const unsubscribe = onThemeChange(() => setThemeKey(prev => prev + 1));
     return unsubscribe;
   }, []);
 
-  /* ===== Intercambio ===== */
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  /* ===== Actions ===== */
   const handleSwapRequest = useCallback((ronda: Ronda) => {
-    if (hasRealChanges) {
-      alert('Debes guardar los cambios actuales antes de realizar otra modificación.');
-      return;
-    }
+    // if (hasRealChanges) { alert('Guarda los cambios antes de continuar.'); return; } // Allow swap? No, complex state.
     setSwapModal({ visible: true, base: ronda });
-  }, [hasRealChanges]);
+  }, []);
 
   const handleSwap = useCallback(async (otra: Ronda) => {
     const base = swapModal.base;
     if (!base || !otra || !user) return;
-
     try {
       await apiSwapMovimientos(base.id, otra.id);
-
-      // swap local: solo movimiento
       const swappedA: Ronda = { ...base, movimiento: { ...otra.movimiento } };
       const swappedB: Ronda = { ...otra, movimiento: { ...base.movimiento } };
 
@@ -420,174 +431,234 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
         copy[swappedB.rondaNumero] = (copy[swappedB.rondaNumero] || []).map((r) => (r.id === swappedB.id ? swappedB : r));
         return copy;
       });
-
       setList((prev) => prev.map((r) => (r.id === swappedA.id ? swappedA : r.id === swappedB.id ? swappedB : r)));
-
-      showToast(
-        `Intercambiadas: ${base.movimiento?.title ?? `Ronda ${base.orden}`} ↔ ${otra.movimiento?.title ?? `Ronda ${otra.orden}`}`
-      );
+      showToast('Intercambio realizado exitosamente');
       setSwapModal({ visible: false, base: null });
     } catch (e: any) {
       console.error(e);
-      alert(e?.message || 'Ocurrió un error al intercambiar las rondas');
+      alert(e?.message || 'Error al intercambiar');
     }
   }, [swapModal.base, setGroupedByRonda, setList, user]);
 
-  /* ===== Cancelación ===== */
-  const performCancel = useCallback(async (item: Ronda) => {
+  const handleCancelRequest = useCallback(async (item: Ronda) => {
+    if (!confirm('¿Quitar este movimiento de la ronda? Se marcará como cancelado.')) return;
     try {
-      const movimientoId = item.movimiento?.id;
-      if (!movimientoId) throw new Error('Movimiento inválido');
+      const mid = item.movimiento?.id;
+      if (!mid) throw new Error('ID inválido');
+      setCancellingId(mid);
+      await apiCancelarMovimiento(mid);
 
-      setCancellingId(movimientoId);
-      await apiCancelarMovimiento(movimientoId); // PATCH /movimientos/:id/cancelar
-
-      // Quitar de la ronda e indexar órdenes
       setGroupedByRonda(prev => {
-        const copy: Record<number, Ronda[]> = { ...prev };
+        const copy = { ...prev };
         const rn = item.rondaNumero;
-        const filtered = (copy[rn] || []).filter(r => r.id !== item.id);
-        copy[rn] = filtered.map((r, idx) => ({ ...r, orden: idx + 1 })); // reindex
+        copy[rn] = (copy[rn] || []).filter(r => r.id !== item.id).map((r, i) => ({ ...r, orden: i + 1 }));
         return copy;
       });
-
       setList(prev => prev.filter(r => r.id !== item.id));
-
-      showToast('Movimiento cancelado y quitado de la ronda');
+      showToast('Movimiento removido');
     } catch (e: any) {
-      console.error(e);
-      alert(e?.message || 'No se pudo cancelar el movimiento');
+      alert(e?.message || 'Error al cancelar');
     } finally {
       setCancellingId(null);
     }
   }, [setGroupedByRonda, setList]);
 
-  const handleCancelRequest = useCallback((item: Ronda) => {
-    if (hasRealChanges) {
-      alert('Debes guardar los cambios actuales antes de cancelar un movimiento.');
-      return;
-    }
-    const ok = confirm('¿Cancelar este movimiento?\nSe pondrá en CANCELADO y se quitará de la ronda.');
-    if (ok) performCancel(item);
-  }, [hasRealChanges, performCancel]);
 
-  const handleSaveChanges = useCallback(async () => {
-    if (!hasRealChanges) {
-      alert('No hay cambios para guardar');
-      return;
-    }
-    await new Promise((r) => setTimeout(r, 500));
-    showToast('Cambios guardados exitosamente');
-    setOriginalState(JSON.parse(JSON.stringify(groupedByRonda)));
-    setTimeout(() => {
-      onSaved?.();
-      onClose?.();
-    }, 650);
-  }, [hasRealChanges, groupedByRonda, onSaved, onClose]);
+  // Drag End Handler - STRICT SWAP LOGIC (LIVE UPDATE)
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveDragId(null);
 
-  /* ===== Loading compacto ===== */
+    if (!over) return;
+
+    const activeId = Number(active.id);
+    const overId = Number(over.id);
+
+    if (activeId === overId) return;
+
+    // Call API immediately
+    try {
+      await apiSwapMovimientos(activeId, overId);
+
+      // Update local state ONLY on success (or optimistically revert on failure)
+      // For now, we update local state optimistically or re-fetch?
+      // Re-fetching is safer but potentially slower.
+      // Optimistic update:
+
+      setGroupedByRonda(prev => {
+        // Find items
+        let sourceRondaNum = -1;
+        let destRondaNum = -1;
+        let sourceItemIndex = -1;
+        let destItemIndex = -1;
+        let sourceItem: Ronda | undefined;
+        let destItem: Ronda | undefined;
+
+        for (const [rNum, items] of Object.entries(prev)) {
+          const idx = items.findIndex(i => i.id === activeId);
+          if (idx !== -1) {
+            sourceRondaNum = Number(rNum);
+            sourceItemIndex = idx;
+            sourceItem = items[idx];
+          }
+          const idxOver = items.findIndex(i => i.id === overId);
+          if (idxOver !== -1) {
+            destRondaNum = Number(rNum);
+            destItemIndex = idxOver;
+            destItem = items[idxOver];
+          }
+        }
+
+        if (!sourceItem || !destItem) return prev;
+
+        const copy = { ...prev };
+        const sourceList = [...(copy[sourceRondaNum] || [])];
+        const destList = sourceRondaNum === destRondaNum ? sourceList : [...(copy[destRondaNum] || [])];
+
+        const itemA = sourceList[sourceItemIndex];
+        const itemB = destList[destItemIndex];
+
+        // Swap their movement content but keep ID structure? 
+        // Backend swap usually swaps movements between round IDs.
+        // So Round ID 100 has Mov A, Round ID 200 has Mov B.
+        // After swap: Round ID 100 has Mov B, Round ID 200 has Mov A.
+        // The UI renders Rounds. So we swap the *data* inside the round objects.
+
+        const tempMov = itemA.movimiento;
+        itemA.movimiento = itemB.movimiento;
+        itemB.movimiento = tempMov;
+
+        // Force update lists
+        copy[sourceRondaNum] = [...sourceList];
+        if (sourceRondaNum !== destRondaNum) {
+          copy[destRondaNum] = [...destList];
+        }
+
+        return copy;
+      });
+
+      showToast('Cambio realizado');
+    } catch (e: any) {
+      console.error(e);
+      alert('Error al mover: ' + (e?.message || 'Error desconocido'));
+      // Ideally refresh from server here if failed
+      onClose(); // Close to force refresh? Or trigger refresh.
+    }
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragId(Number(event.active.id));
+  };
+
+  // Removed handleSaveChanges as we do live updates now.
+
   if (loading) {
     return (
-      <div className="min-h-[40vh] grid place-items-center">
-        <div className={`text-center ${COLORS.textSecondary}`}>
-          <div className={`font-bold text-lg ${COLORS.text} mb-1`}>Cargando rondas…</div>
-          <div className="text-sm">Obteniendo información. Por favor espera…</div>
-        </div>
+      <div className="h-[400px] flex flex-col items-center justify-center p-8 text-slate-400">
+        <div className="animate-spin mb-4"><LayoutList size={32} /></div>
+        <p className="text-sm font-medium">Cargando tablero...</p>
       </div>
     );
   }
 
-  /* ===== Layout compacto: header sticky, body scrollable, footer sticky ===== */
+  const activeItem = activeDragId ? todasLasRondas.find(r => r.id === activeDragId) : null;
+
   return (
-    <div key={themeKey} className="bg-slate-50 dark:bg-slate-900 grid grid-rows-[auto_auto_1fr_auto] max-h-[80vh]">
-      {/* Header */}
-      <div className="bg-gradient-to-br from-emerald-600 via-emerald-700 to-green-800 dark:from-emerald-500 dark:via-emerald-600 dark:to-green-700 text-white p-4 sticky top-0 z-10 shadow-lg backdrop-blur-sm border-b border-white/10">
-        <div className="flex items-center justify-between">
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div key={themeKey} className={`${THEME.surface} h-full max-h-[85vh] flex flex-col bg-white dark:bg-slate-900`}>
+        {/* Header - Solid background to prevent overlapping issues */}
+        <div className={`px-5 py-4 border-b ${THEME.border} flex items-center justify-between bg-white dark:bg-slate-900 sticky top-0 z-20`}>
           <div className="flex items-center gap-3">
-            <div className="bg-white/20 backdrop-blur-sm rounded-full p-2 border border-white/30">
-              <Train className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300">
+              <LayoutList size={20} />
             </div>
             <div>
-              <h2 className="font-bold text-lg tracking-tight">Editor de Rondas</h2>
-              <p className="text-white/80 text-sm font-medium">Gestiona las locomotoras y sus rondas</p>
+              <h2 className={`text-lg font-bold leading-tight ${THEME.text}`}>Editor de Rondas</h2>
+              <p className={`text-xs ${THEME.textMuted}`}>
+                <span className="font-semibold text-blue-600 dark:text-blue-400">Arrastra desde los 6 puntos (⋮⋮)</span> para intercambiar lugares.
+              </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            title="Cerrar editor"
-            className="bg-white/15 hover:bg-white/25 backdrop-blur-sm text-white border border-white/30 px-4 py-2 rounded-xl font-semibold cursor-pointer text-sm transition-all duration-200 hover:scale-105 active:scale-95 shadow-lg"
-          >
-            <X className="w-4 h-4" />
+          <button onClick={onClose} className="p-2 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition-colors">
+            <X size={20} />
           </button>
         </div>
-      </div>
 
-      {/* Instrucciones (compacto) */}
-      <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-3 flex items-center gap-2 text-sm">
-        <Info className="text-sky-500" size={16} />
-        <div className={`${COLORS.text}`}>
-          Usa <b>“Cambiar de lugar”</b> para intercambiar la locomotora con otra de cualquier ronda, o <b>“Cancelar y quitar”</b> para sacarla de la ronda.
+        {/* Content */}
+        <div className={`flex-1 overflow-y-auto ${THEME.surfaceAlt} p-4`}>
+          <div className="max-w-3xl mx-auto">
+            {Object.entries(groupedByRonda)
+              .map(([r, items]) => ({ num: parseInt(r), items: [...items].sort((a, b) => a.orden - b.orden) }))
+              .sort((a, b) => a.num - b.num)
+              .map(section => (
+                <div key={section.num} className="mb-6">
+                  <SectionHeader rondaNumero={section.num} count={section.items.length} />
+                  <SortableContext
+                    items={section.items.map(i => i.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="space-y-2">
+                      {section.items.map(r => (
+                        <SortableRondaCard
+                          key={r.id}
+                          ronda={r}
+                          info={infoMap[r.id]}
+                          onSwapRequest={() => handleSwapRequest(r)}
+                          onCancelRequest={() => handleCancelRequest(r)}
+                          isCancelling={cancellingId === r.movimiento?.id}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </div>
+              ))
+            }
+          </div>
         </div>
-      </div>
 
-      {/* Body scrollable */}
-      <div className="overflow-auto">
-        <div className="max-w-4xl mx-auto p-3">
-          {Object.entries(groupedByRonda)
-            .map(([rondaNum, items]) => ({
-              rondaNumero: parseInt(rondaNum),
-              items: [...items].sort((a, b) => a.orden - b.orden),
-            }))
-            .sort((a, b) => a.rondaNumero - b.rondaNumero)
-            .map((section) => (
-              <div key={section.rondaNumero} className="mb-4">
-                <SectionHeader rondaNumero={section.rondaNumero} count={section.items.length} />
-                {section.items.map((r) => (
-                  <RondaCard
-                    key={r.id}
-                    ronda={r}
-                    info={infoMap[r.id]}
-                    onSwapRequest={() => handleSwapRequest(r)}
-                    onCancelRequest={() => handleCancelRequest(r)}                // ⬅️ NUEVO
-                    isCancelling={cancellingId === (r.movimiento?.id ?? -1)}      // ⬅️ NUEVO
-                  />
-                ))}
-              </div>
-            ))}
+
+        {/* Footer */}
+        <div className={`p-4 border-t ${THEME.border} ${THEME.surface} sticky bottom-0 z-20 flex justify-between items-center`}>
+          <div className="text-xs text-slate-400 hidden sm:block">
+            {hasRealChanges ? 'Cambios pendientes...' : 'Todo sincronizado'}
+          </div>
+          <div className="flex gap-3 w-full sm:w-auto">
+            <button
+              onClick={onClose}
+              className="flex-1 sm:flex-none px-6 py-2.5 rounded-lg bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 text-sm font-semibold shadow-sm transition-all flex items-center justify-center gap-2"
+            >
+              <CheckCircle size={16} />
+              Listo / Cerrar
+            </button>
+          </div>
         </div>
+
+        <DragOverlay>
+          {activeItem ? (
+            <RondaCardContent
+              ronda={activeItem}
+              info={infoMap[activeItem.id]}
+              isCancelling={false}
+            />
+          ) : null}
+        </DragOverlay>
+
+        <SwapModal
+          visible={swapModal.visible}
+          base={swapModal.base}
+          candidatos={todasLasRondas}
+          infoMap={infoMap}
+          onConfirm={handleSwap}
+          onClose={() => setSwapModal({ visible: false, base: null })}
+        />
+        <Toast show={toast.show} message={toast.message} onClose={() => setToast({ show: false, message: '' })} />
       </div>
-
-      {/* Footer actions */}
-      <div className={`bg-white dark:bg-slate-800 border-t ${COLORS.border} p-3 flex justify-center gap-3 sticky bottom-0`}>
-        <button
-          onClick={onClose}
-          className={`bg-white dark:bg-slate-800 ${COLORS.textSecondary} border ${COLORS.border} px-4 py-2 rounded-lg font-bold cursor-pointer text-sm hover:bg-slate-50 dark:hover:bg-slate-700`}
-        >
-          Cancelar
-        </button>
-        <button
-          onClick={handleSaveChanges}
-          disabled={!hasRealChanges}
-          className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ${
-            hasRealChanges
-              ? 'bg-green-600 hover:bg-green-700 text-white dark:bg-green-500 dark:hover:bg-green-600'
-              : `${COLORS.textSecondary} cursor-not-allowed`
-          }`}
-        >
-          <Save size={16} /> {hasRealChanges ? 'Guardar cambios' : 'Sin cambios'}
-        </button>
-      </div>
-
-      <SwapModal
-        visible={swapModal.visible}
-        base={swapModal.base}
-        candidatos={todasLasRondas}
-        onConfirm={handleSwap}
-        onClose={() => setSwapModal({ visible: false, base: null })}
-      />
-
-      <Toast show={toast.show} message={toast.message} onClose={() => setToast({ show: false, message: '' })} />
-    </div>
+    </DndContext>
   );
 };
 

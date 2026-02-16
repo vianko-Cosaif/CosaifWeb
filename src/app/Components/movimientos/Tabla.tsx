@@ -48,17 +48,38 @@ interface TablaProps {
 
 /* ================== CONSTANTES UI ================== */
 
-const BADGE_ESTADO_STYLES: Record<string, string> = {
-  SOLICITADO:
-    "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-900/20 dark:text-sky-400 dark:border-sky-800",
-  EN_PROCESO:
-    "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800",
-  CONCLUIDO:
-    "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800",
-  CANCELADO:
-    "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/20 dark:text-rose-400 dark:border-rose-800",
-  DETENIDO:
-    "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800",
+const BADGE_ESTADO: Record<string, { bg: string; dot: string; text: string }> = {
+  SOLICITADO: {
+    bg: "bg-sky-50 border-sky-200 dark:bg-sky-900/20 dark:border-sky-800",
+    dot: "bg-sky-500",
+    text: "text-sky-700 dark:text-sky-400",
+  },
+  EN_PROCESO: {
+    bg: "bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800",
+    dot: "bg-amber-500 animate-pulse",
+    text: "text-amber-700 dark:text-amber-400",
+  },
+  CONCLUIDO: {
+    bg: "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800",
+    dot: "bg-emerald-500",
+    text: "text-emerald-700 dark:text-emerald-400",
+  },
+  CANCELADO: {
+    bg: "bg-rose-50 border-rose-200 dark:bg-rose-900/20 dark:border-rose-800",
+    dot: "bg-rose-500",
+    text: "text-rose-700 dark:text-rose-400",
+  },
+  DETENIDO: {
+    bg: "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800",
+    dot: "bg-red-500",
+    text: "text-red-700 dark:text-red-400",
+  },
+};
+
+const DEFAULT_BADGE = {
+  bg: "bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700",
+  dot: "bg-slate-400",
+  text: "text-slate-600 dark:text-slate-400",
 };
 
 /* ================== COMPONENTE PRINCIPAL ================== */
@@ -82,8 +103,6 @@ function TablaInner({
     [total, tamPagina]
   );
 
-  // Importante: aquí YA NO se vuelve a paginar ni a ordenar.
-  // useMovimientos es el dueño del orden y la paginación.
   const tieneFilas = filas.length > 0;
 
   const startIndex = useMemo(
@@ -110,13 +129,30 @@ function TablaInner({
     if (pagina < totalPaginas) onPagina(pagina + 1);
   }, [pagina, totalPaginas, onPagina]);
 
+  /* Page pills */
+  const pageNumbers = useMemo(() => {
+    const pages: (number | "...")[] = [];
+    if (totalPaginas <= 7) {
+      for (let i = 1; i <= totalPaginas; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (pagina > 3) pages.push("...");
+      const start = Math.max(2, pagina - 1);
+      const end = Math.min(totalPaginas - 1, pagina + 1);
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (pagina < totalPaginas - 2) pages.push("...");
+      pages.push(totalPaginas);
+    }
+    return pages;
+  }, [pagina, totalPaginas]);
+
   return (
-    <div className="flex h-full w-full flex-col space-y-4 font-sans">
-      <div className="relative w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all dark:border-slate-800 dark:bg-slate-950">
+    <div className="flex h-full w-full flex-col space-y-3 sm:space-y-4 font-sans">
+      <div className="relative w-full overflow-hidden rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900/95 shadow-sm transition-all">
         {/* Loader Overlay */}
         {cargando && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-[2px] transition-opacity duration-300 dark:bg-slate-950/60">
-            <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-6 py-3 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center gap-2 sm:gap-3 rounded-xl sm:rounded-2xl border border-slate-200 bg-white px-4 sm:px-6 py-2.5 sm:py-3.5 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
               <Loader2 className="animate-spin text-emerald-600" size={20} />
               <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
                 Sincronizando...
@@ -133,7 +169,7 @@ function TablaInner({
               className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 ${styles.glassHeader}`}
             >
               <tr>
-                <th className="w-10 px-2 py-2 text-center sm:w-12 sm:px-4 sm:py-4">
+                <th className="hidden sm:table-cell w-10 px-2 py-3 text-center sm:w-12 sm:px-4 sm:py-4">
                   #
                 </th>
                 <HeaderCell
@@ -153,7 +189,6 @@ function TablaInner({
                   icon={TrainFront}
                 />
 
-                {/* Responsive Columns */}
                 <HeaderCell
                   label="Localidad"
                   sortKey="localidad"
@@ -211,24 +246,29 @@ function TablaInner({
                 />
 
                 {onEditar && (
-          <th className="px-2 py-2 text-center sm:px-4 sm:py-4">
-            Editar
-          </th>
-        )}
+                  <th className="px-2 py-3 text-center sm:px-4 sm:py-4">
+                    Editar
+                  </th>
+                )}
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-slate-100 text-[11px] dark:divide-slate-800/50 sm:text-xs md:text-sm">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs sm:text-xs md:text-sm">
               {!tieneFilas ? (
                 <tr>
                   <td colSpan={12} className="py-16 text-center sm:py-20">
-                    <div className="flex flex-col items-center justify-center gap-3">
-                      <div className="rounded-full bg-slate-50 p-4 text-slate-400 dark:bg-slate-900">
-                        <Info size={32} strokeWidth={1.5} />
+                    <div className="flex flex-col items-center justify-center gap-4">
+                      <div className="rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 p-5">
+                        <TrainFront size={36} strokeWidth={1.2} className="text-slate-300 dark:text-slate-600" />
                       </div>
-                      <p className="font-medium text-slate-500 dark:text-slate-400">
-                        No hay movimientos registrados
-                      </p>
+                      <div className="text-center">
+                        <p className="font-medium text-slate-500 dark:text-slate-400">
+                          No hay movimientos registrados
+                        </p>
+                        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                          Los movimientos aparecerán aquí cuando estén disponibles
+                        </p>
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -247,8 +287,8 @@ function TablaInner({
           </table>
         </div>
 
-        {/* Footer */}
-        <div className="flex flex-col items-center justify-between gap-4 rounded-b-2xl border-t border-slate-200 bg-slate-50 p-3 text-[11px] dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:p-4 sm:text-xs">
+        {/* Footer con page pills */}
+        <div className="flex flex-col items-center justify-between gap-3 sm:gap-4 rounded-b-xl sm:rounded-b-2xl border-t border-slate-200 dark:border-slate-800/60 bg-gradient-to-b from-slate-50 to-white dark:from-slate-900/80 dark:to-slate-900/60 p-2.5 sm:p-3 text-[10px] sm:flex-row sm:p-4 sm:text-xs">
           <p className="order-2 font-medium text-slate-500 dark:text-slate-400 sm:order-1">
             {total === 0 ? (
               "Sin registros"
@@ -263,34 +303,51 @@ function TablaInner({
                   {endIndex}
                 </span>{" "}
                 de{" "}
-                <span className="font-bold text-emerald-600 dark:text-emerald-500">
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">
                   {total}
-                </span>{" "}
-                · página{" "}
-                <span className="font-bold text-slate-900 dark:text-slate-200">
-                  {pagina}
-                </span>{" "}
-                de {totalPaginas}
+                </span>
               </>
             )}
           </p>
 
-          <div className="order-1 flex gap-2 sm:order-2">
+          <div className="order-1 flex items-center gap-1 sm:order-2">
             <button
               type="button"
               onClick={handlePrevPage}
               disabled={pagina <= 1}
-              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition-all hover:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg border border-slate-200 bg-white dark:border-slate-700/60 dark:bg-slate-800/80 p-2 text-slate-500 dark:text-slate-400 shadow-sm transition-all hover:border-emerald-400 hover:text-emerald-600 dark:hover:border-emerald-500 dark:hover:text-emerald-400 disabled:cursor-not-allowed disabled:opacity-40 active:scale-95"
             >
-              <ChevronLeft size={18} />
+              <ChevronLeft size={16} />
             </button>
+
+            {/* Page pills */}
+            {pageNumbers.map((p, idx) =>
+              p === "..." ? (
+                <span key={`ellipsis-${idx}`} className="px-1.5 text-slate-400 dark:text-slate-500 select-none">
+                  ···
+                </span>
+              ) : (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => onPagina(p)}
+                  className={`min-w-[1.75rem] sm:min-w-[2rem] h-7 sm:h-8 rounded-md sm:rounded-lg text-[10px] sm:text-xs font-semibold transition-all duration-200 active:scale-95 ${p === pagina
+                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/30"
+                    : "bg-white border border-slate-200 text-slate-600 hover:border-emerald-300 hover:text-emerald-600 dark:bg-slate-800/80 dark:border-slate-700/60 dark:text-slate-400 dark:hover:border-emerald-500 dark:hover:text-emerald-400"
+                    }`}
+                >
+                  {p}
+                </button>
+              )
+            )}
+
             <button
               type="button"
               onClick={handleNextPage}
               disabled={pagina >= totalPaginas}
-              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition-all hover:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg border border-slate-200 bg-white dark:border-slate-700/60 dark:bg-slate-800/80 p-2 text-slate-500 dark:text-slate-400 shadow-sm transition-all hover:border-emerald-400 hover:text-emerald-600 dark:hover:border-emerald-500 dark:hover:text-emerald-400 disabled:cursor-not-allowed disabled:opacity-40 active:scale-95"
             >
-              <ChevronRight size={18} />
+              <ChevronRight size={16} />
             </button>
           </div>
         </div>
@@ -341,55 +398,74 @@ const MovimientoRow = memo(function MovimientoRow({
     [movement.fechaFin]
   );
 
+  const isPriorityHigh = movement.prioridad === "ALTA";
+
   return (
     <Fragment>
       {/* FILA PRINCIPAL */}
       <tr
         onClick={handleRowClick}
-        className={`group cursor-pointer border-l-[3px] ${
-          isOpen
-            ? `border-l-emerald-500 ${styles.rowExpanded}`
+        className={`group cursor-pointer border-l-[3px] transition-all duration-200 ${isOpen
+          ? `border-l-emerald-500 ${styles.rowExpanded}`
+          : isPriorityHigh
+            ? `border-l-rose-400 dark:border-l-rose-500 ${styles.rowBase}`
             : `border-l-transparent ${styles.rowBase}`
-        }`}
+          }`}
       >
-        {/* Chevron */}
-        <td className="px-2 py-3 text-center align-middle sm:px-4 sm:py-4">
+        {/* Chevron - Hidden on mobile, shown on sm+ */}
+        <td className="hidden sm:table-cell px-2 py-3 text-center align-middle sm:px-4 sm:py-4">
           <div className="flex items-center justify-center">
             <ChevronDown
-              size={18}
-              className={`${styles.chevron} ${
-                isOpen ? styles.chevronExpanded : ""
-              }`}
+              size={16}
+              className={`${styles.chevron} ${isOpen ? styles.chevronExpanded : ""
+                }`}
             />
           </div>
         </td>
 
-        <td className="px-2 py-3 align-middle font-mono text-[10px] text-slate-500 sm:px-4 sm:py-4 sm:text-xs">
-          #{movement.id}
+        <td className="hidden sm:table-cell px-2 py-3 align-middle font-mono text-xs text-slate-400 sm:px-4 sm:py-4 sm:text-xs">
+          <span className="rounded-md bg-slate-50 dark:bg-slate-800/60 px-1.5 py-0.5">
+            #{movement.id}
+          </span>
         </td>
 
         {/* Locomotora */}
-        <td className="px-2 py-3 align-middle sm:px-4 sm:py-4">
+        {/* Locomotora - With embedded chevron on mobile */}
+        <td className="px-3 py-4 align-middle sm:px-4 sm:py-4">
           <div className="flex items-center gap-3">
-            <div
-              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors duration-300 ${
-                isOpen
-                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
-                  : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 group-hover:bg-white dark:group-hover:bg-slate-700"
-              }`}
-            >
-              <TrainFront size={16} strokeWidth={2} />
+            {/* Mobile Chevron */}
+            <div className="sm:hidden text-slate-400">
+              <ChevronDown size={18} className={`transition-transform duration-200 ${isOpen ? "rotate-180 text-emerald-500" : ""}`} />
             </div>
-            <span className="text-sm font-bold text-slate-900 dark:text-slate-200 sm:text-base">
-              {movement.locomotora}
-            </span>
+
+            <div
+              className={`flex h-10 w-10 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${isOpen
+                ? "bg-gradient-to-br from-emerald-100 to-emerald-50 text-emerald-600 dark:from-emerald-500/20 dark:to-emerald-500/10 dark:text-emerald-400 shadow-sm"
+                : "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 group-hover:bg-emerald-50 group-hover:text-emerald-500 dark:group-hover:bg-emerald-900/20 dark:group-hover:text-emerald-400"
+                }`}
+            >
+              <TrainFront size={18} strokeWidth={2} />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-bold text-slate-900 dark:text-slate-100 sm:text-base tabular-nums">
+                {movement.locomotora}
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="sm:hidden font-mono text-[10px] text-slate-400 bg-slate-100 dark:bg-slate-800 px-1 rounded">#{movement.id}</span>
+                {isPriorityHigh && (
+                  <span className="text-[9px] font-bold text-rose-500 dark:text-rose-400 uppercase tracking-wider">
+                    Alta
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         </td>
 
         {/* Localidad */}
         <td className="hidden px-2 py-3 align-middle md:table-cell sm:px-4 sm:py-4">
           <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-            <MapPin size={14} className="shrink-0 text-slate-400" />
+            <MapPin size={13} className="shrink-0 text-slate-300 dark:text-slate-600" />
             <span className="block max-w-[120px] truncate text-[11px] font-medium md:max-w-[160px] lg:max-w-[220px] sm:text-xs">
               {movement.localidadNombre || "—"}
             </span>
@@ -423,10 +499,10 @@ const MovimientoRow = memo(function MovimientoRow({
             <button
               type="button"
               onClick={handleEditClick}
-              className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 transition-all hover:bg-emerald-100 hover:border-emerald-300 active:scale-95 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-xs font-semibold text-emerald-700 transition-all duration-200 hover:bg-emerald-100 hover:border-emerald-300 hover:shadow-sm active:scale-95 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
               title="Editar movimiento"
             >
-              <Edit3 size={14} />
+              <Edit3 size={13} />
               <span className="hidden sm:inline">Editar</span>
             </button>
           </td>
@@ -437,9 +513,8 @@ const MovimientoRow = memo(function MovimientoRow({
       <tr className="m-0 border-0 p-0">
         <td colSpan={12} className="m-0 border-0 p-0">
           <div
-            className={`${styles.expandedContentContainer} ${
-              isOpen ? styles.show : ""
-            }`}
+            className={`${styles.expandedContentContainer} ${isOpen ? styles.show : ""
+              }`}
           >
             <div
               className={`border-b border-slate-200 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-950/40 ${styles.expandedInner}`}
@@ -447,7 +522,7 @@ const MovimientoRow = memo(function MovimientoRow({
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {/* 1. Resumen Móvil */}
                 <div className="col-span-1 md:col-span-2 xl:hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <SectionTitle title="Resumen General" icon={Info} />
+                  <SectionTitle title="Resumen General" icon={Info} color="slate" />
                   <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
                     <InfoBlock
                       label="Localidad"
@@ -479,7 +554,7 @@ const MovimientoRow = memo(function MovimientoRow({
 
                 {/* 2. Operación */}
                 <div className="h-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <SectionTitle title="Operación de Vía" icon={MapPin} />
+                  <SectionTitle title="Operación de Vía" icon={MapPin} color="emerald" />
                   <div className="mt-3 space-y-3">
                     <div className="flex items-center justify-between border-b border-slate-50 pb-2 text-xs dark:border-slate-800/50">
                       <span className="text-slate-500">Origen</span>
@@ -508,7 +583,7 @@ const MovimientoRow = memo(function MovimientoRow({
 
                 {/* 3. Personal */}
                 <div className="h-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <SectionTitle title="Personal Asignado" icon={User} />
+                  <SectionTitle title="Personal Asignado" icon={User} color="blue" />
                   <div className="mt-3 space-y-2">
                     <InfoRow
                       label="Supervisor"
@@ -525,7 +600,7 @@ const MovimientoRow = memo(function MovimientoRow({
 
                 {/* 4. Configuración */}
                 <div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <SectionTitle title="Servicios y Alertas" icon={Settings} />
+                  <SectionTitle title="Servicios y Alertas" icon={Settings} color="amber" />
                   <div className="mt-3 flex-1">
                     <div className="flex flex-wrap gap-2">
                       {movement.lavado && (
@@ -543,7 +618,7 @@ const MovimientoRow = memo(function MovimientoRow({
                       {!movement.lavado &&
                         !movement.torno &&
                         !movement.incidenteGlobal && (
-                          <div className="flex w-full items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/50 py-3 text-slate-400 dark:border-slate-800 dark:bg-slate-900/50">
+                          <div className="flex w-full items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 py-3 text-slate-400 dark:border-slate-800 dark:bg-slate-900/50">
                             <span className="text-xs italic">
                               Sin servicios activos
                             </span>
@@ -551,8 +626,8 @@ const MovimientoRow = memo(function MovimientoRow({
                         )}
                     </div>
                   </div>
-                  {movement.prioridad === "ALTA" && (
-                    <div className="mt-3 flex items-center gap-2 rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600 dark:border-rose-800/50 dark:bg-rose-900/20 dark:text-rose-400">
+                  {isPriorityHigh && (
+                    <div className="mt-3 flex items-center gap-2 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-600 dark:border-rose-800/50 dark:bg-rose-900/20 dark:text-rose-400">
                       <AlertTriangle size={14} /> PRIORIDAD ALTA
                     </div>
                   )}
@@ -561,12 +636,12 @@ const MovimientoRow = memo(function MovimientoRow({
                 {/* 5. Instrucciones */}
                 {movement.instrucciones && (
                   <div className="col-span-1 md:col-span-2 xl:col-span-4">
-                    <div className="flex items-start gap-4 rounded-xl border border-amber-100 bg-amber-50/80 p-4 shadow-sm dark:border-amber-900/30 dark:bg-slate-900/80">
-                      <div className="mt-0.5 shrink-0 rounded-lg bg-amber-100 p-2 text-amber-600 dark:bg-amber-900/40 dark:text-amber-500">
+                    <div className="flex items-start gap-4 rounded-xl border border-amber-100 bg-gradient-to-r from-amber-50/80 to-amber-50/40 p-4 shadow-sm dark:border-amber-900/30 dark:from-slate-900/80 dark:to-slate-900/60">
+                      <div className="mt-0.5 shrink-0 rounded-xl bg-amber-100 p-2.5 text-amber-600 dark:bg-amber-900/40 dark:text-amber-500">
                         <Info size={18} />
                       </div>
                       <div>
-                        <h5 className="mb-1 text-xs font-bold uppercase text-amber-700 dark:text-amber-500">
+                        <h5 className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-500">
                           Instrucciones del Movimiento
                         </h5>
                         <p className="text-sm font-medium leading-relaxed text-slate-700 dark:text-slate-300">
@@ -618,28 +693,26 @@ const HeaderCell = memo(function HeaderCell({
 
   return (
     <th
-      className={`cursor-pointer select-none px-2 py-2 text-[10px] transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 sm:px-4 sm:py-4 sm:text-[11px] ${className}`}
+      className={`cursor-pointer select-none px-2 py-3 text-[10px] transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/50 sm:px-4 sm:py-4 sm:text-[11px] ${className}`}
       onClick={handleClick}
     >
       <div
-        className={`flex items-center gap-2 ${
-          align === "center" ? "justify-center" : ""
-        } ${
-          active
+        className={`flex items-center gap-1.5 ${align === "center" ? "justify-center" : ""
+          } ${active
             ? "text-emerald-600 dark:text-emerald-400"
-            : "text-slate-500 group-hover:text-emerald-500 dark:text-slate-400"
-        }`}
+            : "text-slate-500 dark:text-slate-400"
+          }`}
       >
-        <Icon size={14} className={active ? "opacity-100" : "opacity-70"} />
+        <Icon size={13} className={active ? "opacity-100" : "opacity-60"} />
         <span>{label}</span>
-        <div className="flex flex-col">
+        <div className="flex flex-col -space-y-0.5">
           <ArrowUp
             size={8}
-            className={active && dir === "asc" ? "opacity-100" : "opacity-30"}
+            className={`transition-opacity ${active && dir === "asc" ? "opacity-100" : "opacity-25"}`}
           />
           <ArrowDown
             size={8}
-            className={active && dir === "desc" ? "opacity-100" : "opacity-30"}
+            className={`transition-opacity ${active && dir === "desc" ? "opacity-100" : "opacity-25"}`}
           />
         </div>
       </div>
@@ -648,27 +721,34 @@ const HeaderCell = memo(function HeaderCell({
 });
 
 function BadgeEstado({ estado }: { estado: string }) {
-  const className =
-    BADGE_ESTADO_STYLES[estado] ??
-    "bg-slate-100 text-slate-600 border-slate-200";
+  const badge = BADGE_ESTADO[estado] ?? DEFAULT_BADGE;
 
   return (
     <span
-      className={`inline-flex items-center rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide shadow-sm ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide shadow-sm ${badge.bg} ${badge.text}`}
     >
+      <span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} />
       {estado}
     </span>
   );
 }
 
+const SECTION_COLORS: Record<string, string> = {
+  emerald: "border-l-emerald-400 dark:border-l-emerald-500",
+  blue: "border-l-sky-400 dark:border-l-sky-500",
+  amber: "border-l-amber-400 dark:border-l-amber-500",
+  slate: "border-l-slate-300 dark:border-l-slate-600",
+};
+
 interface SectionTitleProps {
   title: string;
   icon: React.ElementType;
+  color?: string;
 }
-function SectionTitle({ title, icon: Icon }: SectionTitleProps) {
+function SectionTitle({ title, icon: Icon, color = "emerald" }: SectionTitleProps) {
   return (
-    <h4 className="mb-3 flex items-center gap-2 border-b border-slate-100 pb-2 text-[10px] font-bold uppercase text-slate-400 dark:border-slate-800">
-      <Icon size={12} className="text-emerald-500" /> {title}
+    <h4 className={`mb-3 flex items-center gap-2 border-b border-l-2 border-slate-100 pb-2 pl-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:border-slate-800 ${SECTION_COLORS[color] ?? SECTION_COLORS.emerald}`}>
+      <Icon size={12} className="text-current opacity-70" /> {title}
     </h4>
   );
 }
@@ -679,9 +759,9 @@ interface InfoRowProps {
 }
 function InfoRow({ label, value }: InfoRowProps) {
   return (
-    <div className="flex items-baseline justify-between border-b border-slate-50 py-1 text-[11px] last:border-0 dark:border-slate-800/50 sm:text-xs">
+    <div className="flex items-baseline justify-between border-b border-slate-50 py-1.5 text-[11px] last:border-0 dark:border-slate-800/50 sm:text-xs">
       <span className="text-slate-500 dark:text-slate-400">{label}</span>
-      <span className="ml-4 text-right font-medium text-slate-700 dark:text-slate-200">
+      <span className="ml-4 text-right font-semibold text-slate-700 dark:text-slate-200 tabular-nums">
         {value ?? "—"}
       </span>
     </div>
@@ -696,10 +776,10 @@ interface InfoBlockProps {
 function InfoBlock({ label, value, className }: InfoBlockProps) {
   return (
     <div className={`flex flex-col gap-1 ${className ?? ""}`}>
-      <span className="text-[10px] font-bold uppercase text-slate-400">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
         {label}
       </span>
-      <span className="break-words text-[11px] font-medium text-slate-700 dark:text-slate-200 sm:text-xs">
+      <span className="break-words text-[11px] font-semibold text-slate-700 dark:text-slate-200 sm:text-xs">
         {value ?? "—"}
       </span>
     </div>
@@ -721,9 +801,9 @@ function BooleanChip({
 
   return (
     <span
-      className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-bold ${baseClass}`}
+      className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-bold ${baseClass}`}
     >
-      <Icon size={10} /> {label}
+      <Icon size={11} /> {label}
     </span>
   );
 }
@@ -734,7 +814,7 @@ interface MiniBadgeProps {
 }
 function MiniBadge({ label, icon: Icon }: MiniBadgeProps) {
   return (
-    <span className="flex items-center gap-1 rounded border border-slate-200 bg-slate-100 px-2 py-1 text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+    <span className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-[10px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
       <Icon size={10} className="opacity-50" /> {label}
     </span>
   );

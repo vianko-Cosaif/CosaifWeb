@@ -42,10 +42,9 @@ function getRoleFromSession(): Rol {
 /* ================== PROPS ================== */
 
 interface MovimientosPanelProps {
-  rol?: Rol;      // si no viene, se toma de cookie/localStorage
-  token?: string; // si no viene, se toma de cookie "token"
+  rol?: Rol;
+  token?: string;
   puedeCrear?: boolean;
-
   apiBase?: string;
   empresaIdUsuario?: number | null;
   intervaloAutoMs?: number;
@@ -57,7 +56,6 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
   const { rol: rolProp, token: tokenProp, puedeCrear = false } = props;
   const router = useRouter();
 
-  // Rol/token efectivos
   const [rol, setRol] = useState<Rol>(() => rolProp ?? getRoleFromSession());
   const [token, setToken] = useState<string | undefined>(() => tokenProp);
 
@@ -66,7 +64,6 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
 
   /* ================== RESOLVER SESIÓN ================== */
 
-  // Resolver token desde cookie si no lo pasaron
   useEffect(() => {
     if (tokenProp) {
       setToken(tokenProp);
@@ -76,7 +73,6 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     if (t) setToken(t);
   }, [tokenProp]);
 
-  // Resolver rol desde sesión si no lo pasaron
   useEffect(() => {
     if (rolProp) {
       setRol(rolProp);
@@ -85,7 +81,6 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     setRol(getRoleFromSession());
   }, [rolProp]);
 
-  // Cargar empresa/localidad asignadas al usuario (CLIENTE / SUPERVISOR)
   useEffect(() => {
     try {
       const raw =
@@ -135,7 +130,6 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     [rol]
   );
 
-  // Forzar empresa/localidad para CLIENTE / SUPERVISOR
   useEffect(() => {
     if (puedeElegirEmpresa) return;
 
@@ -151,7 +145,6 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     }));
   }, [puedeElegirEmpresa, userEmpresaId, userLocalidadId, setFiltros]);
 
-  // Listas de empresas/localidades vistas en filtros
   const listaEmpresas = useMemo(() => {
     if (puedeElegirEmpresa) return empresas;
     if (userEmpresaId != null) {
@@ -263,7 +256,6 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
 
   const handleEditar = useCallback(
     (id: number) => {
-      // Siempre navegar a edición sin importar el rol
       router.push(`/cliente/editar?id=${id}`);
     },
     [router]
@@ -283,36 +275,68 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     <section
       className="
         w-full 
-        rounded-3xl 
-        border border-slate-200 dark:border-slate-800 
-        bg-white/95 dark:bg-slate-950/90 
+        rounded-2xl sm:rounded-3xl 
+        border border-slate-200/80 dark:border-slate-800/80 
+        bg-white/95 dark:bg-slate-950/95 
         text-slate-900 dark:text-slate-100
-        shadow-md sm:shadow-lg
+        shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50
         overflow-hidden
+        backdrop-blur-sm
+        touch-manipulation
       "
     >
-      {/* El max-w lo controla la página padre (cliente/movimientos) */}
-      <div className="flex flex-col gap-4 px-3 py-4 sm:px-4 sm:py-6 lg:px-6 lg:py-7">
-        {/* Header */}
-        <header className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between">
-          <div>
-            <h1 className="text-lg sm:text-2xl font-semibold tracking-tight">
-              Movimientos
-            </h1>
-            <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-              Gestión de movimientos ferroviarios · {tab}
-            </p>
+      <div className="flex flex-col gap-3 sm:gap-5 px-2 py-3 sm:px-5 sm:py-6 lg:px-7 lg:py-8 min-w-0">
+        {/* Header con gradiente */}
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between min-w-0">
+          <div className="flex items-center gap-3">
+            {/* Icon container */}
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/30">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                <line x1="4" x2="4" y1="22" y2="15" />
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-base sm:text-2xl font-bold tracking-tight bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
+                Movimientos
+              </h1>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                Gestión ferroviaria
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                  {tab}
+                </span>
+                {cargando && (
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-emerald-600 dark:text-emerald-400 text-[10px]">
+                      sincronizando
+                    </span>
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          {/* Stats mini */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 px-3 py-1.5 text-xs">
+              <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">{total}</span>
+              <span className="text-slate-500 dark:text-slate-400">registro{total === 1 ? "" : "s"}</span>
+            </div>
           </div>
         </header>
+
+        {/* Gradient separator */}
+        <div className="h-px bg-gradient-to-r from-transparent via-emerald-300/40 dark:via-emerald-600/30 to-transparent" />
 
         {/* Card: Nav + Filtros */}
         <section
           className="
             space-y-3 
-            rounded-2xl 
-            border border-slate-100 dark:border-slate-800 
-            bg-slate-50/90 dark:bg-slate-900/80 
-            px-3 py-3 sm:px-4 sm:py-4 
+            rounded-xl sm:rounded-2xl 
+            border border-slate-100 dark:border-slate-800/60 
+            bg-gradient-to-b from-slate-50/80 to-white dark:from-slate-900/60 dark:to-slate-950/60
+            px-2 py-2 sm:px-4 sm:py-4 
             shadow-sm
           "
         >
@@ -360,33 +384,34 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
         <section
           className="
             flex-1 
-            rounded-2xl 
-            border border-slate-100 dark:border-slate-800 
-            bg-slate-50/90 dark:bg-slate-900/90 
-            px-2 py-2 sm:px-3 sm:py-3 lg:px-4 lg:py-4 
+            rounded-xl sm:rounded-2xl 
+            border border-slate-100 dark:border-slate-800/60 
+            bg-white dark:bg-slate-950/80 
+            px-1 py-1.5 sm:px-3 sm:py-3 lg:px-4 lg:py-4 
             flex flex-col
             overflow-hidden
+            shadow-sm
           "
         >
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
-            <span>
-              {total} registro{total === 1 ? "" : "s"} · página{" "}
-              {filtros.pagina}
-            </span>
-            {cargando && (
-              <span className="animate-pulse text-slate-600 dark:text-slate-300">
-                Actualizando…
-              </span>
-            )}
-          </div>
-
           {filas.length === 0 && !cargando ? (
-            <div className="flex-1 flex items-center justify-center text-sm text-slate-500 dark:text-slate-400 px-2 text-center">
-              {emptyText}
+            <div className="flex-1 flex flex-col items-center justify-center py-10 sm:py-16 gap-4">
+              <div className="rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 p-6">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300 dark:text-slate-600">
+                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                  <line x1="4" x2="4" y1="22" y2="15" />
+                </svg>
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                  {emptyText}
+                </p>
+                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                  Ajusta los filtros o cambia de pestaña
+                </p>
+              </div>
             </div>
           ) : (
             <div className="relative flex-1 min-h-0">
-              {/* Nada de -mx ni contenedores con min-width: el ancho lo manda el viewport */}
               <Tabla
                 filas={filas}
                 pagina={filtros.pagina}
@@ -413,7 +438,3 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     </section>
   );
 }
-
-/* ================== SUBCOMPONENTES ================== */
-
-

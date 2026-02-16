@@ -20,10 +20,21 @@ export default async function Page() {
   }
 
   return (
-    // Contenedor de página: no permite scroll horizontal global
-    <section className="w-full min-h-screen overflow-x-hidden">
-      {/* Contenedor centrado del panel */}
-      <div className="mx-auto w-full max-w-5xl px-3 sm:px-4 lg:px-6">
+    <section
+      className="
+        w-full min-h-[calc(100svh-4rem)]
+        overflow-x-hidden overscroll-y-auto
+        touch-pan-y
+      "
+    >
+      <div
+        className="
+          mx-auto w-full
+          max-w-7xl
+          px-3 sm:px-4 lg:px-6
+          py-2 sm:py-4
+        "
+      >
         <MovimientosPanel
           apiBase="/bff"
           rol="SUPERVISOR"

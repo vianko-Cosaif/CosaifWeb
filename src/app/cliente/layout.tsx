@@ -107,7 +107,7 @@ export default function ClienteLayout({ children }: { children: React.ReactNode 
           <div className="contents">{children}</div>
         </main>
 
-         <footer className="mx-auto w-full max-w-screen-2xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-xs text-slate-500">v1</footer>
+        <footer className="mx-auto w-full max-w-screen-2xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-xs text-slate-500">v1</footer>
       </div>
     </div>
   );
