@@ -5,8 +5,9 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { useMounted } from "@/app/hooks/useMounted";
 import { getInitialTheme, applyTheme, onThemeChange } from "@/lib/theme";
 import { Movimiento } from './../Movimiento'; // <--- Único import
-import { API_BASE, SECC_BASE, DOUBLE_TAP_MS, FLUSH_INTERVAL_MS, DRAFT_KEY, OUTBOX_KEY, ALTA_PASSWORDS, Option, roleBase, Rol, Via, Empresa, Localidad, Seccion, MovementFormData, baseInitialForm
- } from './../movimientos.shared'; // <--- Único import
+import {
+  API_BASE, SECC_BASE, DOUBLE_TAP_MS, FLUSH_INTERVAL_MS, DRAFT_KEY, OUTBOX_KEY, ALTA_PASSWORDS, Option, roleBase, Rol, Via, Empresa, Localidad, Seccion, MovementFormData, baseInitialForm
+} from './../movimientos.shared'; // <--- Único import
 
 /** ======= RESOLVER ROL (cookie → localStorage) ======= */
 function getRoleClient(): Rol {
@@ -19,32 +20,34 @@ function getRoleClient(): Rol {
       const r = String(u?.rol || u?.role || "").toUpperCase();
       if (r) return r as Rol;
     }
-  } catch {}
+  } catch { }
   return "CLIENTE";
 }
 
 /** ======= ESTILOS ======= */
 const inputBase =
-  "w-full rounded-md border px-3 py-3 min-h-[48px] text-base sm:text-sm outline-none transition-colors " +
-  "bg-white text-slate-900 placeholder-slate-400 border-slate-300 focus:border-sky-500 " +
-  "dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500 dark:border-slate-700 dark:focus:border-sky-500";
+  "w-full rounded-xl border px-3 py-3 min-h-[48px] text-base sm:text-sm outline-none transition-all duration-200 " +
+  "bg-white text-slate-900 placeholder-slate-400 border-slate-200 " +
+  "focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/30 " +
+  "dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-500 dark:border-zinc-700 " +
+  "dark:focus:border-emerald-500 dark:focus:ring-emerald-500/20";
 const chipBase = "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium";
 
 /** ======= COMPONENTE ======= */
 export default function CrearMovimiento() {
   const mounted = useMounted();
-  
+
   // Manejo del tema
   useEffect(() => {
     if (!mounted) return;
     const initial = getInitialTheme();
     applyTheme(initial, { persist: false });
-    
+
     // Sincronizar cambios de tema entre pestañas
     const unsubscribe = onThemeChange((newTheme) => {
       applyTheme(newTheme, { persist: false });
     });
-    
+
     return () => unsubscribe();
   }, [mounted]);
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -90,7 +93,7 @@ export default function CrearMovimiento() {
 
     const uRaw = typeof window !== "undefined" ? localStorage.getItem("user") : null;
     let u: any = null;
-    try { u = uRaw ? JSON.parse(uRaw) : null; } catch {}
+    try { u = uRaw ? JSON.parse(uRaw) : null; } catch { }
     setUser(u || null);
     setUserCompanyName(u?.empresa?.nombre || "");
 
@@ -162,7 +165,7 @@ export default function CrearMovimiento() {
             selectedLocalityId: Number.isFinite(Number(localidadId)) ? Number(localidadId) : (p.selectedLocalityId ?? null),
           };
         });
-      } catch {}
+      } catch { }
 
       try {
         const raw = typeof window !== "undefined" ? localStorage.getItem(DRAFT_KEY) : null;
@@ -173,7 +176,7 @@ export default function CrearMovimiento() {
           setToSection(d.toSection);
           setLocoLockedBy(d.locoLockedBy || null);
         }
-      } catch {}
+      } catch { }
 
       try {
         const q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]");
@@ -200,7 +203,7 @@ export default function CrearMovimiento() {
   useEffect(() => {
     const payload = { form, fromSection, toSection, locoLockedBy };
     if (draftTimer.current) clearTimeout(draftTimer.current);
-    draftTimer.current = setTimeout(() => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(payload)); } catch {} }, 350);
+    draftTimer.current = setTimeout(() => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(payload)); } catch { } }, 350);
     return () => { if (draftTimer.current) clearTimeout(draftTimer.current); };
   }, [form, fromSection, toSection, locoLockedBy]);
 
@@ -215,7 +218,7 @@ export default function CrearMovimiento() {
   const flushOutbox = useCallback(async () => {
     if (!online) return;
     let q: any[] = [];
-    try { q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch {}
+    try { q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch { }
     if (!Array.isArray(q) || q.length === 0) return;
 
     const keep: any[] = [];
@@ -243,25 +246,25 @@ export default function CrearMovimiento() {
       try {
         const data = await Movimiento.fetchJSON(`${API_BASE}/vias/localidad/${form.selectedLocalityId}`);
         const list: Via[] = (data || []).map((v: any) => ({ id: v.id, nombre: v.nombre }));
-        
+
         // Ordenar vías numéricamente si son números, alfabéticamente si no
         list.sort((a, b) => {
           const numA = Number(a.nombre);
           const numB = Number(b.nombre);
-          
+
           // Si ambos son números, ordenar numéricamente
           if (!isNaN(numA) && !isNaN(numB)) {
             return numA - numB;
           }
-          
+
           // Si solo uno es número, poner primero los números
           if (!isNaN(numA)) return -1;
           if (!isNaN(numB)) return 1;
-          
+
           // Si ninguno es número, ordenar alfabéticamente
           return String(a.nombre).localeCompare(String(b.nombre));
         });
-        
+
         setVias(list);
       } catch { setVias([]); }
     })();
@@ -337,7 +340,7 @@ export default function CrearMovimiento() {
             setForm((p) => ({ ...p, locomotiveNumber: String(loco) }));
             setLocoLockedBy({ movimientoId: s.movimientoId!, viaId: form.fromTrack!, numero: s.numero });
           }
-        } catch {}
+        } catch { }
       }
     } else {
       if (locoLockedBy && locoLockedBy.viaId === form.fromTrack && locoLockedBy.numero === s.numero) setLocoLockedBy(null);
@@ -385,7 +388,7 @@ export default function CrearMovimiento() {
   /** OUTBOX helper */
   const pushOutbox = (payload: any) => {
     let q: any[] = [];
-    try { q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch {}
+    try { q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch { }
     const item = { id: `${Date.now()}_${Math.random().toString(36).slice(2)}`, payload, createdAt: Date.now() };
     const next = [...(Array.isArray(q) ? q : []), item];
     localStorage.setItem(OUTBOX_KEY, JSON.stringify(next));
@@ -409,7 +412,7 @@ export default function CrearMovimiento() {
 
     // Vías según modo
     const fromTrack = (!form.service || selectionMode === "de_via") ? form.fromTrack : null;
-    const toTrack   = (!form.service || selectionMode === "para_via") ? form.toTrack : null;
+    const toTrack = (!form.service || selectionMode === "para_via") ? form.toTrack : null;
 
     if (!fromTrack && !toTrack) {
       alert("Debe seleccionar al menos una vía según el modo de selección.");
@@ -418,7 +421,7 @@ export default function CrearMovimiento() {
 
     // Mensaje e instrucciones
     const meta: string[] = [];
-    if (typeof toSection === "number")   meta.push(`[META DESTINO:${toSection}]`);
+    if (typeof toSection === "number") meta.push(`[META DESTINO:${toSection}]`);
     if (typeof fromSection === "number") meta.push(`[META ORIGEN:${fromSection}]`);
 
     const partes: string[] = [];
@@ -450,7 +453,7 @@ export default function CrearMovimiento() {
       localidadId: Number(localidadId),
 
       ...(fromTrack ? { viaOrigenId: Number(fromTrack) } : {}),
-      ...(toTrack   ? { viaDestinoId: Number(toTrack) } : {}),
+      ...(toTrack ? { viaDestinoId: Number(toTrack) } : {}),
       ...(numeroSeccion !== undefined ? { numeroSeccion } : {}),
 
       locomotiveNumber: Number(form.locomotiveNumber),
@@ -465,7 +468,7 @@ export default function CrearMovimiento() {
       posicionChimenea: !form.service && ["DENTRO", "AFUERA"].includes(form.chimneyPosition) ? form.chimneyPosition : "Sin_Solicitar",
 
       ...(form.service === "Lavado" ? { lavado: true } : {}),
-      ...(form.service === "Torno"  ? { torno:  true } : {}),
+      ...(form.service === "Torno" ? { torno: true } : {}),
 
       ...(instrucciones ? { instrucciones } : {}),
 
@@ -508,7 +511,7 @@ export default function CrearMovimiento() {
 
       const numeroParaAsignar =
         typeof toSection === "number" ? toSection :
-        (typeof fromSection === "number" ? fromSection : undefined);
+          (typeof fromSection === "number" ? fromSection : undefined);
 
       if (movimientoId && viaParaAsignar && typeof numeroParaAsignar === "number") {
         await Movimiento.fetchWithTimeout(`${API_BASE}/secciones/via/${viaParaAsignar}/asignar`, {
@@ -516,10 +519,10 @@ export default function CrearMovimiento() {
           credentials: "include",
           headers: { "Content-Type": "application/json", ...Movimiento.tokenHeader() },
           body: JSON.stringify({ numero: Number(numeroParaAsignar), movimientoId }),
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
-      try { localStorage.removeItem(DRAFT_KEY); } catch {}
+      try { localStorage.removeItem(DRAFT_KEY); } catch { }
       setFromSection(undefined);
       setToSection(undefined);
       setLocoLockedBy(null);
@@ -565,9 +568,9 @@ export default function CrearMovimiento() {
   const goSalir = () => window.location.assign(`${roleBase(rol)}/movimientos`);
 
   if (!mounted) return null;
-  
+
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-white transition-colors duration-200 p-4 md:p-6 lg:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white dark:from-zinc-950 dark:to-zinc-900 text-slate-900 dark:text-white transition-colors duration-200 p-4 md:p-6 lg:p-8">
       <style jsx global>{`
         @media (max-width: 640px) {
           select, select option { font-size: 16px !important; line-height: 1.45 !important; }
@@ -577,48 +580,92 @@ export default function CrearMovimiento() {
 
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 z-0 bg-[linear-gradient(to_right,rgba(0,0,0,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.05)_1px,transparent_1px)] bg-[size:24px_24px] dark:opacity-[0.07]"
+        className="pointer-events-none absolute inset-0 z-0 bg-[linear-gradient(to_right,rgba(0,0,0,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.03)_1px,transparent_1px)] bg-[size:24px_24px] dark:opacity-[0.05]"
       />
       <div className="relative z-10 max-w-4xl mx-auto">
 
-        <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
           <Badge tone={online ? "ok" : "error"}>{online ? "En línea" : "Sin conexión"}</Badge>
           <RoleBadge rol={rol} canManageAll={canManageAll} />
           {pendingCount > 0 && (
             <>
               <Badge tone="warn">{pendingCount} pendiente(s)</Badge>
-              <button onClick={flushOutbox} className="rounded-md border px-3 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+              <button onClick={flushOutbox} className="rounded-xl border px-3 py-1.5 text-xs font-medium hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800 transition-all">
                 Enviar pendientes
               </button>
-              <button onClick={() => { localStorage.removeItem(OUTBOX_KEY); setPendingCount(0); }} className="rounded-md border px-3 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+              <button onClick={() => { localStorage.removeItem(OUTBOX_KEY); setPendingCount(0); }} className="rounded-xl border px-3 py-1.5 text-xs font-medium hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800 transition-all">
                 Vaciar cola
               </button>
             </>
           )}
-          {banner && <span className="text-xs text-slate-600 dark:text-slate-300">{banner}</span>}
-          <button onClick={goSalir} className="ml-auto rounded-md border border-red-500 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:border-red-500 dark:text-red-400 dark:hover:bg-red-900/20" title="Volver a mis movimientos">
+          {banner && <span className="text-xs text-slate-600 dark:text-zinc-300">{banner}</span>}
+          <button onClick={goSalir} className="ml-auto rounded-xl border border-rose-200 dark:border-rose-800 px-3 py-1.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all active:scale-95" title="Volver a mis movimientos">
             Salir
           </button>
         </div>
 
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-          Nuevo Movimiento <span className="text-slate-500 dark:text-slate-400">({label})</span>
-        </h1>
+        {/* Header con icono */}
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/25">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </div>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight bg-gradient-to-r from-slate-900 to-slate-600 dark:from-zinc-100 dark:to-zinc-400 bg-clip-text text-transparent">
+              Nuevo Movimiento
+            </h1>
+            <p className="text-xs text-slate-500 dark:text-zinc-400">{label}</p>
+          </div>
+        </div>
 
         {lockedClienteMissingData && (
-          <div className="mt-3 rounded-lg border-l-4 border-rose-500 bg-rose-50 p-3 text-sm dark:border-rose-600 dark:bg-rose-900/20">
+          <div className="mt-3 rounded-xl border-l-4 border-rose-500 bg-rose-50 p-3 text-sm dark:border-rose-600 dark:bg-rose-900/20">
             <div className="font-medium text-rose-800 dark:text-rose-200">
               Sesión inválida. Inicia sesión nuevamente.
             </div>
           </div>
         )}
 
-        <div className="mt-3 h-2 w-full rounded bg-slate-200 dark:bg-slate-800" aria-label="Progreso">
-          <div className="h-2 rounded bg-emerald-600 transition-[width] duration-300" style={{ width: `${percent}%` }} />
+        {/* Connected dot stepper */}
+        <div className="mt-5 flex items-center justify-center gap-0" aria-label="Progreso">
+          {[1, 2, 3].map((s, i) => (
+            <React.Fragment key={s}>
+              <div className="flex flex-col items-center gap-1">
+                <div
+                  className={Movimiento.clsx(
+                    "flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold transition-all duration-300",
+                    s < step
+                      ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/30"
+                      : s === step
+                        ? "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/40 ring-4 ring-emerald-500/20"
+                        : "bg-slate-100 text-slate-400 dark:bg-zinc-800 dark:text-zinc-500"
+                  )}
+                >
+                  {s < step ? "✓" : s}
+                </div>
+                <span className={Movimiento.clsx(
+                  "text-[10px] font-semibold transition-colors",
+                  s <= step ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-zinc-500"
+                )}>
+                  {["Datos", "Detalles", "Confirmar"][i]}
+                </span>
+              </div>
+              {i < 2 && (
+                <div className="flex-1 mx-2 mb-4">
+                  <div className="h-0.5 rounded-full bg-slate-200 dark:bg-zinc-700 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                      style={{ width: s < step ? "100%" : "0%" }}
+                    />
+                  </div>
+                </div>
+              )}
+            </React.Fragment>
+          ))}
         </div>
-        <div className="mt-1 text-right text-xs text-slate-500 dark:text-slate-400">{percent}%</div>
 
-        <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="mt-6 rounded-2xl border border-slate-200/80 dark:border-zinc-800/60 bg-white/95 dark:bg-zinc-950/90 backdrop-blur-sm p-5 sm:p-6 shadow-xl shadow-slate-200/30 dark:shadow-zinc-900/30">
           {step === 1 && (
             <StepOne
               form={form}
@@ -656,10 +703,10 @@ export default function CrearMovimiento() {
           {step === 3 && <StepThree form={form} setForm={setForm} sending={sending} submit={submit} fromSection={fromSection} toSection={toSection} viaName={viaName} selectionMode={selectionMode} />}
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-3">
+        <div className="mt-5 flex flex-wrap gap-3">
           <button
             onClick={() => {
-              try { localStorage.removeItem(DRAFT_KEY); } catch {}
+              try { localStorage.removeItem(DRAFT_KEY); } catch { }
               setForm((prev) => ({ ...baseInitialForm, selectedLocalityId: canManageAll ? null : prev.selectedLocalityId }));
               setFromSection(undefined);
               setToSection(undefined);
@@ -668,26 +715,26 @@ export default function CrearMovimiento() {
               setShowToOpts(false);
               if (step === 3) setStep(1);
             }}
-            className="rounded-md border px-4 py-2 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            className="rounded-xl border border-slate-200 dark:border-zinc-700 px-4 py-2.5 text-sm font-medium text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all active:scale-[0.97]"
           >
             Limpiar
           </button>
 
           {step > 1 && (
-            <button onClick={() => setStep((s) => (s === 1 ? 1 : ((s - 1) as 1 | 2 | 3)))} className="rounded-md border border-amber-500 px-4 py-2 text-amber-700 hover:bg-amber-50 dark:border-amber-500 dark:text-amber-400 dark:hover:bg-amber-900/20">
-              Anterior
+            <button onClick={() => setStep((s) => (s === 1 ? 1 : ((s - 1) as 1 | 2 | 3)))} className="rounded-xl border border-amber-300 dark:border-amber-700 px-4 py-2.5 text-sm font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all active:scale-[0.97]">
+              ← Anterior
             </button>
           )}
           {step < 3 && (
             <button
               onClick={() => { if (step === 1 && !validate1()) return; if (step === 2 && !validate2()) return; setStep((s) => ((s + 1) as 1 | 2 | 3)); }}
-              className="rounded-md bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700"
+              className="rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:from-emerald-600 hover:to-emerald-700 transition-all active:scale-[0.97]"
             >
-              Siguiente
+              Siguiente →
             </button>
           )}
 
-          <button onClick={goSalir} className="ml-auto rounded-md border border-red-500 px-4 py-2 text-red-600 hover:bg-red-50 dark:border-red-500 dark:text-red-400 dark:hover:bg-red-900/20" title="Volver a mis movimientos">
+          <button onClick={goSalir} className="ml-auto rounded-xl border border-rose-200 dark:border-rose-800 px-4 py-2.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all active:scale-95" title="Volver a mis movimientos">
             Salir
           </button>
         </div>
@@ -697,7 +744,7 @@ export default function CrearMovimiento() {
             <div className="font-semibold text-sky-800 dark:text-sky-200">
               Locomotora bloqueada por sección #{locoLockedBy.numero} (movimiento #{locoLockedBy.movimientoId}).
             </div>
-            <button onClick={() => setLocoLockedBy(null)} className="mt-2 rounded-md border px-3 py-1 text-xs hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+            <button onClick={() => setLocoLockedBy(null)} className="mt-2 rounded-md border px-3 py-1 text-xs hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800">
               Quitar vinculación
             </button>
           </div>
@@ -713,7 +760,7 @@ function Field(props: React.InputHTMLAttributes<HTMLInputElement> & { label: str
   const eid = id || `f_${label.replace(/\s+/g, "_").toLowerCase()}`;
   return (
     <label htmlFor={eid} className="mb-3 block">
-      <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">{label}</span>
+      <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-zinc-300">{label}</span>
       <input
         id={eid}
         {...rest}
@@ -744,7 +791,7 @@ function Select({
   const id = `sel_${label.replace(/\s+/g, "_").toLowerCase()}`;
   return (
     <label className="mb-3 block" htmlFor={id}>
-      <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">{label}</span>
+      <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-zinc-300">{label}</span>
       <select
         id={id}
         value={value ?? ""}
@@ -858,10 +905,10 @@ function StepOne(props: {
     const anyOcc: boolean | null = Array.isArray(secs) ? secs.some((x) => x.ocupada) : null;
     const label = anyOcc === null ? "—" : anyOcc ? "OCUPADA" : "LIBRE";
     const tone = anyOcc === null ? "text-slate-500" : anyOcc ? "text-rose-600" : "text-emerald-600";
-    
+
     const isServiceVia = ['torno', 'lavado'].includes(v.nombre.toLowerCase());
     const isDisabled = !form.service && isServiceVia;
-    
+
     return (
       <button
         key={v.id}
@@ -869,7 +916,7 @@ function StepOne(props: {
         disabled={isDisabled}
         className={Movimiento.clsx(
           "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left transition-colors duration-200",
-          isDisabled 
+          isDisabled
             ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-500"
             : form.fromTrack === v.id
               ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-500 dark:text-emerald-300"
@@ -1095,10 +1142,10 @@ function StepOne(props: {
               onClick={() => { setShowFromOpts(!showFromOpts); if (form.fromTrack) ensureSections(form.fromTrack); }}
               className={Movimiento.clsx(
                 "min-w-[220px] rounded-md border px-3 py-2 text-left transition-colors duration-200",
-                form.fromTrack 
+                form.fromTrack
                   ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-500 dark:text-emerald-300"
                   : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-              )} 
+              )}
             >
               {form.fromTrack ? `Vía ${viaName(form.fromTrack)}` : "Selecciona una vía"}
             </button>
@@ -1129,7 +1176,7 @@ function StepOne(props: {
               onClick={() => { setShowToOpts(!showToOpts); if (form.toTrack) ensureSections(form.toTrack); }}
               className={Movimiento.clsx(
                 "min-w-[220px] rounded-md border px-3 py-2 text-left transition-colors duration-200",
-                form.toTrack 
+                form.toTrack
                   ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-500 dark:text-emerald-300"
                   : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
               )}

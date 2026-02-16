@@ -161,7 +161,7 @@ export async function apiSwapMovimientos(rondaAId: number | string, rondaBId: nu
 export async function apiCancelarMovimiento(movimientoId: number, razon?: string) {
   return patchJsonWithFallbacks(
     [
-      `movimientos/movimientos/${movimientoId}/cancelar`,  
+      `movimientos/movimientos/${movimientoId}/cancelar`,
     ],
     { razon: razon ?? 'Sin motivo' }
   );
@@ -192,7 +192,7 @@ export const useRondaData = (localidadId: number, onClose: () => void) => {
             const u = JSON.parse(uStr);
             empresaId = Number(u?.empresaId ?? null) || null;
           }
-        } catch {}
+        } catch { }
 
         if (mounted) setUser({ empresaId });
 
@@ -293,10 +293,11 @@ export const useRondaData = (localidadId: number, onClose: () => void) => {
 
   const persistOrden = useCallback(
     async (aId: number, aOrden: number, bId: number, bOrden: number) => {
-      // SOLO si tu backend lo expone (no apareció en tu snippet, así que déjalo opcional)
+      // Intentamos PATCH directo a /rondas/:id con el nuevo orden
+      // Si el backend sigue REST standard, esto debería actualizar el campo.
       await Promise.all([
-        putJson(`/rondas/${aId}/orden`, { orden: aOrden }),
-        putJson(`/rondas/${bId}/orden`, { orden: bOrden }),
+        patchJsonWithFallbacks([`/rondas/${aId}`], { orden: aOrden }),
+        patchJsonWithFallbacks([`/rondas/${bId}`], { orden: bOrden }),
       ]);
     },
     []

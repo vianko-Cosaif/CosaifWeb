@@ -90,7 +90,7 @@ export default function Noticias() {
         heart.y += heart.v;
         heart.r += heart.vr;
         heart.swing += heart.swingSpeed;
-        
+
         // Aplicamos un ligero movimiento en X para que no caiga recto
         const currentX = heart.x + Math.sin(heart.swing) * 15;
 
@@ -108,7 +108,7 @@ export default function Noticias() {
         // Sombra (Glow)
         ctx.shadowBlur = 15;
         ctx.shadowColor = heart.c;
-        
+
         // Gradiente radial para efecto de volumen
         const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, 5);
         grad.addColorStop(0, '#FFFFFF'); // Centro brillante
@@ -135,19 +135,19 @@ export default function Noticias() {
   }, []);
 
   return (
-    <div className="newsBar" style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(90deg, #fff5f5 0%, #ffffff 50%, #fff5f5 100%)' }}>
-      <canvas 
+    <div className="newsBar" style={{ position: 'relative', overflow: 'hidden' }}>
+      <canvas
         ref={canvasRef}
-        style={{ 
-          position: 'absolute', 
-          top: 0, 
-          left: 0, 
-          width: '100%', 
-          height: '100%', 
-          pointerEvents: 'none', 
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
           zIndex: 2,
           transform: 'translateZ(0)',
-          opacity:0.3
+          opacity: 0.3
         }}
       />
 

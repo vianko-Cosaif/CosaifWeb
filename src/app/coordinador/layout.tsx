@@ -34,8 +34,8 @@ export default function CoordinadorLayout({
   return (
     <div
       className="relative flex min-h-svh
-                 bg-gradient-to-b from-violet-50 via-slate-50 to-slate-100
-                 dark:from-[#050014] dark:via-[#050018] dark:to-black"
+                 bg-gradient-to-b from-violet-50 via-zinc-50 to-zinc-100
+                 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950"
     >
       {/* Sidebar fijo morado */}
       <SidebarMenu />
@@ -61,13 +61,13 @@ export default function CoordinadorLayout({
         {/* Skip link accesibilidad */}
         <a
           href="#main"
-          className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-[max(0.5rem,env(safe-area-inset-top))] focus:z-50 focus:rounded-md focus:border focus:bg-white focus:px-3 focus:py-2 focus:text-slate-900 dark:focus:bg-slate-800 dark:focus:text-slate-100"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-[max(0.5rem,env(safe-area-inset-top))] focus:z-50 focus:rounded-md focus:border focus:bg-white focus:px-3 focus:py-2 focus:text-zinc-900 dark:focus:bg-zinc-800 dark:focus:text-zinc-100"
         >
           Saltar al contenido
         </a>
 
         {/* Header */}
-        <header className="sticky top-[max(0px,env(safe-area-inset-top))] z-20 border-b border-slate-200/70 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:border-slate-800/70 dark:bg-[#080217]/80">
+        <header className="sticky top-[max(0px,env(safe-area-inset-top))] z-20 border-b border-zinc-200/70 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:border-zinc-800/70 dark:bg-zinc-950/80">
           <div
             className="mx-auto flex w-full max-w-screen-2xl flex-wrap items-center gap-x-3 gap-y-2 py-3 sm:flex-nowrap"
             style={{
@@ -80,12 +80,12 @@ export default function CoordinadorLayout({
               Panel de Supervisor
             </h1>
 
-            <span className="hidden sm:inline-flex items-center leading-none gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 dark:border-violet-700 dark:bg-[#120528] dark:text-violet-200">
+            <span className="hidden sm:inline-flex items-center leading-none gap-1 rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 dark:border-violet-700 dark:bg-[#120528] dark:text-violet-200">
               <Shield className="h-4 w-4 -mt-px" />
               {rol}
             </span>
 
-            <span className="inline-flex items-center leading-none gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+            <span className="inline-flex items-center leading-none gap-1 rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
               <MapPin className="h-4 w-4 -mt-px" />
               <span className="whitespace-nowrap">{locLabel}</span>
             </span>
@@ -94,7 +94,7 @@ export default function CoordinadorLayout({
               <button
                 type="button"
                 onClick={() => router.refresh()}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm hover:bg-slate-50 active:scale-[.98] dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-zinc-200 bg-white px-3 text-sm hover:bg-zinc-50 active:scale-[.98] dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
                 title="Refrescar"
               >
                 <RefreshCw className="h-4 w-4 -mt-px" />
@@ -118,7 +118,7 @@ export default function CoordinadorLayout({
           <div className="contents">{children}</div>
         </main>
 
-        <footer className="mx-auto w-full max-w-screen-2xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-xs text-slate-500">
+        <footer className="mx-auto w-full max-w-screen-2xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-xs text-zinc-500">
           v1
         </footer>
       </div>

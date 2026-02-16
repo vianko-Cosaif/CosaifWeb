@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo, useRef, useState, startTransition, Fragment } from "react";
@@ -6,10 +5,7 @@ import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import { S } from "./RailQueueBoardCliente.styles";
 
-/* =========================================
-   1. TIPOS (Sin cambios en lógica de datos)
-   ========================================= */
-
+/* ═══════════ TYPES ═══════════ */
 type Ronda = {
   id: number;
   rondaNumero: number;
@@ -58,40 +54,28 @@ type RondaInfo = {
 type ToastKind = "move" | "new" | "done" | "warning";
 type Toast = { id: number; text: string; kind: ToastKind };
 
-/* =========================================
-   2. UTILS
-   ========================================= */
-
+/* ═══════════ UTILS ═══════════ */
 const codeFrom = (inf?: RondaInfo, fallbackId?: number) =>
   String(inf?.movimientoId ?? inf?.movimiento?.id ?? fallbackId ?? "—");
 
 const fmtLoco = (v: unknown) => {
-  if (v == null) return "N/D";
+  if (v == null) return "—";
   const s = String(v).replace(/\D+/g, "");
-  return s ? s.padStart(4, "0") : "N/D";
+  return s ? s.padStart(4, "0") : "—";
 };
 
-function formatDateTimeMX(iso?: string | null) {
+function fmtDate(iso?: string | null) {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return new Intl.DateTimeFormat("es-MX", {
-    hour: "2-digit",
-    minute: "2-digit",
-    day: "numeric",
-    month: "short",
-    hour12: true,
-    timeZone: "America/Mexico_City",
+    hour: "2-digit", minute: "2-digit", day: "numeric", month: "short",
+    hour12: true, timeZone: "America/Mexico_City",
   }).format(d);
 }
 
 async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const r = await fetch(url, {
-    cache: "no-store",
-    credentials: "include",
-    mode: "same-origin",
-    signal,
-  });
+  const r = await fetch(url, { cache: "no-store", credentials: "include", mode: "same-origin", signal });
   if (!r.ok) throw new Error(`${r.status}`);
   return (await r.json()) as T;
 }
@@ -99,9 +83,7 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
 function useVisibleInterval(fn: () => void, delay: number | null, deps: readonly unknown[] = []) {
   useEffect(() => {
     if (!delay) return;
-    const id = window.setInterval(() => {
-      if (document.visibilityState === "visible") fn();
-    }, delay);
+    const id = window.setInterval(() => { if (document.visibilityState === "visible") fn(); }, delay);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [delay, ...deps]);
@@ -109,17 +91,8 @@ function useVisibleInterval(fn: () => void, delay: number | null, deps: readonly
 
 function useLocalStorageBoolean(key: string, initial = false) {
   const [v, setV] = useState<boolean>(initial);
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const item = window.localStorage.getItem(key);
-      if (item !== null) setV(item === "1");
-    }
-  }, [key]);
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(key, v ? "1" : "0");
-    }
-  }, [key, v]);
+  useEffect(() => { if (typeof window !== "undefined") { const item = window.localStorage.getItem(key); if (item !== null) setV(item === "1"); } }, [key]);
+  useEffect(() => { if (typeof window !== "undefined") window.localStorage.setItem(key, v ? "1" : "0"); }, [key, v]);
   return [v, setV] as const;
 }
 
@@ -127,44 +100,52 @@ function useToasts() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const push = (text: string, kind: ToastKind) => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, text, kind }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5000);
+    setToasts(t => [...t, { id, text, kind }]);
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 5000);
   };
-  const dismiss = (id: number) => setToasts((t) => t.filter((x) => x.id !== id));
+  const dismiss = (id: number) => setToasts(t => t.filter(x => x.id !== id));
   return { toasts, push, dismiss };
 }
 
-/* =========================================
-   3. ICONOS
-   ========================================= */
-const Icons = {
-  Refresh: ({ className }: { className?: string }) => (
-    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg>
-  ),
-  Edit: () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg>
-  ),
-  Droplet: () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22a7 7 0 0 0 7-7c0-2-2-3-2-3L12 2 7 12s-2 1-2 3a7 7 0 0 0 7 7z" /></svg>
-  ),
-  Gear: () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
-  ),
-  Bell: ({ on }: { on: boolean }) => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      {on ? <><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></> : <><path d="M8.26 8.26A6 6 0 0 1 18 8c0 7 3 9 3 9h-6" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /><path d="m2 2 20 20" /></>}
+/* ═══════════ SVG ICONS ═══════════ */
+// All monochrome, 16px default, currentColor
+const Ic = {
+  Train: (p: { className?: string }) => (
+    <svg className={p.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="3" width="16" height="16" rx="2" /><path d="M4 11h16" /><path d="M12 3v8" /><circle cx="8" cy="21" r="1" /><circle cx="16" cy="21" r="1" /><path d="M8 19h8" />
     </svg>
   ),
+  Refresh: (p: { className?: string }) => (
+    <svg className={p.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg>
+  ),
+  Pen: (p: { className?: string }) => (
+    <svg className={p.className || "w-3.5 h-3.5"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
+  ),
+  Bell: (p: { on: boolean }) => (
+    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      {p.on ? <><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></> : <><path d="M13.73 21a2 2 0 0 1-3.46 0" /><path d="M18.63 13A17.89 17.89 0 0 1 18 8" /><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14" /><path d="M18 8a6 6 0 0 0-9.33-5" /><line x1="1" y1="1" x2="23" y2="23" /></>}
+    </svg>
+  ),
+  X: () => (
+    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+  ),
+  Arrow: (p: { up?: boolean; className?: string }) => (
+    <svg className={p.className || "w-3 h-3"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      {p.up ? <polyline points="18 15 12 9 6 15" /> : <polyline points="6 9 12 15 18 9" />}
+    </svg>
+  ),
+  Droplet: () => <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22a7 7 0 0 0 7-7c0-2-2-3-2-3L12 2 7 12s-2 1-2 3a7 7 0 0 0 7 7z" /></svg>,
+  Gear: () => <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.16.38.25.8.25 1.22H21a2 2 0 0 1 0 4h-.09c-.38.16-.79.25-1.22.25z" /></svg>,
+  File: () => <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>,
+  Calendar: () => <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>,
 };
 
 const EditRondas = dynamic(() => import("../Components/EditRondas"), {
   ssr: false,
-  loading: () => <div className="p-10 text-center animate-pulse text-slate-400">Cargando editor...</div>,
+  loading: () => <div className="p-10 text-center text-sm text-slate-500">Cargando editor...</div>,
 });
 
-/* =========================================
-   4. COMPONENTE PRINCIPAL
-   ========================================= */
+/* ═══════════ MAIN COMPONENT ═══════════ */
 export default function RailQueueBoard({
   localidadId,
   autoMs = 120_000,
@@ -174,11 +155,9 @@ export default function RailQueueBoard({
 }) {
   const [items, setItems] = useState<Ronda[]>([]);
   const [info, setInfo] = useState<Record<number, RondaInfo>>({});
-
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [openEditor, setOpenEditor] = useState(false);
-
   const [polling, setPolling] = useLocalStorageBoolean("rail-queue:polling", true);
   const [soundOn, setSoundOn] = useLocalStorageBoolean("rail-queue:soundOn", false);
 
@@ -195,75 +174,45 @@ export default function RailQueueBoard({
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
-
-    if (showRefreshing) setRefreshing(true);
-    else setLoading(true);
+    if (showRefreshing) setRefreshing(true); else setLoading(true);
 
     try {
-      const url = `/api/cliente/rondas?localidadId=${localidadId}`;
-      const data = await fetchJson<Ronda[]>(url, ac.signal);
-
-      // Ordenar por ronda y luego por orden de ejecución
+      const data = await fetchJson<Ronda[]>(`/api/cliente/rondas?localidadId=${localidadId}`, ac.signal);
       data.sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden);
 
-      const nextIds = data.map((d) => d.id);
-      if (!firstLoad.current) {
-        const prev = prevIdsRef.current;
-        if (prev.length && nextIds[0] && nextIds[0] !== prev[0]) {
-          pushToast(`Orden actual actualizada`, "move");
-        }
+      const nextIds = data.map(d => d.id);
+      if (!firstLoad.current && prevIdsRef.current.length && nextIds[0] && nextIds[0] !== prevIdsRef.current[0]) {
+        pushToast("Orden actualizada", "move");
       }
       prevIdsRef.current = nextIds;
-
       if (mySeq !== reqSeq.current) return;
-
       setItems(data);
 
-      // Normalizar datos para UI
-      const mapFromList: Record<number, RondaInfo> = {};
+      const map: Record<number, RondaInfo> = {};
       for (const r of data) {
         const mv = r.movimiento || null;
-        mapFromList[r.id] = {
+        map[r.id] = {
           empresa: { id: r.empresa?.id ?? 0, nombre: r.empresa?.nombre ?? "—" },
           movimiento: {
-            id: mv?.id,
-            viaOrigen: mv?.viaOrigen ?? null,
-            viaDestino: mv?.viaDestino ?? null,
-            lavado: Boolean(mv?.lavado),
-            torno: Boolean(mv?.torno),
-            estado: mv?.estado ?? undefined,
-            prioridad: mv?.prioridad === "BAJA" || mv?.prioridad === "ALTA" ? mv?.prioridad : undefined,
-            locomotiveNumber: mv?.locomotiveNumber ?? mv?.locomotora ?? undefined,
-            locomotora: mv?.locomotora ?? undefined,
-            fechaSolicitud: mv?.fechaSolicitud,
-            fechaInicio: mv?.fechaInicio,
-            fechaFin: mv?.fechaFin,
-            instrucciones: mv?.instrucciones,
+            id: mv?.id, viaOrigen: mv?.viaOrigen ?? null, viaDestino: mv?.viaDestino ?? null,
+            lavado: Boolean(mv?.lavado), torno: Boolean(mv?.torno),
+            estado: mv?.estado ?? undefined, prioridad: mv?.prioridad === "BAJA" || mv?.prioridad === "ALTA" ? mv?.prioridad : undefined,
+            locomotiveNumber: mv?.locomotiveNumber ?? mv?.locomotora ?? undefined, locomotora: mv?.locomotora ?? undefined,
+            fechaSolicitud: mv?.fechaSolicitud, fechaInicio: mv?.fechaInicio, fechaFin: mv?.fechaFin, instrucciones: mv?.instrucciones,
           },
           movimientoId: (mv?.id ?? r.movimientoId) as number | undefined,
         };
       }
-
-      startTransition(() => setInfo(mapFromList));
+      startTransition(() => setInfo(map));
     } catch (err) {
       if (err instanceof Error && err.name !== "AbortError") console.error(err);
     } finally {
-      if (mySeq === reqSeq.current) {
-        setLoading(false);
-        setRefreshing(false);
-        firstLoad.current = false;
-      }
+      if (mySeq === reqSeq.current) { setLoading(false); setRefreshing(false); firstLoad.current = false; }
     }
   }
 
-  // --- Effects ---
   useEffect(() => {
-    firstLoad.current = true;
-    prevIdsRef.current = [];
-    setInfo({});
-    setItems([]);
-    setLoading(true);
-    load();
+    firstLoad.current = true; prevIdsRef.current = []; setInfo({}); setItems([]); setLoading(true); load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localidadId]);
 
@@ -271,78 +220,66 @@ export default function RailQueueBoard({
 
   useEffect(() => {
     const curId = items[0]?.id ?? null;
-    if (soundOn && curId && lastCurrentId.current && curId !== lastCurrentId.current) {
-      bellRef.current?.play().catch(() => {});
-    }
+    if (soundOn && curId && lastCurrentId.current && curId !== lastCurrentId.current) bellRef.current?.play().catch(() => { });
     lastCurrentId.current = curId;
   }, [items, soundOn]);
 
-  // --- Derived Data ---
   const current = items[0];
   const curInfo = current ? info[current.id] : undefined;
-  const nextItems = useMemo(() => items.slice(1, 6), [items]);
+  const nextItems = useMemo(() => items.slice(1), [items]);
 
   return (
     <div className={S.Layout.root}>
-      {/* HEADER */}
-      <header className={S.Header.root}>
+      {/* ─── HEADER ─── */}
+      <header className={S.Layout.header}>
         <div className={S.Header.left}>
           <h1 className={S.Header.title}>Control de Patio</h1>
-          <span className={S.Header.dot} />
+          <span className={S.Header.liveBadge}><span className={S.Header.liveDot} /> EN VIVO</span>
         </div>
-
         <div className={S.Header.right}>
-          <button onClick={() => setPolling(!polling)} className={S.Header.btnPolling(polling)}>
-            <div className={S.Header.pollingDot(polling)} />
+          <button onClick={() => setPolling(!polling)} className={S.Header.btn(polling)} title="Auto-refresh">
+            <span className={`w-1.5 h-1.5 rounded-full ${polling ? "bg-emerald-500 dark:bg-emerald-400 animate-pulse" : "bg-slate-300 dark:bg-slate-600"}`} />
           </button>
-
-          <button onClick={() => setSoundOn(!soundOn)} className={S.Header.btnSound(soundOn)}>
-            <Icons.Bell on={soundOn} />
+          <button onClick={() => setSoundOn(!soundOn)} className={S.Header.btn(soundOn)} title="Sonido">
+            <Ic.Bell on={soundOn} />
           </button>
-
-          <button onClick={() => load(true)} className={S.Header.btnRefresh}>
-            <Icons.Refresh className={S.Header.refreshIcon(refreshing)} />
+          <button onClick={() => load(true)} className={S.Header.btn()} title="Actualizar">
+            <Ic.Refresh className={refreshing ? "w-4 h-4 animate-spin" : "w-4 h-4"} />
           </button>
-
           <button onClick={() => setOpenEditor(true)} className={S.Header.btnEdit}>
-            <Icons.Edit /> <span>Editar</span>
+            <Ic.Pen /> <span className="hidden sm:inline">Editar</span>
           </button>
         </div>
       </header>
 
-      {/* CONTENIDO PRINCIPAL */}
+      {/* ─── CONTENT ─── */}
       <main className={S.Layout.main}>
-        {/* IZQUIERDA: TARJETA PRINCIPAL */}
-        <section className={S.Layout.columnLeft}>
-          <div className={S.Header.left}> {/* Reusando flex container */}
-            <h2 className={S.List.headerLabel}>En Proceso</h2>
-          </div>
-
+        {/* LEFT — Hero */}
+        <section className={S.Layout.colLeft}>
           <AnimatePresence mode="wait">
             {!current ? (
               <div className={S.Layout.skeleton} />
             ) : (
-              <CurrentCardView item={current} info={curInfo} />
+              <HeroCard key={current.id} item={current} info={curInfo} />
             )}
           </AnimatePresence>
         </section>
 
-        {/* DERECHA: LISTA DE SIGUIENTES */}
-        <aside className={S.Layout.columnRight}>
+        {/* RIGHT — Queue */}
+        <aside className={S.Layout.colRight}>
           <div className={S.List.header}>
-            <h2 className={S.List.headerLabel}>Siguientes</h2>
-            <span className={S.List.countBadge}>{items.length > 1 ? items.length - 1 : 0} pendientes</span>
+            <span className={S.List.title}>Cola de operaciones</span>
+            <span className={S.List.count}>{nextItems.length}</span>
           </div>
-
-          <div className={S.List.wrapper}>
+          <div className="flex flex-col gap-2 pb-16 overflow-y-auto max-h-[calc(100vh-120px)] pr-1">
             <AnimatePresence initial={false}>
-              {nextItems.map((item, index) => (
-                <NextListItem 
-                  key={item.id} 
-                  item={item} 
-                  info={info[item.id]} 
-                  prevItem={index > 0 ? nextItems[index - 1] : null}
-                  index={index}
+              {nextItems.map((item, i) => (
+                <QueueCard
+                  key={item.id}
+                  item={item}
+                  info={info[item.id]}
+                  prev={i > 0 ? nextItems[i - 1] : null}
+                  idx={i}
                 />
               ))}
             </AnimatePresence>
@@ -350,49 +287,28 @@ export default function RailQueueBoard({
         </aside>
       </main>
 
-      {/* MODAL EDITOR */}
+      {/* ─── MODAL ─── */}
       {openEditor && (
-        <div className={S.Modal.overlay}>
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className={S.Modal.card}>
-            <div className={S.Modal.header}>
-              <h3 className="font-bold text-lg dark:text-white flex items-center gap-2">
-                <Icons.Edit /> Editar Rondas
-              </h3>
-              <button onClick={() => setOpenEditor(false)} className={S.Modal.closeBtn}>
-                ✕
-              </button>
-            </div>
-            <div className={S.Modal.body}>
-              <EditRondas
-                localidadId={localidadId}
-                onClose={() => setOpenEditor(false)}
-                onSaved={() => {
-                  setOpenEditor(false);
-                  load(true);
-                }}
-              />
-            </div>
+        <div className={S.Modal.overlay} onClick={() => setOpenEditor(false)}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-5xl h-[90vh] shadow-2xl rounded-xl overflow-hidden bg-white dark:bg-slate-900"
+            onClick={e => e.stopPropagation()}
+          >
+            <EditRondas localidadId={localidadId} onClose={() => setOpenEditor(false)} onSaved={() => { setOpenEditor(false); load(true); }} />
           </motion.div>
         </div>
       )}
 
       <audio ref={bellRef} src="/sounds/notification.mp3" preload="auto" />
 
-      {/* TOASTS */}
+      {/* ─── TOASTS ─── */}
       <div className={S.Toast.wrap}>
         <AnimatePresence>
-          {toasts.map((t) => (
-            <motion.div
-              key={t.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className={S.Toast.item(t.kind)}
-              onClick={() => dismiss(t.id)}
-            >
-              <span className="text-lg">{t.kind === "move" ? "🔄" : "ℹ️"}</span>
-              <span>{t.text}</span>
-            </motion.div>
+          {toasts.map(t => (
+            <motion.div key={t.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: 16 }}
+              className={S.Toast.item(t.kind)} onClick={() => dismiss(t.id)}>{t.text}</motion.div>
           ))}
         </AnimatePresence>
       </div>
@@ -400,91 +316,90 @@ export default function RailQueueBoard({
   );
 }
 
-/* =========================================
-   5. SUB-COMPONENTES (UI VIEWS)
-   ========================================= */
-
-function CurrentCardView({ item, info }: { item: Ronda; info?: RondaInfo }) {
-  const isHigh = info?.movimiento?.prioridad === "ALTA";
+/* ═══════════ HERO CARD ═══════════ */
+function HeroCard({ item, info }: { item: Ronda; info?: RondaInfo }) {
+  const hi = info?.movimiento?.prioridad === "ALTA";
   const loco = fmtLoco(info?.movimiento?.locomotora || info?.movimiento?.locomotiveNumber);
+  const orig = info?.movimiento?.viaOrigen?.nombre || "—";
+  const dest = info?.movimiento?.viaDestino?.nombre || "—";
 
   return (
-    <motion.div
-      key={item.id}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0 }}
-      className={S.Card.root}
-    >
-      <div className={S.Card.priorityBar(isHigh)} />
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className={S.Card.root}>
+      <div className={S.Card.accent(hi)} />
 
-      <div className={S.Card.inner}>
-        {/* Header: Locomotora */}
-        <div className={S.Card.header}>
-          <div className={S.Card.headerLeft}>
-            <div className={S.Card.trainBubble}>🚆</div>
-            <div className={S.Card.infoCol}>
-              <div className={S.Card.labelSm}>Locomotora</div>
-              <div className={S.Card.locoValue}>{loco}</div>
-              <div className={S.Card.company}>{info?.empresa?.nombre}</div>
+      <div className={S.Card.body}>
+        {/* Top row: loco + route */}
+        <div className={S.Card.topRow}>
+          <div className={S.Card.locoWrap}>
+            <div className={S.Card.locoIcon}><Ic.Train className="w-5 h-5 text-slate-400" /></div>
+            <div>
+              <div className={S.Card.locoNum}>{loco}</div>
+              <div className={S.Card.locoCompany}>{info?.empresa?.nombre}</div>
+            </div>
+          </div>
+          <div className={S.Card.routeTag}>
+            <span className="text-emerald-600 dark:text-emerald-400">{orig}</span>
+            <span className={S.Card.routeArrow}>→</span>
+            <span className="text-blue-600 dark:text-blue-400">{dest}</span>
+          </div>
+        </div>
+
+        {/* Stats grid: origin / destination / services */}
+        <div className={S.Card.statsGrid}>
+          <div className={S.Card.statBox}>
+            <div className={S.Card.statLabel}><Ic.Arrow up className="w-3 h-3 text-emerald-600 dark:text-emerald-400 inline mr-1" />Vía origen</div>
+            <div className={S.Card.statValue}>{orig}</div>
+          </div>
+          <div className={S.Card.statBox}>
+            <div className={S.Card.statLabel}><Ic.Arrow className="w-3 h-3 text-blue-600 dark:text-blue-400 inline mr-1" />Vía destino</div>
+            <div className={S.Card.statValue}>{dest}</div>
+          </div>
+          <div className={S.Services.wrap}>
+            <div className={S.Services.label}>Servicios</div>
+            <div className={S.Services.pillWrap}>
+              <span className={S.Services.pill(!!info?.movimiento?.lavado)}><Ic.Droplet /> Lavado</span>
+              <span className={S.Services.pill(!!info?.movimiento?.torno)}><Ic.Gear /> Torno</span>
             </div>
           </div>
         </div>
 
-        {/* Origen / Destino / Servicios */}
-        <div className={S.Card.gridStats}>
-          <BigDataBox label="Vía Origen" value={info?.movimiento?.viaOrigen?.nombre} icon="↖" />
-          <BigDataBox label="Vía Destino" value={info?.movimiento?.viaDestino?.nombre} icon="↘" />
-
-          <div className={S.Components.servicesBox}>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-              <Icons.Gear /> Servicios
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <ServicePill active={!!info?.movimiento?.lavado} label="Lavado" icon={<Icons.Droplet />} />
-              <ServicePill active={!!info?.movimiento?.torno} label="Torno" icon={<Icons.Gear />} />
-            </div>
+        {/* Status chips */}
+        <div className={S.Card.statusRow}>
+          <div className={S.Card.statusChip(hi ? "red" : "")}>
+            <div className={S.Card.chipLabel}>Estado</div>
+            <div className={S.Card.chipValue}>{info?.movimiento?.estado || "SOLICITADO"}</div>
+          </div>
+          <div className={S.Card.statusChip(hi ? "red" : "emerald")}>
+            <div className={S.Card.chipLabel}>Prioridad</div>
+            <div className={S.Card.chipValue}>{info?.movimiento?.prioridad || "BAJA"}</div>
+          </div>
+          <div className={S.Card.statusChip("")}>
+            <div className={S.Card.chipLabel}>Orden</div>
+            <div className={S.Card.chipValue}>{item.orden}</div>
+          </div>
+          <div className={S.Card.statusChip("")}>
+            <div className={S.Card.chipLabel}>Ronda</div>
+            <div className={S.Card.chipValue}>{item.rondaNumero}</div>
           </div>
         </div>
 
-        {/* Estado y Metadata */}
-        <div className={S.Card.gridStatus}>
-          <StatusBox label="Estado" value={info?.movimiento?.estado || "SOLICITADO"} icon="📌" />
-          <StatusBox
-            label="Prioridad"
-            value={info?.movimiento?.prioridad || "BAJA"}
-            isHigh={isHigh}
-            icon="🚩"
-          />
-          <StatusBox label="Nº Orden" value={item.orden.toString()} icon="#" />
-          <StatusBox label="Ronda" value={item.rondaNumero.toString()} icon="🔁" />
-        </div>
-
-        {/* Footer Verde Instrucciones */}
-        <div className={S.Components.footerGreen}>
-          <p className="text-sm md:text-xl font-medium text-slate-800 dark:text-slate-200 mb-4 leading-relaxed">
-            Mover locomotora <span className="font-bold text-blue-600 dark:text-blue-400">{loco}</span> desde{" "}
-            <span className="font-bold text-emerald-700 dark:text-emerald-400">
-              {info?.movimiento?.viaOrigen?.nombre || "?"}
-            </span>{" "}
-            hacia{" "}
-            <span className="font-bold text-emerald-700 dark:text-emerald-400">
-              {info?.movimiento?.viaDestino?.nombre || "?"}
-            </span>.
-          </p>
-
-          <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/20 rounded-xl p-3 mb-6">
-            <div className="text-[10px] font-bold text-amber-700 dark:text-amber-500 mb-1">INSTRUCCIONES</div>
-            <div className="text-xs md:text-sm text-slate-700 dark:text-slate-300 italic font-medium">
-              {info?.movimiento?.instrucciones || "Sin instrucciones adicionales."}
-            </div>
+        {/* Footer */}
+        <div className={S.Card.footer}>
+          <div className={S.Card.footerRoute}>
+            Mover <strong className="text-slate-900 dark:text-white">{loco}</strong> ·{" "}
+            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{orig}</span> → <span className="text-blue-600 dark:text-blue-400 font-semibold">{dest}</span>
           </div>
 
-          <div className="flex items-center justify-between p-3 bg-white/60 dark:bg-black/40 rounded-xl border border-emerald-200/50 dark:border-emerald-900/30">
-            <span className="text-xs font-black uppercase tracking-widest text-emerald-800 dark:text-emerald-500">📅 Creado</span>
-            <span className="text-xl md:text-2xl font-black text-slate-900 dark:text-white tabular-nums">
-              {formatDateTimeMX(item.createdAt)}
-            </span>
+          {info?.movimiento?.instrucciones && (
+            <div className={S.Card.instrBox}>
+              <div className={S.Card.instrLabel}>Instrucciones</div>
+              <div className={S.Card.instrText}>{info.movimiento.instrucciones}</div>
+            </div>
+          )}
+
+          <div className={S.Card.dateRow}>
+            <span className="flex items-center gap-1"><Ic.Calendar /> Creado</span>
+            <span className="font-semibold tabular-nums">{fmtDate(item.createdAt)}</span>
           </div>
         </div>
       </div>
@@ -492,121 +407,72 @@ function CurrentCardView({ item, info }: { item: Ronda; info?: RondaInfo }) {
   );
 }
 
-function NextListItem({ item, info, prevItem, index }: { item: Ronda; info?: RondaInfo; prevItem: Ronda | null, index: number }) {
-  const isHigh = info?.movimiento?.prioridad === "ALTA";
-  const isNewRound = index === 0 || item.rondaNumero !== prevItem?.rondaNumero;
+/* ═══════════ QUEUE CARD ═══════════ */
+function QueueCard({ item, info, prev, idx }: { item: Ronda; info?: RondaInfo; prev: Ronda | null; idx: number }) {
+  const hi = info?.movimiento?.prioridad === "ALTA";
+  const newRound = idx === 0 || item.rondaNumero !== prev?.rondaNumero;
   const loco = fmtLoco(info?.movimiento?.locomotora || info?.movimiento?.locomotiveNumber);
 
   return (
     <Fragment>
-      {isNewRound && (
-        <div className={S.List.stickyHeader}>
-          <div className={S.List.stickyInner}>
-            <div className={S.List.stickyChip}>Ronda {item.rondaNumero}</div>
-            <div className={S.List.stickyLine} />
-          </div>
+      {newRound && (
+        <div className={S.List.divider}>
+          <div className={S.List.dividerLabel}>Ronda {item.rondaNumero}</div>
+          <div className={S.List.dividerLine} />
         </div>
       )}
 
-      <motion.div
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0 }}
-        className={S.List.itemCard(isHigh)}
-      >
-        {isHigh && <div className={S.List.itemHighBar} />}
+      <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className={S.List.card(hi)}>
+        {hi && <div className={S.List.highBar} />}
 
-        <div className={S.List.itemTop}>
-          <div className="flex items-center gap-3">
-            <div className={S.List.itemBubble}>🚆</div>
+        <div className={S.List.topRow}>
+          <div className="flex items-center gap-2">
+            <div className={S.List.itemIcon}><Ic.Train className="w-3.5 h-3.5 text-slate-500" /></div>
             <div>
               <div className={S.List.itemLoco}>{loco}</div>
               <div className={S.List.itemSub}>{info?.empresa?.nombre}</div>
             </div>
           </div>
-
           <div className="text-right">
             <div className={S.List.itemSub}>Código</div>
-            <div className="text-base font-bold text-slate-700 dark:text-slate-300">{codeFrom(info, item.id)}</div>
+            <div className="text-sm font-semibold text-slate-900 dark:text-white tabular-nums">{codeFrom(info, item.id)}</div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 mb-2 pl-2">
-          <MiniBox label="Origen" value={info?.movimiento?.viaOrigen?.nombre} />
-          <MiniBox label="Destino" value={info?.movimiento?.viaDestino?.nombre} highlight />
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 mb-3 pl-2">
-          <MiniBox label="Estado" value={info?.movimiento?.estado || "SOLICITADO"} bold />
-          <MiniBox
-            label="Prioridad"
-            value={info?.movimiento?.prioridad || "BAJA"}
-            textColor={isHigh ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}
-            bold
-          />
-        </div>
-
-        <div className="pl-2 space-y-2">
-          {!!info?.movimiento?.instrucciones && (
-            <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/20 p-2 rounded-lg">
-              <p className="text-[10px] text-amber-800 dark:text-amber-500 italic">{info.movimiento.instrucciones}</p>
-            </div>
-          )}
-
-          <div className={S.List.itemFooter}>
-            <div className="flex gap-1">
-              {info?.movimiento?.lavado && <Badge label="Lav" icon="💧" />}
-              {info?.movimiento?.torno && <Badge label="Tor" icon="⚙️" />}
-            </div>
-            <div className={S.List.itemDate}>{item.createdAt ? formatDateTimeMX(item.createdAt) : ""}</div>
+        <div className={S.List.miniGrid}>
+          <div className={S.List.miniCell}>
+            <div className={S.List.miniLabel}>Origen</div>
+            <div className={S.List.miniValue(false, "text-emerald-600 dark:text-emerald-400")}>{info?.movimiento?.viaOrigen?.nombre || "—"}</div>
           </div>
+          <div className={S.List.miniCell}>
+            <div className={S.List.miniLabel}>Destino</div>
+            <div className={S.List.miniValue(false, "text-blue-600 dark:text-blue-400")}>{info?.movimiento?.viaDestino?.nombre || "—"}</div>
+          </div>
+        </div>
+
+        <div className={S.List.miniGrid}>
+          <div className={S.List.miniCell}>
+            <div className={S.List.miniLabel}>Estado</div>
+            <div className={S.List.miniValue(true)}>{info?.movimiento?.estado || "SOLICITADO"}</div>
+          </div>
+          <div className={S.List.miniCell}>
+            <div className={S.List.miniLabel}>Prioridad</div>
+            <div className={S.List.miniValue(true, hi ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400")}>{info?.movimiento?.prioridad || "BAJA"}</div>
+          </div>
+        </div>
+
+        {info?.movimiento?.instrucciones && (
+          <div className={S.List.instrPreview}>{info.movimiento.instrucciones}</div>
+        )}
+
+        <div className={S.List.bottom}>
+          <div className="flex gap-1">
+            {info?.movimiento?.lavado && <span className={S.List.badge}>LAV</span>}
+            {info?.movimiento?.torno && <span className={S.List.badge}>TOR</span>}
+          </div>
+          <span className={S.List.date}>{fmtDate(item.createdAt)}</span>
         </div>
       </motion.div>
     </Fragment>
   );
-}
-
-/* =========================================
-   6. ATOMS
-   ========================================= */
-
-function BigDataBox({ label, value, icon }: { label: string; value?: string | null; icon?: string }) {
-  return (
-    <div className={S.Components.servicesBox}>
-      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
-        <span>{icon}</span> {label}
-      </div>
-      <div className="text-xl md:text-2xl font-bold text-slate-800 dark:text-slate-100 truncate">{value || "—"}</div>
-    </div>
-  );
-}
-
-function StatusBox({ label, value, isHigh, icon }: { label: string; value: string; isHigh?: boolean; icon?: string }) {
-  return (
-    <div className={S.Components.statusBox(isHigh)}>
-      <div className={`text-[9px] font-bold uppercase tracking-widest mb-1 flex items-center gap-1 ${isHigh ? "text-red-500" : "text-slate-400"}`}>
-        {icon} {label}
-      </div>
-      <div className={S.Components.statusValue(isHigh)}>{value}</div>
-    </div>
-  );
-}
-
-function ServicePill({ active, label, icon }: { active: boolean; label: string; icon: React.ReactNode }) {
-  return <div className={S.Components.pill(active)}>{icon} {label}</div>;
-}
-
-function MiniBox({ label, value, highlight, bold, textColor }: { label: string; value?: string | null; highlight?: boolean; bold?: boolean; textColor?: string }) {
-  return (
-    <div className={`rounded-lg p-2 border ${highlight ? "bg-blue-50/50 border-blue-100 dark:bg-blue-900/10" : "bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-800"}`}>
-      <div className="text-[9px] text-slate-400 font-bold uppercase mb-0.5">{label}</div>
-      <div className={`text-xs md:text-sm truncate ${bold ? "font-bold" : "font-medium"} ${textColor || "text-slate-700 dark:text-slate-200"}`}>
-        {value || "—"}
-      </div>
-    </div>
-  );
-}
-
-function Badge({ label, icon }: { label: string; icon: string }) {
-  return <span className={S.Components.badgeBlue}>{icon} {label}</span>;
 }

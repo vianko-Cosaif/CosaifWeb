@@ -1,160 +1,141 @@
-const TRANSITION_BASE = "transition-all duration-200 ease-in-out";
-const BTN_ICON_BASE = `w-8 h-8 flex items-center justify-center rounded-full border ${TRANSITION_BASE} focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-black`;
+/* ────────────────────────────────────────────────
+   Rail Queue Board — Professional Operations UI
+   Supports both light and dark mode via Tailwind dark: prefix
+   ──────────────────────────────────────────────── */
 
-// 1. CORRECCIÓN: Actualizamos los tipos para que coincidan con tu lógica de negocio
+const TR = "transition-all duration-150 ease-out";
+
 export type ToastKind = "move" | "new" | "done" | "warning" | "error" | "info";
 
 export const S = {
-  /* =========================================
-     GLOBAL & LAYOUT
-     ========================================= */
+  /* ── LAYOUT ─────────────────────────────── */
   Layout: {
-    root: "min-h-screen bg-slate-100 dark:bg-[#050505] text-slate-900 dark:text-slate-100 font-sans pb-10 selection:bg-emerald-500/30",
-    main: "max-w-[1920px] mx-auto p-3 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start",
-    columnLeft: "lg:col-span-7 xl:col-span-8 flex flex-col gap-5",
-    columnRight: "lg:col-span-5 xl:col-span-4 flex flex-col gap-5",
-    skeleton: "h-[400px] w-full bg-white/50 dark:bg-slate-900/50 rounded-3xl animate-pulse border border-slate-200 dark:border-slate-800",
+    root: "min-h-screen bg-white dark:bg-[#0e1117] text-slate-800 dark:text-slate-200 font-[Inter,system-ui,sans-serif] antialiased",
+    header: [
+      "sticky top-0 z-40",
+      "h-12 px-4 md:px-5",
+      "bg-white/90 dark:bg-[#0e1117]/95 backdrop-blur-md",
+      "border-b border-slate-200 dark:border-white/[0.06]",
+      "flex items-center justify-between",
+    ].join(" "),
+    main: "max-w-[1440px] mx-auto px-3 sm:px-4 md:px-5 py-4 grid grid-cols-1 lg:grid-cols-12 gap-4 items-start",
+    colLeft: "lg:col-span-7 flex flex-col gap-3",
+    colRight: "lg:col-span-5 flex flex-col gap-2",
+    skeleton: "h-[340px] rounded-lg bg-slate-100 dark:bg-white/[0.03] animate-pulse border border-slate-200 dark:border-white/[0.06]",
   },
 
-  /* =========================================
-     HEADER
-     ========================================= */
+  /* ── HEADER ─────────────────────────────── */
   Header: {
-    root: "sticky top-0 z-40 bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-lg backdrop-saturate-150 border-b border-slate-200 dark:border-slate-800 px-4 md:px-6 h-14 md:h-16 flex items-center justify-between shadow-sm",
-    left: "flex items-center gap-3",
-    right: "flex items-center gap-2",
-    title: "text-lg md:text-xl font-bold text-slate-800 dark:text-slate-100 leading-none tracking-tight",
-    dot: "hidden xs:inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)] ml-1",
-
-    btnPolling: (polling: boolean) =>
-      `${BTN_ICON_BASE} ${
-        polling
-          ? "bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-900/40"
-          : "bg-white text-slate-400 border-slate-200 hover:bg-slate-50 hover:text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-500 dark:hover:bg-slate-700"
-      }`,
-    pollingDot: (polling: boolean) =>
-      `w-2 h-2 rounded-full ${
-        polling ? "bg-emerald-500 animate-pulse shadow-sm" : "bg-slate-300 dark:bg-slate-600"
-      }`,
-
-    btnSound: (soundOn: boolean) =>
-      `${BTN_ICON_BASE} ${
-        soundOn
-          ? "bg-amber-50 border-amber-200 text-amber-600 hover:bg-amber-100 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-400"
-          : "bg-white border-slate-200 text-slate-400 hover:text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-500"
-      }`,
-
-    btnRefresh: `${BTN_ICON_BASE} bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-750`,
-    refreshIcon: (refreshing: boolean) => (refreshing ? "animate-spin" : ""),
-
-    btnEdit: `ml-2 flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-full text-xs font-bold shadow-md shadow-indigo-500/20 hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-500/30 active:scale-95 ${TRANSITION_BASE}`,
+    left: "flex items-center gap-2.5",
+    title: "text-sm font-semibold text-slate-900 dark:text-white tracking-tight",
+    liveBadge: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20",
+    liveDot: "w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse",
+    right: "flex items-center gap-1 sm:gap-2",
+    btn: (active?: boolean) =>
+      `h-8 w-8 inline-flex items-center justify-center rounded-md text-xs ${TR} ` +
+      (active
+        ? "bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white"
+        : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.06]"),
+    btnEdit: `h-8 inline-flex items-center gap-1.5 px-2 sm:px-3 rounded-md text-xs font-semibold ${TR} bg-slate-900 dark:bg-white text-white dark:text-[#0e1117] hover:bg-slate-700 dark:hover:bg-slate-200 active:scale-[0.97]`,
   },
 
-  /* =========================================
-     CURRENT CARD (HERO)
-     ========================================= */
+  /* ── HERO CARD ──────────────────────────── */
   Card: {
-    root: "group bg-white dark:bg-[#111] rounded-[2rem] border border-slate-200/80 dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-black/50 overflow-hidden relative isolate",
-    priorityBar: (isHigh: boolean) =>
-      `h-1.5 w-full absolute top-0 left-0 z-10 ${
-        isHigh 
-          ? "bg-gradient-to-r from-red-500 to-rose-600 shadow-[0_2px_10px_rgba(239,68,68,0.5)]" 
-          : "bg-gradient-to-r from-emerald-400 to-emerald-600"
+    root: "relative rounded-lg overflow-hidden bg-white dark:bg-[#161b22] border border-slate-200 dark:border-white/[0.06] shadow-sm dark:shadow-none",
+    accent: (hi: boolean) => `absolute top-0 left-0 right-0 h-[2px] ${hi ? "bg-red-500" : "bg-emerald-500"}`,
+    body: "p-4 md:p-5",
+    topRow: "flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4",
+    locoWrap: "flex items-center gap-3",
+    locoIcon: "w-10 h-10 rounded-md bg-slate-100 dark:bg-white/[0.06] flex items-center justify-center",
+    locoNum: "text-3xl sm:text-[2.5rem] font-black text-slate-900 dark:text-white tabular-nums tracking-tighter leading-none",
+    locoCompany: "text-xs text-slate-500 font-medium mt-0.5",
+    routeTag: "flex items-center gap-2 text-sm font-semibold bg-slate-50 dark:bg-white/[0.04] rounded-md px-3 py-1.5 border border-slate-200 dark:border-white/[0.06] self-start sm:self-auto",
+    routeArrow: "text-slate-400 dark:text-slate-600",
+
+    /* Stats — 2 cols on tiny mobile, 3 on sm+ */
+    statsGrid: "grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3",
+    statBox: "rounded-md bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.06] p-3",
+    statLabel: "text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1",
+    statValue: "text-lg sm:text-xl font-bold text-slate-900 dark:text-white tabular-nums",
+
+    /* Status chips — 2x2 grid on mobile, 4 cols on sm+ */
+    statusRow: "grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3",
+    statusChip: (color: string) =>
+      `rounded-md px-2.5 py-2 text-center border ${color === "red"
+        ? "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400"
+        : color === "emerald"
+          ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400"
+          : "bg-slate-50 dark:bg-white/[0.03] border-slate-200 dark:border-white/[0.06] text-slate-700 dark:text-slate-300"
       }`,
-    inner: "p-5 md:p-8 space-y-6 relative z-0",
-    header: "flex flex-col md:flex-row gap-5 justify-between items-start",
-    headerLeft: "flex items-center gap-5 w-full",
-    trainBubble: "w-16 h-16 md:w-20 md:h-20 flex-shrink-0 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700 flex items-center justify-center text-3xl md:text-4xl shadow-inner",
-    infoCol: "min-w-0 flex-1 flex flex-col justify-center",
-    labelSm: "text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-[0.2em]",
-    locoValue: "text-5xl sm:text-6xl md:text-7xl font-black text-slate-900 dark:text-white tabular-nums tracking-tighter leading-[0.9] -ml-1 py-1 drop-shadow-sm",
-    company: "text-sm md:text-lg font-medium text-slate-500 dark:text-slate-400 mt-1 truncate",
-    gridStats: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3",
-    gridStatus: "grid grid-cols-2 sm:grid-cols-4 gap-3",
+    chipLabel: "text-[9px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-0.5",
+    chipValue: "text-sm font-bold tabular-nums truncate",
+
+    footer: "rounded-md bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.06] p-3",
+    footerRoute: "text-sm text-slate-600 dark:text-slate-300 mb-2 leading-relaxed",
+    instrBox: "rounded-md bg-amber-50 dark:bg-amber-500/[0.06] border border-amber-200 dark:border-amber-500/15 p-2.5 mb-2",
+    instrLabel: "text-[9px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-500/80 mb-1",
+    instrText: "text-xs text-slate-600 dark:text-slate-400 leading-relaxed",
+    dateRow: "flex items-center justify-between text-xs text-slate-500",
   },
 
-  /* =========================================
-     UPCOMING LIST (RIGHT COL)
-     ========================================= */
+  /* ── SERVICES ───────────────────────────── */
+  Services: {
+    wrap: "rounded-md bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.06] p-3 flex flex-col col-span-2 sm:col-span-1",
+    label: "text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2",
+    pillWrap: "flex flex-wrap gap-1.5",
+    pill: (on: boolean) =>
+      `inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${TR} ${on
+        ? "bg-slate-100 dark:bg-white/[0.06] border-slate-300 dark:border-white/[0.08] text-slate-700 dark:text-slate-300"
+        : "border-transparent text-slate-400 dark:text-slate-600 opacity-50"
+      }`,
+  },
+
+  /* ── QUEUE LIST ─────────────────────────── */
   List: {
-    header: "flex items-center justify-between px-1 mb-2",
-    headerLabel: "text-xs font-bold text-slate-400 uppercase tracking-widest pl-1",
-    countBadge: "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-bold px-2.5 py-0.5 rounded-full",
-    wrapper: "flex flex-col gap-3 pb-20",
-    stickyHeader: "sticky top-14 z-20 py-3 bg-[#f3f4f6]/95 dark:bg-[#0a0a0a]/95 backdrop-blur-md -mx-1 px-1",
-    stickyInner: "flex items-center gap-3",
-    stickyChip: "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest",
-    stickyLine: "h-px flex-1 bg-gradient-to-r from-slate-200 to-transparent dark:from-slate-800",
-    itemCard: (isHigh: boolean) =>
-      `group relative bg-white dark:bg-[#121212] rounded-2xl p-4 border transition-all duration-300 hover:shadow-lg dark:hover:shadow-black/60 hover:-translate-y-0.5 ${
-        isHigh
-          ? "border-red-100 dark:border-red-900/30 shadow-sm"
-          : "border-slate-200 dark:border-slate-800 shadow-sm"
+    header: "flex items-center justify-between mb-2 px-0.5",
+    title: "text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider",
+    count: "text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded tabular-nums",
+    divider: "flex items-center gap-2 py-1.5",
+    dividerLabel: "text-[9px] font-bold text-slate-500 dark:text-slate-600 uppercase tracking-widest bg-slate-100 dark:bg-white/[0.04] px-2 py-0.5 rounded",
+    dividerLine: "h-px flex-1 bg-slate-200 dark:bg-white/[0.04]",
+    card: (hi: boolean) =>
+      `relative rounded-lg bg-white dark:bg-[#161b22] border p-3 ${TR} hover:bg-slate-50 dark:hover:bg-[#1c2129] shadow-sm dark:shadow-none ${hi ? "border-red-300 dark:border-red-500/30" : "border-slate-200 dark:border-white/[0.06]"
       }`,
-    itemHighBar: "absolute left-0 top-3 bottom-3 w-1 bg-red-500 rounded-r-full",
-    itemTop: "flex justify-between items-start mb-3 pl-2",
-    itemBubble: "w-9 h-9 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center justify-center text-lg shadow-sm text-slate-700 dark:text-slate-200",
-    itemLoco: "text-2xl font-black text-slate-800 dark:text-slate-100 leading-none tabular-nums",
-    itemSub: "text-[10px] text-slate-400 font-bold uppercase mt-0.5",
-    itemFooter: "flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800/50 mt-1",
-    itemDate: "text-xs font-bold text-slate-600 dark:text-slate-400 tabular-nums",
+    highBar: "absolute left-0 top-2 bottom-2 w-[2px] bg-red-500 rounded-r",
+    topRow: "flex items-center justify-between mb-2",
+    itemIcon: "w-7 h-7 rounded-md bg-slate-100 dark:bg-white/[0.06] flex items-center justify-center",
+    itemLoco: "text-base font-bold text-slate-900 dark:text-white tabular-nums tracking-tight",
+    itemSub: "text-[10px] text-slate-400 dark:text-slate-500 font-medium",
+    miniGrid: "grid grid-cols-2 gap-1.5 mb-2",
+    miniCell: "rounded-md p-2 bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.04]",
+    miniLabel: "text-[9px] text-slate-400 dark:text-slate-600 font-semibold uppercase",
+    miniValue: (bold?: boolean, color?: string) =>
+      `text-xs ${bold ? "font-semibold" : "font-medium"} ${color || "text-slate-700 dark:text-slate-300"} truncate`,
+    instrPreview: "text-[10px] text-slate-500 leading-relaxed line-clamp-2 bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.04] rounded p-2 mb-2",
+    bottom: "flex items-center justify-between pt-2 border-t border-slate-200 dark:border-white/[0.04]",
+    badge: "text-[10px] font-semibold text-cyan-700 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-500/10 border border-cyan-200 dark:border-cyan-500/15 px-1.5 py-0.5 rounded",
+    date: "text-[10px] text-slate-400 dark:text-slate-600 tabular-nums font-medium",
   },
 
-  /* =========================================
-     COMPONENTS & WIDGETS
-     ========================================= */
-  Components: {
-    servicesBox: "bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 md:p-4 flex flex-col justify-center h-full",
-    pill: (active: boolean) =>
-      `flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-bold transition-all ${
-        active
-          ? "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 shadow-sm"
-          : "bg-slate-100/50 dark:bg-slate-800/30 text-slate-400 border-transparent opacity-60 grayscale"
-      }`,
-    statusBox: (isHigh?: boolean) =>
-      `rounded-2xl p-3 border flex flex-col items-center justify-center text-center transition-colors ${
-        isHigh
-          ? "bg-red-50/50 border-red-100 dark:bg-red-900/10 dark:border-red-900/30"
-          : "bg-white border-slate-100 dark:bg-slate-900/40 dark:border-slate-800"
-      }`,
-    statusValue: (isHigh?: boolean) =>
-      `text-base md:text-lg font-bold tabular-nums ${
-        isHigh ? "text-red-600 dark:text-red-400" : "text-slate-900 dark:text-slate-100"
-      }`,
-    footerGreen: "bg-emerald-50/80 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 rounded-2xl p-5 relative overflow-hidden",
-    badgeBlue: "inline-flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded text-[10px] font-bold border border-blue-100 dark:border-blue-900/30",
-  },
-
-  /* =========================================
-     MODAL & OVERLAYS
-     ========================================= */
+  /* ── MODAL ──────────────────────────────── */
   Modal: {
-    overlay: "fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200",
-    card: "bg-white dark:bg-[#121214] w-full max-w-5xl h-[90vh] rounded-3xl shadow-2xl ring-1 ring-slate-900/5 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200",
-    header: "px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-[#121214]",
-    closeBtn: "w-9 h-9 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-colors",
-    body: "flex-1 overflow-auto bg-slate-50/50 dark:bg-black/50 p-0",
+    overlay: "fixed inset-0 z-[100] bg-black/40 dark:bg-black/60 backdrop-blur-sm flex items-center justify-center p-4",
+    card: "bg-white dark:bg-[#161b22] w-full max-w-5xl h-[90vh] rounded-lg border border-slate-200 dark:border-white/[0.06] overflow-hidden flex flex-col shadow-2xl",
+    header: "px-4 py-3 border-b border-slate-200 dark:border-white/[0.06] flex justify-between items-center",
+    closeBtn: "h-7 w-7 rounded-md hover:bg-slate-100 dark:hover:bg-white/[0.06] inline-flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-white transition-colors",
+    body: "flex-1 overflow-auto bg-slate-50 dark:bg-[#0e1117]",
   },
 
-  /* =========================================
-     TOASTS
-     ========================================= */
+  /* ── TOASTS ─────────────────────────────── */
   Toast: {
-    wrap: "fixed bottom-6 right-6 z-50 flex flex-col gap-3 pointer-events-none",
-    
-    // 2. CORRECCIÓN: Actualizamos la función para manejar los nuevos tipos y colores
+    wrap: "fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none",
     item: (kind: ToastKind) => {
-      let colors = "bg-slate-800 text-white border-slate-700"; // Default (info/new)
-
-      if (kind === "move" || kind === "done") {
-        colors = "bg-emerald-500 text-white border-emerald-400/50 shadow-emerald-500/20";
-      } else if (kind === "warning") {
-        colors = "bg-amber-500 text-white border-amber-400/50 shadow-amber-500/20";
-      } else if (kind === "error") {
-        colors = "bg-red-500 text-white border-red-400/50 shadow-red-500/20";
-      }
-
-      return `pointer-events-auto shadow-xl rounded-xl px-4 py-3 flex items-center gap-3 max-w-[320px] border backdrop-blur-xl text-xs font-bold animate-in slide-in-from-bottom-5 fade-in duration-300 ${colors}`;
+      const m: Record<string, string> = {
+        move: "bg-emerald-600", done: "bg-emerald-600",
+        new: "bg-slate-700", info: "bg-slate-700",
+        warning: "bg-amber-600", error: "bg-red-600",
+      };
+      return `pointer-events-auto shadow-xl rounded-md px-3 py-2 flex items-center gap-2 max-w-[300px] text-xs font-medium text-white border border-white/10 ${m[kind] ?? m.info}`;
     },
-  }
+  },
 } as const;

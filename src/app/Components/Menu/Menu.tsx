@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
-  Menu,
+  Menu as MenuIcon,
   Users,
   TriangleAlert,
   Home,
@@ -14,11 +14,13 @@ import {
   LayoutDashboard,
   X,
   ChevronLeft,
+  ChevronRight,
+  Settings,
   BarChart3,
 } from "lucide-react";
 
 /* ==========================================================================
-   INTERFACES (Basadas en tu captura de LocalStorage)
+   INTERFACES & TYPES
    ========================================================================== */
 export type Rol = "ADMINISTRADOR" | "COORDINADOR" | "SUPERVISOR" | "CLIENTE";
 
@@ -33,102 +35,81 @@ interface UserSession {
   };
 }
 
-const THEMES: Record<"light" | "dark", Record<Rol, any>> = {
-  light: {
-    ADMINISTRADOR: {
-      bg: "#0D2818",
-      text: "#E9F5ED",
-      accent: "#40916C",
-      border: "#1B4332",
-      roleBg: "rgba(64,145,108,0.15)",
-      roleText: "#74C69D",
-      roleBorder: "rgba(64,145,108,0.25)",
-    },
-    COORDINADOR: {
-      bg: "#1E2B3A",
-      text: "#E0ECF7",
-      accent: "#36B4C6",
-      border: "#253648",
-      roleBg: "rgba(54,180,198,0.15)",
-      roleText: "#9adbe5",
-      roleBorder: "rgba(54,180,198,0.25)",
-    },
-    SUPERVISOR: {
-      bg: "#232038",
-      text: "#ECE9FE",
-      accent: "#7C3AED",
-      border: "#2F2A4E",
-      roleBg: "rgba(124,58,237,0.15)",
-      roleText: "#C4B5FD",
-      roleBorder: "rgba(124,58,237,0.25)",
-    },
-    CLIENTE: {
-      bg: "#1E3B2E",
-      text: "#E0F5E9",
-      accent: "#4AC27D",
-      border: "#25483A",
-      roleBg: "rgba(74,194,125,0.15)",
-      roleText: "#B7E4C7",
-      roleBorder: "rgba(74,194,125,0.25)",
-    },
+// PREMIUM COLOR CONFIGURATION
+const ROLE_CONFIG: Record<
+  Rol,
+  {
+    icon: any;
+    label: string;
+    // Tailwind classes
+    text: string;           // Text color
+    bg: string;             // Background tint
+    gradient: string;       // Gradient for active/highlights
+    border: string;         // Border color
+    ring: string;           // Ring color
+    hoverBg: string;        // Hover background
+  }
+> = {
+  ADMINISTRADOR: {
+    icon: ShieldHalf,
+    label: "Administrador",
+    text: "text-emerald-500 dark:text-emerald-400",
+    bg: "bg-emerald-50 dark:bg-emerald-950/40",
+    gradient: "from-emerald-500 to-teal-400",
+    border: "border-emerald-200 dark:border-emerald-800",
+    ring: "ring-emerald-500/20",
+    hoverBg: "hover:bg-emerald-50 dark:hover:bg-emerald-900/20",
   },
-  dark: {
-    ADMINISTRADOR: {
-      bg: "#0B2217",
-      text: "#E6F7EE",
-      accent: "#5ED3A5",
-      border: "#13432E",
-      roleBg: "rgba(94,211,165,0.16)",
-      roleText: "#A6F0D3",
-      roleBorder: "rgba(94,211,165,0.28)",
-    },
-    COORDINADOR: {
-      bg: "#0F1722",
-      text: "#E8F4FB",
-      accent: "#57D8E8",
-      border: "#1B2A3A",
-      roleBg: "rgba(87,216,232,0.16)",
-      roleText: "#BCEFF6",
-      roleBorder: "rgba(87,216,232,0.28)",
-    },
-    SUPERVISOR: {
-      bg: "#18132B",
-      text: "#EEE9FF",
-      accent: "#A78BFA",
-      border: "#241C43",
-      roleBg: "rgba(167,139,250,0.16)",
-      roleText: "#DDD6FE",
-      roleBorder: "rgba(167,139,250,0.28)",
-    },
-    CLIENTE: {
-      bg: "#0F241B",
-      text: "#E6F7EE",
-      accent: "#5ED3A5",
-      border: "#174635",
-      roleBg: "rgba(94,211,165,0.16)",
-      roleText: "#BFF3DD",
-      roleBorder: "rgba(94,211,165,0.28)",
-    },
+  COORDINADOR: {
+    icon: Train,
+    label: "Coordinador",
+    text: "text-blue-500 dark:text-blue-400",
+    bg: "bg-blue-50 dark:bg-blue-950/40",
+    gradient: "from-blue-500 to-indigo-400",
+    border: "border-blue-200 dark:border-blue-800",
+    ring: "ring-blue-500/20",
+    hoverBg: "hover:bg-blue-50 dark:hover:bg-blue-900/20",
+  },
+  SUPERVISOR: {
+    icon: Users,
+    label: "Supervisor",
+    text: "text-violet-500 dark:text-violet-400",
+    bg: "bg-violet-50 dark:bg-violet-950/40",
+    gradient: "from-violet-500 to-purple-400",
+    border: "border-violet-200 dark:border-violet-800",
+    ring: "ring-violet-500/20",
+    hoverBg: "hover:bg-violet-50 dark:hover:bg-violet-900/20",
+  },
+  CLIENTE: {
+    icon: Building2,
+    label: "Cliente",
+    text: "text-amber-500 dark:text-amber-400",
+    bg: "bg-amber-50 dark:bg-amber-950/40",
+    gradient: "from-amber-500 to-orange-400",
+    border: "border-amber-200 dark:border-amber-800",
+    ring: "ring-amber-500/20",
+    hoverBg: "hover:bg-amber-50 dark:hover:bg-amber-900/20",
   },
 };
 
-const ROLE_ICONS: Record<Rol, any> = {
-  ADMINISTRADOR: ShieldHalf,
-  COORDINADOR: Train,
-  SUPERVISOR: Users,
-  CLIENTE: Building2,
-};
+function cn(...classes: (string | undefined | null | false)[]) {
+  return classes.filter(Boolean).join(" ");
+}
 
-export default function SidebarMenu({ version = "v1.2.0" }: { version?: string }) {
+/* ==========================================================================
+   COMPONENT
+   ========================================================================== */
+export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }) {
   const router = useRouter();
   const pathname = usePathname();
 
   const [isOpen, setIsOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [session, setSession] = useState<UserSession | null>(null);
-  const [isDark, setIsDark] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const rawUser = localStorage.getItem("user");
     if (rawUser) {
       try {
@@ -137,9 +118,8 @@ export default function SidebarMenu({ version = "v1.2.0" }: { version?: string }
         console.error(e);
       }
     }
-
-    const rawTheme = localStorage.getItem("theme");
-    setIsDark(rawTheme === "dark" || document.documentElement.classList.contains("dark"));
+    // Auto-collapse on small screens
+    if (window.innerWidth < 1024) setIsOpen(false);
   }, []);
 
   const normRol = useMemo<Rol>(() => {
@@ -150,10 +130,8 @@ export default function SidebarMenu({ version = "v1.2.0" }: { version?: string }
     return "CLIENTE";
   }, [session]);
 
-  const theme = isDark ? THEMES.dark[normRol] : THEMES.light[normRol];
-  const RoleIcon = ROLE_ICONS[normRol] || Users;
-
   const base = useMemo(() => `/${normRol.toLowerCase()}`, [normRol]);
+  const roleConfig = ROLE_CONFIG[normRol] || ROLE_CONFIG.CLIENTE;
 
   const navigation = useMemo(() => {
     return [
@@ -167,8 +145,6 @@ export default function SidebarMenu({ version = "v1.2.0" }: { version?: string }
         icon: Users,
       },
       { id: "inc", label: "Incidentes", href: `${base}/incidentes`, icon: TriangleAlert },
-
-      // ✅ SOLO UNA OPCIÓN NUEVA (sin submenú): Reportería (Admin/Coord)
       {
         id: "reporteria",
         label: "Reportería",
@@ -179,160 +155,209 @@ export default function SidebarMenu({ version = "v1.2.0" }: { version?: string }
     ].filter((i: any) => !i.hide);
   }, [normRol, base]);
 
-  if (!session) return null;
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT";
+    document.cookie = "role=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT";
+    router.replace("/login");
+  };
 
-  const asideStyles = {
-    "--sb-bg": theme?.bg || "#1e293b",
-    "--sb-text": theme?.text || "#f8fafc",
-    "--sb-accent": theme?.accent || "#38bdf8",
-    "--sb-border": theme?.border || "rgba(255,255,255,0.1)",
-    "--sb-role-bg": theme?.roleBg || "rgba(255,255,255,0.1)",
-    "--sb-role-text": theme?.roleText || "#f8fafc",
-    "--sb-role-border": theme?.roleBorder || "rgba(255,255,255,0.18)",
-  } as React.CSSProperties;
+  if (!mounted) return null;
+
+  // NavItem Component
+  const NavItem = ({ item, isActive }: { item: any, isActive: boolean }) => (
+    <button
+      onClick={() => {
+        router.push(item.href);
+        setMobileOpen(false);
+      }}
+      className={cn(
+        "group relative flex w-full items-center gap-3 rounded-xl px-3 py-3 transition-all duration-300 ease-out",
+        // Active State
+        isActive
+          ? cn("font-bold shadow-md shadow-zinc-200/50 dark:shadow-none ring-1 ring-inset", roleConfig.bg, roleConfig.text, roleConfig.ring)
+          : cn("text-slate-600 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-300", roleConfig.hoverBg),
+        !isOpen && !mobileOpen ? "justify-center px-2" : ""
+      )}
+      title={!isOpen ? item.label : undefined}
+    >
+      <item.icon
+        className={cn(
+          "h-5 w-5 shrink-0 transition-transform duration-300",
+          isActive ? "scale-110" : "group-hover:scale-105",
+          isActive ? roleConfig.text : "text-slate-400 dark:text-zinc-600 group-hover:text-slate-600 dark:group-hover:text-zinc-400"
+        )}
+      />
+
+      {(isOpen || mobileOpen) && (
+        <span className="truncate text-sm tracking-wide">{item.label}</span>
+      )}
+
+      {/* Active Indicator (Glowing line) */}
+      {isActive && (
+        <div className={cn("absolute left-0 h-6 w-1 rounded-r-full transition-all bg-gradient-to-b", roleConfig.gradient)} />
+      )}
+
+      {/* Tooltip for collapsed state */}
+      {!isOpen && !mobileOpen && (
+        <div className="absolute left-full ml-2 hidden rounded-md bg-zinc-900 px-2 py-1 text-xs text-zinc-100 opacity-0 shadow-md group-hover:block group-hover:opacity-100 z-50 whitespace-nowrap border border-zinc-800">
+          {item.label}
+        </div>
+      )}
+    </button>
+  );
 
   return (
     <>
-      {/* TRIGGER MÓVIL */}
+      {/* MOBILE TRIGGER */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="fixed left-4 top-4 z-[60] flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-lg md:hidden dark:bg-slate-900 border border-slate-200 dark:border-slate-800"
+        className="fixed left-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 shadow-sm backdrop-blur-md md:hidden dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 transition-transform hover:scale-105 active:scale-95"
       >
-        <Menu className="h-6 w-6 text-slate-600 dark:text-slate-300" />
+        <MenuIcon className="h-5 w-5 text-slate-700 dark:text-slate-300" />
       </button>
 
-      {/* OVERLAY MÓVIL */}
-      {mobileOpen && (
-        <div
-          className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm md:hidden transition-opacity"
-          onClick={() => setMobileOpen(false)}
-        />
-      )}
+      {/* MOBILE OVERLAY */}
+      <div
+        className={cn(
+          "fixed inset-0 z-40 bg-zinc-950/80 backdrop-blur-sm transition-opacity duration-300 md:hidden",
+          mobileOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        )}
+        onClick={() => setMobileOpen(false)}
+      />
 
-      {/* SIDEBAR */}
+      {/* SIDEBAR CONTAINER */}
       <aside
-        style={asideStyles}
-        className={`
-          fixed inset-y-0 left-0 z-[100] flex flex-col border-r border-[var(--sb-border)] bg-[var(--sb-bg)] text-[var(--sb-text)]
-          transition-all duration-300 ease-in-out
-          ${mobileOpen ? "translate-x-0 w-[min(85vw,320px)] shadow-2xl" : "-translate-x-full md:translate-x-0"}
-          ${!mobileOpen && (isOpen ? "md:w-[280px]" : "md:w-[88px]")}
-        `}
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-200 bg-white/95 backdrop-blur-xl dark:border-zinc-800 dark:bg-black/90 transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]",
+          mobileOpen ? "translate-x-0 w-[280px] shadow-2xl" : "-translate-x-full md:translate-x-0",
+          !mobileOpen && (isOpen ? "md:w-[280px]" : "md:w-[80px]")
+        )}
       >
         {/* HEADER */}
-        <div className="flex h-20 items-center justify-between px-6 shrink-0">
-          <div className={`flex items-center gap-3 ${(isOpen || mobileOpen) ? "" : "mx-auto"}`}>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--sb-accent)] text-white shadow-lg">
+        <div className="flex h-20 shrink-0 items-center justify-between px-5 md:px-4 relative">
+          <div className={cn("flex items-center gap-3 transition-opacity", !isOpen && !mobileOpen ? "w-full justify-center" : "")}>
+            <div className={cn(
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-lg transition-all duration-500 bg-gradient-to-br",
+              roleConfig.gradient
+            )}>
               <Home className="h-5 w-5" />
             </div>
 
             {(isOpen || mobileOpen) && (
-              <div className="flex flex-col">
-                <span className="text-[10px] font-bold uppercase tracking-widest opacity-50">Logistics</span>
-                <span className="text-lg font-black tracking-tight leading-none">COSAIF</span>
+              <div className="flex flex-col animate-in fade-in slide-in-from-left-2 duration-300">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Logistics</span>
+                <span className="text-xl font-black tracking-tighter text-slate-900 dark:text-white leading-none">COSAIF</span>
               </div>
             )}
           </div>
 
-          {/* Colapsar (desktop) */}
+          {/* COLLAPSE TOGGLE (Moved to Header) */}
           <button
             onClick={() => setIsOpen(!isOpen)}
-            className="hidden md:flex h-8 w-8 items-center justify-center rounded-lg hover:bg-white/10"
+            className="hidden md:flex absolute right-[-12px] top-1/2 -translate-y-1/2 h-6 w-6 items-center justify-center rounded-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 shadow-md text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 transition-all hover:scale-110 z-50"
+            title={isOpen ? "Colapsar menú" : "Expandir menú"}
           >
-            <ChevronLeft className={`h-5 w-5 transition-transform ${isOpen ? "" : "rotate-180"}`} />
+            {isOpen ? <ChevronLeft className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           </button>
 
-          {/* Cerrar (móvil) */}
-          <button onClick={() => setMobileOpen(false)} className="md:hidden p-2 hover:bg-white/10 rounded-lg">
-            <X className="h-6 w-6" />
-          </button>
+          {/* CLOSE MOBILE */}
+          {mobileOpen && (
+            <button
+              onClick={() => setMobileOpen(false)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 md:hidden"
+            >
+              <X className="h-5 w-5 text-slate-500" />
+            </button>
+          )}
         </div>
 
-        {/* PERFIL */}
-        <div
-          className={`mx-4 mb-6 rounded-2xl border border-[var(--sb-border)] bg-white/5 p-4 transition-all overflow-hidden ${
-            !isOpen && !mobileOpen ? "px-2" : ""
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-[var(--sb-role-text)] bg-[var(--sb-accent)] font-bold text-[var(--sb-bg)] shadow-md text-xl">
-              {session.nombre?.charAt(0)?.toUpperCase()}
+        {/* PROFILE CARD */}
+        <div className="px-3 mb-6">
+          <div
+            className={cn(
+              "relative flex items-center gap-3 overflow-hidden rounded-2xl border transition-all duration-300",
+              !isOpen && !mobileOpen
+                ? "justify-center px-0 py-3 border-transparent bg-transparent"
+                : cn("p-3 bg-white dark:bg-zinc-900/50 border-slate-100 dark:border-zinc-800/50 shadow-sm", roleConfig.hoverBg)
+            )}
+          >
+            <div className={cn(
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold shadow-sm ring-2 ring-white dark:ring-zinc-950 transition-transform",
+              "text-white bg-gradient-to-br from-slate-700 to-slate-900 dark:from-zinc-100 dark:to-zinc-300 dark:text-black",
+              !isOpen && !mobileOpen && "h-10 w-10"
+            )}>
+              {session?.nombre?.charAt(0)?.toUpperCase() || "U"}
             </div>
 
             {(isOpen || mobileOpen) && (
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-bold leading-tight uppercase">{session.nombre}</p>
-                <p className="truncate text-[11px] font-medium opacity-60 uppercase tracking-tighter">
-                  {session.empresa?.nombre || "Sin Empresa"}
+                <p className="truncate text-sm font-bold text-slate-800 dark:text-zinc-100 leading-tight">
+                  {session?.nombre?.split(" ")[0]}
                 </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className={cn("inline-block h-1.5 w-1.5 rounded-full bg-gradient-to-r", roleConfig.gradient)} />
+                  <p className={cn("truncate text-[10px] font-semibold uppercase tracking-wider", roleConfig.text)}>
+                    {roleConfig.label}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {(isOpen || mobileOpen) && (
+              <div className={cn("h-8 w-8 flex items-center justify-center rounded-lg opacity-0 group-hover:opacity-100 transition-opacity", roleConfig.bg)}>
+                <Settings className={cn("h-4 w-4", roleConfig.text)} />
               </div>
             )}
           </div>
-
-          {(isOpen || mobileOpen) && (
-            <div className="mt-4 flex items-center gap-2 rounded-xl border border-[var(--sb-role-border)] bg-[var(--sb-role-bg)] px-3 py-2 text-[10px] font-black text-[var(--sb-role-text)] uppercase tracking-[0.1em]">
-              <RoleIcon className="h-4 w-4" />
-              <span>{normRol}</span>
-            </div>
-          )}
         </div>
 
-        {/* NAVEGACIÓN */}
-        <nav className="flex-1 space-y-2 overflow-y-auto px-3 scrollbar-hide">
-          {navigation.map((item) => {
-            const active =
-              pathname === item.href ||
-              (item.href !== `/${normRol.toLowerCase()}` && pathname.startsWith(item.href));
-            const Icon = item.icon || Users;
+        {/* NAVIGATION */}
+        <nav className="flex-1 space-y-1 px-3 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-200 dark:scrollbar-thumb-zinc-800">
+          <div className="mb-2 px-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-600">
+            {(isOpen || mobileOpen) ? "Módulos" : "..."}
+          </div>
 
-            return (
-              <button
-                key={item.id}
-                onClick={() => {
-                  router.push(item.href);
-                  setMobileOpen(false);
-                }}
-                className={`
-                  group relative flex w-full items-center gap-4 rounded-xl px-3 py-3.5 transition-all
-                  ${active ? "bg-white/10 text-[var(--sb-accent)] shadow-sm" : "text-[var(--sb-text)] opacity-60 hover:bg-white/5 hover:opacity-100"}
-                  ${!isOpen && !mobileOpen ? "justify-center" : ""}
-                `}
-              >
-                <Icon className={`h-5 w-5 shrink-0 ${active ? "scale-110" : ""}`} />
-                {(isOpen || mobileOpen) && <span className="text-sm font-semibold tracking-wide">{item.label}</span>}
-                {active && (
-                  <div className="absolute left-0 h-6 w-1 rounded-r-full bg-[var(--sb-accent)] shadow-[0_0_12px_var(--sb-accent)]" />
-                )}
-              </button>
-            );
+          {navigation.map((item) => {
+            const active = pathname === item.href || (item.href !== base && pathname.startsWith(item.href));
+            return <NavItem key={item.id} item={item} isActive={active} />;
           })}
         </nav>
 
         {/* FOOTER */}
-        <div className="border-t border-[var(--sb-border)] p-4 shrink-0">
-          <button
-            onClick={() => {
-              localStorage.clear();
-              router.replace("/login");
-            }}
-            className={`flex w-full items-center gap-3 rounded-xl p-3 text-sm font-bold transition-all hover:bg-red-500/20 hover:text-red-400 ${
-              !isOpen && !mobileOpen ? "justify-center" : ""
-            }`}
-          >
-            <LogOut className="h-5 w-5" />
-            {(isOpen || mobileOpen) && <span>Cerrar Sesión</span>}
-          </button>
+        <div className="mt-auto border-t border-slate-100 bg-slate-50/50 p-4 dark:border-zinc-800 dark:bg-zinc-900/30 backdrop-blur-sm">
+          {/* LOGOUT + VERSION */}
+          <div className={cn("flex items-center", isOpen ? "justify-between" : "flex-col gap-3 justify-center")}>
+            {(isOpen || mobileOpen) && (
+              <span className="text-[10px] text-slate-400 dark:text-slate-600 font-mono select-none transition-opacity hover:text-slate-600 dark:hover:text-slate-400">
+                {version}
+              </span>
+            )}
 
-          {(isOpen || mobileOpen) && (
-            <p className="mt-4 text-center text-[9px] opacity-30 font-mono uppercase tracking-widest">{version}</p>
-          )}
+            <button
+              onClick={handleLogout}
+              className={cn(
+                "flex items-center gap-2 rounded-lg p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-900/10 dark:hover:text-rose-400 transition-all active:scale-95 group",
+                !isOpen && !mobileOpen && "justify-center"
+              )}
+              title="Cerrar Sesión"
+            >
+              <LogOut className="h-5 w-5 transition-transform group-hover:-translate-x-0.5" />
+              {(isOpen || mobileOpen) && (
+                <span className="text-sm font-medium">Salir</span>
+              )}
+            </button>
+          </div>
         </div>
       </aside>
 
-      {/* ESPACIADOR DESKTOP */}
+      {/* DESKTOP SPACER */}
       <div
-        className="hidden shrink-0 transition-all duration-300 md:block"
-        style={{ width: isOpen ? "280px" : "88px" }}
+        className={cn(
+          "hidden shrink-0 transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)] md:block",
+          isOpen ? "w-[280px]" : "w-[80px]"
+        )}
       />
     </>
   );

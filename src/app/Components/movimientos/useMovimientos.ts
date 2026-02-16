@@ -403,48 +403,58 @@ export function useMovimientos(rol: Rol, token?: string) {
     () =>
       token
         ? ({
-            Authorization: `Bearer ${token}`,
-          } satisfies HeadersInit)
+          Authorization: `Bearer ${token}`,
+        } satisfies HeadersInit)
         : undefined,
     [token]
   );
 
-const queryString = useMemo(() => {
-  const qs = new URLSearchParams();
+  const queryString = useMemo(() => {
+    const qs = new URLSearchParams();
 
-  // Pedimos siempre la primera página grande al backend.
-  // La paginación REAL la hacemos nosotros en el front.
-  qs.set("page", "1");
-  qs.set("pageSize", "1000"); // o 2000 si quieres más margen
+    // Pedimos siempre la primera página grande al backend.
+    // La paginación REAL la hacemos nosotros en el front.
+    qs.set("page", "1");
+    qs.set("pageSize", "1000"); // o 2000 si quieres más margen
 
-  if (filtros.busqueda.trim()) qs.set("q", filtros.busqueda.trim());
-  if (filtros.empresaId) qs.set("empresaId", String(filtros.empresaId));
-  if (filtros.localidadId)
-    qs.set("localidadId", String(filtros.localidadId));
-  if (filtros.desde) qs.set("fechaInicio", filtros.desde);
-  if (filtros.hasta) qs.set("fechaFin", filtros.hasta);
+    if (filtros.busqueda.trim()) qs.set("q", filtros.busqueda.trim());
+    if (filtros.empresaId) qs.set("empresaId", String(filtros.empresaId));
+    if (filtros.localidadId)
+      qs.set("localidadId", String(filtros.localidadId));
+    if (filtros.desde) {
+      // Restamos 1 día para asegurar que el backend (posiblemente UTC) incluya transiciones de hora local
+      const d = new Date(filtros.desde);
+      d.setDate(d.getDate() - 1);
+      qs.set("fechaInicio", d.toISOString().split("T")[0]);
+    }
+    if (filtros.hasta) {
+      // Sumamos 1 día para cubrir el final del día local en UTC
+      const d = new Date(filtros.hasta);
+      d.setDate(d.getDate() + 1);
+      qs.set("fechaFin", d.toISOString().split("T")[0]);
+    }
 
-  if (filtros.campoOrden) qs.set("orderBy", filtros.campoOrden);
-  if (filtros.direccionOrden) qs.set("orderDir", filtros.direccionOrden);
+    if (filtros.campoOrden) qs.set("orderBy", filtros.campoOrden);
+    if (filtros.direccionOrden) qs.set("orderDir", filtros.direccionOrden);
 
-  if (ambito === "actuales") {
-    qs.append("estado", "SOLICITADO");
-    qs.append("estado", "EN_PROCESO");
-  } else {
-    qs.set("finalizado", "true");
-  }
+    if (ambito === "actuales") {
+      qs.append("estado", "SOLICITADO");
+      qs.append("estado", "EN_PROCESO");
+    } else {
+      qs.set("finalizado", "true");
+    }
 
-  return qs.toString();
-}, [
-  filtros.busqueda,
-  filtros.empresaId,
-  filtros.localidadId,
-  filtros.desde,
-  filtros.hasta,
-  filtros.campoOrden,
-  filtros.direccionOrden,
-  ambito,
-]);
+    return qs.toString();
+  }, [
+    filtros.busqueda,
+    filtros.empresaId,
+    filtros.localidadId,
+    filtros.desde,
+    filtros.hasta,
+    filtros.campoOrden,
+    filtros.direccionOrden,
+    ambito,
+  ]);
 
 
   /* ---------- Catálogos (empresas/localidades) ---------- */
@@ -527,17 +537,28 @@ const queryString = useMemo(() => {
       }
 
       if (desde) {
-        const fromTs = new Date(desde).getTime();
+        // "Desde" al inicio del día local (00:00:00)
+        // Ojo: "desde" viene del input date, ej "2023-10-27"
+        // Construimos la fecha local y obtenemos su timestamp
+        const [y, m, d] = desde.split("-").map(Number);
+        const fromDate = new Date(y, m - 1, d, 0, 0, 0, 0); // Local start of day
+        const fromTs = fromDate.getTime();
+
         movimientos = movimientos.filter((m) => {
           const base = m.fechaInicio ?? m.fechaSolicitud;
           if (!base) return false;
+          // Parseamos la fecha del item (que suele estar en ISO/UTC) a objeto Date
           const ts = new Date(base).getTime();
           return !isNaN(ts) && ts >= fromTs;
         });
       }
 
       if (hasta) {
-        const toTs = new Date(hasta).getTime();
+        // "Hasta" al final del día local (23:59:59.999)
+        const [y, m, d] = hasta.split("-").map(Number);
+        const toDate = new Date(y, m - 1, d, 23, 59, 59, 999); // Local end of day
+        const toTs = toDate.getTime();
+
         movimientos = movimientos.filter((m) => {
           const base = m.fechaFin ?? m.fechaInicio ?? m.fechaSolicitud;
           if (!base) return false;

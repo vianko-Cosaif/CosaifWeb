@@ -7,7 +7,7 @@ $border-color: #e4e4e7;
 
 /* === AJUSTES DE ESCALA DEL TREN === */
 /* Escala aumentada para mejor visualización */
-$scale-factor: 0.24; 
+$scale-factor: 0.24;
 /* Ancho visual calculado: 44rem (ancho original) * 0.24 ≈ 168px */
 $wrapper-width: 175px;
 
@@ -32,7 +32,7 @@ $wheel-orange: #ff0000;
   box-shadow: 5px -8px 7px -8px inset #d00000;
   border-radius: 10px;
   -webkit-mask-image: linear-gradient(to right, rgba(0, 0, 0, 0) 0%, rgb(0, 0, 0) 10%, rgb(0, 0, 0) 90%, rgb(0, 0, 0, 0) 100%);
-    mask-image: linear-gradient(to right, rgba(0, 0, 0, 0) 0%, rgb(0, 0, 0) 10%, rgb(0, 0, 0) 90%, rgb(0, 0, 0, 0) 100%);
+  mask-image: linear-gradient(to right, rgba(0, 0, 0, 0) 0%, rgb(0, 0, 0) 10%, rgb(0, 0, 0) 90%, rgb(0, 0, 0, 0) 100%);
 }
 
 .newsBar-track {
@@ -41,7 +41,7 @@ $wheel-orange: #ff0000;
   width: max-content;
   height: 100%;
   padding-left: 20px;
-  
+
   &:hover .newsBar-strip {
     animation-play-state: paused;
   }
@@ -57,8 +57,13 @@ $wheel-orange: #ff0000;
 }
 
 @keyframes scroll-left {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-100%); }
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(-100%);
+  }
 }
 
 /* === VAGÓN DE NOTICIAS (TEXTO) === */
@@ -69,7 +74,7 @@ $wheel-orange: #ff0000;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   padding: 6px 14px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   white-space: nowrap;
   position: relative;
   z-index: 10;
@@ -79,10 +84,10 @@ $wheel-orange: #ff0000;
   &::before {
     content: "";
     position: absolute;
-    left: -12px; 
+    left: -12px;
     top: 50%;
     transform: translateY(-50%);
-    width: 12px; 
+    width: 12px;
     height: 6px;
     background: #374151;
     border-radius: 2px;
@@ -112,39 +117,39 @@ $wheel-orange: #ff0000;
 /* === EL MINI TREN (MEJORADO) === */
 
 .trainMini-scaleWrapper {
-  width: $wrapper-width; 
+  width: $wrapper-width;
   height: 30px;
 
   position: relative;
   z-index: 140;
   display: flex;
-  align-items: flex-end; 
-  margin-bottom: -1px; 
-  left: 109px; 
+  align-items: flex-end;
+  margin-bottom: -1px;
+  left: 109px;
 }
 
 .trainMini-locomotive {
-  width: 44rem; 
+  width: 44rem;
   height: 10rem;
   transform-origin: left bottom;
   transform: scale($scale-factor);
   animation: train-bounce 0.5s infinite alternate ease-in-out;
-  filter: drop-shadow(0 6px 8px rgba(0,0,0,0.25));
-  
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.25));
+
 }
 
 /* -- PIEZAS INTERNAS DEL TREN -- */
 
 .trainMini-engineBody {
   position: absolute;
-  left: 8rem; 
+  left: 8rem;
   bottom: 1.4rem;
-  height: 7rem; 
+  height: 7rem;
   width: 5rem;
   background: linear-gradient(90deg, $engine-red, #ffb9b9, $engine-red);
   border-radius: 0 0 .4rem 0;
   z-index: 2;
-  border: 1px solid rgba(0,0,0,0.2);
+  border: 1px solid rgba(0, 0, 0, 0.2);
 
   &::before {
     content: "";
@@ -164,7 +169,7 @@ $wheel-orange: #ff0000;
     left: 50%;
     transform: translate(-50%, 0);
     background: $glass;
-    border: 2px solid rgba(255,255,255,0.3);
+    border: 2px solid rgba(255, 255, 255, 0.3);
     border-radius: .2rem;
     height: 40%;
     top: 1rem;
@@ -255,10 +260,15 @@ $wheel-orange: #ff0000;
   animation: wheel-spin 0.8s linear infinite;
   box-sizing: border-box;
   background-image: linear-gradient(0deg, transparent 46%, #222 46%, #222 54%, transparent 54%),
-                    linear-gradient(90deg, transparent 46%, #222 46%, #222 54%, transparent 54%);
+    linear-gradient(90deg, transparent 46%, #222 46%, #222 54%, transparent 54%);
 
-  &.w1 { left: 0.5rem; }
-  &.w2 { left: 4.5rem; }
+  &.w1 {
+    left: 0.5rem;
+  }
+
+  &.w2 {
+    left: 4.5rem;
+  }
 }
 
 .trainMini-joint {
@@ -274,60 +284,192 @@ $wheel-orange: #ff0000;
   animation: joint-motion 0.8s linear infinite;
   z-index: 10;
 }
+
 /* === PIeza Brillante === */
 .shineLabel {
-    backdrop-filter: blur(1px);
-    background: linear-gradient(90deg, #ff000029, #ffc8c873, #ff00002b);
-    box-shadow: 0px 0px 11px 8px #ff000026;
-    height: 120%;
-    width: 20px;
-    position: absolute;
-    top: -10%;
-    left: -10px;
-    z-index: 1;
-    transform: rotate(10deg);
-    animation: shine-move 2s linear infinite, delay-animation 6s linear infinite
+  backdrop-filter: blur(1px);
+  background: linear-gradient(90deg, #ff000029, #ffc8c873, #ff00002b);
+  box-shadow: 0px 0px 11px 8px #ff000026;
+  height: 120%;
+  width: 20px;
+  position: absolute;
+  top: -10%;
+  left: -10px;
+  z-index: 1;
+  transform: rotate(10deg);
+  animation: shine-move 2s linear infinite, delay-animation 6s linear infinite
 }
+
 /* === ANIMACIONES === */
 @keyframes train-bounce {
-  to { transform: scale($scale-factor) translateY(-6px); }
+  to {
+    transform: scale($scale-factor) translateY(-6px);
+  }
 }
 
 @keyframes wheel-spin {
-  to { transform: rotate(-360deg); }
+  to {
+    transform: rotate(-360deg);
+  }
 }
 
 @keyframes joint-motion {
-  0% { transform: translateX(0) rotate(0deg); }
-  25% { transform: translateX(1.2rem) rotate(15deg); }
-  50% { transform: translateX(0) rotate(0deg); }
-  75% { transform: translateX(-1.2rem) rotate(-15deg); }
-  100% { transform: translateX(0) rotate(0deg); }
+  0% {
+    transform: translateX(0) rotate(0deg);
+  }
+
+  25% {
+    transform: translateX(1.2rem) rotate(15deg);
+  }
+
+  50% {
+    transform: translateX(0) rotate(0deg);
+  }
+
+  75% {
+    transform: translateX(-1.2rem) rotate(-15deg);
+  }
+
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
 }
 
 @keyframes smoke-puff {
-  0% { opacity: 0.8; transform: translateY(0) scale(1); }
-  100% { opacity: 0; transform: translateY(-5rem) scale(2); }
+  0% {
+    opacity: 0.8;
+    transform: translateY(0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-5rem) scale(2);
+  }
 }
+
 @keyframes shine-move {
-  0% { left: -5; }
-  50% { left: 50%; }
-  100% { left: 105%; }
+  0% {
+    left: -5;
+  }
+
+  50% {
+    left: 50%;
+  }
+
+  100% {
+    left: 105%;
+  }
 }
+
 @keyframes delay-animation {
   0% {
     opacity: 0.5;
   }
+
   16% {
     opacity: 1;
   }
+
   33% {
     opacity: 0.5;
   }
+
   33.01% {
     opacity: 0;
   }
+
   100% {
     opacity: 0;
+  }
+}
+
+/* === DARK MODE OVERRIDES === */
+:root[class~="dark"],
+.dark {
+  .newsBar {
+    background: #18181b;
+    /* Zinc-950 */
+    border-color: #27272a;
+    /* Zinc-800 */
+    box-shadow: 5px -8px 7px -8px inset #500000;
+  }
+
+  .newsCar {
+    background: #27272a;
+    /* Zinc-800 */
+    border-color: #3f3f46;
+    /* Zinc-700 */
+    color: #f4f4f5;
+    /* Zinc-100 */
+
+    &::before {
+      background: #52525b;
+      border-color: #3f3f46;
+    }
+  }
+
+  .newsCar-text {
+    color: #e4e4e7;
+    /* Zinc-200 */
+  }
+
+  /* Train Overrides for Dark Mode */
+  .trainMini-locomotive {
+    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.5));
+  }
+
+  // Engine Body: Deeper Red with Glow
+  .trainMini-engineBody {
+    background: linear-gradient(90deg, #991b1b, #ef4444, #991b1b);
+    border-color: #7f1d1d;
+
+    &::before {
+      background: #7f1d1d;
+    }
+
+    &::after {
+      // Window with glow
+      background: #38bdf8;
+      border-color: rgba(255, 255, 255, 0.5);
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+    }
+  }
+
+  // Engine Front: Metallic Silver
+  .trainMini-engineFront {
+    border-color: #3f3f46;
+    background: linear-gradient(180deg, #a1a1aa, #52525b);
+
+    &::before {
+      background: #3f3f46;
+    }
+  }
+
+  // Chimney: Dark Grey
+  .trainMini-chimney {
+    background: #3f3f46;
+
+    &::before {
+      border-top-color: #fb923c; // Bright Orange
+    }
+  }
+
+  // Smoke: More visible
+  .trainMini-smoke {
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  // Wheels: Silver/Steel
+  .trainMini-wheel {
+    background: #52525b;
+    border-color: #d4d4d8;
+    background-image: linear-gradient(0deg, transparent 46%, #d4d4d8 46%, #d4d4d8 54%, transparent 54%),
+      linear-gradient(90deg, transparent 46%, #d4d4d8 46%, #d4d4d8 54%, transparent 54%);
+  }
+
+  // Joint
+  .trainMini-joint {
+    background: #a1a1aa;
+    border-color: #e4e4e7;
   }
 }

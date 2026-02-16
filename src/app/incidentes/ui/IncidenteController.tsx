@@ -24,6 +24,9 @@ import {
   Loader2,
   CheckCircle,
   AlertCircle,
+  Filter,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { fetchJSON } from "@/lib/api";
 
@@ -91,7 +94,7 @@ class DetailCache {
     const entry = this.cache.get(id);
     if (!entry) return null;
     if (Date.now() - entry.timestamp > this.TTL) {
-    
+      this.cache.delete(id);
       return null;
     }
     return entry.data;
@@ -120,21 +123,19 @@ async function fetchIncidenteDetailsBulk(
 
   for (let i = 0; i < pendingIds.length; i += maxConcurrency) {
     const chunk = pendingIds.slice(i, i + maxConcurrency);
-    const results = await Promise.all(
+    await Promise.all(
       chunk.map(async (id) => {
         try {
           const response = await withCreds<any>(`${INCIDENTES}/${id}`);
           const data = (response as any)?.data ?? response;
           detailCache.set(id, data);
+          result[id] = data;
           return { id, data };
         } catch {
           return { id, data: null };
         }
       })
     );
-    results.forEach(({ id, data }) => {
-      if (data) result[id] = data;
-    });
   }
   return result;
 }
@@ -230,11 +231,7 @@ export default function IncidenteController() {
     useNotifications();
 
   const isLimitedClientView = role === "CLIENTE";
-
-  const canSeeEverything =
-    role === "ADMINISTRADOR" ||
-    role === "SUPERVISOR" ||
-    role === "COORDINADOR";
+  // const canSeeEverything = ["ADMINISTRADOR", "SUPERVISOR", "COORDINADOR"].includes(role);
 
   const tabs: Tab[] = ["Actuales", "Pasados"];
   const [activeTab, setActiveTab] = useState<Tab>("Actuales");
@@ -254,6 +251,8 @@ export default function IncidenteController() {
     localidadId: isLimitedClientView ? userLocalidadId : null,
     searchQuery: "",
   });
+
+  const [filtersOpen, setFiltersOpen] = useState(false); // Collapsible on mobile
 
   const [incidentData, setIncidentData] = useState<{
     data: IncidenteRow[];
@@ -307,27 +306,12 @@ export default function IncidenteController() {
             withCreds<any>(LOCALIDADES),
           ]);
 
-          console.log("[INCIDENTES] /bff/empresas (raw):", empresasResponse);
-          console.log(
-            "[INCIDENTES] /bff/localidades (raw):",
-            localidadesResponse
-          );
-
           const empresasArray = Array.isArray(empresasResponse)
             ? empresasResponse
             : (empresasResponse as any)?.data;
           const localidadesArray = Array.isArray(localidadesResponse)
             ? localidadesResponse
             : (localidadesResponse as any)?.data;
-
-          console.log(
-            "[INCIDENTES] empresasArray (normalizado):",
-            empresasArray
-          );
-          console.log(
-            "[INCIDENTES] localidadesArray (normalizado):",
-            localidadesArray
-          );
 
           setCatalogues({
             empresas: (empresasArray || []).map((e: any) => ({
@@ -348,17 +332,6 @@ export default function IncidenteController() {
               : null,
           ]);
 
-          console.log(
-            "[INCIDENTES] /bff/empresas/:id (raw):",
-            userEmpresaId,
-            empRes
-          );
-          console.log(
-            "[INCIDENTES] /bff/localidades/:id (raw):",
-            userLocalidadId,
-            locRes
-          );
-
           const unwrapSingle = (res: any) => {
             if (!res) return null;
             const data = res.data ?? res;
@@ -369,31 +342,27 @@ export default function IncidenteController() {
           const emp = unwrapSingle(empRes);
           const loc = unwrapSingle(locRes);
 
-          console.log("[INCIDENTES] empresa unwrapped:", emp);
-          console.log("[INCIDENTES] localidad unwrapped:", loc);
-
           setCatalogues({
             empresas: emp?.id
               ? [
-                  {
-                    id: emp.id,
-                    nombre: emp.nombre ?? `Empresa #${emp.id}`,
-                  },
-                ]
+                {
+                  id: emp.id,
+                  nombre: emp.nombre ?? `Empresa #${emp.id}`,
+                },
+              ]
               : [],
             localidades: loc?.id
               ? [
-                  {
-                    id: loc.id,
-                    nombre: loc.nombre ?? `Localidad #${loc.id}`,
-                  },
-                ]
+                {
+                  id: loc.id,
+                  nombre: loc.nombre ?? `Localidad #${loc.id}`,
+                },
+              ]
               : [],
             loading: false,
           });
         }
       } catch (error: any) {
-        console.warn("Error loading catalogues:", error?.message || error);
         setCatalogues((p) => ({ ...p, loading: false }));
         showNotification("error", "Error al cargar catálogos");
       }
@@ -435,8 +404,6 @@ export default function IncidenteController() {
         const url = buildApiUrl(page);
         const response: any = await withCreds(url);
 
-        console.log("[INCIDENTES] /bff/incidentes response.raw:", response);
-
         if (!response?.success || !Array.isArray(response.data)) {
           throw new Error(
             (response as any)?.error || "Formato de respuesta inesperado"
@@ -448,22 +415,6 @@ export default function IncidenteController() {
           .filter(Boolean);
 
         const detailsMap = await fetchIncidenteDetailsBulk(incidentIds);
-
-        console.log(
-          "[INCIDENTES] empresas desde /bff/incidentes (por incidente):",
-          response.data.map((incident: any) => {
-            const det = detailsMap[incident.id] || {};
-            const movDet = det.movimiento || {};
-            const mov = incident.movimiento || {};
-            return {
-              incidenteId: incident.id,
-              empresaId_mov: mov.empresaId,
-              empresa_mov: mov.empresa,
-              empresaId_detalle: movDet.empresaId,
-              empresa_detalle: movDet.empresa,
-            };
-          })
-        );
 
         const statusDisplayMap: Record<string, string> = {
           ABIERTO: "Activo",
@@ -507,9 +458,9 @@ export default function IncidenteController() {
           activeTab === "Actuales"
             ? enrichedIncidents.filter((x) => x.estadoRaw === "ABIERTO")
             : enrichedIncidents.filter(
-                (x) =>
-                  x.estadoRaw === "CERRADO" || x.estadoRaw === "RESUELTO"
-              );
+              (x) =>
+                x.estadoRaw === "CERRADO" || x.estadoRaw === "RESUELTO"
+            );
 
         setIncidentData({
           data: filteredIncidents,
@@ -568,28 +519,6 @@ export default function IncidenteController() {
     setUiState((prev) => ({ ...prev, refreshing: true }));
     fetchIncidents(incidentData.meta.page);
   }, [fetchIncidents, incidentData.meta.page]);
-
-  /** Atajos de teclado (usa handleRefresh, por eso va después) */
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.key === "/" &&
-        !event.metaKey &&
-        !event.ctrlKey &&
-        !event.altKey
-      ) {
-        event.preventDefault();
-        searchRef.current?.focus();
-      }
-
-      if (event.key.toLowerCase() === "r" && (event.metaKey || event.ctrlKey)) {
-        event.preventDefault();
-        handleRefresh();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleRefresh]);
 
   const handlePageChange = useCallback(
     (page: number) => {
@@ -684,6 +613,13 @@ export default function IncidenteController() {
     );
   }, [incidentData.data, filters.searchQuery]);
 
+
+  // Calculate Stats
+  const totalActivos = incidentData.data.filter(i => i.estadoRaw === "ABIERTO").length;
+  const totalResueltos = incidentData.data.filter(i => i.estadoRaw === "RESUELTO").length;
+  // Unique enterprises present in the current view
+  const totalEmpresas = new Set(incidentData.data.map(i => i.empresa).filter(Boolean)).size;
+
   const renderNotification = () => {
     if (!notification.show) return null;
     const iconMap = {
@@ -702,9 +638,7 @@ export default function IncidenteController() {
     const Icon = iconMap[notification.type];
 
     return (
-      <div
-        className={`fixed top-4 right-4 z-50 flex items-center gap-3 rounded-xl border p-4 shadow-lg ${colorMap[notification.type]}`}
-      >
+      <div className={`fixed top-4 right-4 z-50 flex items-center gap-3 rounded-xl border p-4 shadow-lg animate-in slide-in-from-top-4 fade-in duration-300 ${colorMap[notification.type]}`}>
         <Icon className="h-5 w-5" />
         <span className="font-medium">{notification.message}</span>
         <button
@@ -719,305 +653,214 @@ export default function IncidenteController() {
 
   const hasActiveFilters = Boolean(filters.empresaId || filters.localidadId);
 
-  const totalActivos = incidentData.data.filter(
-    (i) => i.estadoRaw === "ABIERTO"
-  ).length;
-  const totalResueltos = incidentData.data.filter(
-    (i) => i.estadoRaw === "RESUELTO"
-  ).length;
-  const totalEmpresas = new Set(
-    incidentData.data.map((i) => i.empresa).filter(Boolean)
-  ).size;
-
   return (
-    <div className="min-h-dvh w-full flex flex-col bg-slate-50 dark:bg-slate-950">
+    <div className="flex w-full flex-col min-h-screen bg-slate-50/50 dark:bg-slate-950/50">
       {renderNotification()}
 
-      {/* Top bar */}
-      <div className="sticky top-0 z-30 w-full border-b bg-white/95 dark:bg-slate-900/90 backdrop-blur-sm shadow-sm dark:border-slate-800">
-        <div className="w-full px-3 sm:px-6 py-4">
+      {/* Header Bar */}
+      <div className="sticky top-0 z-30 w-full border-b bg-white/80 backdrop-blur-md shadow-sm dark:bg-slate-900/80 dark:border-slate-800 transition-all duration-300">
+        <div className="w-full px-4 sm:px-6 py-3">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            {/* Tabs + estado */}
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="inline-flex overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800 p-1">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => handleTabChange(tab)}
-                    className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${
-                      activeTab === tab
-                        ? "bg-white text-emerald-700 shadow-sm dark:bg-slate-900 dark:text-emerald-300"
-                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-700/60"
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                ))}
+            {/* Title / Brand area if needed, otherwise Tabs & Status */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Tabs */}
+              <div className="inline-flex rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+                {tabs.map((tab) => {
+                  const isActive = activeTab === tab;
+                  // const count = tab === "Actuales" ? totalActivos : (incidentData.meta.total || 0) - totalActivos; // Roughly
+                  return (
+                    <button
+                      key={tab}
+                      onClick={() => handleTabChange(tab)}
+                      className={`relative flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${isActive
+                        ? "bg-white text-slate-800 shadow-sm dark:bg-slate-700 dark:text-white"
+                        : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                        }`}
+                    >
+                      {tab}
+                      {/* Optional Badge */}
+                      {/* <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-slate-100 dark:bg-slate-600' : 'bg-slate-200 dark:bg-slate-700'}`}>
+                        {count}
+                      </span> */}
+                    </button>
+                  );
+                })}
               </div>
 
-              {hasActiveFilters && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200">
-                  <SlidersHorizontal className="h-3.5 w-3.5" />
-                  Filtros activos
-                </span>
-              )}
-
-              {canSeeEverything && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                  Vista global: todas las empresas y localidades
-                </span>
-              )}
-
+              {/* Last update pill */}
               {incidentData.lastUpdated && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                  <Clock className="h-3.5 w-3.5" />
-                  {incidentData.lastUpdated.toLocaleTimeString("es-ES", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-slate-50 border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
+                  <Clock className="h-3 w-3" />
+                  {incidentData.lastUpdated.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
                 </span>
               )}
 
-              {uiState.refreshing && (
-                <span className="inline-flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-300">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Actualizando...
-                </span>
-              )}
+              {/* Auto Refresh Toggle */}
+              <button
+                onClick={() => setUiState(p => ({ ...p, autoRefresh: !p.autoRefresh }))}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors ${uiState.autoRefresh
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-300"
+                  : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                  }`}
+                title="Auto refresh"
+              >
+                <RefreshCw className={`h-3 w-3 ${uiState.autoRefresh ? "animate-spin-slow" : ""}`} />
+                {uiState.autoRefresh ? "Auto" : "Manual"}
+              </button>
             </div>
 
-            {/* Search + controles rápidos */}
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative w-full xs:w-auto sm:w-72 md:w-80">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+            {/* Search & Actions */}
+            <div className="flex flex-1 items-center justify-end gap-3 w-full lg:w-auto">
+              <div className="relative w-full max-w-md group">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-emerald-500" />
                 <input
                   ref={searchRef}
                   value={filters.searchQuery}
-                  onChange={(e) =>
-                    handleFilterChange("searchQuery", e.target.value)
-                  }
-                  placeholder="Buscar incidentes... (/)"
-                  className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-4 text-sm shadow-sm outline-none transition-colors
-                             focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100
-                             dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-400 dark:focus:ring-emerald-900/40"
-                  aria-label="Buscar incidentes"
+                  onChange={(e) => handleFilterChange("searchQuery", e.target.value)}
+                  placeholder="Buscar por ID, empresa, via..."
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-10 pr-4 text-sm outline-none transition-all focus:border-emerald-500 focus:bg-white focus:ring-1 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800/50 dark:focus:bg-slate-900 dark:text-slate-100"
                 />
+                {filters.searchQuery && (
+                  <button
+                    onClick={() => handleFilterChange("searchQuery", "")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
               </div>
 
+              {/* Mobile Filter Toggle */}
               <button
-                onClick={() =>
-                  setUiState((prev) => ({
-                    ...prev,
-                    autoRefresh: !prev.autoRefresh,
-                  }))
-                }
-                className={`h-11 rounded-xl border px-4 text-sm font-semibold transition-colors
-                  ${
-                    uiState.autoRefresh
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200 dark:hover:bg-emerald-900/30"
-                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                onClick={() => setFiltersOpen(!filtersOpen)}
+                className={`lg:hidden p-2.5 rounded-xl border transition-colors ${filtersOpen || hasActiveFilters
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-600 dark:bg-emerald-900/20 dark:border-emerald-800"
+                  : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700"
                   }`}
-                aria-pressed={uiState.autoRefresh}
-                title="Auto refresh cada 30 segundos"
               >
-                <div className="inline-flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  <span className="hidden sm:inline">
-                    Auto {uiState.autoRefresh ? "ON" : "OFF"}
-                  </span>
-                </div>
+                <Filter className="h-4 w-4" />
               </button>
 
-              <button
-                onClick={handleRefresh}
-                disabled={uiState.refreshing}
-                className="h-11 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors dark:bg-emerald-700 dark:hover:bg-emerald-600"
-                title="Actualizar (Ctrl/⌘+R)"
-              >
-                <div className="inline-flex items-center gap-2">
-                  <RefreshCw
-                    className={`h-4 w-4 ${
-                      uiState.refreshing ? "animate-spin" : ""
-                    }`}
-                  />
-                  <span className="hidden sm:inline">Actualizar</span>
-                </div>
-              </button>
+              {/* Desktop Filter Bar (Visible only on LG) */}
+              <div className="hidden lg:flex items-center gap-2">
+                {!isLimitedClientView && (
+                  <>
+                    <SelectEnterprise
+                      value={filters.empresaId}
+                      onChange={(v: number | null) => handleFilterChange("empresaId", v)}
+                      options={catalogues.empresas}
+                    />
+                    <SelectLocality
+                      value={filters.localidadId}
+                      onChange={(v: number | null) => handleFilterChange("localidadId", v)}
+                      options={catalogues.localidades}
+                    />
+                  </>
+                )}
+                <button
+                  onClick={handleRefresh}
+                  disabled={uiState.refreshing}
+                  className="h-10 w-10 flex items-center justify-center rounded-xl bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-70 transition-colors dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 shadow-sm"
+                  title="Actualizar"
+                >
+                  <RefreshCw className={`h-4 w-4 ${uiState.refreshing ? "animate-spin" : ""}`} />
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Filters */}
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {/* Empresa */}
-            <div className="flex flex-col">
-              <label className="mb-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
-                Empresa
-              </label>
-              {isLimitedClientView ? (
-                <div className="h-11 rounded-xl border border-slate-300 bg-slate-50 px-4 flex items-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                  <BriefcaseBusiness className="h-4 w-4 text-emerald-600 dark:text-emerald-300 mr-3 flex-shrink-0" />
-                  <span className="truncate">
-                    {filters.empresaId
-                      ? catalogues.empresas.find(
-                          (o) => o.id === filters.empresaId
-                        )?.nombre || `Empresa #${filters.empresaId}`
-                      : "Todas las empresas"}
-                  </span>
-                </div>
-              ) : (
-                <select
-                  value={filters.empresaId ?? ""}
-                  onChange={(e) =>
-                    handleFilterChange(
-                      "empresaId",
-                      e.target.value === "" ? null : Number(e.target.value)
-                    )
-                  }
-                  className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm shadow-sm outline-none transition-colors
-                             focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100
-                             dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-emerald-900/40"
-                  disabled={catalogues.loading}
-                >
-                  <option value="">Todas las empresas</option>
-                  {catalogues.empresas.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.nombre}
-                    </option>
-                  ))}
-                </select>
+          {/* Mobile Collapsible Filters */}
+          <div className={`overflow-hidden transition-all duration-300 ease-in-out lg:hidden ${filtersOpen ? "max-h-60 opacity-100 mt-4" : "max-h-0 opacity-0"}`}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2">
+              {!isLimitedClientView && (
+                <>
+                  <SelectEnterprise
+                    value={filters.empresaId}
+                    onChange={(v: number | null) => handleFilterChange("empresaId", v)}
+                    options={catalogues.empresas}
+                    fullWidth
+                  />
+                  <SelectLocality
+                    value={filters.localidadId}
+                    onChange={(v: number | null) => handleFilterChange("localidadId", v)}
+                    options={catalogues.localidades}
+                    fullWidth
+                  />
+                </>
               )}
+              <button
+                onClick={handleClearFilters}
+                className="flex items-center justify-center gap-2 h-10 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                <X className="h-4 w-4" /> Limpiar filtros
+              </button>
+              <button
+                onClick={handleRefresh}
+                className="flex items-center justify-center gap-2 h-10 rounded-xl bg-slate-900 text-sm font-medium text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900"
+              >
+                Actualizar
+              </button>
             </div>
-
-            {/* Localidad */}
-            <div className="flex flex-col">
-              <label className="mb-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
-                Localidad
-              </label>
-              {isLimitedClientView ? (
-                <div className="h-11 rounded-xl border border-slate-300 bg-slate-50 px-4 flex items-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                  <MapPin className="h-4 w-4 text-emerald-600 dark:text-emerald-300 mr-3 flex-shrink-0" />
-                  <span className="truncate">
-                    {filters.localidadId
-                      ? catalogues.localidades.find(
-                          (o) => o.id === filters.localidadId
-                        )?.nombre || `Localidad #${filters.localidadId}`
-                      : "Todas las localidades"}
-                  </span>
-                </div>
-              ) : (
-                <select
-                  value={filters.localidadId ?? ""}
-                  onChange={(e) =>
-                    handleFilterChange(
-                      "localidadId",
-                      e.target.value === "" ? null : Number(e.target.value)
-                    )
-                  }
-                  className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm shadow-sm outline-none transition-colors
-                             focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100
-                             dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-emerald-900/40"
-                  disabled={catalogues.loading}
-                >
-                  <option value="">Todas las localidades</option>
-                  {catalogues.localidades.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.nombre}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-
-            {!isLimitedClientView && hasActiveFilters && (
-              <div className="flex flex-col justify-end">
-                <button
-                  onClick={handleClearFilters}
-                  className="h-11 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-600 px-4 text-sm font-semibold text-white hover:bg-slate-700 transition-colors dark:bg-slate-700 dark:hover:bg-slate-600"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Limpiar filtros
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </div>
 
-      {/* Main */}
-      <div className="flex-1 w-full px-3 sm:px-6 py-6 space-y-6">
-        {incidentData.error ? (
-          <div className="flex flex-col items-center justify-center gap-6 rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 to-rose-100 p-8 text-center dark:border-rose-900 dark:from-rose-950/40 dark:to-transparent">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-rose-100 dark:bg-rose-900/40">
-              <AlertTriangle className="h-8 w-8 text-rose-600 dark:text-rose-300" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-rose-800 dark:text-rose-200 mb-2">
-                Error de conectividad
-              </h3>
-              <p className="text-rose-600 dark:text-rose-300 mb-4 max-w-md">
-                No se pudieron cargar los incidentes. Verifica tu conexión e
-                intenta nuevamente.
-              </p>
-              <details className="text-left">
-                <summary className="cursor-pointer text-sm text-rose-500 hover:text-rose-600 dark:text-rose-300 dark:hover:text-rose-200 mb-2">
-                  Ver detalles técnicos
-                </summary>
-                <pre className="text-xs bg-rose-50 dark:bg-rose-950/30 p-3 rounded-lg overflow-auto max-h-32 text-rose-700 dark:text-rose-200">
-                  {prettyError(incidentData.error)}
-                </pre>
-              </details>
-            </div>
+      {/* Content Area */}
+      <div className="flex-1 w-full max-w-[1920px] mx-auto px-4 sm:px-6 py-6 space-y-6">
+
+        {/* STATS CARDS - Placed ABOVE table */}
+        {!incidentData.error && incidentData.data.length > 0 && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <StatCard
+              label="Total Incidentes"
+              value={incidentData.data.length}
+              icon={AlertTriangle}
+              color="slate"
+            />
+            <StatCard
+              label="Activos"
+              value={totalActivos}
+              icon={Clock}
+              color="emerald"
+            />
+            <StatCard
+              label="Resueltos"
+              value={totalResueltos}
+              icon={CheckCircle}
+              color="blue"
+            />
+            <StatCard
+              label="Empresas"
+              value={totalEmpresas}
+              icon={BriefcaseBusiness}
+              color="indigo"
+            />
+          </div>
+        )}
+
+        {/* Error State */}
+        {incidentData.error && (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-8 text-center dark:border-rose-900 dark:bg-rose-950/20">
+            <AlertTriangle className="mx-auto h-10 w-10 text-rose-500 mb-3 block" />
+            <h3 className="text-lg font-bold text-rose-800 dark:text-rose-200">Error de conexión</h3>
+            <p className="text-rose-600 dark:text-rose-300 mb-6">{prettyError(incidentData.error)}</p>
             <button
               onClick={() => fetchIncidents(incidentData.meta.page)}
-              disabled={incidentData.loading}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors dark:bg-emerald-700 dark:hover:bg-emerald-600"
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-700"
             >
-              {incidentData.loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-              Reintentar
+              <RefreshCw className="h-4 w-4" /> Reintentar
             </button>
           </div>
-        ) : (
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden relative dark:border-slate-700 dark:bg-slate-900">
-            {(incidentData.loading || isPending) && (
-              <div className="absolute inset-0 bg-white/75 dark:bg-slate-900/70 backdrop-blur-[1px] z-10 flex items-center justify-center">
-                <div className="flex flex-col items-center gap-3">
-                  <Loader2 className="h-7 w-7 animate-spin text-emerald-600 dark:text-emerald-300" />
-                  <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                    Cargando incidentes...
-                  </span>
-                </div>
-              </div>
-            )}
+        )}
 
-            {incidentData.data.length > 0 && (
-              <div className="border-b border-slate-100 bg-slate-50 px-4 sm:px-6 py-3 sm:py-4 dark:border-slate-800 dark:bg-slate-800/60">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                      {filteredIncidents.length === incidentData.data.length
-                        ? `${incidentData.data.length} incidente${
-                            incidentData.data.length !== 1 ? "s" : ""
-                          }`
-                        : `${filteredIncidents.length} de ${incidentData.data.length} incidentes`}
-                    </span>
-                    {filters.searchQuery && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200">
-                        <Search className="h-3 w-3" />
-                        Filtrado por: &quot;{filters.searchQuery}&quot;
-                      </span>
-                    )}
-                  </div>
-                  {incidentData.meta.total && (
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                      Página {incidentData.meta.page} de{" "}
-                      {incidentData.meta.totalPages} ({incidentData.meta.total}{" "}
-                      total)
-                    </span>
-                  )}
+        {/* Table Container */}
+        {!incidentData.error && (
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden relative dark:border-slate-800 dark:bg-slate-900 animate-in fade-in duration-700">
+            {(incidentData.loading || isPending) && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 backdrop-blur-[2px] dark:bg-slate-900/60">
+                <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-xl flex flex-col items-center gap-3 border border-slate-100 dark:border-slate-700">
+                  <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">Cargando...</span>
                 </div>
               </div>
             )}
@@ -1032,88 +875,15 @@ export default function IncidenteController() {
                   onPageChange={handlePageChange}
                   onRefresh={handleRefresh}
                   refreshing={uiState.refreshing}
-                  emptyStateText={
-                    activeTab === "Actuales"
-                      ? "No hay incidentes activos en este momento"
-                      : "No hay incidentes pasados registrados"
-                  }
+                  emptyStateText={activeTab === "Actuales" ? "No hay incidentes activos" : "No hay incidentes pasados"}
                 />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Resumen rápido */}
-        {incidentData.data.length > 0 && !incidentData.error && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="rounded-xl bg-white border border-slate-200 p-4 dark:bg-slate-900 dark:border-slate-700">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
-                    Total visibles
-                  </p>
-                  <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                    {incidentData.data.length}
-                  </p>
-                </div>
-                <div className="h-10 w-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-                  <AlertTriangle className="h-5 w-5 text-slate-600 dark:text-slate-300" />
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-white border border-slate-200 p-4 dark:bg-slate-900 dark:border-slate-700">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-bold text-emerald-600 dark:text-emerald-300 uppercase tracking-wide">
-                    Activos
-                  </p>
-                  <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
-                    {totalActivos}
-                  </p>
-                </div>
-                <div className="h-10 w-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-                  <Clock className="h-5 w-5 text-emerald-600 dark:text-emerald-300" />
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-white border border-slate-200 p-4 dark:bg-slate-900 dark:border-slate-700">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-bold text-blue-600 dark:text-blue-300 uppercase tracking-wide">
-                    Resueltos
-                  </p>
-                  <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">
-                    {totalResueltos}
-                  </p>
-                </div>
-                <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                  <CheckCircle className="h-5 w-5 text-blue-600 dark:text-blue-300" />
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-white border border-slate-200 p-4 dark:bg-slate-900 dark:border-slate-700">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
-                    Empresas en vista
-                  </p>
-                  <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                    {totalEmpresas}
-                  </p>
-                </div>
-                <div className="h-10 w-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-                  <BriefcaseBusiness className="h-5 w-5 text-slate-600 dark:text-slate-300" />
-                </div>
               </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Bloqueador inteligente */}
+      {/* Smart Blocker Modal */}
       {uiState.blockerVisible && uiState.selectedIncident && (
         <SmartIncidentBlocker
           key={`${uiState.selectedIncident.id}-${modalKey}`}
@@ -1121,16 +891,80 @@ export default function IncidenteController() {
           operatorComment={uiState.selectedIncident.operadorComentario}
           onResolve={(comments) => handleIncidentAction("resolve", comments)}
           onContinue={() => {
-            setUiState((prev) => ({
-              ...prev,
-              blockerVisible: false,
-              selectedIncident: null,
-            }));
+            setUiState((p) => ({ ...p, blockerVisible: false, selectedIncident: null }));
             setModalKey((k) => k + 1);
           }}
           onSkip={() => handleIncidentAction("skip")}
         />
       )}
+    </div>
+  );
+}
+
+/* === SUBCOMPONENTS (Clean & Isolated) === */
+
+function StatCard({ label, value, icon: Icon, color }: { label: string, value: number, icon: any, color: "slate" | "emerald" | "blue" | "indigo" }) {
+  const styles = {
+    slate: "from-slate-500 to-slate-700 shadow-slate-500/20",
+    emerald: "from-emerald-500 to-emerald-700 shadow-emerald-500/20",
+    blue: "from-blue-500 to-blue-700 shadow-blue-500/20",
+    indigo: "from-indigo-500 to-indigo-700 shadow-indigo-500/20",
+  };
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 group">
+      <div className={`absolute top-0 right-0 p-3 opacity-10 transition-transform group-hover:scale-110`}>
+        <Icon className="h-24 w-24" />
+      </div>
+
+      <div className="relative z-10 flex items-start justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1 opacity-80">{label}</p>
+          <p className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">{value}</p>
+        </div>
+        <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${styles[color]} text-white shadow-lg`}>
+          <Icon className="h-6 w-6" />
+        </div>
+      </div>
+
+      {/* Glass shine effect */}
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+    </div>
+  );
+}
+
+function SelectEnterprise({ value, onChange, options, fullWidth }: any) {
+  return (
+    <div className={`relative ${fullWidth ? "w-full" : "w-48"}`}>
+      <select
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
+        className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3 pr-8 text-sm font-medium text-slate-700 shadow-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+      >
+        <option value="">Todas las Empresas</option>
+        {options.map((o: any) => (
+          <option key={o.id} value={o.id}>{o.nombre}</option>
+        ))}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+    </div>
+  );
+}
+
+function SelectLocality({ value, onChange, options, fullWidth }: any) {
+  return (
+    <div className={`relative ${fullWidth ? "w-full" : "w-48"}`}>
+      <select
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
+        className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3 pr-8 text-sm font-medium text-slate-700 shadow-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+      >
+        <option value="">Todas las Localidades</option>
+        {options.map((o: any) => (
+          <option key={o.id} value={o.id}>{o.nombre}</option>
+        ))}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
     </div>
   );
 }
