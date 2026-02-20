@@ -90,6 +90,9 @@ export default function CrearMovimiento() {
     setRol(role);
 
     const locCookie = Number(Movimiento.getCookie("locId") || NaN);
+    const empCookie = Number(Movimiento.getCookie("empresaId") || NaN);
+    // Fallback: leer userId directo del cookie cuando localStorage no tiene user.id
+    const userIdCookie = Number(Movimiento.getCookie("userId") || NaN);
 
     const uRaw = typeof window !== "undefined" ? localStorage.getItem("user") : null;
     let u: any = null;
@@ -99,32 +102,69 @@ export default function CrearMovimiento() {
 
     const isAdminOrCoord = ["ADMINISTRADOR", "COORDINADOR"].includes(String(role).toUpperCase());
 
+    // Resolver userId con fallback: localStorage → cookie userId
+    const resolvedUserId = Number.isFinite(Number(u?.id))
+      ? Number(u.id)
+      : (Number.isFinite(userIdCookie) ? userIdCookie : null);
+
     const base: MovementFormData = {
       ...baseInitialForm,
-      creadoPorId: u?.id ?? null,
-      clienteId: u?.id ?? null,
-      empresaId: isAdminOrCoord ? null : (Number.isFinite(Number(u?.empresaId ?? u?.empresa?.id)) ? Number(u?.empresaId ?? u?.empresa?.id) : null),
+      creadoPorId: resolvedUserId,
+      clienteId: resolvedUserId,
+      empresaId: isAdminOrCoord
+        ? null
+        : (Number.isFinite(Number(u?.empresaId ?? u?.empresa?.id))
+          ? Number(u?.empresaId ?? u?.empresa?.id)
+          : (Number.isFinite(empCookie) ? empCookie : null)),
       selectedLocalityId: isAdminOrCoord ? null : (Number.isFinite(locCookie) ? locCookie : null),
     };
 
-    setForm((prev) => ({ ...base, ...prev }));
+    // Al restaurar el draft, forzar siempre los campos de sesión (no dejar que null del draft los tape)
+    setForm((prev) => ({
+      ...base,
+      ...prev,
+      // Estos siempre vienen del servidor/sesión, NO del draft
+      creadoPorId: base.creadoPorId ?? prev.creadoPorId,
+      clienteId: base.clienteId ?? prev.clienteId,
+      empresaId: !isAdminOrCoord ? (base.empresaId ?? prev.empresaId) : prev.empresaId,
+      selectedLocalityId: !isAdminOrCoord ? (base.selectedLocalityId ?? prev.selectedLocalityId) : prev.selectedLocalityId,
+    }));
   }, []);
 
   /** IDs efectivos blindados por permisos */
+  const isPos = (n: number) => Number.isFinite(n) && n > 0;
   const resolvedIds = useMemo(() => {
     const role = String(rol).toUpperCase();
+    // Siempre usar ?? NaN para evitar que Number(null) = 0
     const forcedEmpresa = Number(user?.empresaId ?? user?.empresa?.id ?? NaN);
+    const cookieEmp = Number(Movimiento.getCookie("empresaId") || NaN);
     const cookieLoc = Number(Movimiento.getCookie("locId") || NaN);
+    const cookieUserId = Number(Movimiento.getCookie("userId") || NaN);
 
+    // empresaId: form(>0) → user state → cookie → form sin filtro
+    const rawFormEmp = Number(form.empresaId ?? NaN);
     const empresaId = ADMIN_OR_COORD.includes(role)
-      ? Number(form.empresaId ?? NaN)
-      : Number(isFinite(forcedEmpresa) ? forcedEmpresa : NaN);
+      ? (isPos(rawFormEmp) ? rawFormEmp : NaN)
+      : (isPos(forcedEmpresa)
+        ? forcedEmpresa
+        : isPos(cookieEmp)
+          ? cookieEmp
+          : isPos(rawFormEmp) ? rawFormEmp : NaN);
 
-    const creadoPorId = Number(form.creadoPorId ?? user?.id ?? NaN);
+    // creadoPorId: form(>0) → user state(>0) → cookie userId(>0)
+    const rawFormUser = Number(form.creadoPorId ?? NaN);
+    const rawStateUser = Number(user?.id ?? NaN);
+    const creadoPorId = isPos(rawFormUser)
+      ? rawFormUser
+      : isPos(rawStateUser)
+        ? rawStateUser
+        : isPos(cookieUserId) ? cookieUserId : NaN;
 
+    // localidadId: admin elige, cliente del cookie
+    const rawFormLoc = Number(form.selectedLocalityId ?? NaN);
     const localidadId = ADMIN_OR_COORD.includes(role)
-      ? Number(form.selectedLocalityId ?? NaN)
-      : Number(isFinite(cookieLoc) ? cookieLoc : NaN);
+      ? (isPos(rawFormLoc) ? rawFormLoc : NaN)
+      : (isPos(cookieLoc) ? cookieLoc : isPos(rawFormLoc) ? rawFormLoc : NaN);
 
     return { empresaId, creadoPorId, localidadId };
   }, [form.empresaId, form.creadoPorId, form.selectedLocalityId, user, rol]);
@@ -149,7 +189,8 @@ export default function CrearMovimiento() {
         setLocalidades(lList);
 
         setForm((p) => {
-          let empresaId = p.empresaId ?? (user?.empresaId ?? user?.empresa?.id ?? null);
+          const empCookie = Number(Movimiento.getCookie("empresaId") || NaN);
+          let empresaId = p.empresaId ?? (user?.empresaId ?? user?.empresa?.id ?? (Number.isFinite(empCookie) ? empCookie : null));
           if (ADMIN_OR_COORD.includes(String(getRoleClient()).toUpperCase())) {
             // Admin/Coord elige libremente; si hay 1 sola opción, autoselecciona.
             if (!Number.isFinite(Number(empresaId)) && eList.length === 1) empresaId = eList[0].id;
@@ -400,9 +441,13 @@ export default function CrearMovimiento() {
   const submit = useCallback(async () => {
     const { empresaId, creadoPorId, localidadId } = resolvedIds;
 
-    // Validaciones duras
-    if (!Number.isFinite(empresaId) || !Number.isFinite(creadoPorId) || !Number.isFinite(localidadId)) {
-      alert("Faltan IDs requeridos (empresa, usuario o localidad).");
+    // Validaciones duras — usar isPos para rechazar 0 también
+    const missing: string[] = [];
+    if (!isPos(empresaId)) missing.push(`empresaId(${empresaId})`);
+    if (!isPos(creadoPorId)) missing.push(`userId(${creadoPorId})`);
+    if (!isPos(localidadId)) missing.push(`localidadId(${localidadId})`);
+    if (missing.length > 0) {
+      alert(`Faltan IDs requeridos: ${missing.join(", ")}. Cierra sesión y vuelve a entrar.`);
       return;
     }
     if (!form.locomotiveNumber.trim()) {
@@ -860,16 +905,48 @@ function StepOne(props: {
   const [altaOpen, setAltaOpen] = useState(false);
   const [altaPwd, setAltaPwd] = useState("");
   const [altaErr, setAltaErr] = useState<string | null>(null);
+  const getEmpId = () => {
+    // form.empresaId: usar ?? NaN para que null no se convierta en 0
+    const fromForm = Number(form.empresaId ?? NaN);
+    if (Number.isFinite(fromForm) && fromForm > 0) return fromForm;
+    const fromCookie = Number(Movimiento.getCookie("empresaId") || NaN);
+    if (Number.isFinite(fromCookie) && fromCookie > 0) return fromCookie;
+    try {
+      const rawUser = localStorage.getItem("user");
+      if (rawUser) {
+        const u = JSON.parse(rawUser);
+        const uid = Number(u?.empresaId ?? u?.empresa?.id ?? NaN);
+        if (Number.isFinite(uid) && uid > 0) return uid;
+        const uname = String(u?.empresa?.nombre || "").trim().toLowerCase();
+        if (uname) {
+          const match = empresas.find((e) => String(e?.nombre || "").trim().toLowerCase() === uname);
+          if (match && Number.isFinite(Number(match.id)) && Number(match.id) > 0) return Number(match.id);
+        }
+      }
+      // También intentar localStorage.empresaId directo
+      const rawEmpId = Number(localStorage.getItem("empresaId") ?? NaN);
+      if (Number.isFinite(rawEmpId) && rawEmpId > 0) return rawEmpId;
+    } catch { }
+    const byName = String(userCompanyName || "").trim().toLowerCase();
+    if (byName) {
+      const match = empresas.find((e) => String(e?.nombre || "").trim().toLowerCase() === byName);
+      if (match && Number.isFinite(Number(match.id)) && Number(match.id) > 0) return Number(match.id);
+    }
+    return NaN;
+  };
 
   const handlePriorityToggle = (checked: boolean) => {
     if (!checked) {
       setForm((p) => ({ ...p, priority: false }));
       return;
     }
-    const empId = Number(form.empresaId);
+    const empId = getEmpId();
     if (!Number.isFinite(empId)) {
       alert("Selecciona una empresa antes de marcar prioridad alta.");
       return;
+    }
+    if (!canManageAll && !Number.isFinite(Number(form.empresaId))) {
+      setForm((p) => ({ ...p, empresaId: empId }));
     }
     setAltaPwd("");
     setAltaErr(null);
@@ -877,7 +954,7 @@ function StepOne(props: {
   };
 
   const confirmAltaPwd = () => {
-    const empId = Number(form.empresaId);
+    const empId = getEmpId();
     const expected = ALTA_PASSWORDS[empId];
     if (!expected) {
       setAltaErr("No hay contraseña configurada para esta empresa.");

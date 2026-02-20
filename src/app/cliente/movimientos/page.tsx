@@ -7,7 +7,8 @@ export const dynamic = "force-dynamic";
 
 export default async function Page() {
   const c = await cookies();
-  const token = c.get(process.env.JWT_COOKIE_NAME ?? "token")?.value;
+  const cookieName = process.env.JWT_COOKIE_NAME ?? "token";
+  const token = c.get(cookieName)?.value;
   if (!token) redirect("/login");
 
   const empIdCookie =
@@ -16,7 +17,7 @@ export default async function Page() {
     null;
 
   if (empIdCookie == null) {
-    redirect("/login?loc=supervisor");
+    redirect("/login?loc=cliente");
   }
 
   return (
@@ -37,7 +38,8 @@ export default async function Page() {
       >
         <MovimientosPanel
           apiBase="/bff"
-          rol="SUPERVISOR"
+          rol="CLIENTE"
+          token={token}
           empresaIdUsuario={empIdCookie}
           puedeCrear
           intervaloAutoMs={15000}

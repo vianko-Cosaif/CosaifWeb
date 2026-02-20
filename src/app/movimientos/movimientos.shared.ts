@@ -125,8 +125,8 @@ export type EditablePayload = Partial<{
   posicionCabina: Posicion;
   posicionChimenea: Posicion;
   direccionEmpuje: Direccion;
-  torno:boolean;
-  lavado:boolean
+  torno: boolean;
+  lavado: boolean
 }>;
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "/xapi";
 export const SECC_BASE = `${API_BASE}/secciones/secciones`;

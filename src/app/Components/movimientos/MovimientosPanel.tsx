@@ -256,9 +256,16 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
 
   const handleEditar = useCallback(
     (id: number) => {
-      router.push(`/cliente/editar?id=${id}`);
+      const BASE: Record<string, string> = {
+        ADMINISTRADOR: "/administrador",
+        COORDINADOR: "/coordinador",
+        SUPERVISOR: "/supervisor",
+        CLIENTE: "/cliente",
+      };
+      const base = BASE[String(rol).toUpperCase()] ?? "/cliente";
+      router.push(`${base}/editar?id=${id}`);
     },
-    [router]
+    [router, rol]
   );
 
   const handleToggleAuto = useCallback((_activo: boolean) => {
