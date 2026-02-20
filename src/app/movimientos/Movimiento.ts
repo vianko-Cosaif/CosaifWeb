@@ -14,6 +14,8 @@ export class Movimiento {
   static readonly PASSWORDS: Record<number, string> = {
     1: "ALTA-EMPRESA-1",
     2: "ALTA-EMPRESA-2",
+    3: "ALTA-EMPRESA-3",
+    4: "ALTA-EMPRESA-4"
   };
 
   // El estado inicial como un método estático que devuelve un objeto nuevo
