@@ -1,0 +1,558 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Movimiento } from "../Movimiento";
+import { API_BASE, DOUBLE_TAP_MS, baseInitialForm, roleBase, type MovementFormData, type Seccion } from "../movimientos.shared";
+import type { CrearMovimientoController, CrearMovimientoStep, LocomotoraBloqueada } from "./controller.types";
+import { applyCatalogDefaults, resolveIds, validateStep1Data, validateStep2Data } from "./crearMovimiento.domain";
+import { getRoleClient, readStoredUserClient, useCrearMovimientoSession } from "./useCrearMovimientoSession";
+import { useCrearMovimientoCatalogos } from "./useCrearMovimientoCatalogos";
+import { useCrearMovimientoDraft } from "./useCrearMovimientoDraft";
+import { useCrearMovimientoOutbox } from "./useCrearMovimientoOutbox";
+import { useCrearMovimientoSubmit } from "./useCrearMovimientoSubmit";
+import {
+  resolveTornoProfile,
+  TORNO_PROFILE_FIELDS,
+  TORNO_PROFILE_META,
+} from "./tornoProfiles";
+import { downloadTornoPdf } from "./tornoPdf";
+import {
+  DEFAULT_TORNO_MEDICION_STATE,
+  EMPTY_TORNO_ROW,
+  EMPTY_TORNO_VALUE,
+  normalizeTornoMeasureValue,
+  sanitizeTornoMeasurePart,
+  type TornoMeasurementField,
+  type TornoMeasurementPart,
+  type TornoMedicionState,
+  type TornoWheelCount,
+  type TornoWheelPosition,
+} from "./tornoMedicion.types";
+
+export type {
+  CrearMovimientoStep,
+  SelectionMode,
+  LocomotoraBloqueada,
+  UserSession,
+  ResolvedIds,
+} from "./controller.types";
+
+type MovimientoLookup = { locomotiveNumber?: number | string | null };
+
+function readLocomotiveNumber(raw: unknown): number {
+  if (!raw || typeof raw !== "object") return 0;
+  const obj = raw as MovimientoLookup;
+  return Number(obj.locomotiveNumber ?? 0);
+}
+
+/**
+ * Controlador declarativo del flujo "Crear Movimiento".
+ * Compone sub-hooks especializados para mantener este archivo liviano.
+ *
+ * Arquitectura interna (orquestacion):
+ * - Session hook: identidad, rol y bloqueos por permisos.
+ * - Catalogos hook: empresas/localidades/vias/secciones.
+ * - Draft hook: persistencia local de progreso.
+ * - Outbox hook: resiliencia offline.
+ * - Submit hook: envio final y redireccion.
+ *
+ * Regla de diseno:
+ * - Este archivo coordina; no concentra reglas puras complejas.
+ */
+export function useCrearMovimientoController(): CrearMovimientoController {
+  const [step, setStep] = useState<CrearMovimientoStep>(1);
+  const [form, setForm] = useState<MovementFormData>(baseInitialForm);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const [showFromOpts, setShowFromOpts] = useState(false);
+  const [showToOpts, setShowToOpts] = useState(false);
+  const [selectionMode, setSelectionMode] = useState<"de_via" | "para_via">("de_via");
+  const [fromSection, setFromSection] = useState<number | undefined>(undefined);
+  const [toSection, setToSection] = useState<number | undefined>(undefined);
+  const [locoLockedBy, setLocoLockedBy] = useState<LocomotoraBloqueada | null>(null);
+  const [tornoMedicion, setTornoMedicion] = useState<TornoMedicionState>(() => ({
+    wheelCount: DEFAULT_TORNO_MEDICION_STATE.wheelCount,
+    rows: {},
+  }));
+  const [tornoStep2Completed, setTornoStep2Completed] = useState(false);
+  const [tornoMovimientoId, setTornoMovimientoId] = useState<number | null>(null);
+  const [tornoPdfSending, setTornoPdfSending] = useState(false);
+  const [tornoPdfStatus, setTornoPdfStatus] = useState<string | null>(null);
+  const isService = !!form.service;
+  const hasTornoPdfStep = form.service === "Torno" && selectionMode === "de_via";
+  const maxStep: CrearMovimientoStep = hasTornoPdfStep ? 4 : 3;
+
+  /** Capa 1: sesion/permisos. */
+  const {
+    rol,
+    user,
+    userCompanyName,
+    canManageAll,
+    adminRoles,
+    initFormLocked,
+    enforceLockedLocality,
+  } = useCrearMovimientoSession(setForm);
+
+  /** Capa 2: catalogos y datos operativos. */
+  const {
+    empresas,
+    localidades,
+    vias,
+    sectionsByVia,
+    secLoading,
+    loadCatalogos,
+    ensureSections,
+  } = useCrearMovimientoCatalogos(form.selectedLocalityId);
+
+  /** Capa 3: conectividad y cola offline. */
+  const {
+    online,
+    pendingCount,
+    banner,
+    flushOutbox,
+    pushOutbox,
+    clearOutbox,
+    hydratePendingCount,
+  } = useCrearMovimientoOutbox();
+
+  /** Capa 4: persistencia local del wizard. */
+  const { hydrateDraft, clearDraft } = useCrearMovimientoDraft({
+    form,
+    fromSection,
+    toSection,
+    locoLockedBy,
+    tornoMedicion,
+    tornoStep2Completed,
+    tornoMovimientoId,
+    setForm,
+    setFromSection,
+    setToSection,
+    setLocoLockedBy,
+    setTornoMedicion,
+    setTornoStep2Completed,
+    setTornoMovimientoId,
+  });
+
+  /**
+   * Capa 5: normalizacion de IDs para operaciones de negocio.
+   * Se evalua en memoria y no produce side effects.
+   */
+  const resolvedIds = useMemo(() => {
+    const cookieEmp = Number(Movimiento.getCookie("empresaId") || NaN);
+    const cookieLoc = Number(Movimiento.getCookie("locId") || NaN);
+    const cookieUserId = Number(Movimiento.getCookie("userId") || NaN);
+
+    return resolveIds({
+      rol,
+      adminRoles,
+      form,
+      user,
+      cookieEmp,
+      cookieLoc,
+      cookieUserId,
+    });
+  }, [rol, adminRoles, form, user]);
+
+  /**
+   * Bootstrap del flujo:
+   * 1) Aplica sesion bloqueada.
+   * 2) Descarga catalogos.
+   * 3) Aplica defaults de catalogo.
+   * 4) Rehidrata draft y contador offline.
+   */
+  const didBootstrapRef = useRef(false);
+  useEffect(() => {
+    if (didBootstrapRef.current) return;
+    didBootstrapRef.current = true;
+
+    let alive = true;
+
+    initFormLocked();
+
+    (async () => {
+      try {
+        const { eList, lList } = await loadCatalogos();
+        if (!alive) return;
+
+        const role = getRoleClient();
+        const userSnapshot = readStoredUserClient();
+        const cookieEmp = Number(Movimiento.getCookie("empresaId") || NaN);
+
+        setForm((prev) => applyCatalogDefaults({
+          form: prev,
+          user: userSnapshot,
+          adminRoles,
+          role,
+          empresas: eList,
+          localidades: lList,
+          cookieEmp,
+        }));
+      } catch { }
+
+      if (!alive) return;
+      hydrateDraft();
+      hydratePendingCount();
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [
+    initFormLocked,
+    loadCatalogos,
+    hydrateDraft,
+    hydratePendingCount,
+    adminRoles,
+  ]);
+
+  /** Guarda de permisos: re-aplica localidad bloqueada cuando corresponde. */
+  useEffect(() => {
+    enforceLockedLocality();
+  }, [enforceLockedLocality]);
+
+  /** Regla UI: modo y vias deben permanecer consistentes cuando hay servicio. */
+  useEffect(() => {
+    if (!form.service) return;
+
+    if (selectionMode === "de_via") {
+      setForm((p) => ({ ...p, toTrack: null }));
+      setToSection(undefined);
+      setShowToOpts(false);
+    } else {
+      setForm((p) => ({ ...p, fromTrack: null }));
+      setFromSection(undefined);
+      setShowFromOpts(false);
+    }
+  }, [selectionMode, form.service]);
+
+  /** Si el flujo deja de ser Torno+De via, invalida el paso PDF y su estado temporal. */
+  useEffect(() => {
+    if (hasTornoPdfStep) return;
+    if (step === 4) setStep(3);
+    setTornoStep2Completed(false);
+    setTornoMovimientoId(null);
+    setTornoPdfSending(false);
+    setTornoPdfStatus(null);
+  }, [hasTornoPdfStep, step]);
+
+  /** Invalida seccion destino ante cambio de via destino. */
+  useEffect(() => {
+    setToSection(undefined);
+    if (form.toTrack) ensureSections(form.toTrack);
+  }, [form.toTrack, ensureSections]);
+
+  const lastTap = useRef<Record<string, number>>({});
+  const tapToggle = useCallback((key: string, onSingle: () => void, onDouble: () => void) => {
+    const now = Date.now();
+    const last = lastTap.current[key] || 0;
+    if (now - last < DOUBLE_TAP_MS) onDouble(); else onSingle();
+    lastTap.current[key] = now;
+  }, []);
+
+  const viaName = useCallback(
+    (id?: number | null) => (id ? vias.find((v) => v.id === id)?.nombre || "" : ""),
+    [vias]
+  );
+  const selectedCompanyName = useMemo(
+    () => empresas.find((empresa) => empresa.id === form.empresaId)?.nombre || userCompanyName || "",
+    [empresas, form.empresaId, userCompanyName]
+  );
+
+  /**
+   * Seleccion de seccion origen.
+   * Si la seccion esta ocupada, intenta propagar locomotora para evitar inconsistencias.
+   */
+  const selectFromSection = useCallback(async (s: Seccion) => {
+    const willSelect = fromSection !== s.numero;
+    const newVal = willSelect ? s.numero : undefined;
+    setFromSection(newVal);
+
+    if (willSelect && s.ocupada && s.movimientoId) {
+      const locoIn = Number(s.movimiento?.locomotiveNumber ?? 0);
+      if (locoIn > 0) {
+        setForm((p) => ({ ...p, locomotiveNumber: String(locoIn) }));
+        setLocoLockedBy({ movimientoId: s.movimientoId, viaId: form.fromTrack!, numero: s.numero });
+        return;
+      }
+
+      try {
+        const mov = await Movimiento.fetchJSON(`${API_BASE}/movimientos/${s.movimientoId}`);
+        const loco = readLocomotiveNumber(mov);
+        if (loco > 0) {
+          setForm((p) => ({ ...p, locomotiveNumber: String(loco) }));
+          setLocoLockedBy({ movimientoId: s.movimientoId, viaId: form.fromTrack!, numero: s.numero });
+        }
+      } catch { }
+    } else {
+      if (locoLockedBy && locoLockedBy.viaId === form.fromTrack && locoLockedBy.numero === s.numero) {
+        setLocoLockedBy(null);
+      }
+    }
+  }, [fromSection, form.fromTrack, locoLockedBy]);
+
+  /** Valida step 1 delegando a dominio puro. */
+  const validate1 = useCallback(() => {
+    const next = validateStep1Data({
+      canManageAll,
+      resolvedIds,
+      form,
+      selectionMode,
+    });
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  }, [canManageAll, resolvedIds, form, selectionMode]);
+
+  /** Valida step 2 delegando a dominio puro. */
+  const validate2 = useCallback(() => {
+    const next = validateStep2Data({ form });
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  }, [form]);
+
+  /** Ajusta cantidad de ruedas del Step Torno sin perder filas ya capturadas. */
+  const setTornoWheelCount = useCallback((count: TornoWheelCount) => {
+    setTornoMedicion((prev) => (prev.wheelCount === count ? prev : { ...prev, wheelCount: count }));
+  }, []);
+
+  /** Upsert tipado de una celda de medicion de ruedas (sanitizado local). */
+  const updateTornoMedicion = useCallback(
+    (
+      position: TornoWheelPosition,
+      field: TornoMeasurementField,
+      part: TornoMeasurementPart,
+      value: string
+    ) => {
+      const cleanPartValue = sanitizeTornoMeasurePart(part, value);
+
+      setTornoMedicion((prev) => {
+        const prevRow = prev.rows[position] ?? EMPTY_TORNO_ROW;
+        const prevValue = prevRow[field] ?? EMPTY_TORNO_VALUE;
+        const nextValue = normalizeTornoMeasureValue({
+          ...prevValue,
+          [part]: cleanPartValue,
+        });
+        if (
+          prevValue.whole === nextValue.whole &&
+          prevValue.num === nextValue.num &&
+          prevValue.den === nextValue.den
+        ) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          rows: {
+            ...prev.rows,
+            [position]: {
+              ...prevRow,
+              [field]: nextValue,
+            },
+          },
+        };
+      });
+    },
+    []
+  );
+
+  /** Reinicia mediciones Torno en memoria local. */
+  const clearTornoMedicion = useCallback(() => {
+    setTornoMedicion({
+      wheelCount: DEFAULT_TORNO_MEDICION_STATE.wheelCount,
+      rows: {},
+    });
+  }, []);
+
+  /** Limpieza post-submit exitoso (estado temporal del wizard). */
+  const onSubmitSuccess = useCallback(
+    ({ movimientoId }: { movimientoId: number }) => {
+      if (hasTornoPdfStep) {
+        setTornoStep2Completed(true);
+        setTornoMovimientoId(Number.isFinite(movimientoId) && movimientoId > 0 ? movimientoId : 0);
+        setTornoPdfStatus(null);
+        setStep(4);
+        return;
+      }
+
+      clearDraft();
+      setFromSection(undefined);
+      setToSection(undefined);
+      setLocoLockedBy(null);
+      clearTornoMedicion();
+      setTornoStep2Completed(false);
+      setTornoMovimientoId(null);
+      setTornoPdfStatus(null);
+      setTornoPdfSending(false);
+      setStep(1);
+    },
+    [clearDraft, clearTornoMedicion, hasTornoPdfStep]
+  );
+
+  /** Capa 6: envio final. */
+  const { sending, submit } = useCrearMovimientoSubmit({
+    form,
+    resolvedIds,
+    selectionMode,
+    fromSection,
+    toSection,
+    rol,
+    userId: user?.id,
+    viaName,
+    pushOutbox,
+    onSuccess: onSubmitSuccess,
+    redirectOnSuccess: !hasTornoPdfStep,
+  });
+
+  /** Submit de Step 3: evita recrear movimiento si ya existe en flujo Torno+PDF. */
+  const submitStepThree = useCallback(async () => {
+    if (hasTornoPdfStep && tornoMovimientoId !== null) {
+      setStep(4);
+      return;
+    }
+    await submit();
+  }, [hasTornoPdfStep, tornoMovimientoId, submit]);
+
+  const label = hasTornoPdfStep
+    ? (["Paso 1 de 4", "Paso 2 de 4", "Paso 3 de 4", "Paso 4 de 4"] as const)[step - 1]
+    : (["Paso 1 de 3", "Paso 2 de 3", "Paso 3 de 3"] as const)[Math.min(step, 3) - 1];
+
+  const lockedClienteMissingData = !canManageAll && !Number.isFinite(Number(Movimiento.getCookie("locId") || NaN));
+
+  /** Shortcut de envio en step final. */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "enter" && step === 3 && !sending) {
+        e.preventDefault();
+        submitStepThree();
+      }
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [step, sending, submitStepThree]);
+
+  const goSalir = useCallback(() => {
+    window.location.assign(`${roleBase(rol)}/movimientos`);
+  }, [rol]);
+
+  const goPrev = useCallback(() => {
+    setStep((s) => (s === 1 ? 1 : ((s - 1) as CrearMovimientoStep)));
+  }, []);
+
+  const goNext = useCallback(() => {
+    if (step >= maxStep) return;
+    if (step === 1 && !validate1()) return;
+    if (step === 2 && !validate2()) return;
+    if (hasTornoPdfStep && step === 2) {
+      setTornoStep2Completed(true);
+      if (tornoMovimientoId !== null) {
+        setStep(4);
+        return;
+      }
+    }
+    setStep((s) => {
+      const next = (s + 1) as CrearMovimientoStep;
+      return next > maxStep ? maxStep : next;
+    });
+  }, [step, validate1, validate2, maxStep, hasTornoPdfStep, tornoMovimientoId]);
+
+  const goBackToTornoMedicion = useCallback(() => {
+    if (!hasTornoPdfStep) return;
+    setStep(2);
+    setTornoPdfStatus(null);
+  }, [hasTornoPdfStep]);
+
+  const generateTornoPdf = useCallback(async () => {
+    if (!hasTornoPdfStep || tornoPdfSending) return;
+    setTornoPdfSending(true);
+    setTornoPdfStatus("Generando PDF...");
+
+    try {
+      const profile = resolveTornoProfile(selectedCompanyName);
+      const fileName = downloadTornoPdf({
+        locomotiveNumber: form.locomotiveNumber,
+        movimientoId: tornoMovimientoId,
+        comments: form.comments || "",
+        tornoMedicion,
+        columns: TORNO_PROFILE_FIELDS[profile],
+        profileTitle: TORNO_PROFILE_META[profile].title,
+      });
+      setTornoPdfStatus(`PDF generado: ${fileName}`);
+    } catch {
+      setTornoPdfStatus("No se pudo generar el PDF. Intenta nuevamente.");
+    } finally {
+      setTornoPdfSending(false);
+    }
+  }, [hasTornoPdfStep, tornoPdfSending, selectedCompanyName, form.locomotiveNumber, form.comments, tornoMovimientoId, tornoMedicion]);
+
+  const clearForm = useCallback(() => {
+    clearDraft();
+    setForm((prev) => ({ ...baseInitialForm, selectedLocalityId: canManageAll ? null : prev.selectedLocalityId }));
+    setFromSection(undefined);
+    setToSection(undefined);
+    clearTornoMedicion();
+    setTornoStep2Completed(false);
+    setTornoMovimientoId(null);
+    setTornoPdfSending(false);
+    setTornoPdfStatus(null);
+    setErrors({});
+    setShowFromOpts(false);
+    setShowToOpts(false);
+    if (step >= 3) setStep(1);
+  }, [canManageAll, clearDraft, step, clearTornoMedicion]);
+
+  return {
+    step,
+    setStep,
+    form,
+    setForm,
+    sending,
+    errors,
+    banner,
+    empresas,
+    localidades,
+    vias,
+    sectionsByVia,
+    secLoading,
+    rol,
+    canManageAll,
+    userCompanyName,
+    showFromOpts,
+    setShowFromOpts,
+    showToOpts,
+    setShowToOpts,
+    selectionMode,
+    setSelectionMode,
+    fromSection,
+    setToSection,
+    toSection,
+    locoLockedBy,
+    setLocoLockedBy,
+    tornoMedicion,
+    setTornoWheelCount,
+    updateTornoMedicion,
+    clearTornoMedicion,
+    hasTornoPdfStep,
+    tornoStep2Completed,
+    tornoMovimientoId,
+    tornoPdfSending,
+    tornoPdfStatus,
+    generateTornoPdf,
+    goBackToTornoMedicion,
+    online,
+    pendingCount,
+    flushOutbox,
+    submit: submitStepThree,
+    validate1,
+    validate2,
+    tapToggle,
+    ensureSections,
+    selectFromSection,
+    viaName,
+    isService,
+    label,
+    lockedClienteMissingData,
+    goSalir,
+    goPrev,
+    goNext,
+    clearForm,
+    clearOutbox,
+  };
+}

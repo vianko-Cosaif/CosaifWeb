@@ -1,7 +1,17 @@
-import { useEffect } from 'react';
 import {
   MovementFormData, FETCH_TIMEOUT_MS, Via, Servicio
 } from './movimientos.shared'; // Mantén los tipos para el tipado fuerte
+
+type ErrorBody = { message?: string; error?: string };
+
+function readErrorMessage(body: unknown, fallback: string): string {
+  if (body && typeof body === "object") {
+    const data = body as ErrorBody;
+    if (typeof data.message === "string" && data.message.trim()) return data.message;
+    if (typeof data.error === "string" && data.error.trim()) return data.error;
+  }
+  return fallback;
+}
 
 export class Movimiento {
   // Constantes Estáticas (No cambian entre instancias)
@@ -88,34 +98,27 @@ export class Movimiento {
 
   static fetchJSON = async (url: string, init: RequestInit = {}) => {
     const isGet = !init.method || init.method.toUpperCase() === "GET";
+    const headers = new Headers(init.headers);
+    if (!isGet && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+    if (!headers.has("Accept")) headers.set("Accept", "application/json");
+
+    const tokenHeaders = new Headers(Movimiento.tokenHeader());
+    tokenHeaders.forEach((value, key) => headers.set(key, value));
+
     const res = await Movimiento.fetchWithTimeout(url, {
       credentials: "include",
       cache: "no-store",
       ...init,
-      headers: {
-        ...(isGet ? {} : { "Content-Type": "application/json" }),
-        Accept: "application/json",
-        ...(init.headers as any),
-        ...Movimiento.tokenHeader(),
-      },
+      headers,
     });
     const ct = res.headers.get("content-type") || "";
     const txt = await res.text().catch(() => "");
     const body = ct.includes("application/json") && txt ? Movimiento.safeJSON(txt) : null;
-    if (!res.ok) throw new Error((body as any)?.message || (body as any)?.error || txt || `HTTP ${res.status}`);
+    if (!res.ok) throw new Error(readErrorMessage(body, txt || `HTTP ${res.status}`));
     return body;
   };
 
-  static useVisibleInterval(cb: () => void, ms: number | null) {
-    useEffect(() => {
-      if (!ms) return;
-      const id = window.setInterval(() => { if (document.visibilityState === "visible") cb(); }, ms);
-      const onVis = () => document.visibilityState === "visible" && cb();
-      document.addEventListener("visibilitychange", onVis);
-      return () => { clearInterval(id); document.removeEventListener("visibilitychange", onVis); };
-    }, [cb, ms]);
-  }
-  static TrackFilter(vias: Via[] | any[], selected: String, filter: string, service: Servicio | undefined): Via[] {
+  static TrackFilter(vias: Via[], selected: string, filter: string, service: Servicio | undefined): Via[] {
     return vias
       .filter(v => {
         const viaNameLower = v.nombre.toLowerCase();
