@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import SidebarMenu, { Rol } from "@/app/Components/Menu/Menu";
 import RailQueueBoard from "./RailQueueBoard";
+import { DynamicBanner } from "@/app/Components/DynamicBanner";
 import { getClientCookie, setClientCookie } from "@/lib/cookies";
 
 const SupervisorPage: React.FC = () => {
@@ -22,7 +23,7 @@ const SupervisorPage: React.FC = () => {
       num = 1;
       try {
         localStorage.setItem("locId", "1");
-      } catch {}
+      } catch { }
       setClientCookie("locId", "1", {
         path: "/",
         sameSite: "lax",
@@ -41,9 +42,10 @@ const SupervisorPage: React.FC = () => {
       <div className="relative z-10 flex min-h-svh flex-1 flex-col">
         <main className="mx-auto w-full max-w-screen-2xl flex-1 p-4 sm:p-6 md:p-8">
           {localidadId && (
-  <div className="w-full py-4">
+            <div className="w-full py-4">
 
-            <RailQueueBoard localidadId={localidadId} />
+              <DynamicBanner className="mb-6" />
+              <RailQueueBoard localidadId={localidadId} />
             </div>
           )}
         </main>
