@@ -175,8 +175,8 @@ function TablaInner({
           </div>
         )}
 
-        {/* Mobile cards */}
-        <div className="sm:hidden px-2 py-3 space-y-3">
+        {/* Mobile/Tablet cards */}
+        <div className="xl:hidden px-2 py-3 space-y-3">
           {!tieneFilas ? (
             <div className="py-10 text-center">
               <div className="mx-auto w-fit rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 p-5">
@@ -205,7 +205,7 @@ function TablaInner({
         </div>
 
         {/* Tabla (desktop) */}
-        <div className={`hidden sm:block w-full overflow-x-auto ${styles.tableContainer}`}>
+        <div className={`hidden xl:block w-full overflow-x-auto ${styles.tableContainer}`}>
           <table className="w-full border-collapse text-left">
             {/* HEADER */}
             <thead

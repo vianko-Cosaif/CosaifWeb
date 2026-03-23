@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
+import { createPortal } from "react-dom";
 import {
   ImageIcon,
   Info,
@@ -241,7 +242,9 @@ const ImageGallery = React.memo(function ImageGallery({
         className={cn(
           "relative overflow-hidden rounded-2xl border border-white/60 bg-white/80 shadow-[0_20px_45px_rgba(15,23,42,0.12)] backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/80",
           "touch-pan-y touch-pinch-zoom",
-          fullscreen ? "h-[70vh] sm:h-[78vh]" : "h-[42vh] sm:h-[380px] lg:h-[480px]"
+          fullscreen
+            ? "h-[min(78vh,720px)] sm:h-[min(80vh,820px)]"
+            : "h-[clamp(240px,45vh,520px)] sm:h-[clamp(320px,42vh,560px)] md:h-[clamp(360px,46vh,620px)] lg:h-[clamp(420px,50vh,720px)]"
         )}
       >
         {total ? (
@@ -447,14 +450,14 @@ export default function SmartIncidentBlocker({
   if (!visible) return null;
   const current = fetched || incident;
 
-  return (
-    <div className="fixed inset-0 z-50">
+  const modal = (
+    <div className="fixed inset-0 z-[9999]">
       <div className="absolute inset-0 bg-slate-950/70" />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(16,185,129,0.35),transparent_55%),radial-gradient(ellipse_at_bottom,rgba(15,23,42,0.85),transparent_60%)]" />
       <div className="absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:28px_28px]" />
-      <div className="relative z-10 flex h-full items-stretch sm:items-center justify-center p-0 sm:p-6">
+      <div className="relative z-10 flex h-full w-full items-stretch justify-center p-0">
         <div
-          className="flex w-full h-dvh sm:h-auto sm:max-h-[92vh] max-w-6xl flex-col overflow-hidden rounded-none border border-white/10 bg-white/90 shadow-[0_30px_120px_rgba(15,23,42,0.45)] backdrop-blur dark:bg-slate-900/95 dark:text-slate-100 sm:rounded-3xl"
+          className="flex min-h-0 w-full h-full max-w-none flex-col overflow-hidden rounded-none border border-white/10 bg-white/90 shadow-[0_30px_120px_rgba(15,23,42,0.45)] backdrop-blur dark:bg-slate-900/95 dark:text-slate-100"
           role="dialog"
           aria-labelledby={headingId}
           aria-modal="true"
@@ -520,8 +523,8 @@ export default function SmartIncidentBlocker({
             )}
           </div>
 
-          {/* Tabs (mobile) */}
-          <div className="border-b border-white/10 bg-white/80 px-4 py-3 dark:bg-slate-900/80 dark:border-slate-800 lg:hidden">
+          {/* Tabs (mobile only) */}
+          <div className="border-b border-white/10 bg-white/80 px-4 py-3 dark:bg-slate-900/80 dark:border-slate-800 md:hidden">
             <div className="relative mx-auto flex w-full max-w-md items-center rounded-full bg-slate-100/90 p-1 shadow-inner dark:bg-slate-800/80">
               <div
                 className="absolute inset-y-1 left-1 w-1/2 rounded-full bg-white shadow transition-transform duration-300 dark:bg-slate-900"
@@ -556,7 +559,7 @@ export default function SmartIncidentBlocker({
           </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900">
+        <div className="flex-1 min-h-0 overflow-y-auto bg-slate-50 dark:bg-slate-900">
           {loading ? (
             <div className="py-10 text-center">
               <div className="inline-flex items-center gap-3 text-slate-500 dark:text-slate-400">
@@ -575,8 +578,8 @@ export default function SmartIncidentBlocker({
               </div>
             </div>
           ) : (
-            <div className="grid gap-4 sm:gap-6 p-4 sm:p-6 lg:grid-cols-[1.1fr_0.9fr]">
-              <div className={cn(tab === 0 ? "block" : "hidden", "lg:block")} role="tabpanel">
+            <div className="grid gap-4 sm:gap-6 p-4 sm:p-6 md:grid-cols-[1.1fr_0.9fr]">
+              <div className={cn(tab === 0 ? "block" : "hidden", "md:block")} role="tabpanel">
                 <div className="space-y-4 sm:space-y-5">
                   <section className="rounded-2xl border border-white/60 bg-white/85 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/80">
                     <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-800 dark:text-slate-100">
@@ -669,7 +672,7 @@ export default function SmartIncidentBlocker({
                 </div>
               </div>
 
-              <div className={cn(tab === 1 ? "block" : "hidden", "lg:block")} role="tabpanel">
+              <div className={cn(tab === 1 ? "block" : "hidden", "md:block")} role="tabpanel">
                 <ImageGallery
                   images={imgs}
                   index={idx}
@@ -720,4 +723,7 @@ export default function SmartIncidentBlocker({
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") return modal;
+  return createPortal(modal, document.body);
 }
