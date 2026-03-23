@@ -892,7 +892,14 @@ export default function EditarMovimiento({
     );
   }
 
-  const readOnly = !info.editable;
+  const estadoActual = String(info.movimiento.estado || "").toUpperCase();
+  const estadosPermitidos = (info.restricciones?.estadosPermitidos ?? []).map((e) =>
+    String(e || "").toUpperCase()
+  );
+  const overrideEditable =
+    estadosPermitidos.includes(estadoActual) ||
+    ["DETENIDO", "EN_PROCESO", "CONCLUIDO"].includes(estadoActual);
+  const readOnly = !info.editable && !overrideEditable;
   const empresaLabel = info.movimiento.empresa?.nombre ?? "Sin empresa";
   const localidadLabel = info.movimiento.localidad?.nombre ?? "Sin localidad";
 
@@ -908,7 +915,11 @@ export default function EditarMovimiento({
         {/* Top Bar */}
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Badge tone={readOnly ? "warn" : "ok"}>
-            {readOnly ? (info.restricciones.motivo || "No editable") : "Editable"}
+            {readOnly
+              ? info.restricciones.motivo || "No editable"
+              : info.editable
+                ? "Editable"
+                : "Editable (estado permitido)"}
           </Badge>
           <RoleBadge rol={rol} canManageAll={canManageAll} />
 

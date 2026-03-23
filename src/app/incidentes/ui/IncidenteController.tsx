@@ -678,10 +678,10 @@ export default function IncidenteController() {
                         }`}
                     >
                       {tab}
-                      {/* Optional Badge */}
-                      {/* <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-slate-100 dark:bg-slate-600' : 'bg-slate-200 dark:bg-slate-700'}`}>
-                        {count}
-                      </span> */}
+                
+                      <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-slate-100 dark:bg-slate-600' : 'bg-slate-200 dark:bg-slate-700'}`}>
+                      
+                      </span> 
                     </button>
                   );
                 })}

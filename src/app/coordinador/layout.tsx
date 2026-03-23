@@ -1,36 +1,14 @@
 // src/app/supervisor/layout.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
-import SidebarMenu, { Rol } from "@/app/Components/Menu/Menu";
-import { MapPin, RefreshCw, Shield } from "lucide-react";
-import ThemeToggle from "@/app/Components/ui/ThemeToggle";
+import SidebarMenu from "@/app/Components/Menu/Menu";
 // import { IncidentMonitor } from "@/app/Components/IncidentModal";
-import { getClientCookie, getEmpresaIdClient } from "@/lib/cookies";
 
 export default function CoordinadorLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
-  const router = useRouter();
-
-  const [rol, setRol] = useState<Rol>("COORDINADOR");
-  const [locLabel, setLocLabel] = useState<string>("Global");
-  const [empresaId, setEmpresaId] = useState<number | null>(null);
-
-  useEffect(() => {
-    const roleRaw = (getClientCookie("role") ?? "").toUpperCase();
-    setRol(roleRaw === "COORDINADOR" ? "COORDINADOR" : "COORDINADOR");
-
-    const locId = getClientCookie("locId");
-    setLocLabel(locId ? `Loc ${locId}` : "Global");
-
-    setEmpresaId(getEmpresaIdClient());
-  }, [pathname]);
-
   return (
     <div
       className="relative flex min-h-svh
@@ -66,54 +44,10 @@ export default function CoordinadorLayout({
           Saltar al contenido
         </a>
 
-        {/* Header */}
-        <header className="sticky top-[max(0px,env(safe-area-inset-top))] z-20 border-b border-zinc-200/70 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:border-zinc-800/70 dark:bg-zinc-950/80">
-          <div
-            className="mx-auto flex w-full max-w-screen-2xl flex-wrap items-center gap-x-3 gap-y-2 py-3 sm:flex-nowrap"
-            style={{
-              paddingLeft:
-                "max(3.75rem, calc(env(safe-area-inset-left) + 0rem))",
-              paddingRight: "max(1rem, env(safe-area-inset-right))",
-            }}
-          >
-            <h1 className="text-base font-semibold tracking-tight sm:text-lg">
-              Panel de Supervisor
-            </h1>
-
-            <span className="hidden sm:inline-flex items-center leading-none gap-1 rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 dark:border-violet-700 dark:bg-[#120528] dark:text-violet-200">
-              <Shield className="h-4 w-4 -mt-px" />
-              {rol}
-            </span>
-
-            <span className="inline-flex items-center leading-none gap-1 rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
-              <MapPin className="h-4 w-4 -mt-px" />
-              <span className="whitespace-nowrap">{locLabel}</span>
-            </span>
-
-            <div className="ml-auto inline-flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => router.refresh()}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-zinc-200 bg-white px-3 text-sm hover:bg-zinc-50 active:scale-[.98] dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-                title="Refrescar"
-              >
-                <RefreshCw className="h-4 w-4 -mt-px" />
-                <span className="hidden sm:inline">Actualizar</span>
-              </button>
-
-              <ThemeToggle
-                className="inline-flex items-center justify-center"
-                size="md"
-                title="Cambiar tema"
-              />
-            </div>
-          </div>
-        </header>
-
         {/* Contenido */}
         <main
           id="main"
-          className="relative z-10 mx-auto w-full max-w-screen-2xl flex-1 p-4 sm:p-6 md:p-8"
+          className="relative z-10 mx-auto w-full max-w-screen-2xl flex-1 p-4 sm:p-6 md:p-8 pt-[calc(env(safe-area-inset-top)+1rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)]"
         >
           <div className="contents">{children}</div>
         </main>
