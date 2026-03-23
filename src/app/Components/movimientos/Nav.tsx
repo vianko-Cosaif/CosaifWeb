@@ -200,14 +200,14 @@ function TabBoton({
       onClick={onClick}
       aria-pressed={activo}
       className={[
-        "relative z-10 px-5 py-2 text-xs sm:text-sm font-semibold rounded-xl transition-all duration-200",
+        "relative z-10 flex-1 sm:flex-none px-4 sm:px-5 py-2 text-xs sm:text-sm font-semibold rounded-xl transition-all duration-200 text-center",
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2",
         activo
           ? "text-emerald-700 dark:text-emerald-300"
           : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200",
       ].join(" ")}
     >
-      <span className="inline-flex items-center gap-2">
+      <span className="inline-flex items-center justify-center gap-2">
         {etiqueta}
         {typeof conteo === "number" && (
           <span
