@@ -80,6 +80,8 @@ export type DashboardBannerConfig = {
   };
   banner?: {
     id?: string;
+    name?: string;
+    order?: number;
     duration?: number;
     width?: string;
     height?: string;
@@ -93,6 +95,17 @@ export type DashboardBannerConfig = {
     layers?: BannerLayer[];
   };
   banners?: Array<DashboardBannerConfig["banner"]>;
+  availableBanners?: Array<{
+    id: string;
+    name: string;
+    order: number;
+  }>;
+  bannerItems?: Array<{
+    id: string;
+    name: string;
+    order: number;
+    banner: NonNullable<DashboardBannerConfig["banner"]>;
+  }>;
 };
 
 export type BannerState = {

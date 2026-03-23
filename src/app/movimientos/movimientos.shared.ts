@@ -44,7 +44,14 @@ export type Rol = keyof typeof BASE_BY_ROLE;
 export type Option = { label: string; value: string }
 export interface Empresa { id: number; nombre: string }
 export interface Localidad { id: number; nombre: string; estado?: string }
-export interface Via { id: number; nombre: string }
+export type ViaLifeLineSide = "izquierdo" | "derecho";
+export interface ViaLifeLineInfo {
+  aplica: true;
+  lados: ViaLifeLineSide[];
+  descripcion: string;
+  esRP: boolean;
+}
+export interface Via { id: number; nombre: string; lineaDeVida?: ViaLifeLineInfo | null }
 
 export interface Seccion {
   id: number;

@@ -7,11 +7,12 @@ import type {
     BannerMeta,
 } from "./DynamicBanner.types";
 import { webStorage } from "./DynamicBanner.storage";
+import { getClientCookie } from "@/lib/cookies";
 
 const DEFAULT_DESIGN_WIDTH = 800;
 const DEFAULT_DESIGN_HEIGHT = 220;
-const BANNER_CACHE_KEY = "dynamicBanner.cache.config.v1";
-const BANNER_META_KEY = "dynamicBanner.cache.meta.v1";
+const BANNER_CACHE_KEY = "dynamicBanner.cache.config.v2";
+const BANNER_META_KEY = "dynamicBanner.cache.meta.v2";
 
 const parsePositiveNumber = (value: unknown) => {
     const parsed = Number(value);
@@ -24,6 +25,70 @@ const parsePxValue = (value: unknown) => {
     if (!normalized.endsWith("px")) return null;
     const parsed = Number(normalized.replace("px", "").trim());
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+const parseOrder = (value: unknown, fallback: number) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+    return Math.round(parsed);
+};
+
+const normalizeBannerId = (value: unknown) => String(value || "").trim();
+
+const normalizeBannerName = (value: unknown, fallbackIndex: number) => {
+    const raw = String(value || "").trim();
+    return raw || `Banner ${fallbackIndex + 1}`;
+};
+
+const buildOrderMap = (payload: any) => {
+    const orderMap = new Map<string, number>();
+    const setFrom = (candidate: any, fallbackIndex: number) => {
+        if (!isRecord(candidate)) return;
+        const id = normalizeBannerId((candidate as any).id ?? (candidate as any).banner?.id);
+        if (!id || orderMap.has(id)) return;
+        orderMap.set(id, parseOrder((candidate as any).order, fallbackIndex));
+    };
+
+    if (Array.isArray((payload as any)?.bannerItems)) {
+        (payload as any).bannerItems.forEach((item: any, index: number) => setFrom(item, index));
+    }
+    if (Array.isArray((payload as any)?.availableBanners)) {
+        (payload as any).availableBanners.forEach((item: any, index: number) => setFrom(item, index));
+    }
+    if (Array.isArray((payload as any)?.banners)) {
+        (payload as any).banners.forEach((item: any, index: number) => setFrom(item, index));
+    }
+    return orderMap;
+};
+
+const dedupeAndSortBanners = (
+    banners: Array<NonNullable<DashboardBannerConfig["banner"]>>,
+    orderMap: Map<string, number>,
+) => {
+    const deduped: Array<NonNullable<DashboardBannerConfig["banner"]>> = [];
+    const seenIds = new Set<string>();
+    banners.forEach((banner) => {
+        const id = normalizeBannerId((banner as any)?.id);
+        if (id) {
+            if (seenIds.has(id)) return;
+            seenIds.add(id);
+        }
+        deduped.push(banner);
+    });
+
+    const ranked = deduped.map((banner, index) => {
+        const id = normalizeBannerId((banner as any)?.id);
+        const rank = id && orderMap.has(id) ? orderMap.get(id)! : Number.MAX_SAFE_INTEGER;
+        return { banner, index, rank };
+    });
+
+    ranked.sort((a, b) => (a.rank === b.rank ? a.index - b.index : a.rank - b.rank));
+    return ranked.map((item) => item.banner);
+};
+
+const normalizeUserType = (value: unknown): string | null => {
+    const raw = String(value || "").trim().toUpperCase();
+    return raw || null;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -74,6 +139,7 @@ const normalizeConfigShape = (raw: unknown): DashboardBannerConfig | null => {
                     ? { banner: data }
                     : null;
     if (!payload) return null;
+    const orderMap = buildOrderMap(payload as any);
 
     const banners: Array<NonNullable<DashboardBannerConfig["banner"]>> = [];
     const unwrapBannerItem = (input: any): Record<string, any> | null => {
@@ -135,18 +201,37 @@ const normalizeConfigShape = (raw: unknown): DashboardBannerConfig | null => {
     }
 
     if (banners.length === 0) return null;
+    const orderedBanners = dedupeAndSortBanners(banners, orderMap);
 
     const normalizedTools = normalizeBannerTools((payload as any).bannerTools);
     const activeBannerIdRaw = (payload as any).activeBannerId;
     const activeBannerId = typeof activeBannerIdRaw === "string" && activeBannerIdRaw.trim().length > 0
         ? activeBannerIdRaw.trim()
         : undefined;
+    const selectedBanner = activeBannerId
+        ? orderedBanners.find((banner) => normalizeBannerId((banner as any)?.id) === activeBannerId) || orderedBanners[0]
+        : orderedBanners[0];
+
+    const bannerItems = orderedBanners.map((banner, index) => {
+        const id = normalizeBannerId((banner as any)?.id) || `banner-${index + 1}`;
+        const order = orderMap.has(id) ? orderMap.get(id)! : parseOrder((banner as any)?.order, index);
+        return {
+            id,
+            name: normalizeBannerName((banner as any)?.name, index),
+            order,
+            banner,
+        };
+    });
+    bannerItems.sort((a, b) => (a.order === b.order ? 0 : a.order - b.order));
+    const availableBanners = bannerItems.map(({ id, name, order }) => ({ id, name, order }));
 
     return {
-        banner: banners[0],
-        banners,
+        banner: selectedBanner ?? bannerItems[0]?.banner,
+        banners: bannerItems.map((item) => item.banner),
         bannerTools: normalizedTools,
-        activeBannerId,
+        activeBannerId: normalizeBannerId((selectedBanner as any)?.id) || normalizeBannerId((bannerItems[0]?.banner as any)?.id),
+        availableBanners,
+        bannerItems,
     };
 };
 
@@ -192,6 +277,30 @@ type CachedBannerPayload = {
 export class BannerService {
     constructor(private readonly apiBase: string) { }
 
+    private resolveUserType(): string | null {
+        if (typeof window === "undefined") return null;
+        return normalizeUserType(
+            getClientCookie("role")
+            ?? getClientCookie("rol")
+            ?? getClientCookie("userType")
+        );
+    }
+
+    private buildConfigCacheKey(userType: string | null): string {
+        return `${BANNER_CACHE_KEY}:${userType || "ALL"}`;
+    }
+
+    private buildMetaCacheKey(userType: string | null): string {
+        return `${BANNER_META_KEY}:${userType || "ALL"}`;
+    }
+
+    private buildRoleAwareUrl(path: string, userType: string | null): string {
+        const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+        if (!userType) return `${this.apiBase}${normalizedPath}`;
+        const params = new URLSearchParams({ userType });
+        return `${this.apiBase}${normalizedPath}?${params.toString()}`;
+    }
+
     private buildVersion(lastUpdated: number | null): string | null {
         if (typeof lastUpdated !== "number") return null;
         return String(Math.round(lastUpdated));
@@ -204,13 +313,15 @@ export class BannerService {
         return localMeta.lastUpdated === remoteMeta.lastUpdated;
     }
 
-    private async readCache(): Promise<CachedBannerPayload | null> {
+    private async readCache(userType: string | null): Promise<CachedBannerPayload | null> {
         if (typeof window === "undefined") return null;
 
         try {
+            const cacheConfigKey = this.buildConfigCacheKey(userType);
+            const cacheMetaKey = this.buildMetaCacheKey(userType);
             const [rawConfig, rawMeta] = await Promise.all([
-                webStorage.get(BANNER_CACHE_KEY),
-                webStorage.get(BANNER_META_KEY),
+                webStorage.get(cacheConfigKey),
+                webStorage.get(cacheMetaKey),
             ]);
 
             if (!rawConfig || !rawMeta) return null;
@@ -229,27 +340,31 @@ export class BannerService {
         }
     }
 
-    private async writeCache(config: DashboardBannerConfig, meta: BannerMeta): Promise<void> {
+    private async writeCache(config: DashboardBannerConfig, meta: BannerMeta, userType: string | null): Promise<void> {
         if (typeof window === "undefined") return;
 
+        const cacheConfigKey = this.buildConfigCacheKey(userType);
+        const cacheMetaKey = this.buildMetaCacheKey(userType);
         await Promise.all([
-            webStorage.set(BANNER_CACHE_KEY, JSON.stringify(config)),
-            webStorage.set(BANNER_META_KEY, JSON.stringify(meta)),
+            webStorage.set(cacheConfigKey, JSON.stringify(config)),
+            webStorage.set(cacheMetaKey, JSON.stringify(meta)),
         ]);
     }
 
-    private async clearCache(): Promise<void> {
+    private async clearCache(userType: string | null): Promise<void> {
         if (typeof window === "undefined") return;
 
+        const cacheConfigKey = this.buildConfigCacheKey(userType);
+        const cacheMetaKey = this.buildMetaCacheKey(userType);
         await Promise.all([
-            webStorage.remove(BANNER_CACHE_KEY),
-            webStorage.remove(BANNER_META_KEY),
+            webStorage.remove(cacheConfigKey),
+            webStorage.remove(cacheMetaKey),
         ]);
     }
 
-    private async fetchMeta(): Promise<BannerMeta | null> {
+    private async fetchMeta(userType: string | null): Promise<BannerMeta | null> {
         try {
-            const url = `${this.apiBase}/banner/meta`;
+            const url = this.buildRoleAwareUrl("/banner/meta", userType);
             const res = await fetch(url, {
                 method: "GET",
                 headers: { Accept: "application/json" },
@@ -264,9 +379,9 @@ export class BannerService {
         }
     }
 
-    private async fetchBanner(): Promise<FetchBannerResult> {
+    private async fetchBanner(userType: string | null): Promise<FetchBannerResult> {
         try {
-            const url = `${this.apiBase}/banner`;
+            const url = this.buildRoleAwareUrl("/banner", userType);
             const res = await fetch(url, {
                 method: "GET",
                 headers: { Accept: "application/json" },
@@ -310,12 +425,13 @@ export class BannerService {
     }
 
     async resolve(): Promise<BannerState> {
-        const cached = await this.readCache();
-        const remoteMeta = await this.fetchMeta();
+        const userType = this.resolveUserType();
+        const cached = await this.readCache(userType);
+        const remoteMeta = await this.fetchMeta(userType);
 
         if (remoteMeta) {
             if (!remoteMeta.hasBanner) {
-                await this.clearCache();
+                await this.clearCache(userType);
                 return { status: "empty" };
             }
 
@@ -326,19 +442,19 @@ export class BannerService {
                 };
             }
 
-            const fresh = await this.fetchBanner();
+            const fresh = await this.fetchBanner(userType);
             if (fresh.state.status === "ready" && fresh.state.config) {
                 const mergedMeta: BannerMeta = {
                     hasBanner: true,
                     version: fresh.meta?.version ?? remoteMeta.version,
                     lastUpdated: fresh.meta?.lastUpdated ?? remoteMeta.lastUpdated,
                 };
-                await this.writeCache(fresh.state.config, mergedMeta);
+                await this.writeCache(fresh.state.config, mergedMeta, userType);
                 return fresh.state;
             }
 
             if (fresh.state.status === "empty") {
-                await this.clearCache();
+                await this.clearCache(userType);
                 return fresh.state;
             }
 
@@ -359,13 +475,13 @@ export class BannerService {
             };
         }
 
-        const fresh = await this.fetchBanner();
+        const fresh = await this.fetchBanner(userType);
         if (fresh.state.status === "ready" && fresh.state.config && fresh.meta) {
-            await this.writeCache(fresh.state.config, fresh.meta);
+            await this.writeCache(fresh.state.config, fresh.meta, userType);
         }
 
         if (fresh.state.status === "empty") {
-            await this.clearCache();
+            await this.clearCache(userType);
         }
 
         return fresh.state;

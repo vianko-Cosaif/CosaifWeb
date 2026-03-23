@@ -1,15 +1,17 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useMounted } from "@/app/hooks/useMounted";
 import { getInitialTheme, applyTheme, onThemeChange } from "@/lib/theme";
-import { Movimiento } from './../Movimiento'; // <--- Único import
+import ConfirmChoiceAlert from "@/app/Components/ui/ConfirmChoiceAlert";
+import { Movimiento } from './../Movimiento';
 import {
   API_BASE, SECC_BASE, DOUBLE_TAP_MS, FLUSH_INTERVAL_MS, DRAFT_KEY, OUTBOX_KEY, ALTA_PASSWORDS, Option, roleBase, Rol, Via, Empresa, Localidad, Seccion, MovementFormData, baseInitialForm
-} from './../movimientos.shared'; // <--- Único import
+} from './../movimientos.shared';
+import { useTrackSelectionConfirmation } from "../lifeLineConfirmation.shared";
 
-/** ======= RESOLVER ROL (cookie → localStorage) ======= */
+/** ======= RESOLVER ROL (cookie -> localStorage) ======= */
 function getRoleClient(): Rol {
   const c = String(Movimiento.getCookie("role") || "").trim().toUpperCase();
   if (c) return c as Rol;
@@ -102,7 +104,7 @@ export default function CrearMovimiento() {
 
     const isAdminOrCoord = ["ADMINISTRADOR", "COORDINADOR"].includes(String(role).toUpperCase());
 
-    // Resolver userId con fallback: localStorage → cookie userId
+    // Resolver userId con fallback: localStorage -> cookie userId
     const resolvedUserId = Number.isFinite(Number(u?.id))
       ? Number(u.id)
       : (Number.isFinite(userIdCookie) ? userIdCookie : null);
@@ -141,7 +143,7 @@ export default function CrearMovimiento() {
     const cookieLoc = Number(Movimiento.getCookie("locId") || NaN);
     const cookieUserId = Number(Movimiento.getCookie("userId") || NaN);
 
-    // empresaId: form(>0) → user state → cookie → form sin filtro
+    // empresaId: form(>0) -> user state -> cookie -> form sin filtro
     const rawFormEmp = Number(form.empresaId ?? NaN);
     const empresaId = ADMIN_OR_COORD.includes(role)
       ? (isPos(rawFormEmp) ? rawFormEmp : NaN)
@@ -151,7 +153,7 @@ export default function CrearMovimiento() {
           ? cookieEmp
           : isPos(rawFormEmp) ? rawFormEmp : NaN);
 
-    // creadoPorId: form(>0) → user state(>0) → cookie userId(>0)
+    // creadoPorId: form(>0) -> user state(>0) -> cookie userId(>0)
     const rawFormUser = Number(form.creadoPorId ?? NaN);
     const rawStateUser = Number(user?.id ?? NaN);
     const creadoPorId = isPos(rawFormUser)
@@ -286,7 +288,11 @@ export default function CrearMovimiento() {
       if (!form.selectedLocalityId) { setVias([]); return; }
       try {
         const data = await Movimiento.fetchJSON(`${API_BASE}/vias/localidad/${form.selectedLocalityId}`);
-        const list: Via[] = (data || []).map((v: any) => ({ id: v.id, nombre: v.nombre }));
+        const list: Via[] = (data || []).map((v: any) => ({
+          id: v.id,
+          nombre: v.nombre,
+          lineaDeVida: v.lineaDeVida ?? null,
+        }));
 
         // Ordenar vías numéricamente si son números, alfabéticamente si no
         list.sort((a, b) => {
@@ -441,7 +447,7 @@ export default function CrearMovimiento() {
   const submit = useCallback(async () => {
     const { empresaId, creadoPorId, localidadId } = resolvedIds;
 
-    // Validaciones duras — usar isPos para rechazar 0 también
+    // Validaciones duras: usar isPos para rechazar 0 también
     const missing: string[] = [];
     if (!isPos(empresaId)) missing.push(`empresaId(${empresaId})`);
     if (!isPos(creadoPorId)) missing.push(`userId(${creadoPorId})`);
@@ -851,7 +857,7 @@ function Select({
           error && "border-rose-500 focus:border-rose-500"
         )}
       >
-        <option value="">— Selecciona —</option>
+        <option value="">-- Selecciona --</option>
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
@@ -905,6 +911,14 @@ function StepOne(props: {
   const [altaOpen, setAltaOpen] = useState(false);
   const [altaPwd, setAltaPwd] = useState("");
   const [altaErr, setAltaErr] = useState<string | null>(null);
+  const {
+    lifeLineModal,
+    requestTrackConfirmation: confirmTrackSelection,
+    closeTrackConfirmation: closeLifeLineModal,
+    confirmTrackSelection: confirmLifeLineModal,
+    question: lifeLineQuestion,
+    contextLabel: lifeLineContextLabel,
+  } = useTrackSelectionConfirmation();
   const getEmpId = () => {
     // form.empresaId: usar ?? NaN para que null no se convierta en 0
     const fromForm = Number(form.empresaId ?? NaN);
@@ -980,7 +994,7 @@ function StepOne(props: {
   const viaOption = (v: Via) => {
     const secs = sectionsByVia[v.id];
     const anyOcc: boolean | null = Array.isArray(secs) ? secs.some((x) => x.ocupada) : null;
-    const label = anyOcc === null ? "—" : anyOcc ? "OCUPADA" : "LIBRE";
+    const label = anyOcc === null ? "-" : anyOcc ? "OCUPADA" : "LIBRE";
     const tone = anyOcc === null ? "text-slate-500" : anyOcc ? "text-rose-600" : "text-emerald-600";
 
     const isServiceVia = ['torno', 'lavado'].includes(v.nombre.toLowerCase());
@@ -989,7 +1003,15 @@ function StepOne(props: {
     return (
       <button
         key={v.id}
-        onClick={() => !isDisabled && setForm((p) => ({ ...p, fromTrack: p.fromTrack === v.id ? null : v.id }))}
+        onClick={() => {
+          if (isDisabled) return;
+          confirmTrackSelection(
+            "from",
+            String(v.nombre),
+            () => setForm((p) => ({ ...p, fromTrack: v.id })),
+            v.lineaDeVida
+          );
+        }}
         disabled={isDisabled}
         className={Movimiento.clsx(
           "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left transition-colors duration-200",
@@ -1011,12 +1033,19 @@ function StepOne(props: {
   const viaOptionTo = (v: Via) => {
     const secs = sectionsByVia[v.id];
     const allOcc: boolean | null = Array.isArray(secs) ? secs.length > 0 && secs.every((x) => x.ocupada) : null;
-    const label = allOcc === null ? "—" : allOcc ? "SIN SECC. LIBRES" : "HAY LIBRES";
+    const label = allOcc === null ? "-" : allOcc ? "SIN SECC. LIBRES" : "HAY LIBRES";
     const tone = allOcc === null ? "text-slate-500" : allOcc ? "text-rose-600" : "text-emerald-600";
     return (
       <button
         key={v.id}
-        onClick={() => setForm((p) => ({ ...p, toTrack: p.toTrack === v.id ? null : v.id }))}
+        onClick={() =>
+          confirmTrackSelection(
+            "to",
+            String(v.nombre),
+            () => setForm((p) => ({ ...p, toTrack: v.id })),
+            v.lineaDeVida
+          )
+        }
         className={Movimiento.clsx(
           "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left transition-colors duration-200",
           allOcc === true ? "opacity-60" : "",
@@ -1051,7 +1080,7 @@ function StepOne(props: {
         </div>
 
         {loading || !hasData ? (
-          <div className="py-2 text-sm text-slate-500 dark:text-slate-400">Cargando secciones…</div>
+          <div className="py-2 text-sm text-slate-500 dark:text-slate-400">Cargando secciones...</div>
         ) : list.length === 0 ? (
           <div className="py-2 text-sm text-slate-500 dark:text-slate-400">
             {kind === "to" ? "No hay secciones libres." : "Esta vía no tiene secciones."}
@@ -1276,6 +1305,14 @@ function StepOne(props: {
           <SectionsPills kind="to" viaId={form.toTrack} />
         </div>
       )}
+
+      <ConfirmChoiceAlert
+        open={Boolean(lifeLineModal)}
+        question={lifeLineQuestion}
+        contextLabel={lifeLineContextLabel}
+        onCancel={closeLifeLineModal}
+        onConfirm={confirmLifeLineModal}
+      />
 
       {/* ===== Modal de contraseña ALTA ===== */}
       {altaOpen && (
@@ -1509,18 +1546,18 @@ function StepThree({
       <div className="rounded-lg border p-3 text-sm dark:border-slate-700">
         <div className="font-semibold mb-2 text-slate-800 dark:text-slate-100">Resumen</div>
         <ul className="grid gap-1 text-slate-700 dark:text-slate-300">
-          <li>Localidad: {form.selectedLocalityId ?? "—"}</li>
+          <li>Localidad: {form.selectedLocalityId ?? "-"}</li>
           {selectionMode === "de_via" && (
-            <li>Origen: {form.fromTrack ? `Vía ${viaName(form.fromTrack)} ${fromSection ? `(Sección #${fromSection})` : ""}` : "—"}</li>
+            <li>Origen: {form.fromTrack ? `Vía ${viaName(form.fromTrack)} ${fromSection ? `(Sección #${fromSection})` : ""}` : "-"}</li>
           )}
           {selectionMode === "para_via" && (
-            <li>Destino: {form.toTrack ? `Vía ${viaName(form.toTrack)} ${toSection ? `(Sección #${toSection})` : ""}` : "—"}</li>
+            <li>Destino: {form.toTrack ? `Vía ${viaName(form.toTrack)} ${toSection ? `(Sección #${toSection})` : ""}` : "-"}</li>
           )}
-          <li>Locomotora: {form.locomotiveNumber || "—"}</li>
-          <li>Tipo: {form.movementType || "—"}</li>
-          <li>Dirección: {form.direccionEmpuje || "—"}</li>
+          <li>Locomotora: {form.locomotiveNumber || "-"}</li>
+          <li>Tipo: {form.movementType || "-"}</li>
+          <li>Dirección: {form.direccionEmpuje || "-"}</li>
           <li>Prioridad: {form.priority ? "ALTA" : "BAJA"}</li>
-          <li>Servicio: {form.service || "—"}</li>
+          <li>Servicio: {form.service || "-"}</li>
         </ul>
       </div>
 
@@ -1563,3 +1600,5 @@ function RoleBadge({ rol, canManageAll }: { rol: string; canManageAll: boolean }
       : `${R} · solo su empresa${R === "CLIENTE" || R === "SUPERVISOR" ? " y localidad asignada" : ""}`;
   return <Badge tone={tone as any}>{text}</Badge>;
 }
+
+
