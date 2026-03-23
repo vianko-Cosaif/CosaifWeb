@@ -122,7 +122,29 @@ export function useDynamicBanner(apiBase: string = API_BASE) {
     }, [apiBase]);
 
     const load = useCallback(async () => {
-        setState({ status: "loading" });
+        const cached = await service.resolveCached();
+        if (cached) {
+            if (cached.config) {
+                await preloadResources(cached.config);
+            }
+            setState(cached);
+            if (cached.config) {
+                const nextBanners =
+                    Array.isArray(cached.config.banners) && cached.config.banners.length > 0
+                        ? cached.config.banners
+                        : cached.config.banner
+                            ? [cached.config.banner]
+                            : [];
+                const activeId = typeof cached.config.activeBannerId === "string" ? cached.config.activeBannerId : "";
+                const activeIndex = activeId
+                    ? nextBanners.findIndex((b) => String((b as any)?.id || "") === activeId)
+                    : -1;
+                setCurrentIndex(activeIndex >= 0 ? activeIndex : 0);
+            }
+        } else {
+            setState({ status: "loading" });
+        }
+
         const result = await service.resolve();
 
         if (result.status === "ready" && result.config) {
@@ -141,7 +163,13 @@ export function useDynamicBanner(apiBase: string = API_BASE) {
             const activeIndex = activeId
                 ? nextBanners.findIndex((b) => String((b as any)?.id || "") === activeId)
                 : -1;
-            setCurrentIndex(activeIndex >= 0 ? activeIndex : 0);
+            
+            setCurrentIndex((prev) => {
+                if (cached && activeIndex < 0) {
+                    return prev;
+                }
+                return activeIndex >= 0 ? activeIndex : 0;
+            });
             return;
         }
         setCurrentIndex(0);

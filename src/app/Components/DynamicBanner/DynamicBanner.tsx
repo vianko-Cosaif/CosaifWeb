@@ -507,8 +507,14 @@ export default function DynamicBanner({
     [apiBase, resolveResponsiveStyles],
   );
 
-  if (status === "loading" || status === "empty") return null;
-  if (status === "error") return null;
+  if (status === "loading") {
+    return (
+      <div key="db-skeleton" className={`db-wrapper ${className || ""}`}>
+        <div className="db-skeleton" />
+      </div>
+    );
+  }
+  if (status === "empty" || status === "error") return null;
   if (!banner) return null;
   const layers = Array.isArray(banner.layers) ? banner.layers : [];
   const hasLayers = layers.length > 0;
@@ -562,7 +568,7 @@ export default function DynamicBanner({
   })();
 
   return (
-    <div className={`db-wrapper ${className || ""}`}>
+    <div key="db-content" className={`db-wrapper db-reveal-animate ${className || ""}`}>
       <div
         ref={rootRef}
         key={`banner-root-${banner.id || "banner"}-${currentIndex}`}

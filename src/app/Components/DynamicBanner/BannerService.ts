@@ -486,4 +486,16 @@ export class BannerService {
 
         return fresh.state;
     }
+
+    async resolveCached(): Promise<BannerState | null> {
+        const userType = this.resolveUserType();
+        const cached = await this.readCache(userType);
+        if (cached) {
+            return {
+                status: "ready",
+                config: cached.config,
+            };
+        }
+        return null;
+    }
 }
