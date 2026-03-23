@@ -1,0 +1,164 @@
+@keyframes banner-slideInLeft {
+  0% { opacity: 0; transform: translateX(-28px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+@keyframes banner-slideInRight {
+  0% { opacity: 0; transform: translateX(28px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+@keyframes banner-slideAcrossRight {
+  0% { opacity: 0; transform: translateX(-110vw); }
+  5% { opacity: 1; }
+  95% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(110vw); }
+}
+@keyframes banner-slideInUp {
+  0% { opacity: 0; transform: translateY(22px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes banner-fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes banner-zoomIn {
+  0% { opacity: 0; transform: scale(0.94); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes banner-change-fade {
+  0% { opacity: 0.4; }
+  100% { opacity: 1; }
+}
+@keyframes banner-change-slide {
+  0% { opacity: 0.45; transform: translateX(22px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+@keyframes banner-change-zoom {
+  0% { opacity: 0.45; transform: scale(0.97); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes lottie-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes particle-fall {
+  0% { transform: translateY(-100px); }
+  100% { transform: translateY(110%); }
+}
+
+.db-wrapper {
+  width: 100%;
+  margin-bottom: 1.5rem;
+}
+
+.banner-root-v2 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  background-color: #f8fafc;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.banner-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+
+  .particle {
+    position: absolute;
+    width: 2px;
+    height: 10px;
+    background: currentColor;
+    border-radius: 10px;
+    animation: particle-fall 3s linear infinite;
+  }
+}
+
+.banner-particles--snow .particle {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+}
+
+.banner-particles--stars .particle {
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  animation: banner-fadeIn 1s alternate infinite;
+}
+
+.banner-lottie-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  
+  .lottie-mock {
+    width: 40px;
+    height: 40px;
+    animation: lottie-spin 2s linear infinite;
+    color: currentColor;
+  }
+  
+  .lottie-label {
+    font-size: 8px;
+    font-weight: bold;
+    text-transform: uppercase;
+    opacity: 0.6;
+  }
+}
+
+.db-loading,
+.db-error,
+.db-empty {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 90px;
+  border-radius: 18px;
+  background-color: rgba(15, 23, 42, 0.05);
+  color: #64748b;
+  font-family: system-ui, -apple-system, sans-serif;
+  gap: 12px;
+}
+
+@keyframes db-shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+
+.db-skeleton {
+  width: 100%;
+  aspect-ratio: 800 / 220;
+  border-radius: 16px;
+  background: #f1f5f9;
+  background-image: linear-gradient(90deg, #f1f5f9 0px, #e2e8f0 200px, #f1f5f9 400px);
+  background-size: 1000px 100%;
+  animation: db-shimmer 2s infinite linear forwards;
+  margin-bottom: 1.5rem;
+  opacity: 0.6;
+}
+
+@keyframes banner-reveal-in {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.db-reveal-animate {
+  animation: banner-reveal-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: opacity, transform;
+}

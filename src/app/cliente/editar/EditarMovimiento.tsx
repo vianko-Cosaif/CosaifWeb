@@ -3,9 +3,11 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Movimiento } from './../../movimientos/Movimiento';
+import ConfirmChoiceAlert from "./../../Components/ui/ConfirmChoiceAlert";
 import {
   API_BASE, SECC_BASE, DOUBLE_TAP_MS, Direccion, Posicion, Servicio, Rol, Polo, Via, Seccion, InfoEdicion, EditablePayload, MovementFormData, baseInitialForm
 } from './../../movimientos/movimientos.shared';
+import { useTrackSelectionConfirmation } from "./../../movimientos/lifeLineConfirmation.shared";
 
 /** ======= ESTILOS ======= */
 const inputBase =
@@ -136,11 +138,32 @@ function Step1Edit({
   empresaLabel: string;
   localidadLabel: string;
 }) {
+  const {
+    lifeLineModal,
+    requestTrackConfirmation,
+    closeTrackConfirmation,
+    confirmTrackSelection,
+    question: lifeLineQuestion,
+    contextLabel: lifeLineContextLabel,
+  } = useTrackSelectionConfirmation();
+
   const optionFrom = (v: Via) => (
     <button
       key={v.id}
       disabled={readOnly}
-      onClick={() => setViaOrigenId(viaOrigenId === v.id ? null : v.id)}
+      onClick={() => {
+        if (readOnly) return;
+        if (viaOrigenId === v.id) {
+          setViaOrigenId(null);
+          return;
+        }
+        requestTrackConfirmation(
+          "from",
+          String(v.nombre),
+          () => setViaOrigenId(v.id),
+          v.lineaDeVida
+        );
+      }}
       className={Movimiento.clsx(
         "flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left transition-all duration-200 hover:bg-slate-50 dark:border-zinc-700/60 dark:hover:bg-zinc-800/60",
         viaOrigenId === v.id && "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 ring-1 ring-emerald-500/20"
@@ -158,7 +181,19 @@ function Step1Edit({
       <button
         key={v.id}
         disabled={readOnly}
-        onClick={() => setViaDestinoId(viaDestinoId === v.id ? null : v.id)}
+        onClick={() => {
+          if (readOnly) return;
+          if (viaDestinoId === v.id) {
+            setViaDestinoId(null);
+            return;
+          }
+          requestTrackConfirmation(
+            "to",
+            String(v.nombre),
+            () => setViaDestinoId(v.id),
+            v.lineaDeVida
+          );
+        }}
         className={Movimiento.clsx(
           "flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left transition-all duration-200 hover:bg-slate-50 dark:border-zinc-700/60 dark:hover:bg-zinc-800/60",
           viaDestinoId === v.id && "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 ring-1 ring-emerald-500/20"
@@ -361,6 +396,14 @@ function Step1Edit({
         </div>
         <SectionsPills kind="to" viaId={viaDestinoId} />
       </div>)}
+
+      <ConfirmChoiceAlert
+        open={Boolean(lifeLineModal)}
+        question={lifeLineQuestion}
+        contextLabel={lifeLineContextLabel}
+        onCancel={closeTrackConfirmation}
+        onConfirm={confirmTrackSelection}
+      />
     </div>
   );
 }
@@ -656,7 +699,11 @@ export default function EditarMovimiento({
         if (locId) {
           const list = await Movimiento.fetchJSON(`${API_BASE}/vias/localidad/${locId}`).catch(() => []);
           const vList: Via[] = Array.isArray(list)
-            ? list.map((v: any) => ({ id: v.id, nombre: v.nombre }))
+            ? list.map((v: any) => ({
+                id: v.id,
+                nombre: v.nombre,
+                lineaDeVida: v.lineaDeVida ?? null,
+              }))
             : [];
           vList.sort((a, b) => {
             const numA = Number(a.nombre);

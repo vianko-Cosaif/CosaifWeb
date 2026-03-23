@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import SidebarMenu, { Rol } from "@/app/Components/Menu/Menu";
 import RailQueueBoard from "./RailQueueBoard";
+import { DynamicBanner } from "@/app/Components/DynamicBanner";
 import { getClientCookie, setClientCookie } from "@/lib/cookies";
 
 const CoordinadorPage: React.FC = () => {
@@ -42,6 +43,7 @@ const CoordinadorPage: React.FC = () => {
         <main className="mx-auto w-full max-w-screen-2xl flex-1 p-4 sm:p-6 md:p-8">
           {localidadId && (
             <div className="w-full py-4">
+              <DynamicBanner className="mb-6" />
               <RailQueueBoard localidadId={localidadId} />
             </div>
           )}
