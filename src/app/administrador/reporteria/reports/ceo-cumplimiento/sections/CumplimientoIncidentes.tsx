@@ -124,7 +124,7 @@ export default function CumplimientoIncidentes({
                     name="Incidentes"
                     fill="#f59e0b"
                     radius={0}
-                    shape={(props) => <Bar3DShape {...props} color="#f59e0b" />}
+                    shape={(props: any) => <Bar3DShape {...props} color="#f59e0b" />}
                   />
                   <Line type="monotone" dataKey="incidentes" name="Tendencia" stroke="#92400e" strokeWidth={2} dot={false} />
                 </ComposedChart>

@@ -84,7 +84,7 @@ export default function OperacionesSection({
                   name="Movimientos"
                   fill="#10b981"
                   radius={0}
-                  shape={(props) => <Bar3DShape {...props} color="#10b981" />}
+                  shape={(props: any) => <Bar3DShape {...props} color="#10b981" />}
                 />
                 <Line type="monotone" dataKey="movimientos" name="Tendencia" stroke="#065f46" strokeWidth={2} dot={false} />
               </ComposedChart>

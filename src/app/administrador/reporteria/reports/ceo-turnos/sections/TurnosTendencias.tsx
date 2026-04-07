@@ -63,7 +63,7 @@ export default function TurnosTendencias({
                     name="Movimientos"
                     fill="#f59e0b"
                     radius={0}
-                    shape={(props) => <Bar3DShape {...props} color="#f59e0b" />}
+                    shape={(props: any) => <Bar3DShape {...props} color="#f59e0b" />}
                   />
                   <Line type="monotone" dataKey="pct" name="% del total" stroke="#fb7185" strokeWidth={2} dot={{ r: 3 }} />
                 </ComposedChart>

@@ -26,7 +26,7 @@ export default function CumplimientoSegmentacion({
   porLocalidad: Segmento[];
   porTurno: Segmento[];
 }) {
-  const columns = [
+  const columns: { key: keyof Segmento; label: string; format?: (v: any, row: Segmento) => string }[] = [
     { key: "nombre", label: "Nombre" },
     { key: "totalMovimientos", label: "Mov", format: (v: any) => fmtMaybeInt(v) },
     { key: "conInicioFin", label: "Con fin", format: (v: any) => fmtMaybeInt(v) },
@@ -35,7 +35,7 @@ export default function CumplimientoSegmentacion({
     { key: "criticosTotal", label: "Crit", format: (v: any) => fmtMaybeInt(v) },
     { key: "cancelados", label: "Canc", format: (v: any) => fmtMaybeInt(v) },
     { key: "canceladosConIncidente", label: "Canc+Inc", format: (v: any) => fmtMaybeInt(v) },
-  ] as const;
+  ];
 
   return (
     <div className="space-y-6">

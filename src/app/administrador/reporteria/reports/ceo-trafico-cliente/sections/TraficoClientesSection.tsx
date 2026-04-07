@@ -35,7 +35,7 @@ export default function TraficoClientesSection({
   clientes: ClienteRow[];
   porEmpresa: EmpresaRow[];
 }) {
-  const clienteCols = [
+  const clienteCols: { key: keyof ClienteRow; label: string; format?: (v: any, row: ClienteRow) => string }[] = [
     { key: "clienteNombre", label: "Cliente" },
     { key: "totalMovimientos", label: "Mov", format: (v: any) => fmtMaybeInt(v) },
     { key: "conInicioFin", label: "Con fin", format: (v: any) => fmtMaybeInt(v) },
@@ -44,7 +44,7 @@ export default function TraficoClientesSection({
     { key: "criticosTotal", label: "Crit", format: (v: any) => fmtMaybeInt(v) },
     { key: "cancelados", label: "Canc", format: (v: any) => fmtMaybeInt(v) },
     { key: "canceladosConIncidente", label: "Canc+Inc", format: (v: any) => fmtMaybeInt(v) },
-  ] as const;
+  ];
 
   return (
     <div className="space-y-6">

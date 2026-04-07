@@ -136,7 +136,7 @@ export default function OverviewSection({
                           name="Movimientos"
                           fill="#6366f1"
                           radius={0}
-                          shape={(props) => <Bar3DShape {...props} color="#6366f1" />}
+                          shape={(props: any) => <Bar3DShape {...props} color="#6366f1" />}
                         />
                         <Line yAxisId="right" type="monotone" dataKey="pct" name="% del total" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4 }} />
                       </ComposedChart>

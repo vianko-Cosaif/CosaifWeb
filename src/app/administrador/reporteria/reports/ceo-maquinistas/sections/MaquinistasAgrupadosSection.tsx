@@ -25,7 +25,7 @@ type Grupo = {
   operadores?: OperadorRow[];
 };
 
-const columns = [
+const columns: { key: keyof OperadorRow; label: string; format?: (v: any, row: OperadorRow) => string }[] = [
   { key: "operadorNombre", label: "Operador" },
   { key: "totalMovimientos", label: "Mov", format: (v: any) => fmtMaybeInt(v) },
   { key: "conInicioFin", label: "Con fin", format: (v: any) => fmtMaybeInt(v) },
@@ -36,7 +36,7 @@ const columns = [
   { key: "incidentesTotal", label: "Inc", format: (v: any) => fmtMaybeInt(v) },
   { key: "cancelados", label: "Canc", format: (v: any) => fmtMaybeInt(v) },
   { key: "canceladosConIncidente", label: "Canc+Inc", format: (v: any) => fmtMaybeInt(v) },
-] as const;
+];
 
 export default function MaquinistasAgrupadosSection({
   porEmpresa,
