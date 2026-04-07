@@ -6,7 +6,6 @@ import { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { S } from "./RailQueueBoard.styles";
-import Noticias from "./../cliente/Noticias";
 /* ===== Tipos ===== */
 type Ronda = {
   id: number;
@@ -83,6 +82,25 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
     throw new Error(`${r.status} ${r.statusText} :: ${txt.slice(0, 200)}`);
   }
   return (await r.json()) as T;
+}
+
+function isAbortError(err: unknown): boolean {
+  if (!err) return false;
+  if (typeof DOMException !== "undefined" && err instanceof DOMException) {
+    return err.name === "AbortError";
+  }
+  if (err instanceof Error) {
+    const msg = String(err.message || "").toLowerCase();
+    return (
+      err.name === "AbortError" ||
+      msg.includes("signal is aborted") ||
+      msg.includes("aborted without reason")
+    );
+  }
+  if (typeof err === "object" && "name" in err) {
+    return (err as { name?: string }).name === "AbortError";
+  }
+  return false;
 }
 
 function useVisibleInterval(
@@ -228,6 +246,7 @@ export default function RailQueueBoardPage({
 
   const reqSeq = useRef(120);
   const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const [openEditor, setOpenEditor] = useState(false);
 
@@ -306,6 +325,7 @@ export default function RailQueueBoardPage({
       startTransition(() => setInfo(mapFromList));
       lastOkAt.current = Date.now();
     } catch (err) {
+      if (isAbortError(err) || ac.signal.aborted) return;
       console.error("[RailQueueBoard] load error", err);
     } finally {
       if (mySeq === reqSeq.current) {
@@ -528,9 +548,6 @@ export default function RailQueueBoardPage({
             </div>
           </div>
         </div>
-      </div>
-      <div className={S.banner} >
-      <Noticias/>
       </div>
       {/* CONTENIDO PRINCIPAL */}
       <section className={S.section} aria-busy={loading || refreshing}>

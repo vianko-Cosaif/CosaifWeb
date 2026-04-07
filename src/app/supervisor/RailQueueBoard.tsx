@@ -85,6 +85,25 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   return (await r.json()) as T;
 }
 
+function isAbortError(err: unknown): boolean {
+  if (!err) return false;
+  if (typeof DOMException !== "undefined" && err instanceof DOMException) {
+    return err.name === "AbortError";
+  }
+  if (err instanceof Error) {
+    const msg = String(err.message || "").toLowerCase();
+    return (
+      err.name === "AbortError" ||
+      msg.includes("signal is aborted") ||
+      msg.includes("aborted without reason")
+    );
+  }
+  if (typeof err === "object" && "name" in err) {
+    return (err as { name?: string }).name === "AbortError";
+  }
+  return false;
+}
+
 function useVisibleInterval(
   fn: () => void,
   delay: number | null,
@@ -235,6 +254,7 @@ export default function RailQueueBoard({
 
   const reqSeq = useRef(120);
   const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const [openEditor, setOpenEditor] = useState(false);
 
@@ -368,6 +388,7 @@ export default function RailQueueBoard({
       startTransition(() => setInfo(mapFromList));
       lastOkAt.current = Date.now();
     } catch (err) {
+      if (isAbortError(err) || ac.signal.aborted) return;
       console.error("[RailQueueBoard] load error", err);
     } finally {
       if (mySeq === reqSeq.current) {

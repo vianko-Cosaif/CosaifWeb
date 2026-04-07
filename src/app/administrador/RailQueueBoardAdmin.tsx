@@ -66,6 +66,25 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   return (await r.json()) as T;
 }
 
+function isAbortError(err: unknown): boolean {
+  if (!err) return false;
+  if (typeof DOMException !== "undefined" && err instanceof DOMException) {
+    return err.name === "AbortError";
+  }
+  if (err instanceof Error) {
+    const msg = String(err.message || "").toLowerCase();
+    return (
+      err.name === "AbortError" ||
+      msg.includes("signal is aborted") ||
+      msg.includes("aborted without reason")
+    );
+  }
+  if (typeof err === "object" && "name" in err) {
+    return (err as { name?: string }).name === "AbortError";
+  }
+  return false;
+}
+
 async function patchJson<T>(url: string, body: unknown): Promise<T> {
   const r = await fetch(url, {
     method: "PATCH",
@@ -280,6 +299,7 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
       startTransition(() => setInfo(mapFromList));
       lastOkAt.current = Date.now();
     } catch (err) {
+      if (isAbortError(err) || ac.signal.aborted) return;
       console.error("[RailQueueBoardAdmin] load error", err);
     } finally {
       if (mySeq === reqSeq.current) {

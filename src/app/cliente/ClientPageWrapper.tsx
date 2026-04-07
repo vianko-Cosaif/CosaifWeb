@@ -2,7 +2,7 @@
 import React, { useCallback, Suspense, lazy } from "react";
 import SelectLocalidad from "@/app/Components/cliente/SelectLocalidad";
 import type { IncidenteEmergente } from "@/app/hooks/useIncidentMonitor";
-import Noticias from "./Noticias";
+import { DynamicBanner } from "@/app/Components/DynamicBanner";
 /* ================= Tipos ================= */
 interface ClientPageWrapperProps {
   localidadId: number | null;
@@ -118,17 +118,17 @@ export default function ClientPageWrapper({ localidadId, empresaId }: ClientPage
 
 
       {/* Contenido principal */}
-      
+
       <main className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
         <div className="mb-6">
-          <Noticias /> {/* 👈 Rectángulo de Hola arriba del panel */}
+          <DynamicBanner /> {/* 👈 Banner Dinámico (Semana Santa, etc.) */}
         </div>
         <ErrorBoundary>
           {localidadId ? (
             <Suspense fallback={<LoadingFallback />}>
-              <LazyRailQueueBoard 
+              <LazyRailQueueBoard
                 localidadId={localidadId}
-                      />
+              />
             </Suspense>
           ) : (
             <div className="flex flex-col items-center justify-center min-h-[500px]">
@@ -182,8 +182,8 @@ type RailQueueBoardProps = {
 
 
 // Exportación de componentes auxiliares para testing
-export { 
-  LoadingFallback, 
-  ErrorBoundary, 
+export {
+  LoadingFallback,
+  ErrorBoundary,
 
 };
