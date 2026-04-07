@@ -113,59 +113,30 @@ export default function ClientPageWrapper({ localidadId, empresaId }: ClientPage
   }, [localidadId]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800">
-      {/* Header con información de contexto */}
-
-
-      {/* Contenido principal */}
-
-      <main className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
-        <div className="mb-6">
-          <DynamicBanner /> {/* 👈 Banner Dinámico (Semana Santa, etc.) */}
-        </div>
+    <div className="w-full">
+      <div className="mx-auto w-full max-w-[1400px] space-y-6 sm:space-y-8 min-w-0">
+        <DynamicBanner />
         <ErrorBoundary>
           {localidadId ? (
             <Suspense fallback={<LoadingFallback />}>
-              <LazyRailQueueBoard
-                localidadId={localidadId}
-              />
+              <LazyRailQueueBoard localidadId={localidadId} />
             </Suspense>
           ) : (
-            <div className="flex flex-col items-center justify-center min-h-[500px]">
-              <div className="w-full max-w-2xl">
-                <div className="text-center mb-8">
-                  <div className="text-6xl mb-4">🚆</div>
-                  <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-2">
-                    Selecciona una Localidad
-                  </h2>
-                  <p className="text-slate-600 dark:text-slate-400">
-
-                  </p>
-                </div>
+            <div className="flex flex-col items-center justify-center min-h-[420px] rounded-2xl border border-slate-200 bg-white/70 p-6 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900/60">
+              <div className="text-5xl mb-3">🚆</div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">
+                Selecciona una Localidad
+              </h2>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                Para mostrar el tablero en tiempo real.
+              </p>
+              <div className="w-full max-w-md">
                 <SelectLocalidad />
               </div>
             </div>
           )}
         </ErrorBoundary>
-      </main>
-
-      {/* Footer informativo */}
-      <footer className="border-t border-slate-200/60 bg-white/50 dark:border-slate-700/60 dark:bg-slate-900/50 mt-8">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-slate-500 dark:text-slate-400">
-            <div className="flex items-center gap-4">
-              <span>🚦 Sistema de Gestión Ferroviaria</span>
-              <span className="hidden sm:inline">•</span>
-              <span className="hidden sm:inline">Tiempo Real</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span>v1.0.0</span>
-              <span>•</span>
-              <span>{new Date().getFullYear()}</span>
-            </div>
-          </div>
-        </div>
-      </footer>
+      </div>
     </div>
   );
 }

@@ -1,11 +1,80 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /* ================== CONFIGURACIÓN ================== */
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/bff";
-const URL_LISTADO = `${API_BASE}/movimientos`;
-const URL_EMPRESAS = `${API_BASE}/empresas`;
-const URL_LOCALIDADES = `${API_BASE}/localidades`;
-const AUTO_REFRESH_MS = 10_000;
+const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_URL || "/bff";
+const DEFAULT_AUTO_REFRESH_MS = 10_000;
+
+function normalizeBase(base?: string): string {
+  return (base || DEFAULT_API_BASE).replace(/\/+$/, "");
+}
+
+function hasTime(input: string): boolean {
+  return input.includes("T");
+}
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : `${n}`;
+}
+
+function formatOffset(date: Date): string {
+  const offsetMin = -date.getTimezoneOffset();
+  const sign = offsetMin >= 0 ? "+" : "-";
+  const abs = Math.abs(offsetMin);
+  const hh = pad2(Math.floor(abs / 60));
+  const mm = pad2(abs % 60);
+  return `${sign}${hh}:${mm}`;
+}
+
+function toLocalIso(date: Date): string {
+  const y = date.getFullYear();
+  const m = pad2(date.getMonth() + 1);
+  const d = pad2(date.getDate());
+  const hh = pad2(date.getHours());
+  const mm = pad2(date.getMinutes());
+  const ss = pad2(date.getSeconds());
+  return `${y}-${m}-${d}T${hh}:${mm}:${ss}${formatOffset(date)}`;
+}
+
+function toIsoLocalDateTime(input: string): string {
+  const [datePart, timePart = "00:00"] = input.split("T");
+  const [y, m, d] = datePart.split("-").map(Number);
+  const [hh, mm] = timePart.split(":").map(Number);
+  if (
+    !Number.isFinite(y) ||
+    !Number.isFinite(m) ||
+    !Number.isFinite(d) ||
+    !Number.isFinite(hh) ||
+    !Number.isFinite(mm)
+  ) {
+    return input;
+  }
+  const dt = new Date(y, m - 1, d, hh, mm, 0, 0);
+  return toLocalIso(dt);
+}
+
+function toIsoLocalStartOfDay(input: string): string {
+  const [y, m, d] = input.split("-").map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
+    return input;
+  }
+  return toLocalIso(new Date(y, m - 1, d, 0, 0, 0, 0));
+}
+
+function toIsoLocalEndOfDay(input: string): string {
+  const [y, m, d] = input.split("-").map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
+    return input;
+  }
+  return toLocalIso(new Date(y, m - 1, d, 23, 59, 59, 0));
+}
+
+function normalizeFechaDesde(input: string): string {
+  return hasTime(input) ? toIsoLocalDateTime(input) : toIsoLocalStartOfDay(input);
+}
+
+function normalizeFechaHasta(input: string): string {
+  return hasTime(input) ? toIsoLocalDateTime(input) : toIsoLocalEndOfDay(input);
+}
 
 /* ================== TIPOS ================== */
 export type Rol =
@@ -15,6 +84,7 @@ export type Rol =
   | "CLIENTE";
 
 export type Ambito = "actuales" | "pasados";
+export type FechaCampo = "solicitud" | "inicio" | "fin" | "creacion";
 export type DireccionOrden = "asc" | "desc";
 export type CampoOrden =
   | "id"
@@ -27,6 +97,8 @@ export type CampoOrden =
   | "tipo"
   | "localidad"
   | "empresa";
+
+const DEFAULT_FECHA_CAMPO: FechaCampo = "solicitud";
 
 export interface Movement {
   id: number;
@@ -73,11 +145,23 @@ export interface FiltrosMovimientos {
   localidadId?: number | null;
   desde?: string | null;
   hasta?: string | null;
+  estado?: string | null;
+  prioridad?: string | null;
+  locomotiveNumber?: string | null;
+  locomotivePrefix?: string | null;
+  fechaCampo?: FechaCampo | null;
   pagina: number;
   tamPagina: number;
   campoOrden: CampoOrden;
   direccionOrden: DireccionOrden;
   busqueda: string;
+}
+
+export interface UseMovimientosOptions {
+  rol: Rol;
+  token?: string;
+  apiBase?: string;
+  autoRefreshMs?: number;
 }
 
 export interface OpcionCatalogo {
@@ -157,15 +241,27 @@ interface MovimientosEnvelope {
   items?: MovementDTO[];
   data?: MovementDTO[];
   rows?: MovementDTO[];
-  total?: number;
+  total?: number | string;
+  totalItems?: number | string;
+  count?: number | string;
+  meta?: {
+    total?: number | string;
+    totalItems?: number | string;
+    count?: number | string;
+    pagination?: {
+      total?: number | string;
+      totalItems?: number | string;
+      count?: number | string;
+    };
+  };
+  pagination?: {
+    total?: number | string;
+    totalItems?: number | string;
+    count?: number | string;
+  };
 }
 
 /* ================== CONSTANTES DE NEGOCIO ================== */
-
-const ESTADOS_ACTUALES = new Set<Movement["estado"]>([
-  "SOLICITADO",
-  "EN_PROCESO",
-]);
 
 const SORT_KEY_MAP: Record<CampoOrden, keyof Movement> = {
   id: "id",
@@ -182,6 +278,13 @@ const SORT_KEY_MAP: Record<CampoOrden, keyof Movement> = {
 
 type SortableKey = (typeof SORT_KEY_MAP)[CampoOrden];
 type SortableValue = string | number | null | undefined;
+
+const ESTADOS_ACTUALES = new Set(["SOLICITADO", "EN_PROCESO", "ESPERA"]);
+const ESTADOS_PASADOS = new Set(["DETENIDO", "CANCELADO", "CONCLUIDO"]);
+
+function normalizarEstado(estado?: string | null): string {
+  return String(estado || "").trim().toUpperCase();
+}
 
 /* ================== TYPE GUARDS / HELPERS ================== */
 
@@ -344,27 +447,57 @@ function ordenarMovimientos(
   });
 }
 
+function parseTotal(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const num = Number(trimmed);
+    if (Number.isFinite(num) && num >= 0) return num;
+  }
+  return null;
+}
+
 function extraerItemsYTotal(
   data: unknown
-): { items: MovementDTO[]; total: number } {
+): { items: MovementDTO[]; total: number | null } {
   if (esMovementDTOArray(data)) {
-    return { items: data, total: data.length };
+    return { items: data, total: null };
   }
 
   if (esMovimientosEnvelope(data)) {
-    const { items, data: innerData, rows, total } = data as MovimientosEnvelope;
+    const { items, data: innerData, rows } = data as MovimientosEnvelope;
     const lista = items ?? innerData ?? rows ?? [];
-    const totalSeguro =
-      typeof total === "number" && total >= 0 ? total : lista.length;
-    return { items: lista, total: totalSeguro };
+    const payload = data as MovimientosEnvelope;
+    const totalRaw =
+      payload.total ??
+      payload.totalItems ??
+      payload.count ??
+      payload.meta?.total ??
+      payload.meta?.totalItems ??
+      payload.meta?.count ??
+      payload.meta?.pagination?.total ??
+      payload.meta?.pagination?.totalItems ??
+      payload.meta?.pagination?.count ??
+      payload.pagination?.total ??
+      payload.pagination?.totalItems ??
+      payload.pagination?.count;
+    return { items: lista, total: parseTotal(totalRaw) };
   }
 
-  return { items: [], total: 0 };
+  return { items: [], total: null };
 }
 
 /* ================== HOOK ================== */
 
-export function useMovimientos(rol: Rol, token?: string) {
+export function useMovimientos({
+  rol: _rol,
+  token,
+  apiBase,
+  autoRefreshMs,
+}: UseMovimientosOptions) {
   const [ambito, setAmbito] = useState<Ambito>("actuales");
 
   const tab = useMemo<"Actuales" | "Pasados">(
@@ -379,6 +512,7 @@ export function useMovimientos(rol: Rol, token?: string) {
   const [refreshing, setRefreshing] = useState(false);
   const [filas, setFilas] = useState<Movement[]>([]);
   const [total, setTotal] = useState(0);
+  const [totalEstimado, setTotalEstimado] = useState(false);
 
   const [filtros, setFiltros] = useState<FiltrosMovimientos>({
     pagina: 1,
@@ -386,6 +520,7 @@ export function useMovimientos(rol: Rol, token?: string) {
     campoOrden: "id",
     direccionOrden: "desc",
     busqueda: "",
+    fechaCampo: DEFAULT_FECHA_CAMPO,
   });
 
   const [empresas, setEmpresas] = useState<OpcionEmpresa[]>([]);
@@ -397,6 +532,41 @@ export function useMovimientos(rol: Rol, token?: string) {
   >(null);
 
   const abortRef = useRef<AbortController | null>(null);
+  const base = normalizeBase(apiBase);
+  const urlEmpresas = `${base}/empresas`;
+  const urlLocalidades = `${base}/localidades`;
+
+  const shouldUseBuscar = useMemo(() => {
+    const hasBusqueda = filtros.busqueda.trim().length > 0;
+    const hasEstado = Boolean(filtros.estado && String(filtros.estado).trim());
+    const hasPrioridad = Boolean(filtros.prioridad && String(filtros.prioridad).trim());
+    const hasLocoNum = Boolean(
+      filtros.locomotiveNumber && String(filtros.locomotiveNumber).trim()
+    );
+    const hasLocoPrefix = Boolean(
+      filtros.locomotivePrefix && String(filtros.locomotivePrefix).trim()
+    );
+    const hasFechas = Boolean(filtros.desde || filtros.hasta);
+
+    return (
+      ambito === "pasados" ||
+      hasBusqueda ||
+      hasEstado ||
+      hasPrioridad ||
+      hasLocoNum ||
+      hasLocoPrefix ||
+      hasFechas
+    );
+  }, [
+    ambito,
+    filtros.busqueda,
+    filtros.estado,
+    filtros.prioridad,
+    filtros.locomotiveNumber,
+    filtros.locomotivePrefix,
+    filtros.desde,
+    filtros.hasta,
+  ]);
 
   /* ---------- HEADERS AUTH ---------- */
   const authHeaders = useMemo(
@@ -412,49 +582,75 @@ export function useMovimientos(rol: Rol, token?: string) {
   const queryString = useMemo(() => {
     const qs = new URLSearchParams();
 
-    // Pedimos siempre la primera página grande al backend.
-    // La paginación REAL la hacemos nosotros en el front.
-    qs.set("page", "1");
-    qs.set("pageSize", "1000"); // o 2000 si quieres más margen
+    qs.set("page", String(filtros.pagina));
+    qs.set("pageSize", String(filtros.tamPagina));
 
-    if (filtros.busqueda.trim()) qs.set("q", filtros.busqueda.trim());
-    if (filtros.empresaId) qs.set("empresaId", String(filtros.empresaId));
-    if (filtros.localidadId)
-      qs.set("localidadId", String(filtros.localidadId));
-    if (filtros.desde) {
-      // Restamos 1 día para asegurar que el backend (posiblemente UTC) incluya transiciones de hora local
-      const d = new Date(filtros.desde);
-      d.setDate(d.getDate() - 1);
-      qs.set("fechaInicio", d.toISOString().split("T")[0]);
-    }
-    if (filtros.hasta) {
-      // Sumamos 1 día para cubrir el final del día local en UTC
-      const d = new Date(filtros.hasta);
-      d.setDate(d.getDate() + 1);
-      qs.set("fechaFin", d.toISOString().split("T")[0]);
-    }
+    if (shouldUseBuscar) {
+      if (filtros.busqueda.trim()) qs.set("q", filtros.busqueda.trim());
+      if (filtros.empresaId != null)
+        qs.set("empresaId", String(filtros.empresaId));
+      if (filtros.localidadId != null)
+        qs.set("localidadId", String(filtros.localidadId));
+      if (filtros.estado && String(filtros.estado).trim()) {
+        qs.set("estado", String(filtros.estado).trim());
+      }
+      if (filtros.prioridad && String(filtros.prioridad).trim()) {
+        qs.set("prioridad", String(filtros.prioridad).trim());
+      }
+      if (filtros.locomotiveNumber && String(filtros.locomotiveNumber).trim()) {
+        qs.set("locomotiveNumber", String(filtros.locomotiveNumber).trim());
+      }
+      if (filtros.locomotivePrefix && String(filtros.locomotivePrefix).trim()) {
+        qs.set("locomotivePrefix", String(filtros.locomotivePrefix).trim());
+      }
 
-    if (filtros.campoOrden) qs.set("orderBy", filtros.campoOrden);
-    if (filtros.direccionOrden) qs.set("orderDir", filtros.direccionOrden);
+      if (ambito === "pasados") qs.set("finalizado", "true");
+      if (ambito === "actuales") qs.set("finalizado", "false");
 
-    if (ambito === "actuales") {
-      qs.append("estado", "SOLICITADO");
-      qs.append("estado", "EN_PROCESO");
-    } else {
-      qs.set("finalizado", "true");
+      if (filtros.desde || filtros.hasta) {
+        const campo = filtros.fechaCampo ?? DEFAULT_FECHA_CAMPO;
+        qs.set("fechaCampo", campo);
+        if (filtros.desde) qs.set("fechaDesde", normalizeFechaDesde(filtros.desde));
+        if (filtros.hasta) qs.set("fechaHasta", normalizeFechaHasta(filtros.hasta));
+      }
     }
 
     return qs.toString();
   }, [
+    filtros.pagina,
+    filtros.tamPagina,
     filtros.busqueda,
     filtros.empresaId,
     filtros.localidadId,
+    filtros.estado,
+    filtros.prioridad,
+    filtros.locomotiveNumber,
+    filtros.locomotivePrefix,
     filtros.desde,
     filtros.hasta,
-    filtros.campoOrden,
-    filtros.direccionOrden,
+    filtros.fechaCampo,
     ambito,
+    shouldUseBuscar,
   ]);
+
+  const urlListado = useMemo(() => {
+    if (shouldUseBuscar) {
+      return `${base}/movimientos/buscar`;
+    }
+    const emp = filtros.empresaId != null ? String(filtros.empresaId) : "";
+    const loc = filtros.localidadId != null ? String(filtros.localidadId) : "";
+
+    if (emp && loc) {
+      return `${base}/movimientos/empresa/${encodeURIComponent(emp)}/localidad/${encodeURIComponent(loc)}/pendientes`;
+    }
+    if (emp) {
+      return `${base}/movimientos/empresa/${encodeURIComponent(emp)}/pendientes`;
+    }
+    if (loc) {
+      return `${base}/movimientos/localidad/${encodeURIComponent(loc)}/pendientes`;
+    }
+    return `${base}/movimientos/pendientes`;
+  }, [base, filtros.empresaId, filtros.localidadId, shouldUseBuscar]);
 
 
   /* ---------- Catálogos (empresas/localidades) ---------- */
@@ -475,11 +671,11 @@ export function useMovimientos(rol: Rol, token?: string) {
       }
     };
 
-    cargarCatalogo(URL_EMPRESAS, setEmpresas);
-    cargarCatalogo(URL_LOCALIDADES, setLocalidades);
-  }, [authHeaders]);
+    cargarCatalogo(urlEmpresas, setEmpresas);
+    cargarCatalogo(urlLocalidades, setLocalidades);
+  }, [authHeaders, urlEmpresas, urlLocalidades]);
 
-  /* ---------- Fetch de movimientos + filtros front ---------- */
+  /* ---------- Fetch de movimientos (filtros backend + orden local) ---------- */
   const fetchMovimientos = useCallback(async () => {
     if (abortRef.current) {
       abortRef.current.abort();
@@ -489,7 +685,7 @@ export function useMovimientos(rol: Rol, token?: string) {
 
     setCargando(true);
     try {
-      const res = await fetch(`${URL_LISTADO}?${queryString}`, {
+      const res = await fetch(`${urlListado}?${queryString}`, {
         headers: authHeaders,
         signal: controller.signal,
       });
@@ -499,104 +695,63 @@ export function useMovimientos(rol: Rol, token?: string) {
       }
 
       const data: unknown = await res.json();
-      const { items: dtoItems } = extraerItemsYTotal(data);
+      const { items: dtoItems, total: totalItems } = extraerItemsYTotal(data);
 
       // Mapear DTO → Movement
       let movimientos: Movement[] = dtoItems.map(mapearDTO);
 
-      // 1) Ambito (actuales/pasados)
-      if (ambito === "actuales") {
-        movimientos = movimientos.filter((m) =>
-          ESTADOS_ACTUALES.has(m.estado)
-        );
-      } else {
-        movimientos = movimientos.filter(
-          (m) => !ESTADOS_ACTUALES.has(m.estado)
-        );
-      }
-
-      // 2) Filtros front como en la app móvil
-      const {
-        empresaId,
-        localidadId,
-        desde,
-        hasta,
-        busqueda,
-        pagina,
-        tamPagina,
-        campoOrden,
-        direccionOrden,
-      } = filtros;
-
-      if (empresaId != null) {
-        movimientos = movimientos.filter((m) => m.empresaId === empresaId);
-      }
-
-      if (localidadId != null) {
-        movimientos = movimientos.filter((m) => m.localidadId === localidadId);
-      }
-
-      if (desde) {
-        // "Desde" al inicio del día local (00:00:00)
-        // Ojo: "desde" viene del input date, ej "2023-10-27"
-        // Construimos la fecha local y obtenemos su timestamp
-        const [y, m, d] = desde.split("-").map(Number);
-        const fromDate = new Date(y, m - 1, d, 0, 0, 0, 0); // Local start of day
-        const fromTs = fromDate.getTime();
-
-        movimientos = movimientos.filter((m) => {
-          const base = m.fechaInicio ?? m.fechaSolicitud;
-          if (!base) return false;
-          // Parseamos la fecha del item (que suele estar en ISO/UTC) a objeto Date
-          const ts = new Date(base).getTime();
-          return !isNaN(ts) && ts >= fromTs;
-        });
-      }
-
-      if (hasta) {
-        // "Hasta" al final del día local (23:59:59.999)
-        const [y, m, d] = hasta.split("-").map(Number);
-        const toDate = new Date(y, m - 1, d, 23, 59, 59, 999); // Local end of day
-        const toTs = toDate.getTime();
-
-        movimientos = movimientos.filter((m) => {
-          const base = m.fechaFin ?? m.fechaInicio ?? m.fechaSolicitud;
-          if (!base) return false;
-          const ts = new Date(base).getTime();
-          return !isNaN(ts) && ts <= toTs;
-        });
-      }
-
-      if (busqueda.trim()) {
-        const q = busqueda.trim().toLowerCase();
-        movimientos = movimientos.filter((m) => {
-          return (
-            String(m.id).includes(q) ||
-            String(m.locomotora ?? "")
-              .toString()
-              .toLowerCase()
-              .includes(q) ||
-            (m.estado ?? "").toLowerCase().includes(q) ||
-            (m.prioridad ?? "").toLowerCase().includes(q) ||
-            (m.tipoMovimiento ?? "").toLowerCase().includes(q) ||
-            (m.localidadNombre ?? "").toLowerCase().includes(q) ||
-            (m.empresaNombre ?? "").toLowerCase().includes(q)
+      const estadoFilterRaw = filtros.estado?.trim();
+      const beforeFilterCount = movimientos.length;
+      let filteredByAmbito = false;
+      if (!estadoFilterRaw && !shouldUseBuscar) {
+        if (ambito === "actuales") {
+          movimientos = movimientos.filter((m) =>
+            ESTADOS_ACTUALES.has(normalizarEstado(m.estado))
           );
-        });
+          filteredByAmbito = true;
+        } else if (ambito === "pasados") {
+          movimientos = movimientos.filter((m) =>
+            ESTADOS_PASADOS.has(normalizarEstado(m.estado))
+          );
+          filteredByAmbito = true;
+        }
       }
 
-      // 3) Orden
-      const campo = campoOrden || "id";
-      const direccion: DireccionOrden = direccionOrden || "desc";
-      const ordenados = ordenarMovimientos(movimientos, campo, direccion);
+      // Orden local (la API no expone orden, así que ordenamos la página actual)
+      const campo = filtros.campoOrden || "id";
+      const direccion: DireccionOrden = filtros.direccionOrden || "desc";
+      movimientos = ordenarMovimientos(movimientos, campo, direccion);
 
-      // 4) Paginación frontend SIEMPRE (como la móvil)
-      const start = (pagina - 1) * tamPagina;
-      const end = start + tamPagina;
-      const paginados = ordenados.slice(start, end);
+      const pageSize = filtros.tamPagina;
+      const page = filtros.pagina;
+      const totalConocido = typeof totalItems === "number";
+      const looksUnreliable =
+        totalConocido &&
+        ((totalItems === 0 && movimientos.length > 0) ||
+          (totalItems <= page * pageSize && movimientos.length === pageSize));
 
-      setFilas(paginados);
-      setTotal(ordenados.length);
+      let totalFinal = 0;
+      let estimado = false;
+
+      const trimmedByAmbito = filteredByAmbito && movimientos.length < beforeFilterCount;
+
+      if (totalConocido && !trimmedByAmbito && !looksUnreliable) {
+        totalFinal = totalItems;
+      } else if (trimmedByAmbito) {
+        estimado = true;
+        totalFinal =
+          movimientos.length === 0 ? Math.max(0, (page - 1) * pageSize) : page * pageSize + 1;
+      } else {
+        estimado = true;
+        totalFinal =
+          movimientos.length < pageSize
+            ? (page - 1) * pageSize + movimientos.length
+            : page * pageSize + 1;
+      }
+
+      setFilas(movimientos);
+      setTotal(totalFinal);
+      setTotalEstimado(estimado);
     } catch (error: unknown) {
       if (error instanceof DOMException && error.name === "AbortError") {
         return;
@@ -608,11 +763,21 @@ export function useMovimientos(rol: Rol, token?: string) {
       }
       setFilas([]);
       setTotal(0);
+      setTotalEstimado(false);
     } finally {
       setCargando(false);
       setRefreshing(false);
     }
-  }, [authHeaders, queryString, ambito, filtros]);
+  }, [
+    authHeaders,
+    queryString,
+    urlListado,
+    filtros.campoOrden,
+    filtros.direccionOrden,
+    filtros.pagina,
+    filtros.tamPagina,
+    shouldUseBuscar,
+  ]);
 
   /* ---------- Auto-refresh ---------- */
   useEffect(() => {
@@ -622,9 +787,10 @@ export function useMovimientos(rol: Rol, token?: string) {
       return;
     }
 
-    const intervalId = setInterval(fetchMovimientos, AUTO_REFRESH_MS);
+    const intervalMs = autoRefreshMs ?? DEFAULT_AUTO_REFRESH_MS;
+    const intervalId = setInterval(fetchMovimientos, intervalMs);
     return () => clearInterval(intervalId);
-  }, [fetchMovimientos, ambito]);
+  }, [fetchMovimientos, ambito, autoRefreshMs]);
 
   /* ---------- Pull to refresh ---------- */
   const onRefresh = useCallback(() => {
@@ -649,6 +815,7 @@ export function useMovimientos(rol: Rol, token?: string) {
   return {
     filas,
     total,
+    totalEstimado,
     cargando,
     ambito,
     setAmbito,

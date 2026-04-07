@@ -38,6 +38,7 @@ interface TablaProps {
   pagina: number;
   tamPagina: number;
   total: number;
+  totalEstimado?: boolean;
   campoOrden: CampoOrden;
   direccionOrden: DireccionOrden;
   cargando?: boolean;
@@ -89,6 +90,7 @@ function TablaInner({
   pagina,
   tamPagina,
   total,
+  totalEstimado = false,
   campoOrden,
   direccionOrden,
   cargando,
@@ -96,6 +98,18 @@ function TablaInner({
   onOrden,
   onEditar,
 }: TablaProps) {
+  const NO_EDIT_STATES = useMemo(
+    () => new Set(["DETENIDO", "EN_PROCESO", "CONCLUIDO"]),
+    []
+  );
+  const puedeEditarMovimiento = useCallback(
+    (estado?: string) => {
+      const key = String(estado || "").trim().toUpperCase();
+      return key ? !NO_EDIT_STATES.has(key) : true;
+    },
+    [NO_EDIT_STATES]
+  );
+  const showEditColumn = Boolean(onEditar) && filas.some((m) => puedeEditarMovimiento(m.estado));
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
 
   const totalPaginas = useMemo(
@@ -161,8 +175,37 @@ function TablaInner({
           </div>
         )}
 
-        {/* Tabla */}
-        <div className={`w-full overflow-x-auto ${styles.tableContainer}`}>
+        {/* Mobile/Tablet cards */}
+        <div className="xl:hidden px-2 py-3 space-y-3">
+          {!tieneFilas ? (
+            <div className="py-10 text-center">
+              <div className="mx-auto w-fit rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 p-5">
+                <TrainFront size={34} strokeWidth={1.2} className="text-slate-300 dark:text-slate-600" />
+              </div>
+              <p className="mt-3 text-sm font-medium text-slate-500 dark:text-slate-400">
+                No hay movimientos registrados
+              </p>
+              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                Ajusta filtros o cambia de pestaña
+              </p>
+            </div>
+          ) : (
+            filas.map((movement) => (
+              <MobileCard
+                key={movement.id}
+                movement={movement}
+                isOpen={Boolean(expanded[movement.id])}
+                onToggle={toggle}
+                onEditar={onEditar}
+                showEdit={showEditColumn}
+                canEdit={puedeEditarMovimiento(movement.estado)}
+              />
+            ))
+          )}
+        </div>
+
+        {/* Tabla (desktop) */}
+        <div className={`hidden xl:block w-full overflow-x-auto ${styles.tableContainer}`}>
           <table className="w-full border-collapse text-left">
             {/* HEADER */}
             <thead
@@ -245,7 +288,7 @@ function TablaInner({
                   align="center"
                 />
 
-                {onEditar && (
+                {showEditColumn && (
                   <th className="px-2 py-3 text-center sm:px-4 sm:py-4">
                     Editar
                   </th>
@@ -280,6 +323,8 @@ function TablaInner({
                     isOpen={Boolean(expanded[movement.id])}
                     onToggle={toggle}
                     onEditar={onEditar}
+                    showEdit={showEditColumn}
+                    canEdit={puedeEditarMovimiento(movement.estado)}
                   />
                 ))
               )}
@@ -305,6 +350,7 @@ function TablaInner({
                 de{" "}
                 <span className="font-bold text-emerald-600 dark:text-emerald-400">
                   {total}
+                  {totalEstimado ? "+" : ""}
                 </span>
               </>
             )}
@@ -365,6 +411,8 @@ interface MovimientoRowProps {
   isOpen: boolean;
   onToggle: (id: number) => void;
   onEditar?: (id: number) => void;
+  showEdit?: boolean;
+  canEdit?: boolean;
 }
 
 const MovimientoRow = memo(function MovimientoRow({
@@ -372,6 +420,8 @@ const MovimientoRow = memo(function MovimientoRow({
   isOpen,
   onToggle,
   onEditar,
+  showEdit = false,
+  canEdit = true,
 }: MovimientoRowProps) {
   const handleRowClick = useCallback(() => {
     onToggle(movement.id);
@@ -380,9 +430,9 @@ const MovimientoRow = memo(function MovimientoRow({
   const handleEditClick = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
       event.stopPropagation();
-      if (onEditar) onEditar(movement.id);
+      if (onEditar && canEdit) onEditar(movement.id);
     },
-    [onEditar, movement.id]
+    [onEditar, movement.id, canEdit]
   );
 
   const fechaSolicitudFmt = useMemo(
@@ -494,17 +544,23 @@ const MovimientoRow = memo(function MovimientoRow({
           <BadgeEstado estado={movement.estado} />
         </td>
 
-        {onEditar && (
+        {showEdit && (
           <td className="px-2 py-3 text-center align-middle sm:px-4 sm:py-4">
-            <button
-              type="button"
-              onClick={handleEditClick}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-xs font-semibold text-emerald-700 transition-all duration-200 hover:bg-emerald-100 hover:border-emerald-300 hover:shadow-sm active:scale-95 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
-              title="Editar movimiento"
-            >
-              <Edit3 size={13} />
-              <span className="hidden sm:inline">Editar</span>
-            </button>
+            {canEdit ? (
+              <button
+                type="button"
+                onClick={handleEditClick}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-xs font-semibold text-emerald-700 transition-all duration-200 hover:bg-emerald-100 hover:border-emerald-300 hover:shadow-sm active:scale-95 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
+                title="Editar movimiento"
+              >
+                <Edit3 size={13} />
+                <span className="hidden sm:inline">Editar</span>
+              </button>
+            ) : (
+              <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500">
+                No editable
+              </span>
+            )}
           </td>
         )}
       </tr>
@@ -516,149 +572,339 @@ const MovimientoRow = memo(function MovimientoRow({
             className={`${styles.expandedContentContainer} ${isOpen ? styles.show : ""
               }`}
           >
-            <div
-              className={`border-b border-slate-200 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-950/40 ${styles.expandedInner}`}
-            >
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {/* 1. Resumen Móvil */}
-                <div className="col-span-1 md:col-span-2 xl:hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <SectionTitle title="Resumen General" icon={Info} color="slate" />
-                  <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                    <InfoBlock
-                      label="Localidad"
-                      value={movement.localidadNombre}
-                      className="md:hidden"
-                    />
-                    <InfoBlock
-                      label="Empresa"
-                      value={movement.empresaNombre}
-                      className="md:hidden"
-                    />
-                    <InfoBlock
-                      label="Solicitud"
-                      value={fechaSolicitudFmt}
-                      className="lg:hidden"
-                    />
-                    <InfoBlock
-                      label="Inicio"
-                      value={fechaInicioFmt}
-                      className="xl:hidden"
-                    />
-                    <InfoBlock
-                      label="Fin"
-                      value={fechaFinFmt}
-                      className="xl:hidden"
-                    />
-                  </div>
-                </div>
-
-                {/* 2. Operación */}
-                <div className="h-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <SectionTitle title="Operación de Vía" icon={MapPin} color="emerald" />
-                  <div className="mt-3 space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-50 pb-2 text-xs dark:border-slate-800/50">
-                      <span className="text-slate-500">Origen</span>
-                      <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                        {movement.viaOrigen || "?"}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between border-b border-slate-50 pb-2 text-xs dark:border-slate-800/50">
-                      <span className="text-slate-500">Destino</span>
-                      <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                        {movement.viaDestino || "?"}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-2 pt-2">
-                      <MiniBadge
-                        label={`Cab: ${movement.posicionCabina}`}
-                        icon={Flag}
-                      />
-                      <MiniBadge
-                        label={`Chim: ${movement.posicionChimenea}`}
-                        icon={Flag}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* 3. Personal */}
-                <div className="h-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <SectionTitle title="Personal Asignado" icon={User} color="blue" />
-                  <div className="mt-3 space-y-2">
-                    <InfoRow
-                      label="Supervisor"
-                      value={movement.supervisorId}
-                    />
-                    <InfoRow
-                      label="Maquinista"
-                      value={movement.maquinistaId}
-                    />
-                    <InfoRow label="Operador" value={movement.operadorId} />
-                    <InfoRow label="Cliente ID" value={movement.clienteId} />
-                  </div>
-                </div>
-
-                {/* 4. Configuración */}
-                <div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <SectionTitle title="Servicios y Alertas" icon={Settings} color="amber" />
-                  <div className="mt-3 flex-1">
-                    <div className="flex flex-wrap gap-2">
-                      {movement.lavado && (
-                        <BooleanChip label="Lavado" type="success" />
-                      )}
-                      {movement.torno && (
-                        <BooleanChip label="Torno" type="success" />
-                      )}
-                      {movement.incidenteGlobal && (
-                        <BooleanChip
-                          label="Incidente Global"
-                          type="danger"
-                        />
-                      )}
-                      {!movement.lavado &&
-                        !movement.torno &&
-                        !movement.incidenteGlobal && (
-                          <div className="flex w-full items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 py-3 text-slate-400 dark:border-slate-800 dark:bg-slate-900/50">
-                            <span className="text-xs italic">
-                              Sin servicios activos
-                            </span>
-                          </div>
-                        )}
-                    </div>
-                  </div>
-                  {isPriorityHigh && (
-                    <div className="mt-3 flex items-center gap-2 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-600 dark:border-rose-800/50 dark:bg-rose-900/20 dark:text-rose-400">
-                      <AlertTriangle size={14} /> PRIORIDAD ALTA
-                    </div>
-                  )}
-                </div>
-
-                {/* 5. Instrucciones */}
-                {movement.instrucciones && (
-                  <div className="col-span-1 md:col-span-2 xl:col-span-4">
-                    <div className="flex items-start gap-4 rounded-xl border border-amber-100 bg-gradient-to-r from-amber-50/80 to-amber-50/40 p-4 shadow-sm dark:border-amber-900/30 dark:from-slate-900/80 dark:to-slate-900/60">
-                      <div className="mt-0.5 shrink-0 rounded-xl bg-amber-100 p-2.5 text-amber-600 dark:bg-amber-900/40 dark:text-amber-500">
-                        <Info size={18} />
-                      </div>
-                      <div>
-                        <h5 className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-500">
-                          Instrucciones del Movimiento
-                        </h5>
-                        <p className="text-sm font-medium leading-relaxed text-slate-700 dark:text-slate-300">
-                          &quot;{movement.instrucciones}&quot;
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+            <ExpandedDetailsContent
+              movement={movement}
+              fechaSolicitudFmt={fechaSolicitudFmt}
+              fechaInicioFmt={fechaInicioFmt}
+              fechaFinFmt={fechaFinFmt}
+              isPriorityHigh={isPriorityHigh}
+            />
           </div>
         </td>
       </tr>
     </Fragment>
   );
 });
+
+const MobileCard = memo(function MobileCard({
+  movement,
+  isOpen,
+  onToggle,
+  onEditar,
+  showEdit = false,
+  canEdit = true,
+}: MovimientoRowProps) {
+  const fechaSolicitudFmt = useMemo(
+    () => formatoFecha(movement.fechaSolicitud),
+    [movement.fechaSolicitud]
+  );
+  const fechaInicioFmt = useMemo(
+    () => formatoFecha(movement.fechaInicio),
+    [movement.fechaInicio]
+  );
+  const fechaFinFmt = useMemo(
+    () => formatoFecha(movement.fechaFin),
+    [movement.fechaFin]
+  );
+  const isPriorityHigh = movement.prioridad === "ALTA";
+
+  const toggle = useCallback(() => {
+    onToggle(movement.id);
+  }, [onToggle, movement.id]);
+
+  const handleEditClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      if (onEditar && canEdit) onEditar(movement.id);
+    },
+    [onEditar, movement.id, canEdit]
+  );
+
+  return (
+    <div
+      className={`rounded-2xl border border-slate-200 dark:border-slate-800/70 bg-white dark:bg-slate-900/80 shadow-sm transition-all ${isOpen ? "ring-1 ring-emerald-400/40" : ""
+        }`}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={toggle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggle();
+          }
+        }}
+        className="p-3 cursor-pointer"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div
+              className={`flex h-11 w-11 items-center justify-center rounded-xl transition-all ${isOpen
+                ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300"
+                : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                }`}
+            >
+              <TrainFront size={18} strokeWidth={2} />
+            </div>
+            <div>
+              <div className="text-lg font-bold text-slate-900 dark:text-slate-100 tabular-nums">
+                {movement.locomotora ?? "—"}
+              </div>
+              <div className="flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-500">
+                <span className="font-mono">#{movement.id}</span>
+                {isPriorityHigh && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-rose-500 dark:text-rose-400">
+                    Alta
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-end gap-1">
+            <BadgeEstado estado={movement.estado} />
+            <span className="inline-flex items-center gap-1 text-[10px] text-slate-400 dark:text-slate-500">
+              {isOpen ? "Ocultar" : "Detalles"}
+              <ChevronDown
+                size={12}
+                className={`transition-transform ${isOpen ? "rotate-180 text-emerald-500" : ""}`}
+              />
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-2.5 py-2">
+            <div className="text-[10px] uppercase tracking-wider text-slate-400">Empresa</div>
+            <div className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
+              {movement.empresaNombre ?? "—"}
+            </div>
+          </div>
+          <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-2.5 py-2">
+            <div className="text-[10px] uppercase tracking-wider text-slate-400">Localidad</div>
+            <div className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
+              {movement.localidadNombre ?? "—"}
+            </div>
+          </div>
+          <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-2.5 py-2">
+            <div className="text-[10px] uppercase tracking-wider text-slate-400">Origen</div>
+            <div className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 truncate">
+              {movement.viaOrigen || "—"}
+            </div>
+          </div>
+          <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-2.5 py-2">
+            <div className="text-[10px] uppercase tracking-wider text-slate-400">Destino</div>
+            <div className="text-xs font-semibold text-blue-600 dark:text-blue-400 truncate">
+              {movement.viaDestino || "—"}
+            </div>
+          </div>
+          <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-2.5 py-2">
+            <div className="text-[10px] uppercase tracking-wider text-slate-400">Solicitud</div>
+            <div className="text-xs font-semibold text-slate-700 dark:text-slate-200 tabular-nums">
+              {fechaSolicitudFmt}
+            </div>
+          </div>
+          <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-2.5 py-2">
+            <div className="text-[10px] uppercase tracking-wider text-slate-400">Inicio</div>
+            <div className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
+              {fechaInicioFmt}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 flex items-center justify-between">
+          <div className="flex gap-1">
+            {movement.lavado && <span className="rounded-md bg-cyan-50 border border-cyan-200 px-2 py-0.5 text-[9px] font-bold text-cyan-700 dark:bg-cyan-900/20 dark:border-cyan-800 dark:text-cyan-300">LAV</span>}
+            {movement.torno && <span className="rounded-md bg-sky-50 border border-sky-200 px-2 py-0.5 text-[9px] font-bold text-sky-700 dark:bg-sky-900/20 dark:border-sky-800 dark:text-sky-300">TOR</span>}
+            {movement.incidenteGlobal && <span className="rounded-md bg-rose-50 border border-rose-200 px-2 py-0.5 text-[9px] font-bold text-rose-700 dark:bg-rose-900/20 dark:border-rose-800 dark:text-rose-300">INC</span>}
+          </div>
+
+          {showEdit && (
+            canEdit ? (
+              <button
+                type="button"
+                onClick={handleEditClick}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 transition-all duration-200 hover:bg-emerald-100 hover:border-emerald-300 hover:shadow-sm active:scale-95 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
+              >
+                <Edit3 size={12} />
+                <span>Editar</span>
+              </button>
+            ) : (
+              <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500">
+                No editable
+              </span>
+            )
+          )}
+        </div>
+      </div>
+
+      <div className={`${styles.expandedContentContainer} ${isOpen ? styles.show : ""}`}>
+        <ExpandedDetailsContent
+          movement={movement}
+          fechaSolicitudFmt={fechaSolicitudFmt}
+          fechaInicioFmt={fechaInicioFmt}
+          fechaFinFmt={fechaFinFmt}
+          isPriorityHigh={isPriorityHigh}
+        />
+      </div>
+    </div>
+  );
+});
+
+function ExpandedDetailsContent({
+  movement,
+  fechaSolicitudFmt,
+  fechaInicioFmt,
+  fechaFinFmt,
+  isPriorityHigh,
+}: {
+  movement: Movement;
+  fechaSolicitudFmt: string;
+  fechaInicioFmt: string;
+  fechaFinFmt: string;
+  isPriorityHigh: boolean;
+}) {
+  return (
+    <div
+      className={`border-t border-slate-200 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-950/40 ${styles.expandedInner}`}
+    >
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {/* 1. Resumen Móvil */}
+        <div className="col-span-1 md:col-span-2 xl:hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <SectionTitle title="Resumen General" icon={Info} color="slate" />
+          <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <InfoBlock
+              label="Localidad"
+              value={movement.localidadNombre}
+              className="md:hidden"
+            />
+            <InfoBlock
+              label="Empresa"
+              value={movement.empresaNombre}
+              className="md:hidden"
+            />
+            <InfoBlock
+              label="Solicitud"
+              value={fechaSolicitudFmt}
+              className="lg:hidden"
+            />
+            <InfoBlock
+              label="Inicio"
+              value={fechaInicioFmt}
+              className="xl:hidden"
+            />
+            <InfoBlock
+              label="Fin"
+              value={fechaFinFmt}
+              className="xl:hidden"
+            />
+          </div>
+        </div>
+
+        {/* 2. Operación */}
+        <div className="h-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <SectionTitle title="Operación de Vía" icon={MapPin} color="emerald" />
+          <div className="mt-3 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-50 pb-2 text-xs dark:border-slate-800/50">
+              <span className="text-slate-500">Origen</span>
+              <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                {movement.viaOrigen || "?"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between border-b border-slate-50 pb-2 text-xs dark:border-slate-800/50">
+              <span className="text-slate-500">Destino</span>
+              <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                {movement.viaDestino || "?"}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2 pt-2">
+              <MiniBadge
+                label={`Cab: ${movement.posicionCabina}`}
+                icon={Flag}
+              />
+              <MiniBadge
+                label={`Chim: ${movement.posicionChimenea}`}
+                icon={Flag}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 3. Personal */}
+        <div className="h-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <SectionTitle title="Personal Asignado" icon={User} color="blue" />
+          <div className="mt-3 space-y-2">
+            <InfoRow
+              label="Supervisor"
+              value={movement.supervisorId}
+            />
+            <InfoRow
+              label="Maquinista"
+              value={movement.maquinistaId}
+            />
+            <InfoRow label="Operador" value={movement.operadorId} />
+            <InfoRow label="Cliente ID" value={movement.clienteId} />
+          </div>
+        </div>
+
+        {/* 4. Configuración */}
+        <div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <SectionTitle title="Servicios y Alertas" icon={Settings} color="amber" />
+          <div className="mt-3 flex-1">
+            <div className="flex flex-wrap gap-2">
+              {movement.lavado && (
+                <BooleanChip label="Lavado" type="success" />
+              )}
+              {movement.torno && (
+                <BooleanChip label="Torno" type="success" />
+              )}
+              {movement.incidenteGlobal && (
+                <BooleanChip
+                  label="Incidente Global"
+                  type="danger"
+                />
+              )}
+              {!movement.lavado &&
+                !movement.torno &&
+                !movement.incidenteGlobal && (
+                  <div className="flex w-full items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 py-3 text-slate-400 dark:border-slate-800 dark:bg-slate-900/50">
+                    <span className="text-xs italic">
+                      Sin servicios activos
+                    </span>
+                  </div>
+                )}
+            </div>
+          </div>
+          {isPriorityHigh && (
+            <div className="mt-3 flex items-center gap-2 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-600 dark:border-rose-800/50 dark:bg-rose-900/20 dark:text-rose-400">
+              <AlertTriangle size={14} /> PRIORIDAD ALTA
+            </div>
+          )}
+        </div>
+
+        {/* 5. Instrucciones */}
+        {movement.instrucciones && (
+          <div className="col-span-1 md:col-span-2 xl:col-span-4">
+            <div className="flex items-start gap-4 rounded-xl border border-amber-100 bg-gradient-to-r from-amber-50/80 to-amber-50/40 p-4 shadow-sm dark:border-amber-900/30 dark:from-slate-900/80 dark:to-slate-900/60">
+              <div className="mt-0.5 shrink-0 rounded-xl bg-amber-100 p-2.5 text-amber-600 dark:bg-amber-900/40 dark:text-amber-500">
+                <Info size={18} />
+              </div>
+              <div>
+                <h5 className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-500">
+                  Instrucciones del Movimiento
+                </h5>
+                <p className="text-sm font-medium leading-relaxed text-slate-700 dark:text-slate-300">
+                  &quot;{movement.instrucciones}&quot;
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /* ================== UI COMPONENTS ================== */
 

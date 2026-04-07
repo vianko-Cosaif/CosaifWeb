@@ -85,9 +85,9 @@ function IncidentesTableComp({
     </div>
   );
 
-  /** ===== Card list (≤ md) ===== */
+  /** ===== Card list (< xl) ===== */
   const MobileCards = (
-    <div className="md:hidden">
+    <div className="xl:hidden">
       {loading || deferredData.length === 0 ? (
         EmptyOrLoading
       ) : (
@@ -145,9 +145,9 @@ function IncidentesTableComp({
     </div>
   );
 
-  /** ===== Table (≥ md) ===== */
+  /** ===== Table (≥ xl) ===== */
   const DesktopTable = (
-    <div className="hidden md:block">
+    <div className="hidden xl:block">
       <div
         className={clsx(
           "overflow-x-auto rounded-xl border shadow-sm",
@@ -155,7 +155,7 @@ function IncidentesTableComp({
           isStale && "opacity-70"
         )}
       >
-        <div className="min-w-[880px] lg:min-w-[960px]">
+        <div className="min-w-[900px]">
           {/* sticky header for long scrolls */}
           <div
             className={clsx(

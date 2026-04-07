@@ -12,15 +12,27 @@ import { Eraser, Calendar, ChevronDown, SlidersHorizontal, X } from "lucide-reac
 export interface FiltrosProps {
   filtros: Pick<
     FiltrosMovimientos,
-    "empresaId" | "localidadId" | "desde" | "hasta" | "tamPagina"
+    | "empresaId"
+    | "localidadId"
+    | "desde"
+    | "hasta"
+    | "tamPagina"
+    | "estado"
+    | "prioridad"
+    | "locomotiveNumber"
+    | "fechaCampo"
   >;
   listaEmpresas: OpcionEmpresa[];
   listaLocalidades: OpcionLocalidad[];
-  puedeElegirEmpresa: boolean;
+  puedeElegirLocalidad: boolean;
 
   onCambiarEmpresaId: (id: number | null) => void;
   onCambiarLocalidadId: (id: number | null) => void;
   onCambiarRangoFechas: (desde: string | null, hasta: string | null) => void;
+  onCambiarEstado: (estado: string | null) => void;
+  onCambiarPrioridad: (prioridad: string | null) => void;
+  onCambiarLocomotiveNumber: (value: string | null) => void;
+  onCambiarFechaCampo: (value: string | null) => void;
   onCambiarTamPagina: (tam: number) => void;
   onLimpiarFiltros: () => void;
 
@@ -31,15 +43,27 @@ export default function Filtros({
   filtros,
   listaEmpresas,
   listaLocalidades,
-  puedeElegirEmpresa,
+  puedeElegirLocalidad,
   onCambiarEmpresaId,
   onCambiarLocalidadId,
   onCambiarRangoFechas,
+  onCambiarEstado,
+  onCambiarPrioridad,
+  onCambiarLocomotiveNumber,
+  onCambiarFechaCampo,
   onCambiarTamPagina,
   onLimpiarFiltros,
   deshabilitado = false,
 }: FiltrosProps) {
   const [abierto, setAbierto] = useState(false);
+  const ESTADOS = [
+    "SOLICITADO",
+    "EN_PROCESO",
+    "DETENIDO",
+    "ESPERA",
+    "CANCELADO",
+    "CONCLUIDO",
+  ] as const;
 
   const handleEmpresaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
@@ -47,7 +71,7 @@ export default function Filtros({
   };
 
   const handleLocalidadChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!puedeElegirEmpresa) return;
+    if (!puedeElegirLocalidad) return;
     const val = e.target.value;
     onCambiarLocalidadId(val === "" ? null : Number(val));
   };
@@ -62,6 +86,38 @@ export default function Filtros({
     onCambiarRangoFechas(filtros.desde ?? null, nuevoHasta);
   };
 
+  const handleEstadoToggle = (estado: string) => {
+    const raw = filtros.estado ?? "";
+    const set = new Set(
+      raw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    );
+    if (set.has(estado)) {
+      set.delete(estado);
+    } else {
+      set.add(estado);
+    }
+    const next = Array.from(set).join(",");
+    onCambiarEstado(next ? next : null);
+  };
+
+  const handlePrioridadChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value || null;
+    onCambiarPrioridad(val);
+  };
+
+  const handleLocoNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value || null;
+    onCambiarLocomotiveNumber(val);
+  };
+
+  const handleFechaCampoChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value || null;
+    onCambiarFechaCampo(val);
+  };
+
   const handleTamPaginaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const n = Number(e.target.value);
     if (!Number.isNaN(n)) onCambiarTamPagina(n);
@@ -69,7 +125,7 @@ export default function Filtros({
 
   /* Active filter chips */
   const activeFilters = useMemo(() => {
-    const chips: { key: string; label: string; onRemove: () => void }[] = [];
+    const chips: { key: string; label: string; onRemove?: () => void; locked?: boolean }[] = [];
     if (filtros.empresaId != null) {
       const emp = listaEmpresas.find((e) => e.id === filtros.empresaId);
       chips.push({
@@ -83,7 +139,10 @@ export default function Filtros({
       chips.push({
         key: "localidad",
         label: `Localidad: ${loc?.nombre ?? filtros.localidadId}`,
-        onRemove: () => onCambiarLocalidadId(null),
+        locked: !puedeElegirLocalidad,
+        onRemove: !puedeElegirLocalidad
+          ? undefined
+          : () => onCambiarLocalidadId(null),
       });
     }
     if (filtros.desde) {
@@ -100,8 +159,48 @@ export default function Filtros({
         onRemove: () => onCambiarRangoFechas(filtros.desde ?? null, null),
       });
     }
+    if (filtros.estado) {
+      chips.push({
+        key: "estado",
+        label: `Estado: ${filtros.estado}`,
+        onRemove: () => onCambiarEstado(null),
+      });
+    }
+    if (filtros.prioridad) {
+      chips.push({
+        key: "prioridad",
+        label: `Prioridad: ${filtros.prioridad}`,
+        onRemove: () => onCambiarPrioridad(null),
+      });
+    }
+    if (filtros.locomotiveNumber) {
+      chips.push({
+        key: "loco",
+        label: `Locomotora: ${filtros.locomotiveNumber}`,
+        onRemove: () => onCambiarLocomotiveNumber(null),
+      });
+    }
+    if ((filtros.desde || filtros.hasta) && filtros.fechaCampo) {
+      chips.push({
+        key: "fechaCampo",
+        label: `Fecha: ${filtros.fechaCampo}`,
+        onRemove: () => onCambiarFechaCampo(null),
+      });
+    }
     return chips;
-  }, [filtros, listaEmpresas, listaLocalidades, onCambiarEmpresaId, onCambiarLocalidadId, onCambiarRangoFechas]);
+  }, [
+    filtros,
+    listaEmpresas,
+    listaLocalidades,
+    onCambiarEmpresaId,
+    onCambiarLocalidadId,
+    onCambiarRangoFechas,
+    onCambiarEstado,
+    onCambiarPrioridad,
+    onCambiarLocomotiveNumber,
+    onCambiarFechaCampo,
+    puedeElegirLocalidad,
+  ]);
 
   const cantidadActivos = activeFilters.length;
 
@@ -110,6 +209,8 @@ export default function Filtros({
 
   const inputClass =
     "w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5 pr-9 min-h-[44px] text-[16px] sm:text-sm text-slate-800 dark:text-slate-100 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-400 dark:focus:ring-emerald-500/30 dark:focus:border-emerald-500 transition-all duration-200";
+  const inputPlain =
+    "w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5 min-h-[44px] text-[16px] sm:text-sm text-slate-800 dark:text-slate-100 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-400 dark:focus:ring-emerald-500/30 dark:focus:border-emerald-500 transition-all duration-200";
 
   return (
     <section aria-label="Filtros de movimientos" className="w-full min-w-0">
@@ -143,14 +244,20 @@ export default function Filtros({
               className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300"
             >
               {chip.label}
-              <button
-                type="button"
-                onClick={chip.onRemove}
-                className="ml-0.5 p-0.5 rounded hover:bg-emerald-100 dark:hover:bg-emerald-800/40 transition-colors"
-                disabled={deshabilitado}
-              >
-                <X size={10} />
-              </button>
+              {chip.onRemove ? (
+                <button
+                  type="button"
+                  onClick={chip.onRemove}
+                  className="ml-0.5 p-0.5 rounded hover:bg-emerald-100 dark:hover:bg-emerald-800/40 transition-colors"
+                  disabled={deshabilitado}
+                >
+                  <X size={10} />
+                </button>
+              ) : (
+                <span className="ml-1 text-[9px] uppercase tracking-wider text-emerald-500/80">
+                  fijo
+                </span>
+              )}
             </span>
           ))}
         </div>
@@ -191,11 +298,11 @@ export default function Filtros({
                 </label>
                 <select
                   className={selectClass}
-                  disabled={!puedeElegirEmpresa || deshabilitado}
+                  disabled={!puedeElegirLocalidad || deshabilitado}
                   value={stringOrVacio(filtros.localidadId ?? null)}
                   onChange={handleLocalidadChange}
                 >
-                  {puedeElegirEmpresa && <option value="">Todas</option>}
+                  {puedeElegirLocalidad && <option value="">Todas</option>}
                   {listaLocalidades.map((loc) => (
                     <option key={loc.id} value={loc.id}>
                       {loc.nombre}
@@ -207,17 +314,99 @@ export default function Filtros({
                 </select>
               </div>
 
-              {/* Desde */}
+              {/* Estado (multi) */}
+              <div className="min-w-0 xl:col-span-4">
+                <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                  Estado
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {ESTADOS.map((estado) => {
+                    const active = (filtros.estado ?? "")
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean)
+                      .includes(estado);
+                    return (
+                      <button
+                        key={estado}
+                        type="button"
+                        onClick={() => handleEstadoToggle(estado)}
+                        disabled={deshabilitado}
+                        className={[
+                          "px-3 py-1.5 rounded-lg border text-[11px] font-semibold transition-all",
+                          active
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                            : "border-slate-200 text-slate-500 hover:border-emerald-200 hover:text-emerald-600 dark:border-slate-700 dark:text-slate-300",
+                        ].join(" ")}
+                      >
+                        {estado.replace("_", " ")}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Prioridad */}
               <div className="min-w-0 xl:col-span-2">
                 <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                  Desde
+                  Prioridad
+                </label>
+                <select
+                  className={selectClass}
+                  disabled={deshabilitado}
+                  value={filtros.prioridad ?? ""}
+                  onChange={handlePrioridadChange}
+                >
+                  <option value="">Todas</option>
+                  <option value="ALTA">ALTA</option>
+                  <option value="BAJA">BAJA</option>
+                </select>
+              </div>
+
+              {/* Locomotora exacta */}
+              <div className="min-w-0 xl:col-span-2">
+                <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                  Locomotora
+                </label>
+                <input
+                  type="text"
+                  className={inputPlain}
+                  disabled={deshabilitado}
+                  value={filtros.locomotiveNumber ?? ""}
+                  onChange={handleLocoNumberChange}
+                  placeholder="Exacto"
+                />
+              </div>
+
+              {/* Fecha campo */}
+              <div className="min-w-0 xl:col-span-2">
+                <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                  Fecha campo
+                </label>
+                <select
+                  className={selectClass}
+                  disabled={deshabilitado}
+                  value={filtros.fechaCampo ?? ""}
+                  onChange={handleFechaCampoChange}
+                >
+                  <option value="solicitud">Solicitud</option>
+                  <option value="inicio">Inicio</option>
+                  <option value="fin">Fin</option>
+                  <option value="creacion">Creación</option>
+                </select>
+              </div>
+
+              {/* Desde */}
+              <div className="min-w-0 xl:col-span-3">
+                <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                  Desde (fecha/hora)
                 </label>
                 <div className="relative">
                   <input
-                    type="date"
+                    type="datetime-local"
                     className={inputClass}
                     disabled={deshabilitado}
-                    value={toInputDate(filtros.desde ?? null)}
+                    value={toInputDateTime(filtros.desde ?? null)}
                     onChange={handleDesdeChange}
                   />
                   <Calendar
@@ -229,16 +418,16 @@ export default function Filtros({
               </div>
 
               {/* Hasta */}
-              <div className="min-w-0 xl:col-span-2">
+              <div className="min-w-0 xl:col-span-3">
                 <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                  Hasta
+                  Hasta (fecha/hora)
                 </label>
                 <div className="relative">
                   <input
-                    type="date"
+                    type="datetime-local"
                     className={inputClass}
                     disabled={deshabilitado}
-                    value={toInputDate(filtros.hasta ?? null)}
+                    value={toInputDateTime(filtros.hasta ?? null)}
                     onChange={handleHastaChange}
                   />
                   <Calendar
@@ -289,9 +478,13 @@ export default function Filtros({
 }
 
 /* ===== Utilidades locales ===== */
-function toInputDate(valor: string | null | undefined): string {
+function toInputDateTime(valor: string | null | undefined): string {
   if (!valor) return "";
-  return valor.length >= 10 ? valor.slice(0, 10) : "";
+  if (valor.includes("T")) {
+    return valor.length >= 16 ? valor.slice(0, 16) : valor;
+  }
+  const base = valor.length >= 10 ? valor.slice(0, 10) : valor;
+  return `${base}T00:00`;
 }
 
 function stringOrVacio(id: number | null | undefined): string {
