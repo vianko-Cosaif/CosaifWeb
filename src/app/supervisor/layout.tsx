@@ -1,36 +1,14 @@
 // src/app/supervisor/layout.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
-import SidebarMenu, { Rol } from "@/app/Components/Menu/Menu";
-import { MapPin, RefreshCw, Shield } from "lucide-react";
-import ThemeToggle from "@/app/Components/ui/ThemeToggle";
+import SidebarMenu from "@/app/Components/Menu/Menu";
 // import { IncidentMonitor } from "@/app/Components/IncidentModal";
-import { getClientCookie, getEmpresaIdClient } from "@/lib/cookies";
 
 export default function SupervisorLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
-  const router = useRouter();
-
-  const [rol, setRol] = useState<Rol>("SUPERVISOR");
-  const [locLabel, setLocLabel] = useState<string>("Global");
-  const [empresaId, setEmpresaId] = useState<number | null>(null);
-
-  useEffect(() => {
-    const roleRaw = (getClientCookie("role") ?? "").toUpperCase();
-    setRol(roleRaw === "SUPERVISOR" ? "SUPERVISOR" : "SUPERVISOR");
-
-    const locId = getClientCookie("locId");
-    setLocLabel(locId ? `Loc ${locId}` : "Global");
-
-    setEmpresaId(getEmpresaIdClient());
-  }, [pathname]);
-
   return (
     <div
       className="relative flex min-h-svh
@@ -61,15 +39,10 @@ export default function SupervisorLayout({
         {/* Skip link accesibilidad */}
  
 
-        {/* Header */}
-        <header className="sticky top-[max(0px,env(safe-area-inset-top))] z-20 border-b border-slate-200/70 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:border-slate-800/70 dark:bg-[#080217]/80">
-       
-        </header>
-
         {/* Contenido */}
         <main
           id="main"
-          className="relative z-10 mx-auto w-full max-w-screen-2xl flex-1 p-4 sm:p-6 md:p-8"
+          className="relative z-10 mx-auto w-full max-w-screen-2xl flex-1 p-4 sm:p-6 md:p-8 pt-[calc(env(safe-area-inset-top)+1rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)]"
         >
           <div className="contents">{children}</div>
         </main>

@@ -53,13 +53,22 @@ interface MovimientosPanelProps {
 /* ================== COMPONENTE ================== */
 
 export default function MovimientosPanel(props: MovimientosPanelProps) {
-  const { rol: rolProp, token: tokenProp, puedeCrear = false } = props;
+  const {
+    rol: rolProp,
+    token: tokenProp,
+    puedeCrear = false,
+    apiBase,
+    empresaIdUsuario,
+    intervaloAutoMs,
+  } = props;
   const router = useRouter();
 
   const [rol, setRol] = useState<Rol>(() => rolProp ?? getRoleFromSession());
   const [token, setToken] = useState<string | undefined>(() => tokenProp);
 
-  const [userEmpresaId, setUserEmpresaId] = useState<number | null>(null);
+  const [userEmpresaId, setUserEmpresaId] = useState<number | null>(
+    () => empresaIdUsuario ?? null
+  );
   const [userLocalidadId, setUserLocalidadId] = useState<number | null>(null);
 
   /* ================== RESOLVER SESIÓN ================== */
@@ -82,27 +91,44 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
   }, [rolProp]);
 
   useEffect(() => {
+    if (empresaIdUsuario != null && Number.isFinite(empresaIdUsuario)) {
+      setUserEmpresaId(empresaIdUsuario);
+    }
+  }, [empresaIdUsuario]);
+
+  useEffect(() => {
     try {
       const raw =
         typeof window !== "undefined" ? localStorage.getItem("user") : null;
       if (raw) {
         const u = JSON.parse(raw);
-        const empId = Number(u?.empresaId ?? u?.empresa?.id ?? NaN);
-        if (Number.isFinite(empId)) setUserEmpresaId(empId);
+        if (userEmpresaId == null) {
+          const empId = Number(u?.empresaId ?? u?.empresa?.id ?? NaN);
+          if (Number.isFinite(empId)) setUserEmpresaId(empId);
+        }
+        if (userLocalidadId == null) {
+          const locId = Number(u?.localidadId ?? u?.localidad?.id ?? NaN);
+          if (Number.isFinite(locId)) setUserLocalidadId(locId);
+        }
       }
     } catch {
       // nada
     }
 
-    const locIdCookie = Number(getCookie("locId") || NaN);
-    if (Number.isFinite(locIdCookie)) setUserLocalidadId(locIdCookie);
-  }, []);
+    if (userLocalidadId == null) {
+      const locIdCookie = Number(
+        getCookie("locId") || getCookie("localidadId") || NaN
+      );
+      if (Number.isFinite(locIdCookie)) setUserLocalidadId(locIdCookie);
+    }
+  }, [userEmpresaId, userLocalidadId]);
 
   /* ================== DATOS (HOOK) ================== */
 
   const {
     filas,
     total,
+    totalEstimado,
     cargando,
     ambito,
     setAmbito,
@@ -115,14 +141,19 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     setTab,
     badges,
     emptyText,
-  } = useMovimientos(rol, token);
+  } = useMovimientos({
+    rol,
+    token,
+    apiBase,
+    autoRefreshMs: intervaloAutoMs,
+  });
 
   const [movimientoSeleccionado, setMovimientoSeleccionado] =
     useState<number | null>(null);
 
   /* ================== PERMISOS POR ROL ================== */
 
-  const puedeElegirEmpresa = useMemo(
+  const puedeElegirLocalidad = useMemo(
     () =>
       ["ADMINISTRADOR", "COORDINADOR"].includes(
         String(rol || "").toUpperCase()
@@ -130,38 +161,38 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     [rol]
   );
 
+  const puedeVerTodasEmpresas = puedeElegirLocalidad;
+
   useEffect(() => {
-    if (puedeElegirEmpresa) return;
+    if (puedeElegirLocalidad) return;
 
     setFiltros((prev) => ({
       ...prev,
-      empresaId:
-        userEmpresaId != null ? userEmpresaId : prev.empresaId ?? undefined,
       localidadId:
         userLocalidadId != null
           ? userLocalidadId
           : prev.localidadId ?? undefined,
       pagina: 1,
     }));
-  }, [puedeElegirEmpresa, userEmpresaId, userLocalidadId, setFiltros]);
+  }, [puedeElegirLocalidad, userLocalidadId, setFiltros]);
 
   const listaEmpresas = useMemo(() => {
-    if (puedeElegirEmpresa) return empresas;
+    if (puedeVerTodasEmpresas) return empresas;
     if (userEmpresaId != null) {
       const e = empresas.find((x) => x.id === userEmpresaId);
       return e ? [e] : empresas;
     }
     return empresas;
-  }, [empresas, puedeElegirEmpresa, userEmpresaId]);
+  }, [empresas, puedeVerTodasEmpresas, userEmpresaId]);
 
   const listaLocalidades = useMemo(() => {
-    if (puedeElegirEmpresa) return localidades;
+    if (puedeElegirLocalidad) return localidades;
     if (userLocalidadId != null) {
       const l = localidades.find((x) => x.id === userLocalidadId);
       return l ? [l] : localidades;
     }
     return localidades;
-  }, [localidades, puedeElegirEmpresa, userLocalidadId]);
+  }, [localidades, puedeElegirLocalidad, userLocalidadId]);
 
   /* ================== HANDLERS ================== */
 
@@ -218,6 +249,50 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     [setFiltros]
   );
 
+  const handleCambiarEstado = useCallback(
+    (estado: string | null) => {
+      setFiltros((prev) => ({
+        ...prev,
+        pagina: 1,
+        estado: estado ?? undefined,
+      }));
+    },
+    [setFiltros]
+  );
+
+  const handleCambiarPrioridad = useCallback(
+    (prioridad: string | null) => {
+      setFiltros((prev) => ({
+        ...prev,
+        pagina: 1,
+        prioridad: prioridad ?? undefined,
+      }));
+    },
+    [setFiltros]
+  );
+
+  const handleCambiarLocomotiveNumber = useCallback(
+    (value: string | null) => {
+      setFiltros((prev) => ({
+        ...prev,
+        pagina: 1,
+        locomotiveNumber: value ?? undefined,
+      }));
+    },
+    [setFiltros]
+  );
+
+  const handleCambiarFechaCampo = useCallback(
+    (value: string | null) => {
+      setFiltros((prev) => ({
+        ...prev,
+        pagina: 1,
+        fechaCampo: (value as any) ?? undefined,
+      }));
+    },
+    [setFiltros]
+  );
+
   const handleCambiarTamPagina = useCallback(
     (tamPagina: number) => {
       setFiltros((prev) => ({
@@ -233,16 +308,18 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     setFiltros((prev) => ({
       ...prev,
       pagina: 1,
-      empresaId: puedeElegirEmpresa
-        ? undefined
-        : prev.empresaId ?? undefined,
-      localidadId: puedeElegirEmpresa
+      empresaId: undefined,
+      localidadId: puedeElegirLocalidad
         ? undefined
         : prev.localidadId ?? undefined,
       desde: undefined,
       hasta: undefined,
+      estado: undefined,
+      prioridad: undefined,
+      locomotiveNumber: undefined,
+      fechaCampo: "solicitud",
     }));
-  }, [setFiltros, puedeElegirEmpresa]);
+  }, [setFiltros, puedeElegirLocalidad]);
 
   const handlePagina = useCallback(
     (pagina: number) => {
@@ -373,17 +450,25 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
               localidadId: filtros.localidadId,
               desde: filtros.desde ?? null,
               hasta: filtros.hasta ?? null,
+              estado: filtros.estado ?? null,
+              prioridad: filtros.prioridad ?? null,
+              locomotiveNumber: filtros.locomotiveNumber ?? null,
+              fechaCampo: filtros.fechaCampo ?? "solicitud",
               tamPagina: filtros.tamPagina,
             }}
             listaEmpresas={listaEmpresas}
             listaLocalidades={listaLocalidades}
-            puedeElegirEmpresa={puedeElegirEmpresa}
+            puedeElegirLocalidad={puedeElegirLocalidad}
             onCambiarEmpresaId={handleCambiarEmpresaId}
             onCambiarLocalidadId={handleCambiarLocalidadId}
             onCambiarRangoFechas={handleCambiarRangoFechas}
+            onCambiarEstado={handleCambiarEstado}
+            onCambiarPrioridad={handleCambiarPrioridad}
+            onCambiarLocomotiveNumber={handleCambiarLocomotiveNumber}
+            onCambiarFechaCampo={handleCambiarFechaCampo}
             onCambiarTamPagina={handleCambiarTamPagina}
             onLimpiarFiltros={handleLimpiarFiltros}
-            deshabilitado={cargando}
+            deshabilitado={false}
           />
         </section>
 
@@ -424,6 +509,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
                 pagina={filtros.pagina}
                 tamPagina={filtros.tamPagina}
                 total={total}
+                totalEstimado={totalEstimado}
                 campoOrden={filtros.campoOrden}
                 direccionOrden={filtros.direccionOrden}
                 cargando={cargando}

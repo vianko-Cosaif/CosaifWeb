@@ -660,7 +660,7 @@ export default function IncidenteController() {
       {/* Header Bar */}
       <div className="sticky top-0 z-30 w-full border-b bg-white/80 backdrop-blur-md shadow-sm dark:bg-slate-900/80 dark:border-slate-800 transition-all duration-300">
         <div className="w-full px-4 sm:px-6 py-3">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             {/* Title / Brand area if needed, otherwise Tabs & Status */}
             <div className="flex flex-wrap items-center gap-2">
               {/* Tabs */}
@@ -678,10 +678,10 @@ export default function IncidenteController() {
                         }`}
                     >
                       {tab}
-                      {/* Optional Badge */}
-                      {/* <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-slate-100 dark:bg-slate-600' : 'bg-slate-200 dark:bg-slate-700'}`}>
-                        {count}
-                      </span> */}
+                
+                      <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-slate-100 dark:bg-slate-600' : 'bg-slate-200 dark:bg-slate-700'}`}>
+                      
+                      </span> 
                     </button>
                   );
                 })}
@@ -710,7 +710,7 @@ export default function IncidenteController() {
             </div>
 
             {/* Search & Actions */}
-            <div className="flex flex-1 items-center justify-end gap-3 w-full lg:w-auto">
+            <div className="flex flex-1 items-center justify-end gap-3 w-full xl:w-auto">
               <div className="relative w-full max-w-md group">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-emerald-500" />
                 <input
@@ -733,7 +733,7 @@ export default function IncidenteController() {
               {/* Mobile Filter Toggle */}
               <button
                 onClick={() => setFiltersOpen(!filtersOpen)}
-                className={`lg:hidden p-2.5 rounded-xl border transition-colors ${filtersOpen || hasActiveFilters
+                className={`xl:hidden p-2.5 rounded-xl border transition-colors ${filtersOpen || hasActiveFilters
                   ? "bg-emerald-50 border-emerald-200 text-emerald-600 dark:bg-emerald-900/20 dark:border-emerald-800"
                   : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700"
                   }`}
@@ -742,7 +742,7 @@ export default function IncidenteController() {
               </button>
 
               {/* Desktop Filter Bar (Visible only on LG) */}
-              <div className="hidden lg:flex items-center gap-2">
+              <div className="hidden xl:flex items-center gap-2">
                 {!isLimitedClientView && (
                   <>
                     <SelectEnterprise
@@ -770,7 +770,7 @@ export default function IncidenteController() {
           </div>
 
           {/* Mobile Collapsible Filters */}
-          <div className={`overflow-hidden transition-all duration-300 ease-in-out lg:hidden ${filtersOpen ? "max-h-60 opacity-100 mt-4" : "max-h-0 opacity-0"}`}>
+          <div className={`overflow-hidden transition-all duration-300 ease-in-out xl:hidden ${filtersOpen ? "max-h-60 opacity-100 mt-4" : "max-h-0 opacity-0"}`}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2">
               {!isLimitedClientView && (
                 <>
@@ -810,7 +810,7 @@ export default function IncidenteController() {
 
         {/* STATS CARDS - Placed ABOVE table */}
         {!incidentData.error && incidentData.data.length > 0 && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <StatCard
               label="Total Incidentes"
               value={incidentData.data.length}

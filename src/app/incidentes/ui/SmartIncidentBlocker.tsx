@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
+import { createPortal } from "react-dom";
 import {
   ImageIcon,
   Info,
@@ -239,9 +240,11 @@ const ImageGallery = React.memo(function ImageGallery({
       {/* Main viewer */}
       <div
         className={cn(
-          "relative overflow-hidden rounded-xl border bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900",
+          "relative overflow-hidden rounded-2xl border border-white/60 bg-white/80 shadow-[0_20px_45px_rgba(15,23,42,0.12)] backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/80",
           "touch-pan-y touch-pinch-zoom",
-          fullscreen ? "h-[70vh] sm:h-[78vh]" : "h-[42vh] sm:h-[380px] lg:h-[480px]"
+          fullscreen
+            ? "h-[min(78vh,720px)] sm:h-[min(80vh,820px)]"
+            : "h-[clamp(240px,45vh,520px)] sm:h-[clamp(320px,42vh,560px)] md:h-[clamp(360px,46vh,620px)] lg:h-[clamp(420px,50vh,720px)]"
         )}
       >
         {total ? (
@@ -256,7 +259,7 @@ const ImageGallery = React.memo(function ImageGallery({
         )}
 
         {/* Controls */}
-        <div className="absolute inset-x-0 bottom-3 mx-auto flex w-[220px] items-center justify-between rounded-full bg-black/60 px-3 py-1 text-white">
+        <div className="absolute inset-x-0 bottom-3 mx-auto flex w-[220px] items-center justify-between rounded-full bg-slate-950/70 px-3 py-1 text-white shadow-lg backdrop-blur">
           <button
             onClick={prev}
             disabled={i === 0}
@@ -283,7 +286,7 @@ const ImageGallery = React.memo(function ImageGallery({
 
         <button
           onClick={onToggleFullscreen}
-          className="absolute right-3 top-3 rounded-md bg-black/55 p-2 text-white hover:bg-black/70 focus:outline-none focus:ring-2 focus:ring-white/50"
+          className="absolute right-3 top-3 rounded-full border border-white/20 bg-slate-950/70 p-2 text-white shadow-lg backdrop-blur hover:bg-slate-950/80 focus:outline-none focus:ring-2 focus:ring-white/50"
           aria-label={fullscreen ? "Salir pantalla completa" : "Pantalla completa"}
           title={fullscreen ? "Salir pantalla completa" : "Pantalla completa"}
         >
@@ -292,7 +295,7 @@ const ImageGallery = React.memo(function ImageGallery({
       </div>
 
       {/* Thumbs */}
-      <div className="rounded-xl border bg-white p-3 sm:p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <div className="rounded-2xl border border-white/60 bg-white/80 p-3 sm:p-4 shadow-[0_15px_35px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/80">
         <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 sm:gap-3">
           {(total ? images : Array(4).fill("")).map((src, idx) => {
             const active = idx === i;
@@ -302,9 +305,9 @@ const ImageGallery = React.memo(function ImageGallery({
                 onClick={() => onChange(idx)}
                 disabled={!src}
                 className={cn(
-                  "relative aspect-square overflow-hidden rounded-lg border focus:outline-none focus:ring-2 focus:ring-emerald-600/40",
+                  "relative aspect-square overflow-hidden rounded-xl border focus:outline-none focus:ring-2 focus:ring-emerald-600/40",
                   src ? "hover:border-slate-300 dark:hover:border-slate-500" : "opacity-50 cursor-not-allowed",
-                  active ? "border-emerald-600 ring-2 ring-emerald-600/20" : "border-slate-200 dark:border-slate-700"
+                  active ? "border-emerald-600 ring-2 ring-emerald-600/20" : "border-white/60 dark:border-slate-700/60"
                 )}
                 aria-label={src ? `Ver imagen ${idx + 1}` : "Miniatura no disponible"}
               >
@@ -447,73 +450,116 @@ export default function SmartIncidentBlocker({
   if (!visible) return null;
   const current = fetched || incident;
 
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-stretch sm:items-start justify-center bg-slate-900/70 p-0 sm:p-4"
-      role="dialog"
-      aria-labelledby={headingId}
-      aria-modal="true"
-    >
-      <div className="w-full h-dvh sm:h-auto sm:mt-6 sm:max-h-[92vh] max-w-screen-2xl overflow-hidden bg-white shadow-2xl sm:rounded-2xl flex flex-col dark:bg-slate-900 dark:text-slate-100">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-emerald-700 to-emerald-900 px-4 sm:px-6 py-4 sm:py-5 dark:from-emerald-800 dark:to-emerald-950">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className={cn("h-3 w-3 rounded-full flex-shrink-0", urgencyFor(pct).bar)} />
-              <h1 id={headingId} className="truncate text-base sm:text-lg font-bold text-white">
-                {truncate(current?.descripcion || "Incidente", 100)}
-              </h1>
+  const modal = (
+    <div className="fixed inset-0 z-[9999]">
+      <div className="absolute inset-0 bg-slate-950/70" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(16,185,129,0.35),transparent_55%),radial-gradient(ellipse_at_bottom,rgba(15,23,42,0.85),transparent_60%)]" />
+      <div className="absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:28px_28px]" />
+      <div className="relative z-10 flex h-full w-full items-stretch justify-center p-0">
+        <div
+          className="flex min-h-0 w-full h-full max-w-none flex-col overflow-hidden rounded-none border border-white/10 bg-white/90 shadow-[0_30px_120px_rgba(15,23,42,0.45)] backdrop-blur dark:bg-slate-900/95 dark:text-slate-100"
+          role="dialog"
+          aria-labelledby={headingId}
+          aria-modal="true"
+        >
+          {/* Header */}
+          <div className="relative overflow-hidden bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-950 px-4 sm:px-6 py-4 sm:py-6">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.35),transparent_55%)] opacity-70" />
+            <div className="relative flex items-start justify-between gap-4">
+              <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+                <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-400/10 ring-1 ring-emerald-300/30">
+                  <AlertTriangle className="h-5 w-5 text-emerald-200" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-emerald-200/70">
+                    Incidente
+                    {(current?.incidenteId || current?.id) && (
+                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/80">
+                        #{current?.incidenteId ?? current?.id}
+                      </span>
+                    )}
+                  </div>
+                  <h1 id={headingId} className="mt-1 truncate text-base sm:text-lg font-bold text-white">
+                    {truncate(current?.descripcion || "Incidente", 200)}
+                  </h1>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/70">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-1">
+                      <Building className="h-3.5 w-3.5" />
+                      {current?.movimiento?.empresa?.nombre || "Empresa no especificada"}
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-1">
+                      <Train className="h-3.5 w-3.5" />
+                      {current?.movimiento?.locomotiveNumber ? `#${current.movimiento.locomotiveNumber}` : "Locomotora N/D"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={close}
+                className="rounded-md p-2 text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-white/50"
+                aria-label="Cerrar"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
-            <button
-              onClick={close}
-              className="rounded-md p-1 text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-white/50"
-              aria-label="Cerrar"
+            {showTimer && <TimerBar leftMs={leftMs} pct={pct} />}
+          </div>
+
+          {/* Status */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-white/70 px-4 sm:px-6 py-3 text-xs dark:bg-slate-900/70 dark:border-slate-800">
+            <div
+              className={cn(
+                "inline-flex items-center gap-2 rounded-full border border-white/40 bg-white/70 px-3 py-1 font-semibold uppercase tracking-wide dark:border-slate-700/60 dark:bg-slate-900/60",
+                ESTADO_COLORS[estado]
+              )}
             >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          {showTimer && <TimerBar leftMs={leftMs} pct={pct} />}
-        </div>
-
-        {/* Status */}
-        <div className="flex items-center justify-between border-b px-4 sm:px-6 py-3 bg-slate-50 dark:bg-slate-900 dark:border-slate-700">
-          <div className={cn("flex items-center gap-2 text-xs sm:text-sm font-semibold", ESTADO_COLORS[estado])}>
-            <Info className="h-4 w-4" />
-            <span className="uppercase">{estado}</span>
-          </div>
-          {showTimer && <div className={cn("text-[10px] sm:text-xs font-semibold", urgencyFor(pct).color)}>{urgencyFor(pct).label}</div>}
-        </div>
-
-        {/* Tabs */}
-        <div className="flex gap-2 border-b px-2 sm:px-4 bg-white dark:bg-slate-900 dark:border-slate-700">
-          <button
-            onClick={() => setTab(0)}
-            className={cn(
-              "flex flex-1 items-center justify-center gap-2 border-b-4 px-2 sm:px-3 py-2 sm:py-3 text-xs sm:text-sm font-semibold transition-colors",
-              tab === 0 ? "border-emerald-600 text-emerald-700 dark:text-emerald-300" : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+              <Info className="h-4 w-4" />
+              <span>{estado}</span>
+            </div>
+            {showTimer && (
+              <div className={cn("text-[10px] sm:text-xs font-semibold", urgencyFor(pct).color)}>
+                {urgencyFor(pct).label}
+              </div>
             )}
-            role="tab"
-            aria-selected={tab === 0}
-          >
-            <Info className="h-4 w-4" />
-            Detalles
-          </button>
-          <button
-            onClick={() => setTab(1)}
-            className={cn(
-              "flex flex-1 items-center justify-center gap-2 border-b-4 px-2 sm:px-3 py-2 sm:py-3 text-xs sm:text-sm font-semibold transition-colors",
-              tab === 1 ? "border-emerald-600 text-emerald-700 dark:text-emerald-300" : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-            )}
-            role="tab"
-            aria-selected={tab === 1}
-          >
-            <ImageIcon className="h-4 w-4" />
-            Imágenes {imgs.length ? `(${imgs.length})` : ""}
-          </button>
-        </div>
+          </div>
+
+          {/* Tabs (mobile only) */}
+          <div className="border-b border-white/10 bg-white/80 px-4 py-3 dark:bg-slate-900/80 dark:border-slate-800 md:hidden">
+            <div className="relative mx-auto flex w-full max-w-md items-center rounded-full bg-slate-100/90 p-1 shadow-inner dark:bg-slate-800/80">
+              <div
+                className="absolute inset-y-1 left-1 w-1/2 rounded-full bg-white shadow transition-transform duration-300 dark:bg-slate-900"
+                style={{ transform: tab === 0 ? "translateX(0)" : "translateX(100%)" }}
+                aria-hidden
+              />
+              <button
+                onClick={() => setTab(0)}
+                className={cn(
+                  "relative z-10 flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition-colors",
+                  tab === 0 ? "text-emerald-700 dark:text-emerald-300" : "text-slate-500 dark:text-slate-400"
+                )}
+                role="tab"
+                aria-selected={tab === 0}
+              >
+                <Info className="h-4 w-4 inline-block" />
+                Detalles
+              </button>
+              <button
+                onClick={() => setTab(1)}
+                className={cn(
+                  "relative z-10 flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition-colors",
+                  tab === 1 ? "text-emerald-700 dark:text-emerald-300" : "text-slate-500 dark:text-slate-400"
+                )}
+                role="tab"
+                aria-selected={tab === 1}
+              >
+                <ImageIcon className="h-4 w-4 inline-block" />
+                Imágenes {imgs.length ? `(${imgs.length})` : ""}
+              </button>
+            </div>
+          </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50 dark:bg-slate-900">
+        <div className="flex-1 min-h-0 overflow-y-auto bg-slate-50 dark:bg-slate-900">
           {loading ? (
             <div className="py-10 text-center">
               <div className="inline-flex items-center gap-3 text-slate-500 dark:text-slate-400">
@@ -522,125 +568,135 @@ export default function SmartIncidentBlocker({
               </div>
             </div>
           ) : err ? (
-            <div className="rounded-lg bg-rose-50 border border-rose-200 p-4 dark:bg-rose-900/20 dark:border-rose-800">
-              <div className="flex items-center gap-2 text-rose-800 dark:text-rose-300">
-                <AlertTriangle className="h-5 w-5" />
-                <span className="font-semibold">Error</span>
-              </div>
-              <p className="mt-2 text-rose-700 dark:text-rose-200">{err}</p>
-            </div>
-          ) : tab === 0 ? (
-            <div className="space-y-4" role="tabpanel">
-              <section className="rounded-xl border bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-800 dark:text-slate-100">
-                  <Info className="h-5 w-5 text-emerald-600" />
-                  Descripción
-                </h2>
-                <p className="text-slate-700 leading-relaxed dark:text-slate-200">
-                  {current?.descripcion || "Sin descripción disponible"}
-                </p>
-              </section>
-
-              <section className="rounded-xl border bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <div>
-                    <div className="text-xs font-semibold text-slate-500 uppercase dark:text-slate-400">Reportado</div>
-                    <div className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">
-                      {new Date(startMs).toLocaleString("es-ES", {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold text-slate-500 uppercase dark:text-slate-400">Empresa</div>
-                    <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-                      <Building className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                      {current?.movimiento?.empresa?.nombre || "No especificada"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold text-slate-500 uppercase dark:text-slate-400">Locomotora</div>
-                    <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-                      <Train className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                      {current?.movimiento?.locomotiveNumber ? `#${current.movimiento.locomotiveNumber}` : "No especificada"}
-                    </div>
-                  </div>
+            <div className="p-4 sm:p-6">
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 shadow-sm dark:border-rose-800 dark:bg-rose-900/20">
+                <div className="flex items-center gap-2 text-rose-800 dark:text-rose-300">
+                  <AlertTriangle className="h-5 w-5" />
+                  <span className="font-semibold">Error</span>
                 </div>
-              </section>
-
-              {operatorComment && (
-                <section className="rounded-xl border bg-amber-50 border-amber-200 p-4 shadow-sm dark:bg-amber-900/20 dark:border-amber-800">
-                  <h2 className="mb-3 text-base font-semibold text-amber-800 dark:text-amber-200">Comentario del operador</h2>
-                  <p className="text-amber-700 leading-relaxed dark:text-amber-200/90">{operatorComment}</p>
-                </section>
-              )}
-
-              {estado === "ABIERTO" && (
-                <section className="rounded-xl border bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                  <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-100">Resolución del incidente</h2>
-                  <textarea
-                    value={resolution}
-                    onChange={(e) => setResolution(e.target.value)}
-                    rows={5}
-                    className="w-full resize-none rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                    placeholder="Describe las acciones tomadas..."
-                    maxLength={1000}
-                  />
-                  <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">{resolution.length}/1000</div>
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      onClick={() => setResolution("")}
-                      disabled={!resolution}
-                      className={cn(
-                        "flex-1 rounded-lg px-4 py-2 text-sm font-semibold",
-                        resolution
-                          ? "bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
-                          : "bg-slate-100 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-600"
-                      )}
-                    >
-                      Limpiar
-                    </button>
-                    <button
-                      onClick={doResolve}
-                      disabled={!resolution.trim()}
-                      className={cn(
-                        "flex-[2] rounded-lg px-4 py-2 text-sm font-semibold text-white",
-                        resolution.trim() ? "bg-emerald-600 hover:bg-emerald-700" : "bg-slate-300 cursor-not-allowed dark:bg-slate-700"
-                      )}
-                    >
-                      Confirmar resolución
-                    </button>
-                  </div>
-                </section>
-              )}
+                <p className="mt-2 text-rose-700 dark:text-rose-200">{err}</p>
+              </div>
             </div>
           ) : (
-            <div role="tabpanel">
-              <ImageGallery
-                images={imgs}
-                index={idx}
-                onChange={setIdx}
-                fullscreen={fullscreen}
-                onToggleFullscreen={() => setFullscreen((v) => !v)}
-              />
+            <div className="grid gap-4 sm:gap-6 p-4 sm:p-6 md:grid-cols-[1.1fr_0.9fr]">
+              <div className={cn(tab === 0 ? "block" : "hidden", "md:block")} role="tabpanel">
+                <div className="space-y-4 sm:space-y-5">
+                  <section className="rounded-2xl border border-white/60 bg-white/85 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/80">
+                    <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-800 dark:text-slate-100">
+                      <Info className="h-5 w-5 text-emerald-600" />
+                      Descripción
+                    </h2>
+                    <p className="text-slate-700 leading-relaxed dark:text-slate-200">
+                      {current?.descripcion || "Sin descripción disponible"}
+                    </p>
+                  </section>
+
+                  <section className="rounded-2xl border border-white/60 bg-white/85 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/80">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                      <div>
+                        <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider dark:text-slate-400">Reportado</div>
+                        <div className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">
+                          {new Date(startMs).toLocaleString("es-ES", {
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider dark:text-slate-400">Empresa</div>
+                        <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                          <Building className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                          {current?.movimiento?.empresa?.nombre || "No especificada"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider dark:text-slate-400">Locomotora</div>
+                        <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                          <Train className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                          {current?.movimiento?.locomotiveNumber ? `#${current.movimiento.locomotiveNumber}` : "No especificada"}
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+
+                  {operatorComment && (
+                    <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm dark:border-amber-800 dark:bg-amber-900/20">
+                      <h2 className="mb-3 text-base font-semibold text-amber-800 dark:text-amber-200">Comentario del operador</h2>
+                      <p className="text-amber-700 leading-relaxed dark:text-amber-200/90">{operatorComment}</p>
+                    </section>
+                  )}
+
+                  {estado === "ABIERTO" && (
+                    <section className="rounded-2xl border border-white/60 bg-white/85 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/80">
+                      <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-100">Resolución del incidente</h2>
+                      <textarea
+                        value={resolution}
+                        onChange={(e) => setResolution(e.target.value)}
+                        rows={5}
+                        className="w-full resize-none rounded-xl border border-slate-300 bg-slate-50 p-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                        placeholder="Describe las acciones tomadas..."
+                        maxLength={1000}
+                      />
+                      <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">{resolution.length}/1000</div>
+                      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                        <button
+                          onClick={() => setResolution("")}
+                          disabled={!resolution}
+                          className={cn(
+                            "rounded-xl px-4 py-2 text-sm font-semibold transition-colors sm:flex-1",
+                            resolution
+                              ? "bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
+                              : "bg-slate-100 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-600"
+                          )}
+                        >
+                          Limpiar
+                        </button>
+                        <button
+                          onClick={doResolve}
+                          disabled={!resolution.trim()}
+                          className={cn(
+                            "rounded-xl px-4 py-2 text-sm font-semibold text-white transition-colors sm:flex-[2]",
+                            resolution.trim()
+                              ? "bg-emerald-600 hover:bg-emerald-700"
+                              : "bg-slate-300 cursor-not-allowed dark:bg-slate-700"
+                          )}
+                        >
+                          Confirmar resolución
+                        </button>
+                      </div>
+                    </section>
+                  )}
+                </div>
+              </div>
+
+              <div className={cn(tab === 1 ? "block" : "hidden", "md:block")} role="tabpanel">
+                <ImageGallery
+                  images={imgs}
+                  index={idx}
+                  onChange={setIdx}
+                  fullscreen={fullscreen}
+                  onToggleFullscreen={() => setFullscreen((v) => !v)}
+                />
+              </div>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex gap-2 border-t bg-white px-4 sm:px-6 py-3 sm:py-4 dark:bg-slate-900 dark:border-slate-700">
+        <div className="flex flex-col gap-2 border-t border-white/10 bg-white/80 px-4 py-3 backdrop-blur dark:bg-slate-900/80 dark:border-slate-800 sm:flex-row sm:px-6 sm:py-4">
           {showTimer && estado === "ABIERTO" ? (
             <>
               <button
                 onClick={doResolve}
                 disabled={!resolution.trim()}
                 className={cn(
-                  "flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 font-semibold text-white",
-                  resolution.trim() ? "bg-emerald-600 hover:bg-emerald-700" : "bg-slate-300 cursor-not-allowed dark:bg-slate-700"
+                  "flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 font-semibold text-white shadow-lg transition-all",
+                  resolution.trim()
+                    ? "bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700"
+                    : "bg-slate-300 cursor-not-allowed dark:bg-slate-700"
                 )}
               >
                 <CheckCircle2 className="h-5 w-5" />
@@ -648,7 +704,7 @@ export default function SmartIncidentBlocker({
               </button>
               <button
                 onClick={doSkip}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-3 font-semibold text-white hover:bg-amber-600"
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-3 font-semibold text-white shadow-lg hover:from-amber-500 hover:to-amber-700 transition-all"
               >
                 <FastForward className="h-5 w-5" />
                 Omitir
@@ -657,13 +713,17 @@ export default function SmartIncidentBlocker({
           ) : (
             <button
               onClick={continueFn}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 font-semibold text-white hover:bg-emerald-800"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-3 font-semibold text-white shadow-lg hover:from-emerald-600 hover:to-emerald-800 transition-all"
             >
               Continuar
             </button>
           )}
         </div>
+        </div>
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") return modal;
+  return createPortal(modal, document.body);
 }

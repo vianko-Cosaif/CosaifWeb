@@ -18,6 +18,7 @@ import {
   Settings,
   BarChart3,
 } from "lucide-react";
+import ThemeToggle from "@/app/Components/ui/ThemeToggle";
 
 /* ==========================================================================
    INTERFACES & TYPES
@@ -327,6 +328,19 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
 
         {/* FOOTER */}
         <div className="mt-auto border-t border-slate-100 bg-slate-50/50 p-4 dark:border-zinc-800 dark:bg-zinc-900/30 backdrop-blur-sm">
+          {/* THEME TOGGLE */}
+          <div className={cn("mb-3 flex items-center", (isOpen || mobileOpen) ? "justify-between" : "justify-center")}>
+            {(isOpen || mobileOpen) && (
+              <span className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-zinc-600">
+                Tema
+              </span>
+            )}
+            <ThemeToggle
+              size="sm"
+              withLabel={isOpen || mobileOpen}
+              className={cn(!(isOpen || mobileOpen) && "h-9 w-9")}
+            />
+          </div>
           {/* LOGOUT + VERSION */}
           <div className={cn("flex items-center", isOpen ? "justify-between" : "flex-col gap-3 justify-center")}>
             {(isOpen || mobileOpen) && (

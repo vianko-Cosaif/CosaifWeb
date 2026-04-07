@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { MapPin, Sparkles } from "lucide-react";
 import { getClientCookie } from "@/lib/cookies";
 
 /* ===== Tipos ===== */
@@ -10,6 +11,8 @@ type Ronda = {
   orden: number;
   concluido: boolean;
   empresa?: { id: number; nombre: string } | null;
+  localidadId?: number | null;
+  localidad?: { id: number; nombre: string } | null;
   movimiento?: {
     id?: number;
     viaOrigen?: { nombre?: string | null } | null;
@@ -20,6 +23,10 @@ type Ronda = {
     prioridad?: "BAJA" | "ALTA" | null;
     locomotiveNumber?: number | string | null;
     locomotora?: string | null;
+    fechaSolicitud?: string | null;
+    fechaInicio?: string | null;
+    fechaFin?: string | null;
+    instrucciones?: string | null;
   } | null;
   movimientoId?: number | null;
 };
@@ -36,16 +43,21 @@ type RondaInfo = {
     prioridad?: "BAJA" | "ALTA";
     locomotiveNumber?: number | string;
     locomotora?: string | null;
+    fechaSolicitud?: string | null;
+    fechaInicio?: string | null;
+    fechaFin?: string | null;
+    instrucciones?: string | null;
   };
   movimientoId?: number;
 };
 
-type Localidad = { id: number; nombre: string; estado: string };
+type Localidad = { id: number; nombre: string; estado?: string | null };
 
 type ToastKind = "move" | "new" | "done" | "warning" | "ok" | "error";
 type Toast = { id: number; text: string; kind: ToastKind };
 
 /* ===== Utils ===== */
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? "/bff").replace(/\/+$/, "");
 const fmtList = new Intl.ListFormat("es", { style: "short", type: "conjunction" });
 const codeFrom = (inf?: RondaInfo, fallbackId?: number) =>
   String(inf?.movimientoId ?? inf?.movimiento?.id ?? fallbackId ?? "—");
@@ -57,6 +69,25 @@ const fmtLoco = (v: unknown) => {
   return s.padStart(4, "0").slice(0, 16);
 };
 
+const attachLocalidad = (list: Ronda[], loc: Localidad): Ronda[] =>
+  list.map((r) => ({
+    ...r,
+    localidadId: r.localidadId ?? loc.id,
+    localidad: r.localidad ?? { id: loc.id, nombre: loc.nombre },
+  }));
+
+// Fecha/hora siempre en horario de México.
+function formatDateTimeMX(iso?: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat("es-MX", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "America/Mexico_City",
+  }).format(d);
+}
+
 async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const r = await fetch(url, { cache: "no-store", credentials: "include", mode: "same-origin", signal });
   if (!r.ok) {
@@ -64,6 +95,15 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
     throw new Error(`${r.status} ${r.statusText} :: ${txt.slice(0, 200)}`);
   }
   return (await r.json()) as T;
+}
+
+function unwrapArray<T>(res: unknown): T[] {
+  if (Array.isArray(res)) return res as T[];
+  if (res && typeof res === "object" && "data" in res) {
+    const data = (res as { data?: unknown }).data;
+    if (Array.isArray(data)) return data as T[];
+  }
+  return [];
 }
 
 function isAbortError(err: unknown): boolean {
@@ -83,20 +123,6 @@ function isAbortError(err: unknown): boolean {
     return (err as { name?: string }).name === "AbortError";
   }
   return false;
-}
-
-async function patchJson<T>(url: string, body: unknown): Promise<T> {
-  const r = await fetch(url, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) {
-    const txt = await r.text().catch(() => "");
-    throw new Error(`${r.status} ${r.statusText} :: ${txt.slice(0, 200)}`);
-  }
-  return (await r.json()) as T;
 }
 
 function useVisibleInterval(fn: () => void, delay: number | null, deps: React.DependencyList = []) {
@@ -194,20 +220,18 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
   });
   const activeLoc = useMemo(() => localidades.find(l => l.id === activeLocId) || null, [localidades, activeLocId]);
 
-  /* === Editor de estado de la localidad === */
-  const [estadoDraft, setEstadoDraft] = useState<string>("");
-
-  useEffect(() => {
-    if (activeLoc) setEstadoDraft(activeLoc.estado || "");
-    else setEstadoDraft("");
-  }, [activeLocId, activeLoc?.estado]);
-
   async function loadLocalidades() {
     try {
-      const data = await fetchJson<Localidad[]>("/api/admin/localidades");
-      setLocalidades(data.sort((a, b) => a.nombre.localeCompare(b.nombre)));
+      const raw = await fetchJson<unknown>(`${API_BASE}/localidades`);
+      const data = unwrapArray<Localidad>(raw);
+      if (data.length) {
+        setLocalidades(data.sort((a, b) => a.nombre.localeCompare(b.nombre)));
+        return;
+      }
+      throw new Error("localidades vacías");
     } catch {
-      const data = await fetchJson<Localidad[]>("/api/cliente/localidades");
+      const raw = await fetchJson<unknown>(`${API_BASE}/localidades/lite`);
+      const data = unwrapArray<Localidad>(raw);
       setLocalidades(data.sort((a, b) => a.nombre.localeCompare(b.nombre)));
     }
   }
@@ -228,12 +252,18 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
       if (activeLocId > 0) {
         const url = `/api/cliente/rondas?localidadId=${activeLocId}`;
         data = await fetchJson<Ronda[]>(url, ac.signal);
+        const loc = localidades.find((l) => l.id === activeLocId);
+        if (loc) data = attachLocalidad(data, loc);
       } else {
         try {
           data = await fetchJson<Ronda[]>("/api/admin/rondas?all=1", ac.signal);
         } catch {
           const res = await Promise.allSettled(
-            localidades.map(loc => fetchJson<Ronda[]>(`/api/cliente/rondas?localidadId=${loc.id}`, ac.signal))
+            localidades.map((loc) =>
+              fetchJson<Ronda[]>(`/api/cliente/rondas?localidadId=${loc.id}`, ac.signal).then((list) =>
+                attachLocalidad(list, loc)
+              )
+            )
           );
           const merged: Ronda[] = [];
           res.forEach((r) => {
@@ -241,6 +271,14 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
           });
           data = merged;
         }
+      }
+
+      if (localidades.length) {
+        data = data.map((r) => {
+          if (r.localidad?.nombre || !r.localidadId) return r;
+          const loc = localidades.find((l) => l.id === r.localidadId);
+          return loc ? { ...r, localidad: { id: loc.id, nombre: loc.nombre } } : r;
+        });
       }
 
       data.sort((a, b) => {
@@ -292,6 +330,10 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
             prioridad: (mv?.prioridad as "BAJA" | "ALTA" | undefined) ?? undefined,
             locomotiveNumber: mv?.locomotiveNumber ?? mv?.locomotora ?? undefined,
             locomotora: mv?.locomotora ?? undefined,
+            fechaSolicitud: mv?.fechaSolicitud ?? undefined,
+            fechaInicio: mv?.fechaInicio ?? undefined,
+            fechaFin: mv?.fechaFin ?? undefined,
+            instrucciones: mv?.instrucciones ?? undefined,
           },
           movimientoId: (mv?.id ?? r.movimientoId ?? undefined) as number | undefined,
         };
@@ -341,6 +383,15 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
   const viaD = curMov?.viaDestino?.nombre || "";
 
   const hasAny = !!((viaO || "") || (viaD || "") || (curMov?.torno || curMov?.lavado));
+  const solicitudText = formatDateTimeMX(curMov?.fechaSolicitud ?? null);
+  const inicioText = formatDateTimeMX(curMov?.fechaInicio ?? null);
+  const finText = formatDateTimeMX(curMov?.fechaFin ?? null);
+  const creadoText = formatDateTimeMX(
+    curMov?.fechaSolicitud ?? curMov?.fechaInicio ?? curMov?.fechaFin ?? null
+  );
+  const instruccionesText = curMov?.instrucciones?.trim()
+    ? curMov.instrucciones.trim()
+    : "Sin comentarios del coordinador.";
 
   // fullscreen
   useEffect(() => {
@@ -352,26 +403,12 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
     try { if (document.fullscreenElement) document.exitFullscreen(); else boardRef.current?.requestFullscreen(); } catch {}
   };
 
-  // ===== handlers admin =====
-  async function saveEstado() {
-    if (!(activeLocId > 0)) return;
-    const val = String(estadoDraft || "").trim();
-    if (!val) { pushToast("Estado vacío", "warning"); return; }
-    try {
-      await patchJson(`/api/admin/localidades/${activeLocId}`, { estado: val });
-      setLocalidades(prev => prev.map(l => l.id === activeLocId ? { ...l, estado: val } : l));
-      pushToast("Estado actualizado", "ok");
-    } catch {
-      pushToast("No se pudo actualizar", "error");
-    }
-  }
-
   // agrupación por localidad para vista “Todas”
   const itemsByLoc = useMemo(() => {
     if (activeLocId > 0) return null;
     const map = new Map<number, Ronda[]>();
     for (const r of items) {
-      const key = r.empresa?.id ?? -1;
+      const key = r.localidadId ?? r.localidad?.id ?? -1;
       const arr = map.get(key) || [];
       arr.push(r);
       map.set(key, arr);
@@ -380,50 +417,48 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
   }, [items, activeLocId]);
 
   return (
-    <main ref={boardRef} className="min-h-svh md:min-h-dvh bg-white text-slate-900 dark:bg-neutral-950 dark:text-slate-100">
+    <main ref={boardRef} className="min-h-svh md:min-h-dvh text-slate-900 dark:text-slate-100">
       {/* TOASTS */}
       <ToastStack toasts={toasts} dismiss={dismiss} />
 
       {/* TOOLBAR */}
       <div className="sticky top-0 z-40 border-b border-slate-200/60 bg-white/90 backdrop-blur-md dark:border-slate-800/60 dark:bg-neutral-950/90 pt-[env(safe-area-inset-top)]">
         <div className="mx-auto w-full max-w-screen-2xl">
-          <div className="flex flex-wrap items-center justify-between gap-2 p-3 sm:gap-3 sm:px-4 md:px-6 md:py-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3 sm:gap-4 sm:px-4 md:px-6 md:py-3">
             {/* selector de localidad */}
-            <div className="flex items-center gap-2">
-              <select
-                value={activeLocId}
-                onChange={(e) => setActiveLocId(Number(e.target.value))}
-                className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
-                title="Localidad"
-              >
-                <option value={0}>Todas las localidades</option>
-                {localidades.map((l) => (
-                  <option key={l.id} value={l.id}>{l.nombre} (#{l.id})</option>
-                ))}
-              </select>
+            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200/70 bg-white/90 px-3 py-2 shadow-[0_12px_30px_rgba(15,23,42,0.12)] dark:border-slate-800/70 dark:bg-slate-900/80">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                <MapPin className="h-4 w-4" /> Localidad
+              </div>
+              <div className="relative">
+                <select
+                  value={activeLocId}
+                  onChange={(e) => setActiveLocId(Number(e.target.value))}
+                  className="appearance-none rounded-full border border-slate-200 bg-white px-3 py-1.5 pr-8 text-sm font-semibold text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  title="Localidad"
+                >
+                  <option value={0}>Todas</option>
+                  {localidades.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.nombre} (#{l.id})
+                    </option>
+                  ))}
+                </select>
+                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                  ▾
+                </span>
+              </div>
 
-              {/* editor de estado solo cuando hay localidad seleccionada */}
               {activeLocId > 0 && (
-                <div className="flex items-center gap-1">
-                  <input
-                    value={estadoDraft}
-                    onChange={(e) => setEstadoDraft(e.target.value)}
-                    placeholder="Estado de la localidad"
-                    className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
-                  />
-                  <button
-                    onClick={saveEstado}
-                    className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700 hover:scale-[1.02] active:scale-95 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200"
-                    title="Guardar estado"
-                  >
-                    Guardar
-                  </button>
+                <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Estado: <span className="font-semibold">{activeLoc?.estado || "Sin estado"}</span>
                 </div>
               )}
             </div>
 
             {/* status derecha */}
-            <div className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge live={polling} label={`Últ. act: ${timeAgo(lastOkAt.current)}`} />
               <Btn onClick={() => setSoundOn((s) => !s)} active={soundOn} labelOn="Sonido" labelOff="Silencio" iconOn="🔔" iconOff="🔕" />
               <Btn onClick={() => setPolling((p) => !p)} active={polling} labelOn="Auto" labelOff="Auto" iconOn="⏸️" iconOff="▶️" />
@@ -457,6 +492,11 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
               viaO,
               viaD,
               hasAny,
+              solicitudText,
+              inicioText,
+              finText,
+              creadoText,
+              instruccionesText,
               info,
               next,
               load,
@@ -556,12 +596,34 @@ function SingleLocalidadBoard(props: {
   viaO: string;
   viaD: string;
   hasAny: boolean;
+  solicitudText: string;
+  inicioText: string;
+  finText: string;
+  creadoText: string;
+  instruccionesText: string;
   info: Record<number, RondaInfo>;
   next: Ronda[];
   load: (show?: boolean) => void;
 }) {
   const {
-    prefersReduced, loading, refreshing, nextCount, current, curInfo, locoText, viaO, viaD, hasAny, info, next, load
+    prefersReduced,
+    loading,
+    refreshing,
+    nextCount,
+    current,
+    curInfo,
+    locoText,
+    viaO,
+    viaD,
+    hasAny,
+    solicitudText,
+    inicioText,
+    finText,
+    creadoText,
+    instruccionesText,
+    info,
+    next,
+    load,
   } = props;
 
   return (
@@ -640,6 +702,21 @@ function SingleLocalidadBoard(props: {
                 <InfoBadge label="Ronda" value={String(current?.rondaNumero ?? "—")} icon="🔁" />
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-4">
+                <DateBox label="Solicitud" value={solicitudText} />
+                <DateBox label="Inicio" value={inicioText} />
+                <DateBox label="Fin" value={finText} />
+              </div>
+
+              <div className="mb-6 rounded-xl border border-slate-200 bg-white/70 p-4 text-slate-800 shadow-sm dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-100">
+                <div className="text-[11px] uppercase tracking-[0.25em] text-slate-400 mb-2">
+                  Comentarios / Instrucciones
+                </div>
+                <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+                  {instruccionesText}
+                </p>
+              </div>
+
               <motion.div
                 initial={{ x: prefersReduced ? 0 : -8, opacity: prefersReduced ? 1 : 0 }}
                 animate={{ x: 0, opacity: 1 }}
@@ -653,6 +730,9 @@ function SingleLocalidadBoard(props: {
                     <>Mover locomotora <b className="text-sky-700 dark:text-sky-300">{locoText}</b> entre <b>—</b> y <b>—</b>.</>
                   )}
                 </p>
+                <div className="mt-3">
+                  <DateBox label="Creado" value={creadoText} />
+                </div>
               </motion.div>
             </>
           ) : (
@@ -718,6 +798,10 @@ function KV({ title, value, prefix }: { title: string; value: string; prefix: st
 
 function CardNext({ n, inf, loco }: { n: Ronda; inf?: RondaInfo; loco: string }) {
   const mv = inf?.movimiento;
+  const solicitudText = formatDateTimeMX(mv?.fechaSolicitud ?? null);
+  const inicioText = formatDateTimeMX(mv?.fechaInicio ?? null);
+  const finText = formatDateTimeMX(mv?.fechaFin ?? null);
+  const instrText = mv?.instrucciones?.trim() ? mv.instrucciones.trim() : "Sin instrucciones.";
   return (
     <>
       <div className="flex items-center gap-3 mb-3">
@@ -744,6 +828,18 @@ function CardNext({ n, inf, loco }: { n: Ronda; inf?: RondaInfo; loco: string })
         <div className="flex gap-1">
           <ServiceChip active={!!mv?.lavado} icon="💧" text="Lavado" />
           <ServiceChip active={!!mv?.torno} icon="⚙️" text="Torno" />
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-1 gap-2">
+        <div className="rounded-lg border border-slate-200 bg-white/70 p-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
+          <span className="font-semibold text-slate-500 dark:text-slate-400">Instrucciones:</span>{" "}
+          {instrText}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <DateBox label="Solicitud" value={solicitudText} />
+          <DateBox label="Inicio" value={inicioText} />
+          <DateBox label="Fin" value={finText} />
         </div>
       </div>
     </>
@@ -778,6 +874,14 @@ function AllLocalidadesGrid({
           const inf = cur ? info[cur.id] : undefined;
           const mv = inf?.movimiento;
           const loco = fmtLoco(mv?.locomotiveNumber ?? mv?.locomotora);
+          const locId = cur?.localidadId ?? cur?.localidad?.id ?? key;
+          const locMeta = localidades.find((l) => l.id === locId);
+          const locName = cur?.localidad?.nombre ?? locMeta?.nombre ?? (locId > 0 ? `Localidad #${locId}` : "Sin localidad");
+          const locEstado = locMeta?.estado || "Sin estado";
+          const solicitudText = formatDateTimeMX(mv?.fechaSolicitud ?? null);
+          const inicioText = formatDateTimeMX(mv?.fechaInicio ?? null);
+          const finText = formatDateTimeMX(mv?.fechaFin ?? null);
+          const instrText = mv?.instrucciones?.trim() ? mv.instrucciones.trim() : "Sin instrucciones.";
           return (
             <motion.div
               key={key}
@@ -785,12 +889,33 @@ function AllLocalidadesGrid({
               animate={{ y: 0, opacity: 1 }}
               className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900"
             >
-              <div className="mb-2 text-xs text-slate-500 dark:text-slate-400">Grupo #{key}</div>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.25em] text-slate-400">Localidad</div>
+                  <div className="text-base font-semibold text-slate-900 dark:text-slate-100">{locName}</div>
+                </div>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                  {locEstado}
+                </span>
+              </div>
               {cur ? (
                 <>
                   <div className="font-semibold">{inf?.empresa?.nombre ?? "—"}</div>
-                  <div className="text-sm text-slate-600 dark:text-slate-400">Código {codeFrom(inf, cur.id)} · Loco {loco}</div>
-                  <div className="text-sm text-slate-600 dark:text-slate-400">Ronda #{cur.rondaNumero} · Orden {cur.orden}</div>
+                  <div className="text-sm text-slate-600 dark:text-slate-400">
+                    Código {codeFrom(inf, cur.id)} · Loco {loco}
+                  </div>
+                  <div className="text-sm text-slate-600 dark:text-slate-400">
+                    Ronda #{cur.rondaNumero} · Orden {cur.orden}
+                  </div>
+                  <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/70 p-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
+                    <span className="font-semibold text-slate-500 dark:text-slate-400">Instrucciones:</span>{" "}
+                    {instrText}
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <DateBox label="Solicitud" value={solicitudText} />
+                    <DateBox label="Inicio" value={inicioText} />
+                    <DateBox label="Fin" value={finText} />
+                  </div>
                 </>
               ) : (
                 <div className="text-sm text-slate-500 dark:text-slate-400">Sin órdenes</div>
@@ -881,6 +1006,14 @@ function SkeletonNext() {
           <div className="h-6 w-12 rounded-full bg-slate-200 dark:bg-slate-700" />
         </div>
       </div>
+    </div>
+  );
+}
+function DateBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white/80 p-3 text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200">
+      <div className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{label}</div>
+      <div className="mt-1 text-sm font-semibold">{value}</div>
     </div>
   );
 }

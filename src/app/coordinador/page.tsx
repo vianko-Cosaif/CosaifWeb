@@ -1,14 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import SidebarMenu, { Rol } from "@/app/Components/Menu/Menu";
 import RailQueueBoard from "./RailQueueBoard";
 import { DynamicBanner } from "@/app/Components/DynamicBanner";
 import { getClientCookie, setClientCookie } from "@/lib/cookies";
 
 const CoordinadorPage: React.FC = () => {
-  const rol: Rol = "COORDINADOR";
-
   const [localidadId, setLocalidadId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -35,21 +32,14 @@ const CoordinadorPage: React.FC = () => {
   }, []);
 
   return (
-    <div className="relative flex min-h-svh bg-gradient-to-b from-emerald-50 to-sky-50 dark:from-zinc-900 dark:to-zinc-950">
-      {/* Sidebar */}
-
-      {/* Contenido principal */}
-      <div className="relative z-10 flex min-h-svh flex-1 flex-col">
-        <main className="mx-auto w-full max-w-screen-2xl flex-1 p-4 sm:p-6 md:p-8">
-          {localidadId && (
-            <div className="w-full py-4">
-              <DynamicBanner className="mb-6" />
-              <RailQueueBoard localidadId={localidadId} />
-            </div>
-          )}
-        </main>
-      </div>
-    </div>
+    <section className="w-full min-w-0">
+      {localidadId && (
+        <div className="mx-auto w-full max-w-[1400px] space-y-6 sm:space-y-8 min-w-0">
+          <DynamicBanner />
+          <RailQueueBoard localidadId={localidadId} />
+        </div>
+      )}
+    </section>
   );
 };
 
