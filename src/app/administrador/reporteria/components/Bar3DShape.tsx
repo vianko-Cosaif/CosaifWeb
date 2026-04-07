@@ -42,8 +42,9 @@ export default function Bar3DShape({
   color?: string;
   depth?: number;
 }) {
+  if (x == null || y == null || width == null || height == null) return null;
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) return null;
-  if ((width ?? 0) <= 0 || (height ?? 0) <= 0) return null;
+  if (width <= 0 || height <= 0) return null;
 
   const base = normalizeHex(color ?? "") ?? normalizeHex(fill ?? "") ?? DEFAULT_COLOR;
   const top = shadeColor(base, 0.18);
