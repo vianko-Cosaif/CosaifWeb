@@ -18,10 +18,7 @@ export async function GET(req: NextRequest) {
       .map((c) => `${c.name}=${encodeURIComponent(c.value)}`)
       .join("; ");
 
-    const targets = [
-      `${origin}/bff/movimientos/rondas/localidad/${localidadId}/estado/false`,
-      `${origin}/bff/rondas/localidad/${localidadId}/estado/false`,
-    ];
+    const targets = [`${origin}/bff/rondas/localidad/${localidadId}/estado/false`];
 
     for (const url of targets) {
       console.log("[cliente/rondas] →", {

@@ -31,6 +31,11 @@ import {
 } from "lucide-react";
 import styles from "./Tabla.module.scss";
 import type { Movement, CampoOrden, DireccionOrden } from "./useMovimientos";
+import TornoMeasuresViewerModal from "../../movimientos/torno/TornoMeasuresViewerModal";
+import { parseTornoMedicionFromApi } from "../../movimientos/torno/tornoMeasureParser";
+import { DEFAULT_TORNO_MEDICION_STATE, type TornoMedicionState } from "../../movimientos/crear/tornoMedicion.types";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/xapi";
 
 /* --- PROPS --- */
 interface TablaProps {
@@ -46,6 +51,15 @@ interface TablaProps {
   onOrden: (c: CampoOrden, d: DireccionOrden) => void;
   onEditar?: (id: number) => void;
 }
+
+type MeasuresModalState = {
+  open: boolean;
+  loading: boolean;
+  error: string | null;
+  tornoMedicion: TornoMedicionState;
+  locomotiveLabel?: string;
+  companyName?: string;
+};
 
 /* ================== CONSTANTES UI ================== */
 
@@ -110,7 +124,14 @@ function TablaInner({
     [NO_EDIT_STATES]
   );
   const showEditColumn = Boolean(onEditar) && filas.some((m) => puedeEditarMovimiento(m.estado));
+  const showMeasuresColumn = false;
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+  const [measuresModal, setMeasuresModal] = useState<MeasuresModalState>({
+    open: false,
+    loading: false,
+    error: null,
+    tornoMedicion: DEFAULT_TORNO_MEDICION_STATE,
+  });
 
   const totalPaginas = useMemo(
     () => Math.max(1, Math.ceil(total / tamPagina)),
@@ -142,6 +163,47 @@ function TablaInner({
   const handleNextPage = useCallback(() => {
     if (pagina < totalPaginas) onPagina(pagina + 1);
   }, [pagina, totalPaginas, onPagina]);
+
+  const closeMeasuresModal = useCallback(() => {
+    setMeasuresModal((prev) => ({ ...prev, open: false, error: null }));
+  }, []);
+
+  const handleViewMeasures = useCallback(async (movement: Movement) => {
+    const movementId = Number(movement.id);
+    if (!Number.isFinite(movementId) || movementId <= 0) return;
+
+    setMeasuresModal({
+      open: true,
+      loading: true,
+      error: null,
+      tornoMedicion: DEFAULT_TORNO_MEDICION_STATE,
+      locomotiveLabel: String(movement.locomotora ?? ""),
+      companyName: movement.empresaNombre,
+    });
+
+    try {
+      const response = await fetch(`${API_BASE}/movimientos/${movementId}/edicion`, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error(`No se pudo cargar medidas (${response.status}).`);
+      }
+      const payload = await response.json();
+      const parsed = parseTornoMedicionFromApi(payload);
+      setMeasuresModal((prev) => ({
+        ...prev,
+        loading: false,
+        tornoMedicion: parsed,
+        locomotiveLabel: String(payload?.movimiento?.locomotiveNumber ?? movement.locomotora ?? ""),
+        companyName: payload?.movimiento?.empresa?.nombre ?? movement.empresaNombre,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudieron cargar las medidas.";
+      setMeasuresModal((prev) => ({ ...prev, loading: false, error: message }));
+    }
+  }, []);
 
   /* Page pills */
   const pageNumbers = useMemo(() => {
@@ -199,6 +261,8 @@ function TablaInner({
                 onEditar={onEditar}
                 showEdit={showEditColumn}
                 canEdit={puedeEditarMovimiento(movement.estado)}
+                showMeasures={showMeasuresColumn}
+                onViewMeasures={handleViewMeasures}
               />
             ))
           )}
@@ -293,13 +357,18 @@ function TablaInner({
                     Editar
                   </th>
                 )}
+                {showMeasuresColumn && (
+                  <th className="px-2 py-3 text-center sm:px-4 sm:py-4">
+                    Medidas
+                  </th>
+                )}
               </tr>
             </thead>
 
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs sm:text-xs md:text-sm">
               {!tieneFilas ? (
                 <tr>
-                  <td colSpan={12} className="py-16 text-center sm:py-20">
+                  <td colSpan={13} className="py-16 text-center sm:py-20">
                     <div className="flex flex-col items-center justify-center gap-4">
                       <div className="rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 p-5">
                         <TrainFront size={36} strokeWidth={1.2} className="text-slate-300 dark:text-slate-600" />
@@ -325,6 +394,8 @@ function TablaInner({
                     onEditar={onEditar}
                     showEdit={showEditColumn}
                     canEdit={puedeEditarMovimiento(movement.estado)}
+                    showMeasures={showMeasuresColumn}
+                    onViewMeasures={handleViewMeasures}
                   />
                 ))
               )}
@@ -398,6 +469,34 @@ function TablaInner({
           </div>
         </div>
       </div>
+
+      <TornoMeasuresViewerModal
+        open={measuresModal.open && !measuresModal.loading && !measuresModal.error}
+        onClose={closeMeasuresModal}
+        tornoMedicion={measuresModal.tornoMedicion}
+        locomotiveLabel={measuresModal.locomotiveLabel}
+        companyName={measuresModal.companyName}
+      />
+      {measuresModal.open && (measuresModal.loading || measuresModal.error) ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 p-4">
+          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            {measuresModal.loading ? (
+              <p className="text-sm text-slate-600 dark:text-slate-300">Cargando medidas de torno...</p>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-rose-600 dark:text-rose-300">{measuresModal.error}</p>
+                <button
+                  type="button"
+                  onClick={closeMeasuresModal}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200"
+                >
+                  Cerrar
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -413,6 +512,8 @@ interface MovimientoRowProps {
   onEditar?: (id: number) => void;
   showEdit?: boolean;
   canEdit?: boolean;
+  showMeasures?: boolean;
+  onViewMeasures?: (movement: Movement) => void;
 }
 
 const MovimientoRow = memo(function MovimientoRow({
@@ -422,6 +523,8 @@ const MovimientoRow = memo(function MovimientoRow({
   onEditar,
   showEdit = false,
   canEdit = true,
+  showMeasures = false,
+  onViewMeasures,
 }: MovimientoRowProps) {
   const handleRowClick = useCallback(() => {
     onToggle(movement.id);
@@ -433,6 +536,14 @@ const MovimientoRow = memo(function MovimientoRow({
       if (onEditar && canEdit) onEditar(movement.id);
     },
     [onEditar, movement.id, canEdit]
+  );
+
+  const handleMeasuresClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      if (onViewMeasures) onViewMeasures(movement);
+    },
+    [onViewMeasures, movement]
   );
 
   const fechaSolicitudFmt = useMemo(
@@ -563,11 +674,30 @@ const MovimientoRow = memo(function MovimientoRow({
             )}
           </td>
         )}
+        {showMeasures && (
+          <td className="px-2 py-3 text-center align-middle sm:px-4 sm:py-4">
+            {movement.torno ? (
+              <button
+                type="button"
+                onClick={handleMeasuresClick}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-2 text-xs font-semibold text-sky-700 transition-all duration-200 hover:bg-sky-100 hover:border-sky-300 hover:shadow-sm active:scale-95 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-300 dark:hover:bg-sky-900/50"
+                title="Ver medidas de torno"
+              >
+                <Info size={13} />
+                <span className="hidden sm:inline">Medidas</span>
+              </button>
+            ) : (
+              <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500">
+                N/A
+              </span>
+            )}
+          </td>
+        )}
       </tr>
 
       {/* DETALLE */}
       <tr className="m-0 border-0 p-0">
-        <td colSpan={12} className="m-0 border-0 p-0">
+        <td colSpan={13} className="m-0 border-0 p-0">
           <div
             className={`${styles.expandedContentContainer} ${isOpen ? styles.show : ""
               }`}
@@ -593,6 +723,8 @@ const MobileCard = memo(function MobileCard({
   onEditar,
   showEdit = false,
   canEdit = true,
+  showMeasures = false,
+  onViewMeasures,
 }: MovimientoRowProps) {
   const fechaSolicitudFmt = useMemo(
     () => formatoFecha(movement.fechaSolicitud),
@@ -618,6 +750,14 @@ const MobileCard = memo(function MobileCard({
       if (onEditar && canEdit) onEditar(movement.id);
     },
     [onEditar, movement.id, canEdit]
+  );
+
+  const handleMeasuresClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      if (onViewMeasures) onViewMeasures(movement);
+    },
+    [onViewMeasures, movement]
   );
 
   return (
@@ -720,22 +860,41 @@ const MobileCard = memo(function MobileCard({
             {movement.incidenteGlobal && <span className="rounded-md bg-rose-50 border border-rose-200 px-2 py-0.5 text-[9px] font-bold text-rose-700 dark:bg-rose-900/20 dark:border-rose-800 dark:text-rose-300">INC</span>}
           </div>
 
-          {showEdit && (
-            canEdit ? (
-              <button
-                type="button"
-                onClick={handleEditClick}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 transition-all duration-200 hover:bg-emerald-100 hover:border-emerald-300 hover:shadow-sm active:scale-95 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
-              >
-                <Edit3 size={12} />
-                <span>Editar</span>
-              </button>
-            ) : (
-              <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500">
-                No editable
-              </span>
-            )
-          )}
+          <div className="flex items-center gap-2">
+            {showMeasures ? (
+              movement.torno ? (
+                <button
+                  type="button"
+                  onClick={handleMeasuresClick}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-1.5 text-[11px] font-semibold text-sky-700 transition-all duration-200 hover:bg-sky-100 hover:border-sky-300 hover:shadow-sm active:scale-95 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-300 dark:hover:bg-sky-900/50"
+                >
+                  <Info size={12} />
+                  <span>Medidas</span>
+                </button>
+              ) : (
+                <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500">
+                  N/A
+                </span>
+              )
+            ) : null}
+
+            {showEdit && (
+              canEdit ? (
+                <button
+                  type="button"
+                  onClick={handleEditClick}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 transition-all duration-200 hover:bg-emerald-100 hover:border-emerald-300 hover:shadow-sm active:scale-95 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
+                >
+                  <Edit3 size={12} />
+                  <span>Editar</span>
+                </button>
+              ) : (
+                <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500">
+                  No editable
+                </span>
+              )
+            )}
+          </div>
         </div>
       </div>
 

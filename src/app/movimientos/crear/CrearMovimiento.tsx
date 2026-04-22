@@ -88,6 +88,7 @@ export default function CrearMovimiento() {
     goPrev,
     goNext,
     clearForm,
+    clearTornoMedicion,
     clearOutbox,
   } = useCrearMovimientoController();
 
@@ -103,6 +104,9 @@ export default function CrearMovimiento() {
     useTornoMedicionStep && step === 2
       ? (tornoStep2Completed && tornoMovimientoId !== null ? "Volver al PDF →" : "Guardar y Continuar →")
       : "Siguiente →";
+  const isTornoMeasurementStep = useTornoMedicionStep && step === 2;
+  const clearAction = isTornoMeasurementStep ? clearTornoMedicion : clearForm;
+  const clearLabel = isTornoMeasurementStep ? "Limpiar mediciones" : "Limpiar";
   const selectedCompanyName =
     empresas.find((empresa) => empresa.id === form.empresaId)?.nombre ||
     userCompanyName ||
@@ -277,10 +281,10 @@ export default function CrearMovimiento() {
         {/* Navegacion declarativa del wizard. */}
         <div className="mt-5 flex flex-wrap gap-3">
           <button
-            onClick={clearForm}
+            onClick={clearAction}
             className="rounded-xl border border-slate-200 dark:border-zinc-700 px-4 py-2.5 text-sm font-medium text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all active:scale-[0.97]"
           >
-            Limpiar
+            {clearLabel}
           </button>
 
           {step > 1 && !(useTornoMedicionStep && step === 4) && (

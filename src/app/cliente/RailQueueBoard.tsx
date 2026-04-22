@@ -4,6 +4,11 @@ import { useEffect, useMemo, useRef, useState, startTransition, Fragment } from 
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import { S } from "./RailQueueBoardCliente.styles";
+import TornoMeasuresViewerModal from "../movimientos/torno/TornoMeasuresViewerModal";
+import { parseTornoMedicionFromApi } from "../movimientos/torno/tornoMeasureParser";
+import { DEFAULT_TORNO_MEDICION_STATE, type TornoMedicionState } from "../movimientos/crear/tornoMedicion.types";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/xapi";
 
 /* ═══════════ TYPES ═══════════ */
 type Ronda = {
@@ -53,6 +58,15 @@ type RondaInfo = {
 
 type ToastKind = "move" | "new" | "done" | "warning";
 type Toast = { id: number; text: string; kind: ToastKind };
+
+type MeasuresModalState = {
+  open: boolean;
+  loading: boolean;
+  error: string | null;
+  tornoMedicion: TornoMedicionState;
+  locomotiveLabel?: string;
+  companyName?: string;
+};
 
 /* ═══════════ UTILS ═══════════ */
 const codeFrom = (inf?: RondaInfo, fallbackId?: number) =>
@@ -163,6 +177,12 @@ export default function RailQueueBoard({
 
   const bellRef = useRef<HTMLAudioElement | null>(null);
   const { toasts, push: pushToast, dismiss } = useToasts();
+  const [measuresModal, setMeasuresModal] = useState<MeasuresModalState>({
+    open: false,
+    loading: false,
+    error: null,
+    tornoMedicion: DEFAULT_TORNO_MEDICION_STATE,
+  });
   const prevIdsRef = useRef<number[]>([]);
   const lastCurrentId = useRef<number | null>(null);
   const firstLoad = useRef(true);
@@ -224,6 +244,48 @@ export default function RailQueueBoard({
     lastCurrentId.current = curId;
   }, [items, soundOn]);
 
+  const closeMeasuresModal = () => {
+    setMeasuresModal((prev) => ({ ...prev, open: false, error: null }));
+  };
+
+  const openMeasuresModal = async (args: {
+    movementId?: number | null;
+    locomotiveLabel?: string;
+    companyName?: string;
+  }) => {
+    const movementId = Number(args.movementId);
+    if (!Number.isFinite(movementId) || movementId <= 0) return;
+
+    setMeasuresModal({
+      open: true,
+      loading: true,
+      error: null,
+      tornoMedicion: DEFAULT_TORNO_MEDICION_STATE,
+      locomotiveLabel: args.locomotiveLabel,
+      companyName: args.companyName,
+    });
+
+    try {
+      const response = await fetch(`${API_BASE}/movimientos/${movementId}/edicion`, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(`No se pudo cargar medidas (${response.status}).`);
+      const payload = await response.json();
+      setMeasuresModal((prev) => ({
+        ...prev,
+        loading: false,
+        tornoMedicion: parseTornoMedicionFromApi(payload),
+        locomotiveLabel: String(payload?.movimiento?.locomotiveNumber ?? args.locomotiveLabel ?? ""),
+        companyName: payload?.movimiento?.empresa?.nombre ?? args.companyName,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudieron cargar las medidas.";
+      setMeasuresModal((prev) => ({ ...prev, loading: false, error: message }));
+    }
+  };
+
   const current = items[0];
   const curInfo = current ? info[current.id] : undefined;
   const nextItems = useMemo(() => items.slice(1), [items]);
@@ -260,7 +322,7 @@ export default function RailQueueBoard({
             {!current ? (
               <div className={S.Layout.skeleton} />
             ) : (
-              <HeroCard key={current.id} item={current} info={curInfo} />
+              <HeroCard key={current.id} item={current} info={curInfo} onViewMeasures={openMeasuresModal} />
             )}
           </AnimatePresence>
         </section>
@@ -280,6 +342,7 @@ export default function RailQueueBoard({
                   info={info[item.id]}
                   prev={i > 0 ? nextItems[i - 1] : null}
                   idx={i}
+                  onViewMeasures={openMeasuresModal}
                 />
               ))}
             </AnimatePresence>
@@ -303,6 +366,34 @@ export default function RailQueueBoard({
 
       <audio ref={bellRef} src="/sounds/notification.mp3" preload="auto" />
 
+      <TornoMeasuresViewerModal
+        open={measuresModal.open && !measuresModal.loading && !measuresModal.error}
+        onClose={closeMeasuresModal}
+        tornoMedicion={measuresModal.tornoMedicion}
+        locomotiveLabel={measuresModal.locomotiveLabel}
+        companyName={measuresModal.companyName}
+      />
+      {measuresModal.open && (measuresModal.loading || measuresModal.error) ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/35 p-4">
+          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            {measuresModal.loading ? (
+              <p className="text-sm text-slate-600 dark:text-slate-300">Cargando medidas de torno...</p>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-rose-600 dark:text-rose-300">{measuresModal.error}</p>
+                <button
+                  type="button"
+                  onClick={closeMeasuresModal}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200"
+                >
+                  Cerrar
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       {/* ─── TOASTS ─── */}
       <div className={S.Toast.wrap}>
         <AnimatePresence>
@@ -317,7 +408,15 @@ export default function RailQueueBoard({
 }
 
 /* ═══════════ HERO CARD ═══════════ */
-function HeroCard({ item, info }: { item: Ronda; info?: RondaInfo }) {
+function HeroCard({
+  item,
+  info,
+  onViewMeasures,
+}: {
+  item: Ronda;
+  info?: RondaInfo;
+  onViewMeasures: (args: { movementId?: number | null; locomotiveLabel?: string; companyName?: string }) => void;
+}) {
   const hi = info?.movimiento?.prioridad === "ALTA";
   const loco = fmtLoco(info?.movimiento?.locomotora || info?.movimiento?.locomotiveNumber);
   const orig = info?.movimiento?.viaOrigen?.nombre || "—";
@@ -401,6 +500,7 @@ function HeroCard({ item, info }: { item: Ronda; info?: RondaInfo }) {
             <span className="flex items-center gap-1"><Ic.Calendar /> Creado</span>
             <span className="font-semibold tabular-nums">{fmtDate(item.createdAt)}</span>
           </div>
+          {null}
         </div>
       </div>
     </motion.div>
@@ -408,7 +508,19 @@ function HeroCard({ item, info }: { item: Ronda; info?: RondaInfo }) {
 }
 
 /* ═══════════ QUEUE CARD ═══════════ */
-function QueueCard({ item, info, prev, idx }: { item: Ronda; info?: RondaInfo; prev: Ronda | null; idx: number }) {
+function QueueCard({
+  item,
+  info,
+  prev,
+  idx,
+  onViewMeasures: _onViewMeasures,
+}: {
+  item: Ronda;
+  info?: RondaInfo;
+  prev: Ronda | null;
+  idx: number;
+  onViewMeasures: (args: { movementId?: number | null; locomotiveLabel?: string; companyName?: string }) => void;
+}) {
   const hi = info?.movimiento?.prioridad === "ALTA";
   const newRound = idx === 0 || item.rondaNumero !== prev?.rondaNumero;
   const loco = fmtLoco(info?.movimiento?.locomotora || info?.movimiento?.locomotiveNumber);
@@ -472,7 +584,10 @@ function QueueCard({ item, info, prev, idx }: { item: Ronda; info?: RondaInfo; p
           </div>
           <span className={S.List.date}>{fmtDate(item.createdAt)}</span>
         </div>
+        {null}
       </motion.div>
     </Fragment>
   );
 }
+
+

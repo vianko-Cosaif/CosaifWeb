@@ -1,5 +1,7 @@
 import type { MovementFormData, Rol } from "../movimientos.shared";
 import type { ResolvedIds, SelectionMode, UserSession } from "./controller.types";
+import type { TornoMedicionState } from "./tornoMedicion.types";
+import { buildBackendTornoMedidas } from "./tornoSubmit.adapter";
 
 /**
  * MODULO: crearMovimiento.domain
@@ -209,8 +211,20 @@ export function buildMovimientoPayload(args: {
   toSection?: number;
   userId?: number;
   viaName: (id?: number | null) => string;
+  tornoMedicion?: TornoMedicionState;
+  companyName?: string;
 }) {
-  const { resolvedIds, form, selectionMode, fromSection, toSection, userId, viaName } = args;
+  const {
+    resolvedIds,
+    form,
+    selectionMode,
+    fromSection,
+    toSection,
+    userId,
+    viaName,
+    tornoMedicion,
+    companyName,
+  } = args;
   const { empresaId, creadoPorId, localidadId } = resolvedIds;
 
   const { fromTrack, toTrack } = resolveTracksByMode({
@@ -270,6 +284,17 @@ export function buildMovimientoPayload(args: {
     finalizado: false,
     incidenteGlobal: false,
   };
+
+  if (form.service === "Torno" && selectionMode === "de_via") {
+    if (!tornoMedicion) {
+      throw new Error("No hay mediciones de torno disponibles para este movimiento.");
+    }
+
+    payload.medidasTorno = buildBackendTornoMedidas({
+      tornoMedicion,
+      companyName,
+    });
+  }
 
   Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
 

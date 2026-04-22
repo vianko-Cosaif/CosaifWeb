@@ -8,6 +8,22 @@ import {
   API_BASE, SECC_BASE, DOUBLE_TAP_MS, Direccion, Posicion, Servicio, Rol, Polo, Via, Seccion, InfoEdicion, EditablePayload, MovementFormData, baseInitialForm
 } from './../../movimientos/movimientos.shared';
 import { useTrackSelectionConfirmation } from "./../../movimientos/lifeLineConfirmation.shared";
+import TornoMeasuresViewerModal from "./../../movimientos/torno/TornoMeasuresViewerModal";
+import { parseTornoMedicionFromApi } from "./../../movimientos/torno/tornoMeasureParser";
+import { buildBackendTornoMedidas } from "./../../movimientos/crear/tornoSubmit.adapter";
+import StepTwoTorno from "./../../movimientos/crear/components/StepTwoTorno";
+import {
+  DEFAULT_TORNO_MEDICION_STATE,
+  EMPTY_TORNO_ROW,
+  EMPTY_TORNO_VALUE,
+  normalizeTornoMeasureValue,
+  sanitizeTornoMeasurePart,
+  type TornoMeasurementField,
+  type TornoMeasurementPart,
+  type TornoMedicionState,
+  type TornoWheelCount,
+  type TornoWheelPosition,
+} from "./../../movimientos/crear/tornoMedicion.types";
 
 /** ======= ESTILOS ======= */
 const inputBase =
@@ -17,6 +33,7 @@ const inputBase =
   "dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-500 dark:border-zinc-700 " +
   "dark:focus:border-emerald-500 dark:focus:ring-emerald-500/20";
 const chipBase = "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium";
+const serializeTornoMedicion = (value: TornoMedicionState) => JSON.stringify(value);
 
 /** ======= SUBCOMPONENTES ======= */
 
@@ -635,6 +652,14 @@ export default function EditarMovimiento({
   const [direccionEmpuje, setDireccionEmpuje] = useState<Direccion>("Sin_Solicitar");
   const [polo, setPolo] = useState<Polo>("Sin_Solicitar");
   const [form, setForm] = useState<MovementFormData>(baseInitialForm);
+  const [tornoMedicion, setTornoMedicion] = useState<TornoMedicionState>(() => ({
+    wheelCount: DEFAULT_TORNO_MEDICION_STATE.wheelCount,
+    rows: {},
+  }));
+  const [initialTornoSerialized, setInitialTornoSerialized] = useState<string>(
+    serializeTornoMedicion(DEFAULT_TORNO_MEDICION_STATE)
+  );
+  const [showTornoViewerModal, setShowTornoViewerModal] = useState(false);
   const lastTap = useRef<Record<string, number>>({});
 
   // Secciones elegidas para hint META (el backend solo las lee desde instrucciones)
@@ -690,6 +715,9 @@ export default function EditarMovimiento({
         setPosicionChimenea((data.movimiento.posicionChimenea as any) ?? "Sin_Solicitar");
         setDireccionEmpuje((data.movimiento.direccionEmpuje as any) ?? "Sin_Solicitar");
         setServiceVia((!data.movimiento.Lavado && !data.movimiento.torno) ? "" : (data.movimiento.torno ? "Torno" : "Lavado"));
+        const parsedTorno = parseTornoMedicionFromApi(data);
+        setTornoMedicion(parsedTorno);
+        setInitialTornoSerialized(serializeTornoMedicion(parsedTorno));
 
         // Prefill secciones desde meta si aplica (el parser expone meta.seccion y meta.destinoId)
         if (data.movimiento.meta?.seccion) setToSection(Number(data.movimiento.meta.seccion));
@@ -784,6 +812,71 @@ export default function EditarMovimiento({
     if (now - last < DOUBLE_TAP_MS) onDouble(); else onSingle();
     lastTap.current[key] = now;
   };
+  const setTornoWheelCount = useCallback((count: TornoWheelCount) => {
+    setTornoMedicion((prev) => (prev.wheelCount === count ? prev : { ...prev, wheelCount: count }));
+  }, []);
+
+  const updateTornoMedicion = useCallback(
+    (
+      position: TornoWheelPosition,
+      field: TornoMeasurementField,
+      part: TornoMeasurementPart,
+      value: string
+    ) => {
+      const cleanPartValue = sanitizeTornoMeasurePart(part, value);
+      setTornoMedicion((prev) => {
+        const prevRow = prev.rows[position] ?? EMPTY_TORNO_ROW;
+        const prevValue = prevRow[field] ?? EMPTY_TORNO_VALUE;
+        const nextValue = normalizeTornoMeasureValue({
+          ...prevValue,
+          [part]: cleanPartValue,
+        });
+
+        if (
+          prevValue.whole === nextValue.whole &&
+          prevValue.num === nextValue.num &&
+          prevValue.den === nextValue.den
+        ) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          rows: {
+            ...prev.rows,
+            [position]: {
+              ...prevRow,
+              [field]: nextValue,
+            },
+          },
+        };
+      });
+    },
+    []
+  );
+
+  const tornoStepForm: MovementFormData = {
+    ...baseInitialForm,
+    locomotiveNumber,
+    movementType: tipoMovimiento,
+    direccionEmpuje,
+    pushPull: direccionEmpuje === "EMPUJAR" || direccionEmpuje === "JALAR" ? direccionEmpuje : "",
+  };
+
+  const setTornoStepForm = useCallback(
+    (next: React.SetStateAction<MovementFormData>) => {
+      const resolved = typeof next === "function" ? next(tornoStepForm) : next;
+      if (resolved.movementType !== undefined) {
+        setTipoMovimiento((resolved.movementType as "MD_TRABAJANDO" | "REMOLCADA" | "") || "");
+      }
+      if (resolved.direccionEmpuje !== undefined) {
+        setDireccionEmpuje((resolved.direccionEmpuje as Direccion) || "Sin_Solicitar");
+      } else if (resolved.pushPull === "EMPUJAR" || resolved.pushPull === "JALAR") {
+        setDireccionEmpuje(resolved.pushPull);
+      }
+    },
+    [tornoStepForm]
+  );
   const buildPayload = (): EditablePayload => {
     if (!info) return {} as EditablePayload;
 
@@ -822,6 +915,16 @@ export default function EditarMovimiento({
     if ((editableKeys.includes('torno') && editableKeys.includes('lavado'))) {
       payload.torno = serviceVia === "Torno"
       payload.lavado = serviceVia === "Lavado";
+    }
+
+    if (serviceVia === "Torno") {
+      const currentTornoSerialized = serializeTornoMedicion(tornoMedicion);
+      if (currentTornoSerialized !== initialTornoSerialized) {
+        payload.medidasTorno = buildBackendTornoMedidas({
+          tornoMedicion,
+          companyName: info.movimiento.empresa?.nombre,
+        });
+      }
     }
 
     // Polo is now included in the instructions, not in the payload
@@ -1020,20 +1123,46 @@ export default function EditarMovimiento({
           )}
 
           {step === 2 && (
-            <Step2Edit
-              readOnly={!info.editable || saving}
-              tipoMovimiento={tipoMovimiento}
-              setTipoMovimiento={setTipoMovimiento}
-              posicionCabina={posicionCabina}
-              setPosicionCabina={setPosicionCabina}
-              posicionChimenea={posicionChimenea}
-              setPosicionChimenea={setPosicionChimenea}
-              direccionEmpuje={direccionEmpuje}
-              setDireccionEmpuje={setDireccionEmpuje}
-              polo={polo}
-              setPolo={setPolo}
-              errors={errors}
-            />
+            <div className="space-y-4">
+              <Step2Edit
+                readOnly={readOnly || saving}
+                tipoMovimiento={tipoMovimiento}
+                setTipoMovimiento={setTipoMovimiento}
+                posicionCabina={posicionCabina}
+                setPosicionCabina={setPosicionCabina}
+                posicionChimenea={posicionChimenea}
+                setPosicionChimenea={setPosicionChimenea}
+                direccionEmpuje={direccionEmpuje}
+                setDireccionEmpuje={setDireccionEmpuje}
+                polo={polo}
+                setPolo={setPolo}
+                errors={errors}
+              />
+
+              {serviceVia === "Torno" ? (
+                <section className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-900/40">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Diagnostico torno</h4>
+                  </div>
+
+                  <div className={Movimiento.clsx(readOnly || saving ? "pointer-events-none opacity-70" : "")}>
+                    <StepTwoTorno
+                      form={tornoStepForm}
+                      setForm={setTornoStepForm}
+                      errors={{
+                        movementType: errors.tipoMovimiento,
+                        direccionEmpuje: errors.direccionEmpuje,
+                      }}
+                      tornoMedicion={tornoMedicion}
+                      setTornoWheelCount={setTornoWheelCount}
+                      updateTornoMedicion={updateTornoMedicion}
+                      companyName={info.movimiento.empresa?.nombre}
+                      hideTypeSelector
+                    />
+                  </div>
+                </section>
+              ) : null}
+            </div>
           )}
 
           {step === 3 && (
@@ -1094,7 +1223,16 @@ export default function EditarMovimiento({
             Salir
           </button>
         </div>
+
+        <TornoMeasuresViewerModal
+          open={showTornoViewerModal}
+          onClose={() => setShowTornoViewerModal(false)}
+          tornoMedicion={tornoMedicion}
+          locomotiveLabel={locomotiveNumber || String(info.movimiento.locomotiveNumber ?? "")}
+          companyName={info.movimiento.empresa?.nombre}
+        />
       </div>
     </div>
   );
 }
+

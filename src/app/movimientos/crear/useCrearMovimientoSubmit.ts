@@ -7,6 +7,7 @@ import {
   resolveTracksByMode,
 } from "./crearMovimiento.domain";
 import type { ResolvedIds, SelectionMode } from "./controller.types";
+import type { TornoMedicionState } from "./tornoMedicion.types";
 
 /**
  * MODULO: useCrearMovimientoSubmit
@@ -77,6 +78,8 @@ export function useCrearMovimientoSubmit(args: {
   rol: Rol;
   userId?: number;
   viaName: (id?: number | null) => string;
+  tornoMedicion?: TornoMedicionState;
+  companyName?: string;
   pushOutbox: (payload: unknown) => void;
   onSuccess: (ctx: { movimientoId: number }) => void;
   redirectOnSuccess?: boolean;
@@ -90,6 +93,8 @@ export function useCrearMovimientoSubmit(args: {
     rol,
     userId,
     viaName,
+    tornoMedicion,
+    companyName,
     pushOutbox,
     onSuccess,
     redirectOnSuccess = true,
@@ -126,21 +131,26 @@ export function useCrearMovimientoSubmit(args: {
       return;
     }
 
-    const {
-      payload,
-      viaParaAsignar,
-      numeroParaAsignar,
-    } = buildMovimientoPayload({
-      resolvedIds,
-      form,
-      selectionMode,
-      fromSection,
-      toSection,
-      userId,
-      viaName,
-    });
+    let payloadForOffline: unknown = null;
 
     try {
+      const {
+        payload,
+        viaParaAsignar,
+        numeroParaAsignar,
+      } = buildMovimientoPayload({
+        resolvedIds,
+        form,
+        selectionMode,
+        fromSection,
+        toSection,
+        userId,
+        viaName,
+        tornoMedicion,
+        companyName,
+      });
+      payloadForOffline = payload;
+
       setSending(true);
 
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
@@ -193,7 +203,7 @@ export function useCrearMovimientoSubmit(args: {
       const isTypeErr = getErrorMessage(e).toLowerCase().includes("failed to fetch");
 
       if (isAbort || isTypeErr) {
-        pushOutbox(payload);
+        if (payloadForOffline !== null) pushOutbox(payloadForOffline);
         return;
       }
 
@@ -209,6 +219,8 @@ export function useCrearMovimientoSubmit(args: {
     toSection,
     userId,
     viaName,
+    tornoMedicion,
+    companyName,
     pushOutbox,
     onSuccess,
     rol,

@@ -6,6 +6,9 @@ import { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { S } from "./RailQueueBoard.styles";
+import TornoMeasuresViewerModal from "../movimientos/torno/TornoMeasuresViewerModal";
+import { parseTornoMedicionFromApi } from "../movimientos/torno/tornoMeasureParser";
+import { DEFAULT_TORNO_MEDICION_STATE, type TornoMedicionState } from "../movimientos/crear/tornoMedicion.types";
 /* ===== Tipos ===== */
 type Ronda = {
   id: number;
@@ -56,8 +59,17 @@ type RondaInfo = {
 
 type ToastKind = "move" | "new" | "done" | "warning";
 type Toast = { id: number; text: string; kind: ToastKind };
+type MeasuresModalState = {
+  open: boolean;
+  loading: boolean;
+  error: string | null;
+  tornoMedicion: TornoMedicionState;
+  locomotiveLabel?: string;
+  companyName?: string;
+};
 
 /* ===== Utils ===== */
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/xapi";
 const fmtList = new Intl.ListFormat("es", {
   style: "short",
   type: "conjunction",
@@ -249,6 +261,12 @@ export default function RailQueueBoardPage({
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const [openEditor, setOpenEditor] = useState(false);
+  const [measuresModal, setMeasuresModal] = useState<MeasuresModalState>({
+    open: false,
+    loading: false,
+    error: null,
+    tornoMedicion: DEFAULT_TORNO_MEDICION_STATE,
+  });
 
   async function load(showRefreshing = false) {
     const mySeq = ++reqSeq.current;
@@ -404,6 +422,48 @@ export default function RailQueueBoardPage({
     }
     lastCurrentId.current = curId;
   }, [items, soundOn]);
+
+  const closeMeasuresModal = () => {
+    setMeasuresModal((prev) => ({ ...prev, open: false, error: null }));
+  };
+
+  const openMeasuresModal = async (args: {
+    movementId?: number | null;
+    locomotiveLabel?: string;
+    companyName?: string;
+  }) => {
+    const movementId = Number(args.movementId);
+    if (!Number.isFinite(movementId) || movementId <= 0) return;
+
+    setMeasuresModal({
+      open: true,
+      loading: true,
+      error: null,
+      tornoMedicion: DEFAULT_TORNO_MEDICION_STATE,
+      locomotiveLabel: args.locomotiveLabel,
+      companyName: args.companyName,
+    });
+
+    try {
+      const response = await fetch(`${API_BASE}/movimientos/${movementId}/edicion`, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(`No se pudo cargar medidas (${response.status}).`);
+      const payload = await response.json();
+      setMeasuresModal((prev) => ({
+        ...prev,
+        loading: false,
+        tornoMedicion: parseTornoMedicionFromApi(payload),
+        locomotiveLabel: String(payload?.movimiento?.locomotiveNumber ?? args.locomotiveLabel ?? ""),
+        companyName: payload?.movimiento?.empresa?.nombre ?? args.companyName,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudieron cargar las medidas.";
+      setMeasuresModal((prev) => ({ ...prev, loading: false, error: message }));
+    }
+  };
 
   const current = items[0];
   const curInfo = current ? info[current.id] : undefined;
@@ -685,6 +745,7 @@ export default function RailQueueBoardPage({
                           : "Sin instrucciones adicionales."}
                       </span>
                     </div>
+                    {null}
                   </motion.div>
                 </>
               ) : (
@@ -809,6 +870,7 @@ export default function RailQueueBoardPage({
                             <DateBox label="Creado" value={creadoNext} />
                           </div>
                         </div>
+                        {null}
                       </motion.div>
                     );
                   })
@@ -833,6 +895,34 @@ export default function RailQueueBoardPage({
       <audio ref={bellRef} preload="auto" aria-hidden="true">
         <source src="/sounds/notification.mp3" type="audio/mp3" />
       </audio>
+
+      <TornoMeasuresViewerModal
+        open={measuresModal.open && !measuresModal.loading && !measuresModal.error}
+        onClose={closeMeasuresModal}
+        tornoMedicion={measuresModal.tornoMedicion}
+        locomotiveLabel={measuresModal.locomotiveLabel}
+        companyName={measuresModal.companyName}
+      />
+      {measuresModal.open && (measuresModal.loading || measuresModal.error) ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/35 p-4">
+          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            {measuresModal.loading ? (
+              <p className="text-sm text-slate-600 dark:text-slate-300">Cargando medidas de torno...</p>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-rose-600 dark:text-rose-300">{measuresModal.error}</p>
+                <button
+                  type="button"
+                  onClick={closeMeasuresModal}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200"
+                >
+                  Cerrar
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {openEditor && (
         <div className={S.modalOverlay}>
@@ -956,3 +1046,5 @@ function DateBox({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+

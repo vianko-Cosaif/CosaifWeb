@@ -395,6 +395,8 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     rol,
     userId: user?.id,
     viaName,
+    tornoMedicion,
+    companyName: selectedCompanyName,
     pushOutbox,
     onSuccess: onSubmitSuccess,
     redirectOnSuccess: !hasTornoPdfStep,

@@ -63,7 +63,8 @@ export default function IncidentMonitor({
   onIncidentContinued,
   mobileMaxWidth = 768,
 }: IncidentMonitorProps) {
-  const empresaId = empresaIdProp ?? getEmpresaIdFromCookie();
+  // Keep first client render identical to SSR; resolve cookie-based fallback after mount.
+  const [empresaId, setEmpresaId] = useState<number | null>(empresaIdProp ?? null);
 
   const { handleFetchRequest } = useAuthErrorHandler();
 
@@ -76,6 +77,10 @@ export default function IncidentMonitor({
   // Floating widget state
   const [isMinimized, setIsMinimized] = useState(false);
   const constraintsRef = useRef(null);
+
+  useEffect(() => {
+    setEmpresaId(empresaIdProp ?? getEmpresaIdFromCookie());
+  }, [empresaIdProp]);
 
   useEffect(() => {
     const check = () => setIsMobile(typeof window !== "undefined" && window.innerWidth <= mobileMaxWidth);
@@ -339,8 +344,8 @@ export default function IncidentMonitor({
                     <div className="mt-4 space-y-3">
                       <div className="text-xs font-bold uppercase tracking-wider text-zinc-400">Incidentes ({activeIncidents.length})</div>
                       <ul className="space-y-2">
-                        {activeIncidents.map((it: any) => (
-                          <li key={it.id ?? Math.random()} className="p-3 rounded-xl bg-zinc-50 border border-zinc-100 dark:bg-zinc-800/50 dark:border-zinc-800/50">
+                        {activeIncidents.map((it: any, idx: number) => (
+                          <li key={it.id ?? `${it?.titulo ?? it?.nombre ?? it?.tipo ?? "incidente"}-${idx}`} className="p-3 rounded-xl bg-zinc-50 border border-zinc-100 dark:bg-zinc-800/50 dark:border-zinc-800/50">
                             <div className="font-semibold text-zinc-900 dark:text-zinc-100">#{it.id ?? "—"} {it.titulo ?? it.nombre ?? it.tipo ?? "Incidente"}</div>
                             {it.descripcion && <div className="text-zinc-500 dark:text-zinc-400 text-xs mt-1 line-clamp-2">{it.descripcion}</div>}
                           </li>

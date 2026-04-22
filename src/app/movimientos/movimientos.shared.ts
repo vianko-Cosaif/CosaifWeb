@@ -107,6 +107,7 @@ export type InfoEdicion = {
     direccionEmpuje?: Direccion | null;
     polo?: Polo | null;
     meta?: { destinoId?: number; seccion?: number; liberar?: boolean };
+    tornoMedidas?: unknown;
   };
   editableKeys: Array<
     | "instrucciones"
@@ -133,7 +134,8 @@ export type EditablePayload = Partial<{
   posicionChimenea: Posicion;
   direccionEmpuje: Direccion;
   torno: boolean;
-  lavado: boolean
+  lavado: boolean;
+  medidasTorno: unknown;
 }>;
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || "/xapi";
 export const SECC_BASE = `${API_BASE}/secciones/secciones`;
