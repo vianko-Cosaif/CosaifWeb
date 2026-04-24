@@ -4,16 +4,24 @@ import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
 const ORIGIN = (process.env.API_ORIGIN || "").replace(/\/$/, "");
+const BFF_TIMEOUT_MS = Number(process.env.BFF_TIMEOUT_MS || 12000);
 
 function upstreamUrl(path: string, search: string) {
   const p = path.replace(/^\/+/, "");
   return `${ORIGIN}/${p}${search || ""}`;
 }
 
+function getErrorStatus(error: unknown): 502 | 504 {
+  const code = (error as { code?: string })?.code;
+  const name = (error as { name?: string })?.name;
+  if (code === "UND_ERR_HEADERS_TIMEOUT" || name === "AbortError") return 504;
+  return 502;
+}
+
 async function proxy(req: NextRequest) {
   const up = upstreamUrl(req.nextUrl.pathname.replace(/^\/bff/, ""), req.nextUrl.search);
   if (!ORIGIN) {
-    console.error("[/bff] API_ORIGIN vacío");
+    console.error("[/bff] API_ORIGIN vacio");
     return NextResponse.json({ error: "API_ORIGIN not set" }, { status: 500 });
   }
 
@@ -33,21 +41,28 @@ async function proxy(req: NextRequest) {
     redirect: "manual",
   };
 
-  console.log("[/bff] →", req.method, up);
-  const r = await fetch(up, init).catch((e) => {
-    console.error("[/bff] fetch error:", e);
-    throw e;
-  });
-  const preview = (await r.clone().text()).slice(0, 400);
-  console.log("[/bff] ←", r.status, r.statusText, "| body:", preview);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), BFF_TIMEOUT_MS);
 
-  return new NextResponse(await r.arrayBuffer(), {
-    status: r.status,
-    headers: {
-      "content-type": r.headers.get("content-type") ?? "application/json",
-      "cache-control": "no-store",
-    },
-  });
+  try {
+    const r = await fetch(up, { ...init, signal: controller.signal });
+    return new NextResponse(await r.arrayBuffer(), {
+      status: r.status,
+      headers: {
+        "content-type": r.headers.get("content-type") ?? "application/json",
+        "cache-control": "no-store",
+      },
+    });
+  } catch (error) {
+    const status = getErrorStatus(error);
+    console.error("[/bff] fetch error:", error);
+    return NextResponse.json(
+      { error: status === 504 ? "Upstream timeout" : "Upstream unavailable" },
+      { status }
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export const GET = proxy;

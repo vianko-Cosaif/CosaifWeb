@@ -656,6 +656,9 @@ export default function EditarMovimiento({
     wheelCount: DEFAULT_TORNO_MEDICION_STATE.wheelCount,
     rows: {},
   }));
+  const [initialTornoMedicion, setInitialTornoMedicion] = useState<TornoMedicionState>(
+    DEFAULT_TORNO_MEDICION_STATE
+  );
   const [initialTornoSerialized, setInitialTornoSerialized] = useState<string>(
     serializeTornoMedicion(DEFAULT_TORNO_MEDICION_STATE)
   );
@@ -717,6 +720,7 @@ export default function EditarMovimiento({
         setServiceVia((!data.movimiento.Lavado && !data.movimiento.torno) ? "" : (data.movimiento.torno ? "Torno" : "Lavado"));
         const parsedTorno = parseTornoMedicionFromApi(data);
         setTornoMedicion(parsedTorno);
+        setInitialTornoMedicion(parsedTorno);
         setInitialTornoSerialized(serializeTornoMedicion(parsedTorno));
 
         // Prefill secciones desde meta si aplica (el parser expone meta.seccion y meta.destinoId)
@@ -1154,6 +1158,7 @@ export default function EditarMovimiento({
                         direccionEmpuje: errors.direccionEmpuje,
                       }}
                       tornoMedicion={tornoMedicion}
+                      initialTornoMedicion={initialTornoMedicion}
                       setTornoWheelCount={setTornoWheelCount}
                       updateTornoMedicion={updateTornoMedicion}
                       companyName={info.movimiento.empresa?.nombre}

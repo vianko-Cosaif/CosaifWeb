@@ -3,6 +3,14 @@ import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
 const ORIGIN = (process.env.API_ORIGIN || "").replace(/\/$/, "");
+const BFF_TIMEOUT_MS = Number(process.env.BFF_TIMEOUT_MS || 12000);
+
+function getErrorStatus(error: unknown): 502 | 504 {
+  const code = (error as { code?: string })?.code;
+  const name = (error as { name?: string })?.name;
+  if (code === "UND_ERR_HEADERS_TIMEOUT" || name === "AbortError") return 504;
+  return 502;
+}
 
 function upstreamUrl(path: string, search: string) {
   const p = path.replace(/^\/+/, "");
@@ -10,6 +18,10 @@ function upstreamUrl(path: string, search: string) {
 }
 
 async function proxy(req: NextRequest) {
+  if (!ORIGIN) {
+    return NextResponse.json({ error: "API_ORIGIN not set" }, { status: 500 });
+  }
+
   // 1) Construir URL hacia el backend
   const url = upstreamUrl(
     req.nextUrl.pathname.replace(/^\/bff/, ""),
@@ -38,16 +50,30 @@ async function proxy(req: NextRequest) {
     redirect: "manual",
   };
 
-  const r = await fetch(url, init);
-  const body = await r.arrayBuffer();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), BFF_TIMEOUT_MS);
 
-  return new NextResponse(body, {
-    status: r.status,
-    headers: {
-      "content-type": r.headers.get("content-type") ?? "application/json",
-      "cache-control": "no-store",
-    },
-  });
+  try {
+    const r = await fetch(url, { ...init, signal: controller.signal });
+    const body = await r.arrayBuffer();
+
+    return new NextResponse(body, {
+      status: r.status,
+      headers: {
+        "content-type": r.headers.get("content-type") ?? "application/json",
+        "cache-control": "no-store",
+      },
+    });
+  } catch (error) {
+    const status = getErrorStatus(error);
+    console.error("[/bff/*] fetch error:", error);
+    return NextResponse.json(
+      { error: status === 504 ? "Upstream timeout" : "Upstream unavailable" },
+      { status }
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 // Handlers HTTP

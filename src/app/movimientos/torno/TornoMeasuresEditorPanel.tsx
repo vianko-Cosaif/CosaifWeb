@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  EMPTY_TORNO_ROW,
+  EMPTY_TORNO_VALUE,
   formatTornoMeasure,
   getTornoPositions,
   normalizeTornoMeasureValue,
@@ -16,6 +16,7 @@ import {
 } from "../crear/tornoMedicion.types";
 import { resolveTornoProfile, TORNO_PROFILE_FIELDS } from "../crear/tornoProfiles";
 import { Movimiento } from "../Movimiento";
+import { DynamicTable, type DynamicTableColumn } from "@/app/Components/dynamic-table";
 
 type Props = {
   tornoMedicion: TornoMedicionState;
@@ -29,6 +30,10 @@ type Props = {
     value: string
   ) => void;
   clearTornoMedicion: () => void;
+};
+
+type TornoEditorRow = {
+  position: TornoWheelPosition;
 };
 
 const wholeOptions = ["", ...Array.from({ length: 100 }, (_, index) => String(index))];
@@ -50,14 +55,20 @@ export default function TornoMeasuresEditorPanel(props: Props) {
   const profile = useMemo(() => resolveTornoProfile(companyName), [companyName]);
   const fieldDefs = TORNO_PROFILE_FIELDS[profile];
   const positions = useMemo(() => getTornoPositions(tornoMedicion.wheelCount), [tornoMedicion.wheelCount]);
-  const [selectedPosition, setSelectedPosition] = useState<TornoWheelPosition>(positions[0] ?? "L1");
+  const tableData = useMemo<TornoEditorRow[]>(
+    () => positions.map((position) => ({ position })),
+    [positions]
+  );
+
   const [measureModal, setMeasureModal] = useState<{
     open: boolean;
+    position: TornoWheelPosition | null;
     field: TornoMeasurementField | null;
     label: string;
     draft: { whole: string; num: string; den: string };
   }>({
     open: false,
+    position: null,
     field: null,
     label: "",
     draft: { whole: "", num: "", den: "" },
@@ -82,18 +93,10 @@ export default function TornoMeasuresEditorPanel(props: Props) {
   const [pastedTargets, setPastedTargets] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!positions.includes(selectedPosition)) {
-      setSelectedPosition(positions[0] ?? "L1");
-    }
-  }, [positions, selectedPosition]);
-
-  useEffect(() => {
     if (!pastedTargets.size) return;
     const t = window.setTimeout(() => setPastedTargets(new Set()), 1200);
     return () => window.clearTimeout(t);
   }, [pastedTargets]);
-
-  const selectedRow = tornoMedicion.rows[selectedPosition] ?? EMPTY_TORNO_ROW;
 
   const numeratorOptions = useMemo(() => {
     const denominator = Number(measureModal.draft.den);
@@ -104,6 +107,7 @@ export default function TornoMeasuresEditorPanel(props: Props) {
   }, [measureModal.draft.den]);
 
   const openMeasureModal = (
+    position: TornoWheelPosition,
     field: TornoMeasurementField,
     label: string,
     value: { whole: string; num: string; den: string }
@@ -111,6 +115,7 @@ export default function TornoMeasuresEditorPanel(props: Props) {
     if (readonly) return;
     setMeasureModal({
       open: true,
+      position,
       field,
       label,
       draft: {
@@ -122,11 +127,11 @@ export default function TornoMeasuresEditorPanel(props: Props) {
   };
 
   const applyMeasureModal = () => {
-    if (!measureModal.field) return;
+    if (!measureModal.field || !measureModal.position) return;
     const normalized = normalizeTornoMeasureValue(measureModal.draft);
-    updateTornoMedicion(selectedPosition, measureModal.field, "whole", normalized.whole);
-    updateTornoMedicion(selectedPosition, measureModal.field, "num", normalized.num);
-    updateTornoMedicion(selectedPosition, measureModal.field, "den", normalized.den);
+    updateTornoMedicion(measureModal.position, measureModal.field, "whole", normalized.whole);
+    updateTornoMedicion(measureModal.position, measureModal.field, "num", normalized.num);
+    updateTornoMedicion(measureModal.position, measureModal.field, "den", normalized.den);
     setMeasureModal((prev) => ({ ...prev, open: false }));
   };
 
@@ -214,6 +219,80 @@ export default function TornoMeasuresEditorPanel(props: Props) {
     setCopyModal((prev) => ({ ...prev, open: false, targets: [], expandedPositions: [] }));
   };
 
+  const tableColumns = useMemo<DynamicTableColumn<TornoEditorRow>[]>(() => {
+    const baseColumns: DynamicTableColumn<TornoEditorRow>[] = [
+      {
+        key: "position",
+        title: "Posicion",
+        width: 98,
+        priority: 1,
+        render: ({ row }) => (
+          <span className="font-semibold text-slate-800 dark:text-slate-100">{row.position}</span>
+        ),
+      },
+    ];
+
+    const measureColumns = fieldDefs.map<DynamicTableColumn<TornoEditorRow>>((field) => ({
+      key: field.key,
+      title: field.label,
+      width: 210,
+      priority: 2,
+      render: ({ row }) => {
+        const value = tornoMedicion.rows[row.position]?.[field.key] ?? EMPTY_TORNO_VALUE;
+        const formatted = formatTornoMeasure(value);
+        const hasValue = formatted.length > 0;
+        const currentTargetId = targetId(row.position, field.key);
+        const pasted = pastedTargets.has(currentTargetId);
+
+        return (
+          <div
+            className={Movimiento.clsx(
+              "rounded-lg border p-1.5",
+              pasted
+                ? "border-sky-400 bg-sky-50 dark:border-sky-700 dark:bg-sky-900/20"
+                : hasValue
+                  ? "border-emerald-300 bg-emerald-50/70 dark:border-emerald-800 dark:bg-emerald-900/15"
+                  : "border-slate-200 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-900/35"
+            )}
+          >
+            <div className="mb-1 text-[11px] text-slate-500 dark:text-slate-400">{formatted || "Sin medida"}</div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                disabled={readonly}
+                onClick={() => openMeasureModal(row.position, field.key, field.label, value)}
+                className={Movimiento.clsx(
+                  "min-w-0 flex-1 rounded-md border px-2 py-1 text-left text-[11px] font-semibold transition-colors",
+                  readonly
+                    ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-600"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                )}
+              >
+                {hasValue ? "Editar" : "Configurar"}
+              </button>
+              <button
+                type="button"
+                disabled={readonly || !hasValue}
+                onClick={() => openCopyModal(row.position, field.key, field.label, value)}
+                className={Movimiento.clsx(
+                  "inline-flex h-7 w-7 items-center justify-center rounded-md border text-[11px] transition-colors",
+                  readonly || !hasValue
+                    ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-600"
+                    : "border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100 dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-200 dark:hover:bg-sky-900/45"
+                )}
+                title="Copiar medida"
+              >
+                C
+              </button>
+            </div>
+          </div>
+        );
+      },
+    }));
+
+    return [...baseColumns, ...measureColumns];
+  }, [fieldDefs, pastedTargets, readonly, tornoMedicion.rows]);
+
   return (
     <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/70">
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -259,97 +338,23 @@ export default function TornoMeasuresEditorPanel(props: Props) {
         </div>
       </div>
 
-      <div className="mb-3">
-        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Posicion</div>
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {positions.map((position) => {
-            const active = selectedPosition === position;
-            return (
-              <button
-                key={position}
-                type="button"
-                onClick={() => setSelectedPosition(position)}
-                className={Movimiento.clsx(
-                  "shrink-0 rounded-full border px-3 py-1 text-xs font-semibold",
-                  active
-                    ? "border-emerald-600 bg-emerald-600 text-white"
-                    : "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                )}
-              >
-                {position}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        {fieldDefs.map((field) => {
-          const value = selectedRow[field.key];
-          const formatted = formatTornoMeasure(value);
-          const hasValue = formatted.length > 0;
-          const currentTargetId = targetId(selectedPosition, field.key);
-          const pasted = pastedTargets.has(currentTargetId);
-
-          return (
-            <div
-              key={`${selectedPosition}_${field.key}`}
-              className={Movimiento.clsx(
-                "rounded-xl border p-3 transition-colors",
-                pasted
-                  ? "border-sky-400 bg-sky-50 dark:border-sky-700 dark:bg-sky-900/20"
-                  : hasValue
-                    ? "border-emerald-300 bg-emerald-50/70 dark:border-emerald-800 dark:bg-emerald-900/15"
-                    : "border-slate-200 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-900/35"
-              )}
-            >
-              <div className="mb-2 flex items-start gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-100">{field.label}</div>
-                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{formatted || "Sin medida"}</div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={readonly}
-                  onClick={() => openMeasureModal(field.key, field.label, value)}
-                  className={Movimiento.clsx(
-                    "min-w-0 flex-1 rounded-lg border px-3 py-2 text-left text-xs font-semibold transition-colors",
-                    readonly
-                      ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-600"
-                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                  )}
-                >
-                  {hasValue ? formatted : "Configurar medida"}
-                </button>
-                <button
-                  type="button"
-                  disabled={readonly || !hasValue}
-                  onClick={() => openCopyModal(selectedPosition, field.key, field.label, value)}
-                  className={Movimiento.clsx(
-                    "inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors",
-                    readonly || !hasValue
-                      ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-600"
-                      : "border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100 dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-200 dark:hover:bg-sky-900/45"
-                  )}
-                  title="Copiar medida"
-                >
-                  ⧉
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <DynamicTable
+        data={tableData}
+        columns={tableColumns}
+        rowKey={(row) => row.position}
+        height={Math.min(620, 130 + tableData.length * 58)}
+        rowHeight={58}
+        headerHeight={46}
+        emptyText="Sin posiciones"
+        getRowType={(row) => (row.position.startsWith("L") ? "left" : "right")}
+      />
 
       {measureModal.open ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
           <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-slate-800 dark:bg-slate-950">
             <div className="mb-3">
               <h4 className="text-base font-semibold text-slate-900 dark:text-slate-100">Seleccion de medida</h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400">{selectedPosition} - {measureModal.label}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{measureModal.position ?? "--"} - {measureModal.label}</p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-[130px_1fr]">
@@ -530,7 +535,7 @@ export default function TornoMeasuresEditorPanel(props: Props) {
                                   {sourceCell ? "Origen" : (formatTornoMeasure(targetValue) || "--")}
                                 </span>
                               </span>
-                              <span className="ml-2 text-xs font-bold">{sourceCell ? "🔒" : checked ? "☑" : "☐"}</span>
+                              <span className="ml-2 text-xs font-bold">{sourceCell ? "LOCK" : checked ? "ON" : "OFF"}</span>
                             </button>
                           );
                         })}

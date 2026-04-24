@@ -19,8 +19,8 @@ import {
   resolveTornoProfile,
   TORNO_PROFILE_FIELDS,
   TORNO_PROFILE_META,
-  type TornoFieldDef,
 } from "../tornoProfiles";
+import { DynamicTable, type DynamicTableColumn } from "@/app/Components/dynamic-table";
 
 /**
  * Props del Step 2 especializado para servicio Torno.
@@ -30,6 +30,7 @@ type StepTwoTornoProps = {
   setForm: React.Dispatch<React.SetStateAction<MovementFormData>>;
   errors: Record<string, string>;
   tornoMedicion: TornoMedicionState;
+  initialTornoMedicion?: TornoMedicionState;
   setTornoWheelCount: (count: TornoWheelCount) => void;
   updateTornoMedicion: (
     position: TornoWheelPosition,
@@ -56,6 +57,10 @@ type TornoPasteFeedback = {
   token: number;
 };
 
+type TornoDesktopRow = {
+  position: TornoWheelPosition;
+};
+
 type MeasurePartsInputProps = {
   position: TornoWheelPosition;
   field: TornoMeasurementField;
@@ -70,32 +75,6 @@ type MeasurePartsInputProps = {
   onToggleCopyTarget: (position: TornoWheelPosition, field: TornoMeasurementField) => void;
 };
 
-type PositionRowProps = {
-  position: TornoWheelPosition;
-  fieldDefs: TornoFieldDef[];
-  row: TornoMedicionState["rows"][TornoWheelPosition] | undefined;
-  updateTornoMedicion: StepTwoTornoProps["updateTornoMedicion"];
-  copyModeActive: boolean;
-  copySourceId: string | null;
-  selectedTargetIds: Set<string>;
-  pastedCells: Set<string>;
-  onStartCopy: (position: TornoWheelPosition, field: TornoMeasurementField) => void;
-  onToggleCopyTarget: (position: TornoWheelPosition, field: TornoMeasurementField) => void;
-};
-
-type SideTableProps = {
-  title: string;
-  positions: TornoWheelPosition[];
-  fieldDefs: TornoFieldDef[];
-  rows: TornoMedicionState["rows"];
-  updateTornoMedicion: StepTwoTornoProps["updateTornoMedicion"];
-  copyModeActive: boolean;
-  copySourceId: string | null;
-  selectedTargetIds: Set<string>;
-  pastedCells: Set<string>;
-  onStartCopy: (position: TornoWheelPosition, field: TornoMeasurementField) => void;
-  onToggleCopyTarget: (position: TornoWheelPosition, field: TornoMeasurementField) => void;
-};
 
 const PASTE_FEEDBACK_STYLES = `
   @keyframes pasteFeedbackPop {
@@ -299,105 +278,6 @@ const MeasurePartsInput = React.memo(function MeasurePartsInput(props: MeasurePa
   );
 });
 
-const PositionRow = React.memo(function PositionRow(props: PositionRowProps) {
-  const {
-    position,
-    fieldDefs,
-    row,
-    updateTornoMedicion,
-    copyModeActive,
-    copySourceId,
-    selectedTargetIds,
-    pastedCells,
-    onStartCopy,
-    onToggleCopyTarget,
-  } = props;
-
-  return (
-    <tr className="border-t border-slate-800">
-      <td className="sticky left-0 z-[1] border-r border-slate-200 bg-slate-50 px-3 py-2 font-semibold text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
-        {position}
-      </td>
-      {fieldDefs.map((field) => {
-        const cellId = getCopyCellId(position, field.key);
-        const measure = row?.[field.key] ?? EMPTY_TORNO_VALUE;
-        return (
-          <td key={`${position}_${field.key}`} className="px-3 py-2">
-            <MeasurePartsInput
-              position={position}
-              field={field.key}
-              compact
-              value={measure}
-              onChange={(part, value) => updateTornoMedicion(position, field.key, part, value)}
-              copyModeActive={copyModeActive}
-              isCopySource={copySourceId === cellId}
-              isCopyTarget={selectedTargetIds.has(cellId)}
-              isRecentlyPasted={pastedCells.has(cellId)}
-              onStartCopy={onStartCopy}
-              onToggleCopyTarget={onToggleCopyTarget}
-            />
-          </td>
-        );
-      })}
-    </tr>
-  );
-});
-
-const SideTable = React.memo(function SideTable(props: SideTableProps) {
-  const {
-    title,
-    positions,
-    fieldDefs,
-    rows,
-    updateTornoMedicion,
-    copyModeActive,
-    copySourceId,
-    selectedTargetIds,
-    pastedCells,
-    onStartCopy,
-    onToggleCopyTarget,
-  } = props;
-
-  return (
-    <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40">
-      <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
-        {title}
-      </div>
-      <div className="overflow-x-auto overflow-y-auto">
-        <table className="w-full min-w-[620px] text-sm">
-          <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur dark:bg-slate-900/95">
-            <tr>
-              <th className="sticky left-0 z-20 border-r border-slate-200 bg-slate-50/95 px-3 py-2 text-left font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-900/95 dark:text-slate-300">Pos.</th>
-              {fieldDefs.map((field) => (
-                <th key={field.key} className="px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-300">
-                  {field.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {positions.map((position) => (
-              <PositionRow
-                key={`${title}_${position}`}
-                position={position}
-                fieldDefs={fieldDefs}
-                row={rows[position] ?? EMPTY_TORNO_ROW}
-                updateTornoMedicion={updateTornoMedicion}
-                copyModeActive={copyModeActive}
-                copySourceId={copySourceId}
-                selectedTargetIds={selectedTargetIds}
-                onStartCopy={onStartCopy}
-                onToggleCopyTarget={onToggleCopyTarget}
-                pastedCells={pastedCells}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-});
-
 /**
  * Step 2 (Torno):
  * - Plantillas por empresa (Wabtec / Altom / Progress / Default).
@@ -409,6 +289,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
     setForm,
     errors,
     tornoMedicion,
+    initialTornoMedicion,
     setTornoWheelCount,
     updateTornoMedicion,
     companyName,
@@ -511,7 +392,18 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
   const copySourceLabel = copyState
     ? fieldLabelByKey.get(copyState.source.field) ?? copyState.source.field
     : "";
-
+  const desktopRows = useMemo<TornoDesktopRow[]>(
+    () => positions.map((position) => ({ position })),
+    [positions]
+  );
+  const leftDesktopRows = useMemo<TornoDesktopRow[]>(
+    () => leftPositions.map((position) => ({ position })),
+    [leftPositions]
+  );
+  const rightDesktopRows = useMemo<TornoDesktopRow[]>(
+    () => rightPositions.map((position) => ({ position })),
+    [rightPositions]
+  );
   const startCopySelection = React.useCallback((position: TornoWheelPosition, field: TornoMeasurementField) => {
     setCopyState({
       source: { position, field },
@@ -570,6 +462,58 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
     setMobileCopyModalOpen(false);
     setMobileAccordionPosition(null);
   }, [copySourceValue, copyState, updateTornoMedicion]);
+
+  const desktopColumns = useMemo<DynamicTableColumn<TornoDesktopRow>[]>(() => {
+    const baseColumns: DynamicTableColumn<TornoDesktopRow>[] = [
+      {
+        key: "position",
+        title: "Posicion",
+        width: 100,
+        priority: 1,
+        render: ({ row }) => (
+          <span className="font-semibold text-slate-900 dark:text-slate-100">{row.position}</span>
+        ),
+      },
+    ];
+
+    const measureColumns = fieldDefs.map<DynamicTableColumn<TornoDesktopRow>>((field) => ({
+      key: field.key,
+      title: field.label,
+      width: 230,
+      priority: 2,
+      render: ({ row }) => {
+        const cellId = getCopyCellId(row.position, field.key);
+        const measure = tornoMedicion.rows[row.position]?.[field.key] ?? EMPTY_TORNO_VALUE;
+        return (
+          <MeasurePartsInput
+            position={row.position}
+            field={field.key}
+            compact
+            value={measure}
+            onChange={(part, value) => updateTornoMedicion(row.position, field.key, part, value)}
+            copyModeActive={!!copyState}
+            isCopySource={copySourceId === cellId}
+            isCopyTarget={selectedTargetIds.has(cellId)}
+            isRecentlyPasted={pastedCells.has(cellId)}
+            onStartCopy={startCopySelection}
+            onToggleCopyTarget={toggleCopyTarget}
+          />
+        );
+      },
+    }));
+
+    return [...baseColumns, ...measureColumns];
+  }, [
+    copySourceId,
+    copyState,
+    fieldDefs,
+    pastedCells,
+    selectedTargetIds,
+    startCopySelection,
+    toggleCopyTarget,
+    tornoMedicion.rows,
+    updateTornoMedicion,
+  ]);
 
   return (
     <div className="grid min-w-0 gap-4">
@@ -886,66 +830,47 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
 
         {profile === "wabtec" ? (
           <div className="hidden min-w-0 gap-4 lg:grid lg:grid-cols-2">
-            <SideTable
-              title="Izquierdo"
-              positions={leftPositions}
-              fieldDefs={fieldDefs}
-              rows={tornoMedicion.rows}
-              updateTornoMedicion={updateTornoMedicion}
-              copyModeActive={!!copyState}
-              copySourceId={copySourceId}
-              selectedTargetIds={selectedTargetIds}
-              onStartCopy={startCopySelection}
-              onToggleCopyTarget={toggleCopyTarget}
-              pastedCells={pastedCells}
-            />
-            <SideTable
-              title="Derecho"
-              positions={rightPositions}
-              fieldDefs={fieldDefs}
-              rows={tornoMedicion.rows}
-              updateTornoMedicion={updateTornoMedicion}
-              copyModeActive={!!copyState}
-              copySourceId={copySourceId}
-              selectedTargetIds={selectedTargetIds}
-              onStartCopy={startCopySelection}
-              onToggleCopyTarget={toggleCopyTarget}
-              pastedCells={pastedCells}
-            />
+            <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40">
+              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+                Izquierdo
+              </div>
+              <DynamicTable
+                data={leftDesktopRows}
+                columns={desktopColumns}
+                rowKey={(row) => row.position}
+                height={Math.min(560, 110 + leftDesktopRows.length * 56)}
+                rowHeight={56}
+                headerHeight={44}
+                emptyText="Sin posiciones"
+              />
+            </div>
+            <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40">
+              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+                Derecho
+              </div>
+              <DynamicTable
+                data={rightDesktopRows}
+                columns={desktopColumns}
+                rowKey={(row) => row.position}
+                height={Math.min(560, 110 + rightDesktopRows.length * 56)}
+                rowHeight={56}
+                headerHeight={44}
+                emptyText="Sin posiciones"
+              />
+            </div>
           </div>
         ) : (
           <div className="hidden min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40 lg:block">
-            <div className="max-h-[54vh] overflow-x-auto overflow-y-auto">
-              <table className="w-full min-w-[1080px] text-sm">
-                <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur dark:bg-slate-900/95">
-                  <tr>
-                    <th className="sticky left-0 z-20 border-r border-slate-200 bg-slate-50/95 px-3 py-3 text-left font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-900/95 dark:text-slate-300">Posicion</th>
-                    {fieldDefs.map((field) => (
-                      <th key={field.key} className="px-3 py-3 text-left font-semibold text-slate-600 dark:text-slate-300">
-                        {field.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {positions.map((position) => (
-                    <PositionRow
-                      key={`desktop_${position}`}
-                      position={position}
-                      fieldDefs={fieldDefs}
-                      row={tornoMedicion.rows[position] ?? EMPTY_TORNO_ROW}
-                      updateTornoMedicion={updateTornoMedicion}
-                      copyModeActive={!!copyState}
-                      copySourceId={copySourceId}
-                      selectedTargetIds={selectedTargetIds}
-                      onStartCopy={startCopySelection}
-                      onToggleCopyTarget={toggleCopyTarget}
-                      pastedCells={pastedCells}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DynamicTable
+              data={desktopRows}
+              columns={desktopColumns}
+              rowKey={(row) => row.position}
+              height={Math.min(620, 120 + desktopRows.length * 56)}
+              rowHeight={56}
+              headerHeight={46}
+              emptyText="Sin posiciones"
+              getRowType={(row) => (row.position.startsWith("L") ? "left" : "right")}
+            />
           </div>
         )}
 
