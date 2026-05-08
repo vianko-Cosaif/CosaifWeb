@@ -73,6 +73,7 @@ export default function CrearMovimiento() {
     tornoPdfStatus,
     generateTornoPdf,
     goBackToTornoMedicion,
+    activateScheduledTornoMovement,
     online,
     pendingCount,
     flushOutbox,
@@ -237,6 +238,7 @@ export default function CrearMovimiento() {
               setFromSection={selectFromSection}
               setToSection={setToSection}
               viaName={viaName}
+              onActivateScheduledTorno={activateScheduledTornoMovement}
             />
           )}
           {step === 2 && !useTornoMedicionStep && <StepTwo form={form} setForm={setForm} errors={errors} isService={isService} />}

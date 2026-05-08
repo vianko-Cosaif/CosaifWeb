@@ -842,6 +842,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                 rowHeight={56}
                 headerHeight={44}
                 emptyText="Sin posiciones"
+                stickyFirstColumn
               />
             </div>
             <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40">
@@ -856,6 +857,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                 rowHeight={56}
                 headerHeight={44}
                 emptyText="Sin posiciones"
+                stickyFirstColumn
               />
             </div>
           </div>
@@ -870,6 +872,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
               headerHeight={46}
               emptyText="Sin posiciones"
               getRowType={(row) => (row.position.startsWith("L") ? "left" : "right")}
+              stickyFirstColumn
             />
           </div>
         )}

@@ -14,6 +14,7 @@ import type {
   TornoWheelCount,
   TornoWheelPosition,
 } from "./tornoMedicion.types";
+import type { ScheduledTornoMovement } from "./components/ScheduledTornoActivationModal";
 
 /**
  * MODULO: controller.types
@@ -112,6 +113,7 @@ export interface CrearMovimientoController {
   tornoPdfStatus: string | null;
   generateTornoPdf: () => Promise<void>;
   goBackToTornoMedicion: () => void;
+  activateScheduledTornoMovement: (movement: ScheduledTornoMovement) => Promise<void>;
 
   /* Estado de conectividad/sincronizacion */
   online: boolean;

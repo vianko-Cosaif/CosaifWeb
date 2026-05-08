@@ -5,10 +5,13 @@ import {
   EMPTY_TORNO_ROW,
   formatTornoMeasure,
   getTornoPositions,
+  type TornoMeasurementField,
   type TornoMedicionState,
+  type TornoWheelPosition,
 } from "../crear/tornoMedicion.types";
 import { resolveTornoProfile, TORNO_PROFILE_FIELDS } from "../crear/tornoProfiles";
 import { Movimiento } from "../Movimiento";
+import { DynamicTable, type DynamicTableColumn } from "@/app/Components/dynamic-table";
 
 type Props = {
   open: boolean;
@@ -19,6 +22,10 @@ type Props = {
 };
 
 type ViewMode = "detail" | "table";
+
+type AcronymRow = {
+  position: TornoWheelPosition;
+} & Partial<Record<TornoMeasurementField, string>>;
 
 const LABEL_TO_ACRONYM: Record<string, string> = {
   "Altura de Ceja": "AC",
@@ -69,6 +76,44 @@ export default function TornoMeasuresViewerModal(props: Props) {
     });
     return map;
   }, [tableLabels]);
+  const tableRows = useMemo<AcronymRow[]>(
+    () =>
+      positions.map((position) => {
+        const row = tornoMedicion.rows[position] ?? EMPTY_TORNO_ROW;
+        return fieldDefs.reduce<AcronymRow>(
+          (acc, field) => {
+            const formatted = formatTornoMeasure(row[field.key]);
+            acc[field.key] = toAcronymValue(swapXAndY(formatted || "--"));
+            return acc;
+          },
+          { position }
+        );
+      }),
+    [fieldDefs, positions, tornoMedicion.rows]
+  );
+  const tableColumns = useMemo<DynamicTableColumn<AcronymRow>[]>(
+    () => [
+      {
+        key: "position",
+        title: "Rueda",
+        width: 92,
+        priority: 1,
+        render: ({ row }) => (
+          <span className="font-semibold text-emerald-700 dark:text-emerald-300">{row.position}</span>
+        ),
+      },
+      ...fieldDefs.map<DynamicTableColumn<AcronymRow>>((field) => ({
+        key: field.key,
+        title: tableAcronyms[field.label] ?? deriveAcronym(field.label),
+        width: 112,
+        priority: 2,
+        render: ({ value }) => (
+          <span className="font-semibold text-slate-800 dark:text-slate-100">{String(value ?? "--")}</span>
+        ),
+      })),
+    ],
+    [fieldDefs, tableAcronyms]
+  );
 
   if (!open) return null;
 
@@ -151,40 +196,16 @@ export default function TornoMeasuresViewerModal(props: Props) {
           </div>
         ) : (
           <div>
-            <div className="max-h-[54vh] overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800">
-              <div className="overflow-x-auto">
-                <table className="min-w-[760px] w-full text-xs">
-                  <thead className="sticky top-0 bg-slate-100 dark:bg-slate-900">
-                    <tr>
-                      <th className="border-b border-slate-200 px-2 py-2 text-left dark:border-slate-800">Rueda</th>
-                      {tableLabels.map((label) => (
-                        <th key={`h_${label}`} className="border-b border-slate-200 px-2 py-2 text-left dark:border-slate-800">
-                          {tableAcronyms[label]}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {positions.map((position) => {
-                      const row = tornoMedicion.rows[position] ?? EMPTY_TORNO_ROW;
-                      return (
-                        <tr key={`r_${position}`} className="border-b border-slate-200 dark:border-slate-800">
-                          <td className="px-2 py-2 font-semibold text-emerald-700 dark:text-emerald-300">{position}</td>
-                          {fieldDefs.map((field) => {
-                            const formatted = formatTornoMeasure(row[field.key]);
-                            return (
-                              <td key={`${position}_${field.key}`} className="px-2 py-2 text-slate-800 dark:text-slate-100">
-                                {toAcronymValue(swapXAndY(formatted || "--"))}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <DynamicTable
+              data={tableRows}
+              columns={tableColumns}
+              rowKey={(row) => row.position}
+              height="54vh"
+              rowHeight={42}
+              headerHeight={42}
+              emptyText="Sin posiciones"
+              stickyFirstColumn
+            />
 
             <div className="mt-2">
               <button

@@ -80,8 +80,9 @@ export function useCrearMovimientoSubmit(args: {
   viaName: (id?: number | null) => string;
   tornoMedicion?: TornoMedicionState;
   companyName?: string;
+  scheduledActivationId?: number | null;
   pushOutbox: (payload: unknown) => void;
-  onSuccess: (ctx: { movimientoId: number }) => void;
+  onSuccess: (ctx: { movimientoId: number; agendado?: boolean; activatedScheduled?: boolean }) => void;
   redirectOnSuccess?: boolean;
 }) {
   const {
@@ -95,6 +96,7 @@ export function useCrearMovimientoSubmit(args: {
     viaName,
     tornoMedicion,
     companyName,
+    scheduledActivationId,
     pushOutbox,
     onSuccess,
     redirectOnSuccess = true,
@@ -148,6 +150,7 @@ export function useCrearMovimientoSubmit(args: {
         viaName,
         tornoMedicion,
         companyName,
+        scheduledActivationId,
       });
       payloadForOffline = payload;
 
@@ -183,6 +186,9 @@ export function useCrearMovimientoSubmit(args: {
 
       const created = txt ? Movimiento.safeJSON(txt) : {};
       const movimientoId = readMovementId(created);
+      const createdRecord = created as Record<string, any>;
+      const wasScheduled = !!(createdRecord?.agendado || createdRecord?.data?.agendado);
+      const activatedScheduled = !!(createdRecord?.activatedScheduled || createdRecord?.data?.activatedScheduled);
 
       if (movimientoId && viaParaAsignar && typeof numeroParaAsignar === "number") {
         await Movimiento.fetchWithTimeout(`${API_BASE}/secciones/via/${viaParaAsignar}/asignar`, {
@@ -193,8 +199,8 @@ export function useCrearMovimientoSubmit(args: {
         }).catch(() => { });
       }
 
-      onSuccess({ movimientoId });
-      if (redirectOnSuccess) {
+      onSuccess({ movimientoId, agendado: wasScheduled, activatedScheduled });
+      if (redirectOnSuccess && !wasScheduled) {
         window.location.assign(`${roleBase(rol)}/movimientos`);
       }
     } catch (e: unknown) {
@@ -221,6 +227,7 @@ export function useCrearMovimientoSubmit(args: {
     viaName,
     tornoMedicion,
     companyName,
+    scheduledActivationId,
     pushOutbox,
     onSuccess,
     rol,

@@ -82,6 +82,8 @@ export interface MovementFormData {
   fechaFin: string;
   posicionChimenea?: Posicion | null;
   direccionEmpuje?: Direccion;
+  agendado?: boolean;
+  fechaProgramada?: string;
 }
 
 export type InfoEdicion = {
@@ -164,6 +166,8 @@ export const baseInitialForm: MovementFormData = {
   fechaFin: new Date().toISOString(),
   posicionChimenea: null,
   direccionEmpuje: "Sin_Solicitar",
+  agendado: false,
+  fechaProgramada: "",
 };
 
 /** * 4. VALORES INICIALES (FUENTE DE VERDAD)
@@ -189,6 +193,8 @@ export const INITIAL_MOVEMENT_FORM: Readonly<MovementFormData> = Object.freeze({
   fechaFin: new Date().toISOString(),
   posicionChimenea: null,
   direccionEmpuje: "Sin_Solicitar",
+  agendado: false,
+  fechaProgramada: "",
 });
 
 /** * 5. HELPERS OPTIMIZADOS (Lógica reutilizable)

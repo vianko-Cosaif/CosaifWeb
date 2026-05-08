@@ -20,6 +20,22 @@ export type DynamicTableColumn<T> = {
   }) => ReactNode;
 };
 
+export type DynamicTableTheme = {
+  backgroundColor: string;
+  borderColor: string;
+  headerBackgroundColor: string;
+  headerTextColor: string;
+  headerBorderColor: string;
+  firstColumnHeaderBackgroundColor: string;
+  firstColumnBorderColor: string;
+  rowBackgroundColor: string;
+  alternateRowBackgroundColor: string;
+  pressedRowBackgroundColor: string;
+  cellTextColor: string;
+  cellBorderColor: string;
+  emptyTextColor: string;
+};
+
 export type DynamicTableProps<T> = {
   data: T[];
   columns: DynamicTableColumn<T>[];
@@ -31,6 +47,9 @@ export type DynamicTableProps<T> = {
   onRowPress?: (row: T, index: number) => void;
   getRowType?: (row: T, index: number) => string | number;
   maxPriority?: DynamicTablePriority;
+  stickyHeader?: boolean;
+  stickyFirstColumn?: boolean;
+  theme?: Partial<DynamicTableTheme>;
 };
 
 export type ResolvedDynamicTableColumn<T> = DynamicTableColumn<T> & {

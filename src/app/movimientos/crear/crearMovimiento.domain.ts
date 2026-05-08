@@ -213,6 +213,7 @@ export function buildMovimientoPayload(args: {
   viaName: (id?: number | null) => string;
   tornoMedicion?: TornoMedicionState;
   companyName?: string;
+  scheduledActivationId?: number | null;
 }) {
   const {
     resolvedIds,
@@ -224,6 +225,7 @@ export function buildMovimientoPayload(args: {
     viaName,
     tornoMedicion,
     companyName,
+    scheduledActivationId,
   } = args;
   const { empresaId, creadoPorId, localidadId } = resolvedIds;
 
@@ -294,6 +296,15 @@ export function buildMovimientoPayload(args: {
       tornoMedicion,
       companyName,
     });
+
+    if (form.agendado) {
+      payload.agendado = true;
+      payload.fechaProgramada = form.fechaProgramada;
+    }
+
+    if (scheduledActivationId) {
+      payload.activarAgendadoId = scheduledActivationId;
+    }
   }
 
   Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);

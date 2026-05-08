@@ -14,6 +14,8 @@ import {
   TORNO_PROFILE_META,
 } from "./tornoProfiles";
 import { downloadTornoPdf } from "./tornoPdf";
+import { parseTornoMedicionFromApi } from "../torno/tornoMeasureParser";
+import type { ScheduledTornoMovement } from "./components/ScheduledTornoActivationModal";
 import {
   DEFAULT_TORNO_MEDICION_STATE,
   EMPTY_TORNO_ROW,
@@ -36,11 +38,40 @@ export type {
 } from "./controller.types";
 
 type MovimientoLookup = { locomotiveNumber?: number | string | null };
+type CreateMovimientoResponse = {
+  id?: number | string | null;
+  movimientoId?: number | string | null;
+  movimiento?: { id?: number | string | null } | null;
+  data?: {
+    id?: number | string | null;
+    movimientoId?: number | string | null;
+    movimiento?: { id?: number | string | null } | null;
+  } | null;
+};
 
 function readLocomotiveNumber(raw: unknown): number {
   if (!raw || typeof raw !== "object") return 0;
   const obj = raw as MovimientoLookup;
   return Number(obj.locomotiveNumber ?? 0);
+}
+
+function toPositiveInt(raw: unknown): number {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0;
+}
+
+function readMovementId(raw: unknown): number {
+  if (!raw || typeof raw !== "object") return 0;
+  const obj = raw as CreateMovimientoResponse;
+  return (
+    toPositiveInt(obj.id) ||
+    toPositiveInt(obj.movimientoId) ||
+    toPositiveInt(obj.movimiento?.id) ||
+    toPositiveInt(obj.data?.id) ||
+    toPositiveInt(obj.data?.movimientoId) ||
+    toPositiveInt(obj.data?.movimiento?.id) ||
+    0
+  );
 }
 
 /**
@@ -76,6 +107,8 @@ export function useCrearMovimientoController(): CrearMovimientoController {
   const [tornoMovimientoId, setTornoMovimientoId] = useState<number | null>(null);
   const [tornoPdfSending, setTornoPdfSending] = useState(false);
   const [tornoPdfStatus, setTornoPdfStatus] = useState<string | null>(null);
+  const [activatingScheduledTorno, setActivatingScheduledTorno] = useState(false);
+  const [scheduledActivationId, setScheduledActivationId] = useState<number | null>(null);
   const isService = !!form.service;
   const hasTornoPdfStep = form.service === "Torno" && selectionMode === "de_via";
   const maxStep: CrearMovimientoStep = hasTornoPdfStep ? 4 : 3;
@@ -360,10 +393,87 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     });
   }, []);
 
+  const activateScheduledTornoMovement = useCallback(async (scheduledMovement: ScheduledTornoMovement) => {
+    const id = Number(scheduledMovement?.id);
+    if (!Number.isInteger(id) || id <= 0 || activatingScheduledTorno) return;
+
+    setActivatingScheduledTorno(true);
+    try {
+      const parsedMedicion = parseTornoMedicionFromApi({ medidasTorno: scheduledMovement.medidasTorno });
+
+      const extractComments = (instr?: string | null) => {
+        if (!instr) return "";
+        // Quitamos los tags [META ...] y [TORNO_AGENDADO:...]
+        let clean = instr.replace(/\[[A-Z0-9_]+:[^\]]*\]/g, "").trim();
+        // Quitamos la parte descriptiva "De la via ... para la via ... | Posicion: ... |"
+        // que agrega buildInstrucciones
+        clean = clean.replace(/De la via.*?para la via.*?\|/g, "");
+        clean = clean.replace(/De la via.*?\|/g, "");
+        clean = clean.replace(/para la via.*?\|/g, "");
+        clean = clean.replace(/Posicion:.*?\|/g, "");
+        return clean.trim();
+      };
+
+      setForm((prev) => ({
+        ...prev,
+        empresaId: Number(scheduledMovement.empresaId) || prev.empresaId,
+        selectedLocalityId: Number(scheduledMovement.localidadId) || prev.selectedLocalityId,
+        fromTrack: Number(scheduledMovement.viaOrigenId) || prev.fromTrack,
+        toTrack: Number(scheduledMovement.viaDestinoId) || prev.toTrack,
+        service: "Torno",
+        locomotiveNumber: String(scheduledMovement.locomotiveNumber ?? prev.locomotiveNumber ?? ""),
+        movementType: (scheduledMovement.tipoMovimiento as any) || prev.movementType,
+        priority: scheduledMovement.prioridad === "ALTA",
+        direccionEmpuje: (scheduledMovement.direccionEmpuje as any) || prev.direccionEmpuje,
+        pushPull: (scheduledMovement.direccionEmpuje as any) === "Sin_Solicitar" ? "" : (scheduledMovement.direccionEmpuje as any),
+        cabinPosition: (scheduledMovement.posicionCabina as any) || prev.cabinPosition,
+        chimneyPosition: (scheduledMovement.posicionChimenea as any) || prev.chimneyPosition,
+        posicionChimenea: (scheduledMovement.posicionChimenea as any) || prev.posicionChimenea,
+        polo: (scheduledMovement.polo as any) || prev.polo,
+        comments: extractComments(scheduledMovement.instrucciones) || prev.comments,
+        agendado: false,
+        fechaProgramada: "",
+      }));
+      setSelectionMode("de_via");
+      setTornoMedicion(parsedMedicion);
+      setScheduledActivationId(id);
+      setTornoStep2Completed(false);
+      setTornoMovimientoId(null);
+      setTornoPdfStatus("Solicitud agendada precargada. Revisa las medidas y confirma para activarla.");
+      setStep(2);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "No se pudo precargar el movimiento agendado.");
+      setTornoPdfStatus(null);
+    } finally {
+      setActivatingScheduledTorno(false);
+    }
+  }, [activatingScheduledTorno]);
+
   /** Limpieza post-submit exitoso (estado temporal del wizard). */
   const onSubmitSuccess = useCallback(
-    ({ movimientoId }: { movimientoId: number }) => {
+    ({ movimientoId, agendado, activatedScheduled }: { movimientoId: number; agendado?: boolean; activatedScheduled?: boolean }) => {
+      if (agendado) {
+        alert("Movimiento de torno agendado correctamente.");
+        clearDraft();
+        setFromSection(undefined);
+        setToSection(undefined);
+        setLocoLockedBy(null);
+        clearTornoMedicion();
+        setTornoStep2Completed(false);
+        setTornoMovimientoId(null);
+        setTornoPdfStatus(null);
+        setTornoPdfSending(false);
+        setScheduledActivationId(null);
+        setStep(1);
+        window.location.assign(`${roleBase(rol)}/movimientos`);
+        return;
+      }
+
       if (hasTornoPdfStep) {
+        if (activatedScheduled) {
+          alert("La solicitud agendada de torno fue activada y colocada en ronda.");
+          setScheduledActivationId(null);
+        }
         setTornoStep2Completed(true);
         setTornoMovimientoId(Number.isFinite(movimientoId) && movimientoId > 0 ? movimientoId : 0);
         setTornoPdfStatus(null);
@@ -380,9 +490,10 @@ export function useCrearMovimientoController(): CrearMovimientoController {
       setTornoMovimientoId(null);
       setTornoPdfStatus(null);
       setTornoPdfSending(false);
+      setScheduledActivationId(null);
       setStep(1);
     },
-    [clearDraft, clearTornoMedicion, hasTornoPdfStep]
+    [clearDraft, clearTornoMedicion, hasTornoPdfStep, rol]
   );
 
   /** Capa 6: envio final. */
@@ -397,6 +508,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     viaName,
     tornoMedicion,
     companyName: selectedCompanyName,
+    scheduledActivationId,
     pushOutbox,
     onSuccess: onSubmitSuccess,
     redirectOnSuccess: !hasTornoPdfStep,
@@ -494,6 +606,8 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     setTornoMovimientoId(null);
     setTornoPdfSending(false);
     setTornoPdfStatus(null);
+    setActivatingScheduledTorno(false);
+    setScheduledActivationId(null);
     setErrors({});
     setShowFromOpts(false);
     setShowToOpts(false);
@@ -538,6 +652,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     tornoPdfStatus,
     generateTornoPdf,
     goBackToTornoMedicion,
+    activateScheduledTornoMovement,
     online,
     pendingCount,
     flushOutbox,

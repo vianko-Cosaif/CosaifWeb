@@ -347,6 +347,7 @@ export default function TornoMeasuresEditorPanel(props: Props) {
         headerHeight={46}
         emptyText="Sin posiciones"
         getRowType={(row) => (row.position.startsWith("L") ? "left" : "right")}
+        stickyFirstColumn
       />
 
       {measureModal.open ? (

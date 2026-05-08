@@ -10,6 +10,12 @@ import {
   resolveTornoProfile,
   TORNO_PROFILE_FIELDS,
 } from "../tornoProfiles";
+import { DynamicTable, type DynamicTableColumn } from "@/app/Components/dynamic-table";
+
+type TornoTableRow = {
+  position: string;
+  [key: string]: any;
+};
 
 type StepFourTornoProps = {
   form: MovementFormData;
@@ -65,34 +71,38 @@ export default function StepFourTorno(props: StepFourTornoProps) {
           </div>
         </div>
 
-        <div className="mt-3 overflow-auto rounded-xl border border-slate-200 dark:border-slate-800">
-          <table className="min-w-[980px] w-full text-sm">
-            <thead className="bg-slate-100 dark:bg-slate-900/70">
-              <tr>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">Posicion</th>
-                {fieldDefs.map((field) => (
-                  <th key={field.key} className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                    {field.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {positions.map((position) => {
-                const row = tornoMedicion.rows[position] ?? EMPTY_TORNO_ROW;
-                return (
-                  <tr key={position} className="border-t border-slate-200 dark:border-slate-800">
-                    <td className="px-3 py-2 font-semibold text-slate-800 dark:text-slate-200">{position}</td>
-                    {fieldDefs.map((field) => (
-                      <td key={`${position}_${field.key}`} className="px-3 py-2 text-slate-700 dark:text-slate-200">
-                        {formatTornoMeasure(row[field.key]) || "-"}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+          <DynamicTable
+            data={positions.map((pos) => ({
+              position: pos,
+              ...(tornoMedicion.rows[pos] ?? EMPTY_TORNO_ROW),
+            }))}
+            columns={[
+              {
+                key: "position",
+                title: "Pos.",
+                width: 70,
+                align: "center",
+                render: ({ row }) => <span className="font-bold text-slate-800 dark:text-slate-200">{row.position}</span>,
+              },
+              ...fieldDefs.map((field) => ({
+                key: field.key,
+                title: field.label,
+                width: 120,
+                align: "center" as const,
+                render: ({ row }: { row: any }) => {
+                  const val = formatTornoMeasure(row[field.key]);
+                  return <span className={val ? "text-slate-700 dark:text-slate-200" : "text-slate-400 dark:text-slate-500"}>{val || "-"}</span>;
+                },
+              })),
+            ]}
+            rowKey={(row) => row.position}
+            height={Math.min(420, 110 + positions.length * 46)}
+            rowHeight={46}
+            headerHeight={42}
+            emptyText="Sin medidas registradas"
+            stickyFirstColumn
+          />
         </div>
 
         <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/60">
