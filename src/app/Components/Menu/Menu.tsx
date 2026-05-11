@@ -17,7 +17,9 @@ import {
   ChevronRight,
   Settings,
   BarChart3,
+  Wrench,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import ThemeToggle from "@/app/Components/ui/ThemeToggle";
 
 /* ==========================================================================
@@ -36,11 +38,19 @@ interface UserSession {
   };
 }
 
+type NavigationItem = {
+  id: string;
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  hide?: boolean;
+};
+
 // PREMIUM COLOR CONFIGURATION
 const ROLE_CONFIG: Record<
   Rol,
   {
-    icon: any;
+    icon: LucideIcon;
     label: string;
     // Tailwind classes
     text: string;           // Text color
@@ -123,6 +133,19 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
     if (window.innerWidth < 1024) setIsOpen(false);
   }, []);
 
+  useEffect(() => {
+    if (!mounted) return;
+
+    const updateSidebarWidth = () => {
+      const width = window.innerWidth < 768 ? "0px" : isOpen ? "280px" : "80px";
+      document.documentElement.style.setProperty("--cosaif-sidebar-width", width);
+    };
+
+    updateSidebarWidth();
+    window.addEventListener("resize", updateSidebarWidth);
+    return () => window.removeEventListener("resize", updateSidebarWidth);
+  }, [isOpen, mounted]);
+
   const normRol = useMemo<Rol>(() => {
     const r = String(session?.rol || "").toUpperCase();
     if (r.includes("ADMIN")) return "ADMINISTRADOR";
@@ -134,10 +157,11 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
   const base = useMemo(() => `/${normRol.toLowerCase()}`, [normRol]);
   const roleConfig = ROLE_CONFIG[normRol] || ROLE_CONFIG.CLIENTE;
 
-  const navigation = useMemo(() => {
+  const navigation = useMemo<NavigationItem[]>(() => {
     return [
       { id: "dash", label: "Dashboard", href: base, icon: LayoutDashboard },
       { id: "movs", label: "Movimientos", href: `${base}/movimientos`, icon: Train },
+      { id: "torno", label: normRol === "CLIENTE" ? "Historial Torno" : "Torno", href: `${base}/torno`, icon: Wrench },
       {
         id: "users",
         label: "Gestión Usuarios",
@@ -153,7 +177,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
         hide: !["ADMINISTRADOR", "COORDINADOR"].includes(normRol),
         icon: BarChart3,
       },
-    ].filter((i: any) => !i.hide);
+    ].filter((item) => !item.hide);
   }, [normRol, base]);
 
   const handleLogout = () => {
@@ -167,7 +191,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
   if (!mounted) return null;
 
   // NavItem Component
-  const NavItem = ({ item, isActive }: { item: any, isActive: boolean }) => (
+  const NavItem = ({ item, isActive }: { item: NavigationItem, isActive: boolean }) => (
     <button
       onClick={() => {
         router.push(item.href);
