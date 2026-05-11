@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, startTransition, Fragment } from 
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import { S } from "./RailQueueBoardCliente.styles";
+import QueueSegmentedFilter, { type QueueSegmentedFilterOption } from "./components/QueueSegmentedFilter";
 import TornoMeasuresViewerModal from "../movimientos/torno/TornoMeasuresViewerModal";
 import { parseTornoMedicionFromApi } from "../movimientos/torno/tornoMeasureParser";
 import { DEFAULT_TORNO_MEDICION_STATE, type TornoMedicionState } from "../movimientos/crear/tornoMedicion.types";
@@ -58,6 +59,8 @@ type RondaInfo = {
 
 type ToastKind = "move" | "new" | "done" | "warning";
 type Toast = { id: number; text: string; kind: ToastKind };
+type QueueEntityKind = "movimientos" | "torneados";
+type QueueStatusKind = "pendientes" | "terminados";
 
 type MeasuresModalState = {
   open: boolean;
@@ -159,6 +162,15 @@ const EditRondas = dynamic(() => import("../Components/EditRondas"), {
   loading: () => <div className="p-10 text-center text-sm text-slate-500">Cargando editor...</div>,
 });
 
+const ENTITY_OPTIONS: QueueSegmentedFilterOption<QueueEntityKind>[] = [
+  { label: "Movimientos", value: "movimientos" },
+  { label: "Torneados", value: "torneados" },
+];
+
+const STATUS_OPTIONS: QueueSegmentedFilterOption<QueueStatusKind>[] = [
+  { label: "Pendientes", value: "pendientes" },
+];
+
 /* ═══════════ MAIN COMPONENT ═══════════ */
 export default function RailQueueBoard({
   localidadId,
@@ -172,6 +184,8 @@ export default function RailQueueBoard({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [openEditor, setOpenEditor] = useState(false);
+  const [activeEntity, setActiveEntity] = useState<QueueEntityKind>("movimientos");
+  const [activeStatus, setActiveStatus] = useState<QueueStatusKind>("pendientes");
   const [polling, setPolling] = useLocalStorageBoolean("rail-queue:polling", true);
   const [soundOn, setSoundOn] = useLocalStorageBoolean("rail-queue:soundOn", false);
 
@@ -197,7 +211,10 @@ export default function RailQueueBoard({
     if (showRefreshing) setRefreshing(true); else setLoading(true);
 
     try {
-      const data = await fetchJson<Ronda[]>(`/api/cliente/rondas?localidadId=${localidadId}`, ac.signal);
+      const data = await fetchJson<Ronda[]>(
+        `/api/cliente/rondas?localidadId=${localidadId}&estado=${activeStatus}&entity=${activeEntity}`,
+        ac.signal
+      );
       data.sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden);
 
       const nextIds = data.map(d => d.id);
@@ -234,9 +251,9 @@ export default function RailQueueBoard({
   useEffect(() => {
     firstLoad.current = true; prevIdsRef.current = []; setInfo({}); setItems([]); setLoading(true); load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localidadId]);
+  }, [localidadId, activeStatus, activeEntity]);
 
-  useVisibleInterval(() => polling && load(), polling ? autoMs || null : null, [autoMs, localidadId, polling]);
+  useVisibleInterval(() => polling && load(), polling ? autoMs || null : null, [autoMs, localidadId, polling, activeStatus, activeEntity]);
 
   useEffect(() => {
     const curId = items[0]?.id ?? null;
@@ -286,9 +303,29 @@ export default function RailQueueBoard({
     }
   };
 
-  const current = items[0];
+  const entityItems = items;
+  const entityOptions = useMemo<QueueSegmentedFilterOption<QueueEntityKind>[]>(
+    () => ENTITY_OPTIONS.map((option) => ({
+      ...option,
+      count: option.value === activeEntity ? items.length : undefined,
+    })),
+    [activeEntity, items.length]
+  );
+  const statusOptions = useMemo<QueueSegmentedFilterOption<QueueStatusKind>[]>(
+    () => STATUS_OPTIONS.map((option) => ({
+      ...option,
+      count: option.value === activeStatus ? items.length : undefined,
+    })),
+    [activeStatus, items.length]
+  );
+  const current = entityItems[0];
   const curInfo = current ? info[current.id] : undefined;
-  const nextItems = useMemo(() => items.slice(1), [items]);
+  const nextItems = useMemo(() => entityItems.slice(1), [entityItems]);
+  const isHistoricalView = activeStatus === "terminados";
+  const emptyMessage =
+    activeEntity === "torneados"
+      ? `No hay torneados ${activeStatus === "pendientes" ? "pendientes" : "terminados"}.`
+      : `No hay movimientos ${activeStatus === "pendientes" ? "pendientes" : "terminados"}.`;
 
   return (
     <div className={S.Layout.root}>
@@ -308,19 +345,90 @@ export default function RailQueueBoard({
           <button onClick={() => load(true)} className={S.Header.btn()} title="Actualizar">
             <Ic.Refresh className={refreshing ? "w-4 h-4 animate-spin" : "w-4 h-4"} />
           </button>
-          <button onClick={() => setOpenEditor(true)} className={S.Header.btnEdit}>
-            <Ic.Pen /> <span className="hidden sm:inline">Editar</span>
-          </button>
+          {activeEntity === "movimientos" ? (
+            <button onClick={() => setOpenEditor(true)} className={S.Header.btnEdit}>
+              <Ic.Pen /> <span className="hidden sm:inline">Editar</span>
+            </button>
+          ) : null}
         </div>
       </header>
 
       {/* ─── CONTENT ─── */}
       <main className={S.Layout.main}>
+        <section className="lg:col-span-12 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-white/[0.06] dark:bg-[#161b22] sm:flex-row sm:items-center sm:justify-between">
+          <QueueSegmentedFilter
+            ariaLabel="Tipo de listado"
+            options={entityOptions}
+            value={activeEntity}
+            onChange={setActiveEntity}
+          />
+          <QueueSegmentedFilter
+            ariaLabel="Estado del listado"
+            options={statusOptions}
+            value={activeStatus}
+            onChange={setActiveStatus}
+          />
+        </section>
         {/* LEFT — Hero */}
+        {isHistoricalView ? (
+          <section className="lg:col-span-12">
+            <div className="mb-3 flex items-center justify-between px-0.5">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  {activeEntity === "torneados" ? "Historial de torneados" : "Historial de movimientos"}
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Registros concluidos, fuera de ronda operativa.
+                </p>
+              </div>
+              <span className={S.List.count}>{items.length}</span>
+            </div>
+            {loading ? (
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <div key={index} className="h-44 rounded-lg border border-slate-200 bg-slate-100 dark:border-white/[0.06] dark:bg-white/[0.03] animate-pulse" />
+                ))}
+              </div>
+            ) : items.length === 0 ? (
+              <div className="flex min-h-[300px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm dark:border-white/[0.08] dark:bg-[#161b22]">
+                <div className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Sin registros</div>
+                <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{emptyMessage}</div>
+                <button type="button" onClick={() => load(true)} className="mt-5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-950">
+                  Actualizar
+                </button>
+              </div>
+            ) : (
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                <AnimatePresence initial={false}>
+                  {items.map((item, index) => (
+                    <QueueCard
+                      key={item.id}
+                      item={item}
+                      info={info[item.id]}
+                      prev={null}
+                      idx={index}
+                      onViewMeasures={openMeasuresModal}
+                      showRoundDivider={false}
+                    />
+                  ))}
+                </AnimatePresence>
+              </div>
+            )}
+          </section>
+        ) : (
+          <>
         <section className={S.Layout.colLeft}>
           <AnimatePresence mode="wait">
-            {!current ? (
+            {loading ? (
               <div className={S.Layout.skeleton} />
+            ) : !current ? (
+              <div className="flex min-h-[360px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm dark:border-white/[0.08] dark:bg-[#161b22]">
+                <div className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Sin registros</div>
+                <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{emptyMessage}</div>
+                <button type="button" onClick={() => load(true)} className="mt-5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-950">
+                  Actualizar
+                </button>
+              </div>
             ) : (
               <HeroCard key={current.id} item={current} info={curInfo} onViewMeasures={openMeasuresModal} />
             )}
@@ -330,7 +438,9 @@ export default function RailQueueBoard({
         {/* RIGHT — Queue */}
         <aside className={S.Layout.colRight}>
           <div className={S.List.header}>
-            <span className={S.List.title}>Cola de operaciones</span>
+            <span className={S.List.title}>
+              {activeEntity === "torneados" ? "Cola de torneados" : "Cola de movimientos"}
+            </span>
             <span className={S.List.count}>{nextItems.length}</span>
           </div>
           <div className="flex flex-col gap-2 pb-16 overflow-y-auto max-h-[calc(100vh-120px)] pr-1">
@@ -348,6 +458,8 @@ export default function RailQueueBoard({
             </AnimatePresence>
           </div>
         </aside>
+          </>
+        )}
       </main>
 
       {/* ─── MODAL ─── */}
@@ -514,12 +626,14 @@ function QueueCard({
   prev,
   idx,
   onViewMeasures: _onViewMeasures,
+  showRoundDivider = true,
 }: {
   item: Ronda;
   info?: RondaInfo;
   prev: Ronda | null;
   idx: number;
   onViewMeasures: (args: { movementId?: number | null; locomotiveLabel?: string; companyName?: string }) => void;
+  showRoundDivider?: boolean;
 }) {
   const hi = info?.movimiento?.prioridad === "ALTA";
   const newRound = idx === 0 || item.rondaNumero !== prev?.rondaNumero;
@@ -527,7 +641,7 @@ function QueueCard({
 
   return (
     <Fragment>
-      {newRound && (
+      {showRoundDivider && newRound && (
         <div className={S.List.divider}>
           <div className={S.List.dividerLabel}>Ronda {item.rondaNumero}</div>
           <div className={S.List.dividerLine} />
