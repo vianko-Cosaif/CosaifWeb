@@ -114,6 +114,9 @@ export interface CrearMovimientoController {
   generateTornoPdf: () => Promise<void>;
   goBackToTornoMedicion: () => void;
   activateScheduledTornoMovement: (movement: ScheduledTornoMovement) => Promise<void>;
+  scheduledTornoMovements: ScheduledTornoMovement[];
+  scheduledTornoLoading: boolean;
+  refreshScheduledTornoMovements: () => Promise<void>;
 
   /* Estado de conectividad/sincronizacion */
   online: boolean;

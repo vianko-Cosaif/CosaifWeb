@@ -20,7 +20,13 @@ import {
   TORNO_PROFILE_FIELDS,
   TORNO_PROFILE_META,
 } from "../tornoProfiles";
-import { DynamicTable, type DynamicTableColumn } from "@/app/Components/dynamic-table";
+import {
+  DynamicTable,
+  DynamicTableCopyPasteDialog,
+  type DynamicCopyPasteScope,
+  type DynamicCopyPasteTarget,
+  type DynamicTableColumn,
+} from "@/app/Components/dynamic-table";
 
 /**
  * Props del Step 2 especializado para servicio Torno.
@@ -48,8 +54,8 @@ type TornoCopyCell = {
 };
 
 type TornoCopyState = {
-  source: TornoCopyCell;
-  targets: string[];
+  scope: DynamicCopyPasteScope;
+  source: Partial<TornoCopyCell>;
 };
 
 type TornoPasteFeedback = {
@@ -335,19 +341,17 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
     setCopyState((current) => {
       if (!current) return null;
 
-      const sourceStillValid =
-        positions.includes(current.source.position) &&
-        validFieldKeys.has(current.source.field);
+      const sourceStillValid = current.scope === "row"
+        ? !!current.source.position && positions.includes(current.source.position)
+        : current.scope === "column"
+          ? !!current.source.field && validFieldKeys.has(current.source.field)
+          : !!current.source.position &&
+            !!current.source.field &&
+            positions.includes(current.source.position) &&
+            validFieldKeys.has(current.source.field);
 
       if (!sourceStillValid) return null;
-
-      const nextTargets = current.targets.filter((targetId) => {
-        const [position, field] = targetId.split("::") as [TornoWheelPosition, TornoMeasurementField];
-        return positions.includes(position) && validFieldKeys.has(field);
-      });
-
-      if (nextTargets.length === current.targets.length) return current;
-      return { ...current, targets: nextTargets };
+      return current;
     });
   }, [positions, validFieldKeys]);
 
@@ -376,22 +380,39 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
     [pasteFeedback]
   );
   const copySourceId = copyState
-    ? getCopyCellId(copyState.source.position, copyState.source.field)
+    && copyState.scope === "cell"
+    && copyState.source.position
+    && copyState.source.field
+      ? getCopyCellId(copyState.source.position, copyState.source.field)
     : null;
   const selectedTargetIds = useMemo(
-    () => new Set(copyState?.targets ?? []),
-    [copyState]
+    () => new Set<string>(),
+    []
   );
   const copySourceValue = copyState
-    ? (tornoMedicion.rows[copyState.source.position]?.[copyState.source.field] ?? EMPTY_TORNO_VALUE)
+    && copyState.scope === "cell"
+    && copyState.source.position
+    && copyState.source.field
+      ? (tornoMedicion.rows[copyState.source.position]?.[copyState.source.field] ?? EMPTY_TORNO_VALUE)
     : null;
   const fieldLabelByKey = useMemo(
     () => new Map(fieldDefs.map((field) => [field.key, field.label] as const)),
     [fieldDefs]
   );
-  const copySourceLabel = copyState
-    ? fieldLabelByKey.get(copyState.source.field) ?? copyState.source.field
-    : "";
+  const copySourceLabel = copyState?.scope === "row" && copyState.source.position
+    ? `Fila ${copyState.source.position}`
+    : copyState?.scope === "column" && copyState.source.field
+      ? `Columna ${fieldLabelByKey.get(copyState.source.field) ?? copyState.source.field}`
+      : copyState?.scope === "cell" && copyState.source.position && copyState.source.field
+        ? `${copyState.source.position} / ${fieldLabelByKey.get(copyState.source.field) ?? copyState.source.field}`
+        : "";
+  const copySourceValueLabel = copyState?.scope === "cell"
+    ? (copySourceValue ? formatTornoMeasure(copySourceValue) || "Sin medida" : "Sin medida")
+    : copyState?.scope === "row"
+      ? "Fila completa"
+      : copyState?.scope === "column"
+        ? "Columna completa"
+        : "";
   const desktopRows = useMemo<TornoDesktopRow[]>(
     () => positions.map((position) => ({ position })),
     [positions]
@@ -406,34 +427,37 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
   );
   const startCopySelection = React.useCallback((position: TornoWheelPosition, field: TornoMeasurementField) => {
     setCopyState({
+      scope: "cell",
       source: { position, field },
-      targets: [],
     });
   }, []);
 
   const startMobileCopySelection = React.useCallback((position: TornoWheelPosition, field: TornoMeasurementField) => {
     setCopyState({
+      scope: "cell",
       source: { position, field },
-      targets: [],
     });
-    setMobileCopyModalOpen(true);
-    setMobileAccordionPosition(position);
+    setMobileCopyModalOpen(false);
+    setMobileAccordionPosition(null);
+  }, []);
+
+  const startRowCopySelection = React.useCallback((position: TornoWheelPosition) => {
+    setCopyState({
+      scope: "row",
+      source: { position },
+    });
+  }, []);
+
+  const startColumnCopySelection = React.useCallback((field: TornoMeasurementField) => {
+    setCopyState({
+      scope: "column",
+      source: { field },
+    });
   }, []);
 
   const toggleCopyTarget = React.useCallback((position: TornoWheelPosition, field: TornoMeasurementField) => {
-    const targetId = getCopyCellId(position, field);
-    setCopyState((current) => {
-      if (!current) return current;
-      if (current.source.position === position && current.source.field === field) return current;
-
-      const exists = current.targets.includes(targetId);
-      return {
-        ...current,
-        targets: exists
-          ? current.targets.filter((id) => id !== targetId)
-          : [...current.targets, targetId],
-      };
-    });
+    void position;
+    void field;
   }, []);
 
   const cancelCopySelection = React.useCallback(() => {
@@ -442,43 +466,111 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
     setMobileAccordionPosition(null);
   }, []);
 
-  const applyCopySelection = React.useCallback(() => {
-    if (!copyState || !copySourceValue) return;
+  const applyCopyTargets = React.useCallback((targets: DynamicCopyPasteTarget<TornoWheelPosition, TornoMeasurementField>[]) => {
+    if (!copyState) return;
 
-    const targetIds = [...copyState.targets];
+    const pastedIds: string[] = [];
+    const writeMeasure = (position: TornoWheelPosition, field: TornoMeasurementField, value: TornoMeasurementValue) => {
+      updateTornoMedicion(position, field, "whole", value.whole);
+      updateTornoMedicion(position, field, "num", value.num);
+      updateTornoMedicion(position, field, "den", value.den);
+      pastedIds.push(getCopyCellId(position, field));
+    };
 
-    for (const targetId of targetIds) {
-      const [position, field] = targetId.split("::") as [TornoWheelPosition, TornoMeasurementField];
-      updateTornoMedicion(position, field, "whole", copySourceValue.whole);
-      updateTornoMedicion(position, field, "num", copySourceValue.num);
-      updateTornoMedicion(position, field, "den", copySourceValue.den);
+    if (copyState.scope === "cell" && copyState.source.position && copyState.source.field) {
+      const source = tornoMedicion.rows[copyState.source.position]?.[copyState.source.field] ?? EMPTY_TORNO_VALUE;
+      targets.forEach((target) => {
+        if (target.scope === "cell") writeMeasure(target.position, target.field, source);
+      });
+    }
+
+    if (copyState.scope === "row" && copyState.source.position) {
+      targets.forEach((target) => {
+        if (target.scope !== "row") return;
+        fieldDefs.forEach((field) => {
+          const source = tornoMedicion.rows[copyState.source.position!]?.[field.key] ?? EMPTY_TORNO_VALUE;
+          writeMeasure(target.position, field.key, source);
+        });
+      });
+    }
+
+    if (copyState.scope === "column" && copyState.source.field) {
+      targets.forEach((target) => {
+        if (target.scope !== "column") return;
+        positions.forEach((position) => {
+          const source = tornoMedicion.rows[position]?.[copyState.source.field!] ?? EMPTY_TORNO_VALUE;
+          writeMeasure(position, target.field, source);
+        });
+      });
     }
 
     setPasteFeedback({
-      cells: targetIds,
+      cells: pastedIds,
       token: Date.now(),
     });
     setCopyState(null);
     setMobileCopyModalOpen(false);
     setMobileAccordionPosition(null);
-  }, [copySourceValue, copyState, updateTornoMedicion]);
+  }, [copyState, fieldDefs, positions, tornoMedicion.rows, updateTornoMedicion]);
 
   const desktopColumns = useMemo<DynamicTableColumn<TornoDesktopRow>[]>(() => {
     const baseColumns: DynamicTableColumn<TornoDesktopRow>[] = [
       {
         key: "position",
-        title: "Posicion",
-        width: 100,
+        title: "Fila",
+        width: 120,
         priority: 1,
         render: ({ row }) => (
-          <span className="font-semibold text-slate-900 dark:text-slate-100">{row.position}</span>
+          <div className="flex w-full items-center justify-between gap-2">
+            <span className="font-semibold text-slate-900 dark:text-slate-100">{row.position}</span>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                startRowCopySelection(row.position);
+              }}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-sky-700 dark:hover:bg-sky-900/20 dark:hover:text-sky-300"
+              aria-label={`Copiar fila ${row.position}`}
+              title="Copiar fila"
+            >
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M8 7h12" />
+                <path d="M8 12h12" />
+                <path d="M8 17h12" />
+                <path d="M4 7h.01" />
+                <path d="M4 12h.01" />
+                <path d="M4 17h.01" />
+              </svg>
+            </button>
+          </div>
         ),
       },
     ];
 
     const measureColumns = fieldDefs.map<DynamicTableColumn<TornoDesktopRow>>((field) => ({
       key: field.key,
-      title: field.label,
+      title: (
+        <div className="flex w-full items-center justify-between gap-2">
+          <span className="min-w-0 truncate">{field.label}</span>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              startColumnCopySelection(field.key);
+            }}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-sky-700 dark:hover:bg-sky-900/20 dark:hover:text-sky-300"
+            aria-label={`Copiar columna ${field.label}`}
+            title="Copiar columna"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M8 4v16" />
+              <path d="M16 4v16" />
+              <path d="M4 8h16" />
+              <path d="M4 16h16" />
+            </svg>
+          </button>
+        </div>
+      ),
       width: 230,
       priority: 2,
       render: ({ row }) => {
@@ -509,7 +601,9 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
     fieldDefs,
     pastedCells,
     selectedTargetIds,
+    startColumnCopySelection,
     startCopySelection,
+    startRowCopySelection,
     toggleCopyTarget,
     tornoMedicion.rows,
     updateTornoMedicion,
@@ -536,31 +630,19 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
           <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-sky-200 bg-sky-50/90 px-3 py-2 text-sm text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100">
             <div className="min-w-0 flex-1">
               <span className="font-semibold">Modo copiado activo.</span>{" "}
-              Origen: <span className="font-semibold">{copyState.source.position}</span> /{" "}
-              <span className="font-semibold">{copySourceLabel}</span>{" "}
+              Origen: <span className="font-semibold">{copySourceLabel}</span>{" "}
               <span className="text-sky-700 dark:text-sky-300">
-                ({copySourceValue ? formatTornoMeasure(copySourceValue) || "Sin medida" : "Sin medida"})
+                ({copySourceValueLabel})
               </span>
-              . Selecciona los destinos y finaliza para pegar.
+              . Selecciona los destinos en el modal y finaliza para pegar.
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-sky-300 px-2.5 py-1 text-xs font-semibold dark:border-sky-700">
-                {copyState.targets.length} destino(s)
-              </span>
               <button
                 type="button"
                 onClick={cancelCopySelection}
                 className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={applyCopySelection}
-                disabled={copyState.targets.length === 0}
-                className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Finalizar y pegar
               </button>
             </div>
           </div>
@@ -643,6 +725,15 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
               </button>
             ))}
           </div>
+          <div className="mb-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => startRowCopySelection(mobilePosition)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              Copiar fila {mobilePosition}
+            </button>
+          </div>
 
           <div className="grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-950/60">
             {fieldDefs.map((field) => {
@@ -653,6 +744,13 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                     <span className="min-w-0 flex-1 break-words text-xs font-semibold text-slate-700 dark:text-slate-200">
                       {field.label}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => startColumnCopySelection(field.key)}
+                      className="shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      Col.
+                    </button>
                     <span className="shrink-0 text-[11px] text-slate-500 dark:text-slate-400">{formatTornoMeasure(measure) || "-"}</span>
                   </div>
                   <MeasurePartsInput
@@ -672,161 +770,6 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
             })}
           </div>
         </div>
-
-        {mobileCopyModalOpen && copyState ? (
-          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-3 lg:hidden sm:items-center">
-            <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
-              <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
-                <div className="flex items-start gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-slate-900 dark:text-white">Pegar medida en varias celdas</div>
-                    <div className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-                      Origen: <span className="font-semibold">{copyState.source.position}</span> /{" "}
-                      <span className="font-semibold">{copySourceLabel}</span>{" "}
-                      <span className="text-emerald-700 dark:text-emerald-300">
-                        ({copySourceValue ? formatTornoMeasure(copySourceValue) || "Sin medida" : "Sin medida"})
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={cancelCopySelection}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-                    aria-label="Cerrar selector de copiado"
-                  >
-                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M18 6 6 18" />
-                      <path d="m6 6 12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              <div className="max-h-[65vh] overflow-y-auto px-3 py-3">
-                <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100">
-                  Marca los destinos desde la lista. Toca una casilla para seleccionar o deseleccionar.
-                </div>
-
-                <div className="grid gap-2">
-                  {positions.map((position) => {
-                    const isOpen = mobileAccordionPosition === position;
-                    const selectedCount = fieldDefs.filter((field) =>
-                      selectedTargetIds.has(getCopyCellId(position, field.key))
-                    ).length;
-
-                    return (
-                      <div key={`mobile_copy_${position}`} className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40">
-                        <button
-                          type="button"
-                          onClick={() => setMobileAccordionPosition((current) => (current === position ? null : position))}
-                          className="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-900"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{position}</div>
-                            <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                              {selectedCount > 0 ? `${selectedCount} seleccionado(s)` : "Sin destinos seleccionados"}
-                            </div>
-                          </div>
-                          <span className={Movimiento.clsx(
-                            "rounded-full border px-2 py-0.5 text-[11px] font-semibold",
-                            selectedCount > 0
-                              ? "border-sky-300 bg-sky-100 text-sky-700 dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-200"
-                              : "border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
-                          )}>
-                            {selectedCount}
-                          </span>
-                          <svg
-                            viewBox="0 0 24 24"
-                            className={Movimiento.clsx(
-                              "h-4 w-4 shrink-0 text-slate-400 transition-transform dark:text-slate-500",
-                              isOpen && "rotate-180"
-                            )}
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.8"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            aria-hidden="true"
-                          >
-                            <path d="m6 9 6 6 6-6" />
-                          </svg>
-                        </button>
-
-                        {isOpen ? (
-                          <div className="border-t border-slate-200 px-3 py-2 dark:border-slate-800">
-                            <div className="grid gap-2">
-                              {fieldDefs.map((field) => {
-                                const cellId = getCopyCellId(position, field.key);
-                                const isSourceCell = copySourceId === cellId;
-                                const checked = selectedTargetIds.has(cellId);
-                                const targetMeasure = tornoMedicion.rows[position]?.[field.key] ?? EMPTY_TORNO_VALUE;
-
-                                return (
-                                  <label
-                                    key={`mobile_copy_field_${position}_${field.key}`}
-                                    className={Movimiento.clsx(
-                                      "flex items-center gap-3 rounded-lg border px-3 py-2 transition-colors",
-                                      isSourceCell
-                                        ? "cursor-not-allowed border-emerald-200 bg-emerald-50/80 dark:border-emerald-800 dark:bg-emerald-900/20"
-                                        : checked
-                                          ? "cursor-pointer border-sky-300 bg-sky-50 dark:border-sky-700 dark:bg-sky-900/20"
-                                          : "cursor-pointer border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-900"
-                                    )}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      disabled={isSourceCell}
-                                      onChange={() => toggleCopyTarget(position, field.key)}
-                                      className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-slate-700"
-                                    />
-                                    <div className="min-w-0 flex-1">
-                                      <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                                        {field.label}
-                                      </div>
-                                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                                        {isSourceCell
-                                          ? "Medida origen"
-                                          : formatTornoMeasure(targetMeasure) || "Sin medida capturada"}
-                                      </div>
-                                    </div>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
-                <span className="text-xs text-slate-600 dark:text-slate-300">
-                  {copyState.targets.length} destino(s) seleccionado(s)
-                </span>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={cancelCopySelection}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={applyCopySelection}
-                    disabled={copyState.targets.length === 0}
-                    className="rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Finalizar y pegar
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : null}
 
         {profile === "wabtec" ? (
           <div className="hidden min-w-0 gap-4 lg:grid lg:grid-cols-2">
@@ -876,6 +819,31 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
             />
           </div>
         )}
+
+        {copyState ? (
+          <DynamicTableCopyPasteDialog<TornoWheelPosition, TornoMeasurementField, TornoMeasurementValue>
+            open={!!copyState}
+            scope={copyState.scope}
+            positions={positions}
+            fields={fieldDefs}
+            sourcePosition={copyState.source.position ?? null}
+            sourceField={copyState.source.field ?? null}
+            sourceLabel={copySourceLabel}
+            sourceValueLabel={copySourceValueLabel}
+            getValueLabel={(position, field) =>
+              formatTornoMeasure(tornoMedicion.rows[position]?.[field] ?? EMPTY_TORNO_VALUE)
+            }
+            title={
+              copyState.scope === "row"
+                ? "Copiar fila"
+                : copyState.scope === "column"
+                  ? "Copiar columna"
+                  : "Copiar medida"
+            }
+            onCancel={cancelCopySelection}
+            onApply={applyCopyTargets}
+          />
+        ) : null}
 
         <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
           Las medidas son opcionales por campo y se guardan en draft local durante esta solicitud.

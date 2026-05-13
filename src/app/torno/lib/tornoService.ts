@@ -139,6 +139,37 @@ function normalizeStatus(value: any): TornoServiceStatus {
   return upper(value || "SIN_ESTADO") as TornoServiceStatus;
 }
 
+function isMovementLikeRecord(input: any) {
+  return (
+    input?.movimiento === input ||
+    input?.torno === true ||
+    input?.lavado === true ||
+    input?.viaOrigenId != null ||
+    input?.viaDestinoId != null ||
+    input?.fechaSolicitud != null ||
+    input?.locomotiveNumber != null
+  );
+}
+
+function getTornoServiceStatus(input: any) {
+  const explicit =
+    input?.historialStatus ??
+    input?.statusAlmacenado ??
+    input?.status ??
+    input?.rondaServicio?.status ??
+    input?.rondaServicio?.estado ??
+    input?.rondaStatus ??
+    input?.estadoRonda ??
+    input?.estatus;
+
+  if (explicit != null) return explicit;
+
+  // `estado` can be the state of the underlying Movimiento. Movimiento and
+  // Torneado are independent; do not infer the Torneado status from it.
+  if (!isMovementLikeRecord(input)) return input?.estado ?? input?.tornoG?.estado;
+  return input?.tornoG?.estado;
+}
+
 function normalizeDate(value: any): string | null {
   if (!value) return null;
   return String(value);
@@ -291,7 +322,7 @@ function isResolvedStatus(value: any) {
 }
 
 function normalizeHistoryItem(input: any): TornoHistoryItem {
-  const status = normalizeStatus(input.status ?? input.statusAlmacenado ?? input.estado ?? input.estatus);
+  const status = normalizeStatus(getTornoServiceStatus(input));
   const incidentSource = input.incidentesPadre ?? input.incidentes ?? input.incidents ?? [];
 
   return {

@@ -6,7 +6,7 @@ export type DynamicTableAlign = "left" | "center" | "right";
 
 export type DynamicTableColumn<T> = {
   key: keyof T | string;
-  title: string;
+  title: ReactNode;
   width?: number;
   minWidth?: number;
   align?: DynamicTableAlign;

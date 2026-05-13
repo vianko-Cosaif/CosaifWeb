@@ -74,6 +74,9 @@ export default function CrearMovimiento() {
     generateTornoPdf,
     goBackToTornoMedicion,
     activateScheduledTornoMovement,
+    scheduledTornoMovements,
+    scheduledTornoLoading,
+    refreshScheduledTornoMovements,
     online,
     pendingCount,
     flushOutbox,
@@ -238,6 +241,10 @@ export default function CrearMovimiento() {
               setFromSection={selectFromSection}
               setToSection={setToSection}
               viaName={viaName}
+              companyName={selectedCompanyName}
+              scheduledTornoMovements={scheduledTornoMovements}
+              scheduledTornoLoading={scheduledTornoLoading}
+              onRefreshScheduledTorno={refreshScheduledTornoMovements}
               onActivateScheduledTorno={activateScheduledTornoMovement}
             />
           )}

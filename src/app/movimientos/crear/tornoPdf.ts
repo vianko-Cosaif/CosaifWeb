@@ -142,11 +142,11 @@ function buildContent(args: TornoPdfArgs): string {
   const cardW = PAGE_W - MARGIN * 2;
   const cardH = PAGE_H - MARGIN * 2;
 
-  cmds.push(`${rgb255(11, 17, 24)} rg`);
+  cmds.push(`${rgb255(255, 255, 255)} rg`);
   cmds.push(rectTop(cardX, cardY, cardW, cardH));
   cmds.push("f");
 
-  cmds.push(`${rgb255(32, 47, 66)} RG`);
+  cmds.push(`${rgb255(214, 214, 214)} RG`);
   cmds.push("1 w");
   cmds.push(rectTop(cardX, cardY, cardW, cardH));
   cmds.push("S");
@@ -158,7 +158,7 @@ function buildContent(args: TornoPdfArgs): string {
     topY: cardY + 18,
     size: 16,
     font: "F2",
-    color: [255, 255, 255],
+    color: [24, 24, 24],
   });
 
   writeText({
@@ -167,7 +167,7 @@ function buildContent(args: TornoPdfArgs): string {
     x: cardX + 18,
     topY: cardY + 39,
     size: 10,
-    color: [166, 180, 201],
+    color: [72, 72, 72],
   });
 
   const metaText = [
@@ -182,7 +182,7 @@ function buildContent(args: TornoPdfArgs): string {
     topY: cardY + 22,
     size: 10,
     font: "F2",
-    color: [214, 223, 236],
+    color: [42, 42, 42],
   });
 
   const tableX = cardX + 18;
@@ -192,11 +192,11 @@ function buildContent(args: TornoPdfArgs): string {
   const rowH = positions.length > 10 ? 20 : 22;
   const tableH = headerH + positions.length * rowH;
 
-  cmds.push(`${rgb255(27, 39, 54)} rg`);
+  cmds.push(`${rgb255(246, 246, 246)} rg`);
   cmds.push(rectTop(tableX, tableY, tableW, headerH));
   cmds.push("f");
 
-  cmds.push(`${rgb255(42, 59, 82)} RG`);
+  cmds.push(`${rgb255(196, 196, 196)} RG`);
   cmds.push("0.8 w");
   cmds.push(rectTop(tableX, tableY, tableW, tableH));
   cmds.push("S");
@@ -204,7 +204,7 @@ function buildContent(args: TornoPdfArgs): string {
   const posColW = 62;
   const dynamicColW = cols.length > 0 ? (tableW - posColW) / cols.length : tableW - posColW;
 
-  cmds.push(`${rgb255(42, 59, 82)} RG`);
+  cmds.push(`${rgb255(214, 214, 214)} RG`);
   cmds.push("0.6 w");
   cmds.push(`${fmt(tableX + posColW)} ${fmt(pdfY(tableY + tableH))} m ${fmt(tableX + posColW)} ${fmt(pdfY(tableY))} l S`);
 
@@ -225,7 +225,7 @@ function buildContent(args: TornoPdfArgs): string {
     topY: tableY + 7,
     size: 9,
     font: "F2",
-    color: [197, 212, 231],
+    color: [18, 18, 18],
   });
 
   cols.forEach((column, index) => {
@@ -238,7 +238,7 @@ function buildContent(args: TornoPdfArgs): string {
       topY: tableY + 7,
       size: 8.5,
       font: "F2",
-      color: [197, 212, 231],
+      color: [18, 18, 18],
     });
   });
 
@@ -253,7 +253,7 @@ function buildContent(args: TornoPdfArgs): string {
       topY: rowTop,
       size: 10,
       font: "F2",
-      color: [235, 241, 252],
+      color: [16, 16, 16],
     });
 
     cols.forEach((column, colIndex) => {
@@ -267,17 +267,17 @@ function buildContent(args: TornoPdfArgs): string {
         x,
         topY: rowTop,
         size: 9.5,
-        color: [227, 236, 248],
+        color: [38, 38, 38],
       });
     });
   });
 
   const obsY = tableY + tableH + 14;
   const obsH = cardY + cardH - obsY - 18;
-  cmds.push(`${rgb255(3, 11, 28)} rg`);
+  cmds.push(`${rgb255(255, 255, 255)} rg`);
   cmds.push(rectTop(tableX, obsY, tableW, obsH));
   cmds.push("f");
-  cmds.push(`${rgb255(32, 49, 72)} RG`);
+  cmds.push(`${rgb255(214, 214, 214)} RG`);
   cmds.push("0.8 w");
   cmds.push(rectTop(tableX, obsY, tableW, obsH));
   cmds.push("S");
@@ -289,7 +289,7 @@ function buildContent(args: TornoPdfArgs): string {
     topY: obsY + 10,
     size: 11,
     font: "F2",
-    color: [255, 255, 255],
+    color: [18, 18, 18],
   });
 
   const obsLines = wrapText(comments.trim() || "Sin comentarios.", 150).slice(0, 4);
@@ -300,7 +300,7 @@ function buildContent(args: TornoPdfArgs): string {
       x: tableX + 10,
       topY: obsY + 30 + index * 12,
       size: 10,
-      color: [206, 218, 236],
+      color: [50, 50, 50],
     });
   });
 

@@ -42,6 +42,10 @@ type StepOneProps = {
   setFromSection: (s: Seccion) => void | Promise<void>;
   setToSection: (n?: number) => void;
   viaName: (id?: number | null) => string;
+  companyName?: string;
+  scheduledTornoMovements?: ScheduledTornoMovement[];
+  scheduledTornoLoading?: boolean;
+  onRefreshScheduledTorno?: () => Promise<void> | void;
   onActivateScheduledTorno: (movement: ScheduledTornoMovement) => Promise<void> | void;
 };
 
@@ -71,7 +75,8 @@ export default function StepOne(props: StepOneProps) {
     form, setForm, errors, empresas, localidades, vias, canManageAll, userCompanyName,
     showFromOpts, setShowFromOpts, showToOpts, setShowToOpts, selectionMode, setSelectionMode,
     tapToggle, sectionsByVia, secLoading, ensureSections, fromSection, toSection,
-    setFromSection, setToSection, viaName, onActivateScheduledTorno,
+    setFromSection, setToSection, viaName, companyName, scheduledTornoMovements = [],
+    scheduledTornoLoading = false, onRefreshScheduledTorno, onActivateScheduledTorno,
   } = props;
 
   const [altaOpen, setAltaOpen] = useState(false);
@@ -447,6 +452,10 @@ export default function StepOne(props: StepOneProps) {
         <ScheduledTornoActivationModal
           enabled={form.service === "Torno"}
           locomotiveNumber={form.locomotiveNumber}
+          scheduledMovements={scheduledTornoMovements}
+          loading={scheduledTornoLoading}
+          companyName={companyName}
+          onRefresh={onRefreshScheduledTorno}
           onActivate={onActivateScheduledTorno}
         />
       </div>

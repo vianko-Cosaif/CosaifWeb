@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Movimiento } from "../../Movimiento";
-import { API_BASE } from "../../movimientos.shared";
 import { DynamicTable, type DynamicTableColumn } from "@/app/Components/dynamic-table";
+import { resolveTornoProfile, TORNO_PROFILE_FIELDS, type TornoFieldDef } from "../tornoProfiles";
 
 export type ScheduledTornoMovement = {
   id: number;
@@ -25,6 +24,10 @@ export type ScheduledTornoMovement = {
 type Props = {
   enabled: boolean;
   locomotiveNumber: string;
+  scheduledMovements?: ScheduledTornoMovement[];
+  loading?: boolean;
+  companyName?: string;
+  onRefresh?: () => Promise<void> | void;
   onActivate: (movement: ScheduledTornoMovement) => Promise<void> | void;
 };
 
@@ -32,20 +35,6 @@ type MeasureRow = {
   position: string;
   [key: string]: string;
 };
-
-const MEASURE_FIELDS = [
-  { key: "alturaCeja", label: "Altura de Ceja" },
-  { key: "espesorCeja", label: "Espesor de Ceja" },
-  { key: "caidaVertical", label: "Caida Vertical" },
-  { key: "espesorPestana", label: "Espesor de Pestana" },
-  { key: "trazoEntreCaras", label: "Trazado Entre Caras" },
-  { key: "diametroPromedio", label: "Diametro Promedio" },
-  { key: "gruesoRueda", label: "Grueso de Rueda" },
-  { key: "desgastePisada", label: "Desgaste de Pisada" },
-  { key: "tramoMancuerna", label: "Tramo de Mancuerna" },
-  { key: "diametroRueda", label: "Diametro de Rueda" },
-  { key: "lectura", label: "Lectura" },
-] as const;
 
 const WHEEL_ORDER = ["l1", "r1", "l2", "r2", "l3", "r3", "l4", "r4", "l5", "r5", "l6", "r6"] as const;
 
@@ -55,8 +44,6 @@ const normalizeLabel = (value: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toLowerCase();
-
-const labelToFieldKey = new Map(MEASURE_FIELDS.map((field) => [normalizeLabel(field.label), field.key]));
 
 const hasScheduledMeasure = (summary: unknown) => {
   const value = String(summary ?? "").trim();
@@ -76,7 +63,8 @@ const formatDate = (value?: string | null) => {
   });
 };
 
-const parseWheelSummary = (summary: unknown): Record<string, string> => {
+const parseWheelSummary = (summary: unknown, fieldDefs: TornoFieldDef[]): Record<string, string> => {
+  const labelToFieldKey = new Map(fieldDefs.map((field) => [normalizeLabel(field.label), field.key]));
   const row: Record<string, string> = {};
   String(summary ?? "")
     .split("|")
@@ -93,24 +81,30 @@ const parseWheelSummary = (summary: unknown): Record<string, string> => {
   return row;
 };
 
-const buildMeasureRows = (medidas: unknown): MeasureRow[] => {
+const buildProfileMeasureRows = (medidas: unknown, fieldDefs: TornoFieldDef[]): MeasureRow[] => {
   if (!medidas || typeof medidas !== "object") return [];
   const source = medidas as Record<string, unknown>;
   return WHEEL_ORDER
     .filter((position) => Object.prototype.hasOwnProperty.call(source, position) && hasScheduledMeasure(source[position]))
     .map((position) => {
       const row: MeasureRow = { position: position.toUpperCase() };
-      for (const field of MEASURE_FIELDS) row[field.key] = "-";
-      return { ...row, ...parseWheelSummary(source[position]) };
+      for (const field of fieldDefs) row[field.key] = "-";
+      return { ...row, ...parseWheelSummary(source[position], fieldDefs) };
     });
 };
 
 export default function ScheduledTornoActivationModal(props: Props) {
-  const { enabled, locomotiveNumber, onActivate } = props;
+  const {
+    enabled,
+    locomotiveNumber,
+    scheduledMovements = [],
+    loading = false,
+    companyName,
+    onRefresh,
+    onActivate,
+  } = props;
   const [debouncedLocomotive, setDebouncedLocomotive] = useState("");
-  const [match, setMatch] = useState<ScheduledTornoMovement | null>(null);
   const [dismissedMatchId, setDismissedMatchId] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
   const [activating, setActivating] = useState(false);
 
   useEffect(() => {
@@ -129,43 +123,21 @@ export default function ScheduledTornoActivationModal(props: Props) {
     }
   }, [locomotiveNumber]);
 
-  useEffect(() => {
-    if (!debouncedLocomotive) {
-      setMatch(null);
-      return;
-    }
-
-    let alive = true;
-    setLoading(true);
-    Movimiento.fetchWithTimeout(
-      `${API_BASE}/movimientos/torno/agendados/activable?locomotiveNumber=${encodeURIComponent(debouncedLocomotive)}`,
-      {
-        method: "GET",
-        credentials: "include",
-        headers: { Accept: "application/json", ...Movimiento.tokenHeader() },
-      }
-    )
-      .then(async (res) => {
-        const text = await res.text();
-        const data = text ? Movimiento.safeJSON(text) : {};
-        if (!alive) return;
-        setMatch(res.ok && data?.activable ? data.scheduledMovement ?? null : null);
-      })
-      .catch(() => {
-        if (alive) setMatch(null);
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
-
-    return () => {
-      alive = false;
-    };
-  }, [debouncedLocomotive]);
+  const match = useMemo(() => {
+    if (!debouncedLocomotive) return null;
+    const now = Date.now();
+    return scheduledMovements.find((item) => {
+      const sameLocomotive = Number(item?.locomotiveNumber) === Number(debouncedLocomotive);
+      if (!sameLocomotive) return false;
+      const limit = item?.fechaLimiteActivacion ? new Date(item.fechaLimiteActivacion).getTime() : null;
+      return !limit || Number.isNaN(limit) || now <= limit;
+    }) ?? null;
+  }, [debouncedLocomotive, scheduledMovements]);
 
   const matchId = Number(match?.id ?? 0);
   const open = !!match && matchId !== dismissedMatchId;
-  const rows = useMemo(() => buildMeasureRows(match?.medidasTorno), [match?.medidasTorno]);
+  const fieldDefs = useMemo(() => TORNO_PROFILE_FIELDS[resolveTornoProfile(companyName)], [companyName]);
+  const rows = useMemo(() => buildProfileMeasureRows(match?.medidasTorno, fieldDefs), [fieldDefs, match?.medidasTorno]);
   const columns = useMemo<DynamicTableColumn<MeasureRow>[]>(
     () => [
       {
@@ -177,7 +149,7 @@ export default function ScheduledTornoActivationModal(props: Props) {
           <span className="font-semibold text-emerald-700 dark:text-emerald-300">{row.position}</span>
         ),
       },
-      ...MEASURE_FIELDS.map<DynamicTableColumn<MeasureRow>>((field) => ({
+      ...fieldDefs.map<DynamicTableColumn<MeasureRow>>((field) => ({
         key: field.key,
         title: field.label,
         width: 190,
@@ -187,7 +159,7 @@ export default function ScheduledTornoActivationModal(props: Props) {
         ),
       })),
     ],
-    []
+    [fieldDefs]
   );
 
   if (!open) {
@@ -207,14 +179,24 @@ export default function ScheduledTornoActivationModal(props: Props) {
                 Solicitud #{match?.id ?? "-"} para locomotora {match?.locomotiveNumber ?? "-"}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setDismissedMatchId(matchId || null)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-              aria-label="Cerrar"
-            >
-              x
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void onRefresh?.()}
+                disabled={loading}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                {loading ? "Actualizando..." : "Actualizar"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDismissedMatchId(matchId || null)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                aria-label="Cerrar"
+              >
+                x
+              </button>
+            </div>
           </div>
         </div>
 

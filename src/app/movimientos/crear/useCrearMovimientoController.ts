@@ -109,6 +109,9 @@ export function useCrearMovimientoController(): CrearMovimientoController {
   const [tornoPdfStatus, setTornoPdfStatus] = useState<string | null>(null);
   const [activatingScheduledTorno, setActivatingScheduledTorno] = useState(false);
   const [scheduledActivationId, setScheduledActivationId] = useState<number | null>(null);
+  const [scheduledTornoMovements, setScheduledTornoMovements] = useState<ScheduledTornoMovement[]>([]);
+  const [scheduledTornoLoading, setScheduledTornoLoading] = useState(false);
+  const requestedScheduledTornoRef = useRef(false);
   const isService = !!form.service;
   const hasTornoPdfStep = form.service === "Torno" && selectionMode === "de_via";
   const maxStep: CrearMovimientoStep = hasTornoPdfStep ? 4 : 3;
@@ -289,6 +292,40 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     [empresas, form.empresaId, userCompanyName]
   );
 
+  const normalizeScheduledTornoList = useCallback((payload: unknown): ScheduledTornoMovement[] => {
+    if (Array.isArray(payload)) return payload as ScheduledTornoMovement[];
+    if (!payload || typeof payload !== "object") return [];
+    const source = payload as Record<string, unknown>;
+    const list = source.items ?? source.data ?? source.rows ?? source.results ?? [];
+    return Array.isArray(list) ? (list as ScheduledTornoMovement[]) : [];
+  }, []);
+
+  const refreshScheduledTornoMovements = useCallback(async () => {
+    try {
+      setScheduledTornoLoading(true);
+      const response = await Movimiento.fetchWithTimeout(`${API_BASE}/movimientos/torno/agendados`, {
+        method: "GET",
+        credentials: "include",
+        headers: { Accept: "application/json", ...Movimiento.tokenHeader() },
+      });
+      const text = await response.text();
+      const data = text ? Movimiento.safeJSON(text) : {};
+      if (!response.ok) throw new Error("No se pudieron cargar movimientos de torno agendados.");
+      setScheduledTornoMovements(normalizeScheduledTornoList(data));
+      requestedScheduledTornoRef.current = true;
+    } catch {
+      setScheduledTornoMovements([]);
+      requestedScheduledTornoRef.current = false;
+    } finally {
+      setScheduledTornoLoading(false);
+    }
+  }, [normalizeScheduledTornoList]);
+
+  useEffect(() => {
+    if (form.service !== "Torno" || requestedScheduledTornoRef.current) return;
+    void refreshScheduledTornoMovements();
+  }, [form.service, refreshScheduledTornoMovements]);
+
   /**
    * Seleccion de seccion origen.
    * Si la seccion esta ocupada, intenta propagar locomotora para evitar inconsistencias.
@@ -464,6 +501,8 @@ export function useCrearMovimientoController(): CrearMovimientoController {
         setTornoPdfStatus(null);
         setTornoPdfSending(false);
         setScheduledActivationId(null);
+        setScheduledTornoMovements((prev) => prev.filter((item) => Number(item.id) !== Number(scheduledActivationId)));
+        requestedScheduledTornoRef.current = true;
         setStep(1);
         window.location.assign(`${roleBase(rol)}/movimientos`);
         return;
@@ -472,6 +511,8 @@ export function useCrearMovimientoController(): CrearMovimientoController {
       if (hasTornoPdfStep) {
         if (activatedScheduled) {
           alert("La solicitud agendada de torno fue activada y colocada en ronda.");
+          setScheduledTornoMovements((prev) => prev.filter((item) => Number(item.id) !== Number(scheduledActivationId)));
+          requestedScheduledTornoRef.current = true;
           setScheduledActivationId(null);
         }
         setTornoStep2Completed(true);
@@ -493,7 +534,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
       setScheduledActivationId(null);
       setStep(1);
     },
-    [clearDraft, clearTornoMedicion, hasTornoPdfStep, rol]
+    [clearDraft, clearTornoMedicion, hasTornoPdfStep, rol, scheduledActivationId]
   );
 
   /** Capa 6: envio final. */
@@ -608,6 +649,9 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     setTornoPdfStatus(null);
     setActivatingScheduledTorno(false);
     setScheduledActivationId(null);
+    setScheduledTornoMovements([]);
+    setScheduledTornoLoading(false);
+    requestedScheduledTornoRef.current = false;
     setErrors({});
     setShowFromOpts(false);
     setShowToOpts(false);
@@ -653,6 +697,9 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     generateTornoPdf,
     goBackToTornoMedicion,
     activateScheduledTornoMovement,
+    scheduledTornoMovements,
+    scheduledTornoLoading,
+    refreshScheduledTornoMovements,
     online,
     pendingCount,
     flushOutbox,
