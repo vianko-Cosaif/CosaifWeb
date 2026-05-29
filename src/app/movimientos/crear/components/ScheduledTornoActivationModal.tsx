@@ -19,6 +19,9 @@ export type ScheduledTornoMovement = {
   fechaLimiteActivacion?: string | null;
   medidasTorno?: Record<string, unknown> | null;
   instrucciones?: string | null;
+  tipo?: string | null;
+  temporaryRecovery?: boolean;
+  recovery?: boolean;
 };
 
 type Props = {
@@ -136,6 +139,10 @@ export default function ScheduledTornoActivationModal(props: Props) {
 
   const matchId = Number(match?.id ?? 0);
   const open = !!match && matchId !== dismissedMatchId;
+  const isRecovery =
+    match?.temporaryRecovery === true ||
+    match?.recovery === true ||
+    String(match?.tipo ?? "").toUpperCase() === "TORNO_RECUPERACION";
   const fieldDefs = useMemo(() => TORNO_PROFILE_FIELDS[resolveTornoProfile(companyName)], [companyName]);
   const rows = useMemo(() => buildProfileMeasureRows(match?.medidasTorno, fieldDefs), [fieldDefs, match?.medidasTorno]);
   const columns = useMemo<DynamicTableColumn<MeasureRow>[]>(
@@ -174,9 +181,11 @@ export default function ScheduledTornoActivationModal(props: Props) {
         <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
-              <h3 className="text-base font-semibold text-slate-900 dark:text-white">Movimiento de torno agendado encontrado</h3>
+              <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                {isRecovery ? "Torneado cancelado recuperable" : "Movimiento de torno agendado encontrado"}
+              </h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Solicitud #{match?.id ?? "-"} para locomotora {match?.locomotiveNumber ?? "-"}
+                {isRecovery ? "Guardado temporal" : "Solicitud"} #{match?.id ?? "-"} para locomotora {match?.locomotiveNumber ?? "-"}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -204,6 +213,11 @@ export default function ScheduledTornoActivationModal(props: Props) {
           <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
             <div>Programada: <strong>{formatDate(match?.fechaProgramada)}</strong></div>
             <div className="mt-1">Limite de activacion: <strong>{formatDate(match?.fechaLimiteActivacion)}</strong></div>
+            {isRecovery ? (
+              <div className="mt-2 font-medium text-amber-700 dark:text-amber-300">
+                Este registro recupera las medidas de un torneado cancelado y creara un movimiento nuevo.
+              </div>
+            ) : null}
           </div>
 
           <DynamicTable
@@ -240,7 +254,7 @@ export default function ScheduledTornoActivationModal(props: Props) {
               }}
               className="rounded-xl bg-emerald-600 px-5 py-2 text-sm font-bold text-white shadow shadow-emerald-500/20 hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {activating ? "Activando..." : "Activar Movimiento"}
+              {activating ? (isRecovery ? "Recuperando..." : "Activando...") : (isRecovery ? "Recuperar medidas" : "Activar Movimiento")}
             </button>
           </div>
         </div>

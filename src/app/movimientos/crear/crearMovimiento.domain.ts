@@ -214,6 +214,7 @@ export function buildMovimientoPayload(args: {
   tornoMedicion?: TornoMedicionState;
   companyName?: string;
   scheduledActivationId?: number | null;
+  recoveredCancelledTornoId?: number | null;
 }) {
   const {
     resolvedIds,
@@ -226,6 +227,7 @@ export function buildMovimientoPayload(args: {
     tornoMedicion,
     companyName,
     scheduledActivationId,
+    recoveredCancelledTornoId,
   } = args;
   const { empresaId, creadoPorId, localidadId } = resolvedIds;
 
@@ -304,6 +306,11 @@ export function buildMovimientoPayload(args: {
 
     if (scheduledActivationId) {
       payload.activarAgendadoId = scheduledActivationId;
+    }
+
+    if (recoveredCancelledTornoId) {
+      payload.recuperarTornoCanceladoId = recoveredCancelledTornoId;
+      payload.ignorarAgendado = true;
     }
   }
 

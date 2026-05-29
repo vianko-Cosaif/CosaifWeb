@@ -109,6 +109,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
   const [tornoPdfStatus, setTornoPdfStatus] = useState<string | null>(null);
   const [activatingScheduledTorno, setActivatingScheduledTorno] = useState(false);
   const [scheduledActivationId, setScheduledActivationId] = useState<number | null>(null);
+  const [recoveredCancelledTornoId, setRecoveredCancelledTornoId] = useState<number | null>(null);
   const [scheduledTornoMovements, setScheduledTornoMovements] = useState<ScheduledTornoMovement[]>([]);
   const [scheduledTornoLoading, setScheduledTornoLoading] = useState(false);
   const requestedScheduledTornoRef = useRef(false);
@@ -433,6 +434,10 @@ export function useCrearMovimientoController(): CrearMovimientoController {
   const activateScheduledTornoMovement = useCallback(async (scheduledMovement: ScheduledTornoMovement) => {
     const id = Number(scheduledMovement?.id);
     if (!Number.isInteger(id) || id <= 0 || activatingScheduledTorno) return;
+    const isRecovery =
+      scheduledMovement.temporaryRecovery === true ||
+      scheduledMovement.recovery === true ||
+      String(scheduledMovement.tipo ?? "").toUpperCase() === "TORNO_RECUPERACION";
 
     setActivatingScheduledTorno(true);
     try {
@@ -473,10 +478,15 @@ export function useCrearMovimientoController(): CrearMovimientoController {
       }));
       setSelectionMode("de_via");
       setTornoMedicion(parsedMedicion);
-      setScheduledActivationId(id);
+      setScheduledActivationId(isRecovery ? null : id);
+      setRecoveredCancelledTornoId(isRecovery ? id : null);
       setTornoStep2Completed(false);
       setTornoMovimientoId(null);
-      setTornoPdfStatus("Solicitud agendada precargada. Revisa las medidas y confirma para activarla.");
+      setTornoPdfStatus(
+        isRecovery
+          ? "Medidas recuperadas. Revisa la informacion y confirma para crear un movimiento nuevo."
+          : "Solicitud agendada precargada. Revisa las medidas y confirma para activarla."
+      );
       setStep(2);
     } catch (error) {
       alert(error instanceof Error ? error.message : "No se pudo precargar el movimiento agendado.");
@@ -501,7 +511,9 @@ export function useCrearMovimientoController(): CrearMovimientoController {
         setTornoPdfStatus(null);
         setTornoPdfSending(false);
         setScheduledActivationId(null);
-        setScheduledTornoMovements((prev) => prev.filter((item) => Number(item.id) !== Number(scheduledActivationId)));
+        setRecoveredCancelledTornoId(null);
+        const consumedId = scheduledActivationId ?? recoveredCancelledTornoId;
+        setScheduledTornoMovements((prev) => prev.filter((item) => Number(item.id) !== Number(consumedId)));
         requestedScheduledTornoRef.current = true;
         setStep(1);
         window.location.assign(`${roleBase(rol)}/movimientos`);
@@ -511,9 +523,16 @@ export function useCrearMovimientoController(): CrearMovimientoController {
       if (hasTornoPdfStep) {
         if (activatedScheduled) {
           alert("La solicitud agendada de torno fue activada y colocada en ronda.");
-          setScheduledTornoMovements((prev) => prev.filter((item) => Number(item.id) !== Number(scheduledActivationId)));
+          const consumedId = scheduledActivationId ?? recoveredCancelledTornoId;
+          setScheduledTornoMovements((prev) => prev.filter((item) => Number(item.id) !== Number(consumedId)));
           requestedScheduledTornoRef.current = true;
           setScheduledActivationId(null);
+          setRecoveredCancelledTornoId(null);
+        } else if (recoveredCancelledTornoId) {
+          alert("Las medidas recuperadas se usaron para crear un movimiento nuevo.");
+          setScheduledTornoMovements((prev) => prev.filter((item) => Number(item.id) !== Number(recoveredCancelledTornoId)));
+          requestedScheduledTornoRef.current = true;
+          setRecoveredCancelledTornoId(null);
         }
         setTornoStep2Completed(true);
         setTornoMovimientoId(Number.isFinite(movimientoId) && movimientoId > 0 ? movimientoId : 0);
@@ -532,9 +551,10 @@ export function useCrearMovimientoController(): CrearMovimientoController {
       setTornoPdfStatus(null);
       setTornoPdfSending(false);
       setScheduledActivationId(null);
+      setRecoveredCancelledTornoId(null);
       setStep(1);
     },
-    [clearDraft, clearTornoMedicion, hasTornoPdfStep, rol, scheduledActivationId]
+    [clearDraft, clearTornoMedicion, hasTornoPdfStep, recoveredCancelledTornoId, rol, scheduledActivationId]
   );
 
   /** Capa 6: envio final. */
@@ -550,6 +570,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     tornoMedicion,
     companyName: selectedCompanyName,
     scheduledActivationId,
+    recoveredCancelledTornoId,
     pushOutbox,
     onSuccess: onSubmitSuccess,
     redirectOnSuccess: !hasTornoPdfStep,
@@ -649,6 +670,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     setTornoPdfStatus(null);
     setActivatingScheduledTorno(false);
     setScheduledActivationId(null);
+    setRecoveredCancelledTornoId(null);
     setScheduledTornoMovements([]);
     setScheduledTornoLoading(false);
     requestedScheduledTornoRef.current = false;

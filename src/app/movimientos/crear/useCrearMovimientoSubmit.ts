@@ -81,6 +81,7 @@ export function useCrearMovimientoSubmit(args: {
   tornoMedicion?: TornoMedicionState;
   companyName?: string;
   scheduledActivationId?: number | null;
+  recoveredCancelledTornoId?: number | null;
   pushOutbox: (payload: unknown) => void;
   onSuccess: (ctx: { movimientoId: number; agendado?: boolean; activatedScheduled?: boolean }) => void;
   redirectOnSuccess?: boolean;
@@ -97,6 +98,7 @@ export function useCrearMovimientoSubmit(args: {
     tornoMedicion,
     companyName,
     scheduledActivationId,
+    recoveredCancelledTornoId,
     pushOutbox,
     onSuccess,
     redirectOnSuccess = true,
@@ -151,6 +153,7 @@ export function useCrearMovimientoSubmit(args: {
         tornoMedicion,
         companyName,
         scheduledActivationId,
+        recoveredCancelledTornoId,
       });
       payloadForOffline = payload;
 
@@ -228,6 +231,7 @@ export function useCrearMovimientoSubmit(args: {
     tornoMedicion,
     companyName,
     scheduledActivationId,
+    recoveredCancelledTornoId,
     pushOutbox,
     onSuccess,
     rol,

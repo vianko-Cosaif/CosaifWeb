@@ -161,7 +161,7 @@ export async function apiSwapMovimientos(rondaAId: number | string, rondaBId: nu
 export async function apiCancelarMovimiento(movimientoId: number, razon?: string) {
   return patchJsonWithFallbacks(
     [
-      `movimientos/movimientos/${movimientoId}/cancelar`,
+      `/movimientos/${movimientoId}/cancelar`,
     ],
     { razon: razon ?? 'Sin motivo' }
   );
