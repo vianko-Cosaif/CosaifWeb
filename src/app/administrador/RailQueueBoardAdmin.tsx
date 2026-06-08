@@ -6,6 +6,7 @@ import { getClientCookie } from "@/lib/cookies";
 import TornoMeasuresViewerModal from "../movimientos/torno/TornoMeasuresViewerModal";
 import { parseTornoMedicionFromApi } from "../movimientos/torno/tornoMeasureParser";
 import { DEFAULT_TORNO_MEDICION_STATE, type TornoMedicionState } from "../movimientos/crear/tornoMedicion.types";
+import { useRealtimeBoardRefresh } from "../hooks/useRealtimeBoardRefresh";
 
 /* ===== Tipos ===== */
 type Ronda = {
@@ -369,6 +370,16 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
       }
     }
   }
+
+  useRealtimeBoardRefresh({
+    enabled: true,
+    realtimeLocalidadId: null,
+    scopeLocalidadId: activeLocId > 0 ? activeLocId : null,
+    onRefresh: () => {
+      if (activeLocId === 0 && localidades.length === 0) return;
+      return load(true);
+    },
+  });
 
   // init
   useEffect(() => { loadLocalidades(); }, []);
@@ -1132,5 +1143,4 @@ function EmptyState() {
     </div>
   );
 }
-
 

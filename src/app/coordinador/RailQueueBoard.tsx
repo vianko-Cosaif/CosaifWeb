@@ -9,6 +9,7 @@ import { S } from "./RailQueueBoard.styles";
 import TornoMeasuresViewerModal from "../movimientos/torno/TornoMeasuresViewerModal";
 import { parseTornoMedicionFromApi } from "../movimientos/torno/tornoMeasureParser";
 import { DEFAULT_TORNO_MEDICION_STATE, type TornoMedicionState } from "../movimientos/crear/tornoMedicion.types";
+import { useRealtimeBoardRefresh } from "../hooks/useRealtimeBoardRefresh";
 /* ===== Tipos ===== */
 type Ronda = {
   id: number;
@@ -353,6 +354,13 @@ export default function RailQueueBoardPage({
       }
     }
   }
+
+  useRealtimeBoardRefresh({
+    enabled: Boolean(localidadId),
+    realtimeLocalidadId: localidadId,
+    scopeLocalidadId: localidadId,
+    onRefresh: () => load(true),
+  });
 
   // Fullscreen control
   useEffect(() => {
@@ -1046,5 +1054,4 @@ function DateBox({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-
 

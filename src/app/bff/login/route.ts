@@ -1,7 +1,8 @@
 import "server-only";
 import { NextResponse } from "next/server";
+import { normalizeHttpOrigin } from "@/lib/serverOrigin";
 
-const ORIGIN = (process.env.API_ORIGIN || "").replace(/\/$/, "");
+const ORIGIN = normalizeHttpOrigin(process.env.API_ORIGIN);
 const BFF_TIMEOUT_MS = Number(process.env.BFF_TIMEOUT_MS || 12000);
 
 function getErrorStatus(error: unknown): 502 | 504 {

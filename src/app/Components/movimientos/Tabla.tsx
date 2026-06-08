@@ -24,6 +24,7 @@ import {
   User,
   Flag,
   Settings,
+  Tags,
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
@@ -125,6 +126,7 @@ function TablaInner({
   );
   const showEditColumn = Boolean(onEditar) && filas.some((m) => puedeEditarMovimiento(m.estado));
   const showMeasuresColumn = false;
+  const tableColumnSpan = 10 + (showEditColumn ? 1 : 0) + (showMeasuresColumn ? 1 : 0);
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
   const [measuresModal, setMeasuresModal] = useState<MeasuresModalState>({
     open: false,
@@ -295,6 +297,15 @@ function TablaInner({
                   onSort={onOrden}
                   icon={TrainFront}
                 />
+                <HeaderCell
+                  label="Tipo"
+                  sortKey="tipo"
+                  currentSort={campoOrden}
+                  dir={direccionOrden}
+                  onSort={onOrden}
+                  icon={Tags}
+                  align="center"
+                />
 
                 <HeaderCell
                   label="Localidad"
@@ -368,7 +379,7 @@ function TablaInner({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs sm:text-xs md:text-sm">
               {!tieneFilas ? (
                 <tr>
-                  <td colSpan={13} className="py-16 text-center sm:py-20">
+                  <td colSpan={tableColumnSpan} className="py-16 text-center sm:py-20">
                     <div className="flex flex-col items-center justify-center gap-4">
                       <div className="rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 p-5">
                         <TrainFront size={36} strokeWidth={1.2} className="text-slate-300 dark:text-slate-600" />
@@ -396,6 +407,7 @@ function TablaInner({
                     canEdit={puedeEditarMovimiento(movement.estado)}
                     showMeasures={showMeasuresColumn}
                     onViewMeasures={handleViewMeasures}
+                    tableColumnSpan={tableColumnSpan}
                   />
                 ))
               )}
@@ -514,6 +526,7 @@ interface MovimientoRowProps {
   canEdit?: boolean;
   showMeasures?: boolean;
   onViewMeasures?: (movement: Movement) => void;
+  tableColumnSpan?: number;
 }
 
 const MovimientoRow = memo(function MovimientoRow({
@@ -525,6 +538,7 @@ const MovimientoRow = memo(function MovimientoRow({
   canEdit = true,
   showMeasures = false,
   onViewMeasures,
+  tableColumnSpan = 10,
 }: MovimientoRowProps) {
   const handleRowClick = useCallback(() => {
     onToggle(movement.id);
@@ -623,6 +637,11 @@ const MovimientoRow = memo(function MovimientoRow({
           </div>
         </td>
 
+        {/* Tipo de movimiento */}
+        <td className="px-2 py-3 text-center align-middle sm:px-4 sm:py-4">
+          <BadgeTipoMovimiento tipo={movement.tipoMovimiento} />
+        </td>
+
         {/* Localidad */}
         <td className="hidden px-2 py-3 align-middle md:table-cell sm:px-4 sm:py-4">
           <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
@@ -697,7 +716,7 @@ const MovimientoRow = memo(function MovimientoRow({
 
       {/* DETALLE */}
       <tr className="m-0 border-0 p-0">
-        <td colSpan={13} className="m-0 border-0 p-0">
+        <td colSpan={tableColumnSpan} className="m-0 border-0 p-0">
           <div
             className={`${styles.expandedContentContainer} ${isOpen ? styles.show : ""
               }`}
@@ -793,6 +812,7 @@ const MobileCard = memo(function MobileCard({
               </div>
               <div className="flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-500">
                 <span className="font-mono">#{movement.id}</span>
+                <BadgeTipoMovimiento tipo={movement.tipoMovimiento} compact />
                 {isPriorityHigh && (
                   <span className="text-[10px] font-bold uppercase tracking-wider text-rose-500 dark:text-rose-400">
                     Alta
@@ -825,6 +845,12 @@ const MobileCard = memo(function MobileCard({
             <div className="text-[10px] uppercase tracking-wider text-slate-400">Localidad</div>
             <div className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
               {movement.localidadNombre ?? "—"}
+            </div>
+          </div>
+          <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-2.5 py-2">
+            <div className="text-[10px] uppercase tracking-wider text-slate-400">Tipo</div>
+            <div className="mt-1">
+              <BadgeTipoMovimiento tipo={movement.tipoMovimiento} compact />
             </div>
           </div>
           <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-2.5 py-2">
@@ -944,6 +970,10 @@ function ExpandedDetailsContent({
               className="md:hidden"
             />
             <InfoBlock
+              label="Tipo"
+              value={formatTipoMovimientoLabel(movement.tipoMovimiento)}
+            />
+            <InfoBlock
               label="Solicitud"
               value={fechaSolicitudFmt}
               className="lg:hidden"
@@ -965,6 +995,10 @@ function ExpandedDetailsContent({
         <div className="h-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <SectionTitle title="Operación de Vía" icon={MapPin} color="emerald" />
           <div className="mt-3 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-50 pb-2 text-xs dark:border-slate-800/50">
+              <span className="text-slate-500">Tipo</span>
+              <BadgeTipoMovimiento tipo={movement.tipoMovimiento} compact />
+            </div>
             <div className="flex items-center justify-between border-b border-slate-50 pb-2 text-xs dark:border-slate-800/50">
               <span className="text-slate-500">Origen</span>
               <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
@@ -1134,6 +1168,59 @@ function BadgeEstado({ estado }: { estado: string }) {
     >
       <span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} />
       {estado}
+    </span>
+  );
+}
+
+function normalizeTipoMovimiento(tipo: string | null | undefined): string {
+  return String(tipo ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+}
+
+function formatGenericTipoMovimiento(tipo: string): string {
+  return tipo
+    .trim()
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/^\w/, (match) => match.toUpperCase());
+}
+
+function formatTipoMovimientoLabel(tipo: string | null | undefined): string {
+  const raw = String(tipo ?? "").trim();
+  const key = normalizeTipoMovimiento(raw);
+
+  if (!raw || key === "N/A" || key === "NA") return "—";
+  if (key === "MD_TRABAJANDO" || key === "MD_TRABAJNDO") return "MD trabajando";
+  if (key === "REMOLCADA" || key === "REMOLCADO") return "Remolcada";
+  return formatGenericTipoMovimiento(raw);
+}
+
+function BadgeTipoMovimiento({
+  tipo,
+  compact = false,
+}: {
+  tipo: string | null | undefined;
+  compact?: boolean;
+}) {
+  const key = normalizeTipoMovimiento(tipo);
+  const label = formatTipoMovimientoLabel(tipo);
+  const tone =
+    key === "MD_TRABAJANDO" || key === "MD_TRABAJNDO"
+      ? "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-900/25 dark:text-indigo-300"
+      : key === "REMOLCADA" || key === "REMOLCADO"
+        ? "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-800 dark:bg-cyan-900/25 dark:text-cyan-300"
+        : "border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400";
+
+  return (
+    <span
+      className={`inline-flex max-w-full items-center rounded-lg border font-bold uppercase tracking-wide shadow-sm ${tone} ${
+        compact ? "px-2 py-0.5 text-[9px]" : "px-2.5 py-1.5 text-[10px]"
+      }`}
+      title={label === "—" ? "Tipo no disponible" : label}
+    >
+      <span className="truncate">{label}</span>
     </span>
   );
 }

@@ -146,6 +146,23 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
     return () => window.removeEventListener("resize", updateSidebarWidth);
   }, [isOpen, mounted]);
 
+  useEffect(() => {
+    if (!mobileOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileOpen(false);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [mobileOpen]);
+
   const normRol = useMemo<Rol>(() => {
     const r = String(session?.rol || "").toUpperCase();
     if (r.includes("ADMIN")) return "ADMINISTRADOR";
@@ -238,7 +255,10 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
       {/* MOBILE TRIGGER */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="fixed left-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 shadow-sm backdrop-blur-md md:hidden dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 transition-transform hover:scale-105 active:scale-95"
+        className="fixed left-4 top-[calc(env(safe-area-inset-top)+1rem)] z-40 flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white/80 shadow-sm backdrop-blur-md transition-transform hover:scale-105 active:scale-95 md:hidden dark:border-slate-800 dark:bg-slate-900/80"
+        aria-label="Abrir menú"
+        aria-expanded={mobileOpen}
+        aria-controls="cosaif-sidebar"
       >
         <MenuIcon className="h-5 w-5 text-slate-700 dark:text-slate-300" />
       </button>
@@ -254,6 +274,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
 
       {/* SIDEBAR CONTAINER */}
       <aside
+        id="cosaif-sidebar"
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-200 bg-white/95 backdrop-blur-xl dark:border-zinc-800 dark:bg-black/90 transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]",
           mobileOpen ? "translate-x-0 w-[280px] shadow-2xl" : "-translate-x-full md:translate-x-0",
@@ -292,6 +313,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
             <button
               onClick={() => setMobileOpen(false)}
               className="absolute right-4 top-1/2 -translate-y-1/2 md:hidden"
+              aria-label="Cerrar menú"
             >
               <X className="h-5 w-5 text-slate-500" />
             </button>

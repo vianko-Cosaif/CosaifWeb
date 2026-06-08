@@ -1,12 +1,29 @@
-// src/app/layout.tsx
 import "./globals.scss";
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
 import { initThemeSSRScript } from "@/lib/theme";
+import AdaptiveMode from "@/app/Components/layout/AdaptiveMode";
+import PwaInstallPrompt from "@/app/Components/layout/PwaInstallPrompt";
 
 export const metadata: Metadata = {
-  title: "Cosaif",
+  title: {
+    default: "Cosaif",
+    template: "%s | Cosaif",
+  },
   description: "Operación ferroviaria sin fricción",
+  applicationName: "Cosaif",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Cosaif",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  icons: {
+    icon: "/cosaif-logo.png",
+    apple: "/cosaif-logo.png",
+  },
 };
 
 export const viewport: Viewport = {
@@ -27,6 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: initThemeSSRScript() }} />
       </head>
       <body className="min-h-svh bg-white text-slate-900 antialiased selection:bg-sky-200/60 dark:bg-slate-950 dark:text-slate-100 dark:selection:bg-sky-600/40">
+        <AdaptiveMode />
         <a
           href="#main"
           className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:shadow"
@@ -37,6 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Theme Toggle global - solo se muestra fuera de rutas /cliente */}
 
         <main id="main">{children}</main>
+        <PwaInstallPrompt />
       </body>
     </html>
   );

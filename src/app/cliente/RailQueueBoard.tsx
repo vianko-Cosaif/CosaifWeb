@@ -8,6 +8,7 @@ import QueueSegmentedFilter, { type QueueSegmentedFilterOption } from "./compone
 import TornoMeasuresViewerModal from "../movimientos/torno/TornoMeasuresViewerModal";
 import { parseTornoMedicionFromApi } from "../movimientos/torno/tornoMeasureParser";
 import { DEFAULT_TORNO_MEDICION_STATE, type TornoMedicionState } from "../movimientos/crear/tornoMedicion.types";
+import { useRealtimeBoardRefresh } from "../hooks/useRealtimeBoardRefresh";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/xapi";
 
@@ -247,6 +248,13 @@ export default function RailQueueBoard({
       if (mySeq === reqSeq.current) { setLoading(false); setRefreshing(false); firstLoad.current = false; }
     }
   }
+
+  useRealtimeBoardRefresh({
+    enabled: Boolean(localidadId),
+    realtimeLocalidadId: localidadId,
+    scopeLocalidadId: localidadId,
+    onRefresh: () => load(true),
+  });
 
   useEffect(() => {
     firstLoad.current = true; prevIdsRef.current = []; setInfo({}); setItems([]); setLoading(true); load();
@@ -703,5 +711,4 @@ function QueueCard({
     </Fragment>
   );
 }
-
 

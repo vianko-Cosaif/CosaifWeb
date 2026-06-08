@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useRealtimeMovimientos,
+  type RealtimeMovementEvent,
+} from "@/app/hooks/useRealtimeMovimientos";
 
 /* ================== CONFIGURACIÓN ================== */
 const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_URL || "/bff";
-const DEFAULT_AUTO_REFRESH_MS = 10_000;
+const DEFAULT_AUTO_REFRESH_MS = 60_000;
 
 function normalizeBase(base?: string): string {
   return (base || DEFAULT_API_BASE).replace(/\/+$/, "");
@@ -493,7 +497,7 @@ function extraerItemsYTotal(
 /* ================== HOOK ================== */
 
 export function useMovimientos({
-  rol: _rol,
+  rol,
   token,
   apiBase,
   autoRefreshMs,
@@ -532,6 +536,7 @@ export function useMovimientos({
   >(null);
 
   const abortRef = useRef<AbortController | null>(null);
+  const realtimeRefreshTimerRef = useRef<number | null>(null);
   const base = normalizeBase(apiBase);
   const urlEmpresas = `${base}/empresas`;
   const urlLocalidades = `${base}/localidades`;
@@ -769,15 +774,80 @@ export function useMovimientos({
       setRefreshing(false);
     }
   }, [
+    ambito,
     authHeaders,
     queryString,
     urlListado,
     filtros.campoOrden,
     filtros.direccionOrden,
+    filtros.estado,
     filtros.pagina,
     filtros.tamPagina,
     shouldUseBuscar,
   ]);
+
+  const eventMatchesCurrentScope = useCallback(
+    (event: RealtimeMovementEvent): boolean => {
+      if (!event.type || event.type === "realtime.ready") return false;
+
+      const eventEmpresaId = Number(event.empresaId ?? NaN);
+      const eventLocalidadId = Number(event.localidadId ?? NaN);
+
+      if (
+        filtros.empresaId != null &&
+        Number.isFinite(eventEmpresaId) &&
+        eventEmpresaId !== Number(filtros.empresaId)
+      ) {
+        return false;
+      }
+
+      if (
+        filtros.localidadId != null &&
+        Number.isFinite(eventLocalidadId) &&
+        eventLocalidadId !== Number(filtros.localidadId)
+      ) {
+        return false;
+      }
+
+      return true;
+    },
+    [filtros.empresaId, filtros.localidadId]
+  );
+
+  const scheduleRealtimeRefresh = useCallback(
+    (event: RealtimeMovementEvent) => {
+      if (!eventMatchesCurrentScope(event)) return;
+      if (typeof window === "undefined") return;
+      if (realtimeRefreshTimerRef.current != null) return;
+
+      const jitterMs = 700 + Math.floor(Math.random() * 1_300);
+      realtimeRefreshTimerRef.current = window.setTimeout(() => {
+        realtimeRefreshTimerRef.current = null;
+        fetchMovimientos();
+      }, jitterMs);
+    },
+    [eventMatchesCurrentScope, fetchMovimientos]
+  );
+
+  const realtimeLocalidadId = useMemo(() => {
+    const normalizedRole = String(rol || "").toUpperCase();
+    if (normalizedRole !== "COORDINADOR") return null;
+    return filtros.localidadId != null ? Number(filtros.localidadId) : null;
+  }, [rol, filtros.localidadId]);
+
+  useRealtimeMovimientos({
+    enabled: true,
+    localidadId: realtimeLocalidadId,
+    onEvent: scheduleRealtimeRefresh,
+  });
+
+  useEffect(() => {
+    return () => {
+      if (realtimeRefreshTimerRef.current != null) {
+        clearTimeout(realtimeRefreshTimerRef.current);
+      }
+    };
+  }, []);
 
   /* ---------- Auto-refresh ---------- */
   useEffect(() => {
