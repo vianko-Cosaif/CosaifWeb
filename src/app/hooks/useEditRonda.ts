@@ -20,6 +20,9 @@ export interface Ronda {
   rondaNumero: number;
   orden: number;
   concluido: boolean;
+  empresa?: { id: number; nombre: string } | null;
+  movimientoId?: number | null;
+  createdAt?: string | null;
   movimiento: {
     id?: number;
     title?: string;
@@ -32,6 +35,7 @@ export interface Ronda {
     lavado?: boolean;
     torno?: boolean;
     estado?: string | null;
+    instrucciones?: string | null;
   };
 }
 
@@ -73,6 +77,10 @@ function bffUrl(path: string) {
   return `${API_BASE}${path.startsWith('/') ? '' : '/'}${path}`;
 }
 
+function appUrl(path: string) {
+  return path.startsWith('/') ? path : `/${path}`;
+}
+
 /** fetch autenticado vía BFF: manda cookie + (opcional) Authorization */
 async function bffFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const headers: HeadersInit = {
@@ -88,25 +96,29 @@ async function bffFetch(path: string, init: RequestInit = {}): Promise<Response>
   });
 }
 
-/** Intenta varias rutas (fallbacks) y devuelve JSON desenvuelto ({success,data} | data) */
-async function getJsonWithFallbacks<T>(paths: string[]): Promise<T> {
-  let lastErr: any = null;
-  for (const p of paths) {
-    try {
-      const r = await bffFetch(p, { method: 'GET' });
-      if (r.status === 401) throw new Error('401');
-      if (!r.ok) {
-        lastErr = new Error(`${r.status} ${r.statusText}`);
-        continue;
-      }
-      const raw = await r.json();
-      const data = (raw && typeof raw === 'object' && 'data' in raw) ? (raw.data as T) : (raw as T);
-      return data;
-    } catch (e) {
-      lastErr = e;
-    }
+async function appFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...getAuthHeadersFromCookie(),
+    ...(init.headers || {}),
+  };
+  return fetch(appUrl(path), {
+    ...init,
+    headers,
+    credentials: 'include',
+    cache: 'no-store',
+  });
+}
+
+async function getAppJson<T>(path: string): Promise<T> {
+  const r = await appFetch(path, { method: 'GET' });
+  if (r.status === 401) throw new Error('401');
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '');
+    throw new Error(txt || `${r.status} ${r.statusText}`);
   }
-  throw lastErr ?? new Error('Error de red');
+  const raw = await r.json();
+  return (raw && typeof raw === 'object' && 'data' in raw) ? (raw.data as T) : (raw as T);
 }
 
 /** PATCH con fallbacks que devuelve JSON (o null si vacío) */
@@ -124,22 +136,102 @@ async function patchJsonWithFallbacks<T = unknown>(paths: string[], body: unknow
       if (!txt) return null as unknown as T;
       const raw = JSON.parse(txt);
       return (raw && typeof raw === 'object' && 'data' in raw) ? (raw.data as T) : (raw as T);
-    } catch (e: any) {
-      lastText = String(e?.message || e);
+    } catch (e: unknown) {
+      lastText = e instanceof Error ? e.message : String(e);
     }
   }
   throw new Error(lastText || 'No se pudo completar la operación');
 }
 
-/** (Opcional) PUT simple */
-async function putJson(path: string, body: unknown) {
-  const r = await bffFetch(path, { method: 'PUT', body: JSON.stringify(body) });
+async function postClienteRondas<T = unknown>(body: unknown): Promise<T> {
+  const r = await appFetch('/api/cliente/rondas', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  const txt = await r.text();
   if (r.status === 401) throw new Error('401');
   if (!r.ok) {
-    const txt = await r.text().catch(() => '');
-    throw new Error(txt || `${r.status} ${r.statusText}`);
+    let message = txt;
+    try {
+      const json = JSON.parse(txt);
+      message = json?.message || json?.error || txt;
+    } catch { }
+    throw new Error(message || `${r.status} ${r.statusText}`);
   }
-  return r.text().then(t => (t ? JSON.parse(t) : null));
+  if (!txt) return null as T;
+  const raw = JSON.parse(txt);
+  return (raw && typeof raw === 'object' && 'data' in raw) ? (raw.data as T) : (raw as T);
+}
+
+function readCookieNumber(names: string[]): number | null {
+  if (typeof document === 'undefined') return null;
+  for (const name of names) {
+    const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+    const n = Number(match ? decodeURIComponent(match[1]) : null);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
+}
+
+function getClientEmpresaIdSafe(): number | null {
+  const fromCookie = readCookieNumber(['empresaId', 'empresald', 'empresaID']);
+  if (fromCookie) return fromCookie;
+  try {
+    const direct = Number(localStorage.getItem('empresaId'));
+    if (Number.isFinite(direct) && direct > 0) return direct;
+    const uStr = localStorage.getItem('user');
+    if (uStr) {
+      const u = JSON.parse(uStr);
+      const nested = Number(u?.empresaId ?? u?.empresa?.id);
+      if (Number.isFinite(nested) && nested > 0) return nested;
+    }
+  } catch { }
+  return null;
+}
+
+function movementTitle(movimientoId?: number, locomotiveNumber?: number | string | null) {
+  if (locomotiveNumber != null && String(locomotiveNumber).trim()) return `Locomotora ${locomotiveNumber}`;
+  if (movimientoId) return `Movimiento #${movimientoId}`;
+  return 'Movimiento';
+}
+
+function normalizeRonda(raw: Ronda): Ronda {
+  const movimientoId = Number(raw.movimiento?.id ?? raw.movimientoId ?? NaN) || undefined;
+  const locomotiveNumber = raw.movimiento?.locomotiveNumber ?? null;
+  return {
+    ...raw,
+    movimientoId: raw.movimientoId ?? movimientoId ?? null,
+    movimiento: {
+      ...raw.movimiento,
+      id: movimientoId,
+      title: raw.movimiento?.title ?? movementTitle(movimientoId, locomotiveNumber),
+      description: raw.movimiento?.description ?? raw.movimiento?.instrucciones ?? undefined,
+      locomotiveNumber,
+      prioridad: raw.movimiento?.prioridad ?? null,
+      lavado: Boolean(raw.movimiento?.lavado),
+      torno: Boolean(raw.movimiento?.torno),
+      estado: raw.movimiento?.estado ?? null,
+    },
+  };
+}
+
+function infoFromRonda(ronda: Ronda): InfoExtra {
+  return {
+    empresa: {
+      id: Number(ronda.empresa?.id ?? 0),
+      nombre: ronda.empresa?.nombre ?? '—',
+    },
+    movimiento: {
+      id: ronda.movimiento?.id,
+      viaOrigen: { nombre: ronda.movimiento?.viaOrigen?.nombre ?? '—' },
+      viaDestino: { nombre: ronda.movimiento?.viaDestino?.nombre ?? null },
+      lavado: Boolean(ronda.movimiento?.lavado),
+      torno: Boolean(ronda.movimiento?.torno),
+      estado: ronda.movimiento?.estado ?? null,
+      prioridad: ronda.movimiento?.prioridad ?? null,
+      locomotiveNumber: ronda.movimiento?.locomotiveNumber ?? null,
+    },
+  };
 }
 
 /* =======================
@@ -148,23 +240,16 @@ async function putJson(path: string, body: unknown) {
 
 /** Swap de movimientos entre dos rondas (ruta oficial del backend) */
 export async function apiSwapMovimientos(rondaAId: number | string, rondaBId: number | string) {
-  return patchJsonWithFallbacks(
-    [
-      '/rondas/intercambiar-movimientos',         // RondaRoutes.ts
-      // '/rondas/intercambiar',                   // por si existe alias en tu server
-    ],
-    { rondaAId, rondaBId }
-  );
+  return postClienteRondas({ action: 'swap', rondaAId, rondaBId });
 }
 
 /** Cancela un movimiento y lo saca de su ronda (ruta oficial del backend) */
 export async function apiCancelarMovimiento(movimientoId: number, razon?: string) {
-  return patchJsonWithFallbacks(
-    [
-      `/movimientos/${movimientoId}/cancelar`,
-    ],
-    { razon: razon ?? 'Sin motivo' }
-  );
+  return postClienteRondas({
+    action: 'cancel',
+    movimientoId,
+    razon: razon ?? 'Cancelado por cliente',
+  });
 }
 
 
@@ -184,50 +269,28 @@ export const useRondaData = (localidadId: number, onClose: () => void) => {
       try {
         setLoading(true);
 
-        // Lee empresaId de localStorage si existe (no obligatorio)
-        let empresaId: number | null = null;
-        try {
-          const uStr = localStorage.getItem('user');
-          if (uStr) {
-            const u = JSON.parse(uStr);
-            empresaId = Number(u?.empresaId ?? null) || null;
-          }
-        } catch { }
+        const empresaId = getClientEmpresaIdSafe();
 
         if (mounted) setUser({ empresaId });
 
-        // 1) Rondas pendientes por localidad
-        const rondas = await getJsonWithFallbacks<Ronda[]>([
-          `/rondas/localidad/${localidadId}/estado/false`,
-          // Si tienes otra ruta bff -> '/api/rondas/localidad/...', añádela arriba
-        ]);
+        // 1) Rondas pendientes por localidad, ya filtradas por empresa en servidor si el rol es CLIENTE.
+        const query = new URLSearchParams({
+          localidadId: String(localidadId),
+          estado: 'pendientes',
+          entity: 'movimientos',
+        });
+        const rondas = await getAppJson<Ronda[]>(`/api/cliente/rondas?${query.toString()}`);
 
-        // 2) Info adicional por ronda (ruta oficial + fallback legacy)
-        const extra: Record<number, InfoExtra> = {};
-        await Promise.all(
-          (rondas || []).map(async (r) => {
-            try {
-              const info = await getJsonWithFallbacks<InfoExtra>([
-                `/rondas/${r.id}/info`,                 // RondaRoutes.ts
-                `/movimientos/ronda/${r.id}/info`,      // legacy (si existiera)
-              ]);
-              extra[r.id] = info;
-            } catch {
-              // sin info, no rompemos
-            }
-          })
-        );
-
-        // 3) Filtrar por empresa si la conocemos; si no, mostrar todo para no "romper"
         const propias = (rondas || [])
-          .filter((r) => {
-            if (!empresaId) return true;
-            const empId = extra[r.id]?.empresa?.id ?? null;
-            return empId === empresaId;
-          })
+          .map(normalizeRonda)
           .sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden);
 
-        // 4) Agrupar por rondaNumero
+        const extra: Record<number, InfoExtra> = {};
+        propias.forEach((r) => {
+          extra[r.id] = infoFromRonda(r);
+        });
+
+        // 2) Agrupar por rondaNumero
         const grouped: Grouped = {};
         propias.forEach((r) => {
           if (!grouped[r.rondaNumero]) grouped[r.rondaNumero] = [];
@@ -238,8 +301,8 @@ export const useRondaData = (localidadId: number, onClose: () => void) => {
         setInfoMap(extra);
         setList(propias);
         setGroupedByRonda(grouped);
-      } catch (e: any) {
-        const msg = String(e?.message || e);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
         if (msg.includes('401')) {
           alert('Sesión expirada. Inicia sesión nuevamente.');
         } else {

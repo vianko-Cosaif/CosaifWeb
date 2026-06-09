@@ -62,33 +62,49 @@ type MovimientoRecord = {
   instrucciones?: string | null;
 };
 
+type RondaInfoRecord = {
+  empresa?: { id?: number; nombre?: string } | null;
+  movimiento?: MovimientoRecord | null;
+  movimientoId?: number | null;
+};
+
+type UnknownRecord = Record<string, unknown>;
+type MovimientoDetailRecord = MovimientoRecord & { movimiento?: MovimientoRecord | null };
+
 function getApiBase(origin: string) {
   return (process.env.API_ORIGIN || process.env.NEXT_PUBLIC_API_URL || `${origin}/bff`).replace(/\/$/, "");
 }
 
-function extractArray(input: unknown): any[] {
-  const anyInput = input as any;
-  if (Array.isArray(input)) return input as any[];
-  if (Array.isArray(anyInput?.data)) return anyInput.data;
-  if (Array.isArray(anyInput?.items)) return anyInput.items;
-  if (Array.isArray(anyInput?.rows)) return anyInput.rows;
-  if (Array.isArray(anyInput?.value)) return anyInput.value;
+function asRecord(input: unknown): UnknownRecord {
+  return input && typeof input === "object" ? (input as UnknownRecord) : {};
+}
+
+function extractArray(input: unknown): UnknownRecord[] {
+  const record = asRecord(input);
+  if (Array.isArray(input)) return input as UnknownRecord[];
+  if (Array.isArray(record.data)) return record.data as UnknownRecord[];
+  if (Array.isArray(record.items)) return record.items as UnknownRecord[];
+  if (Array.isArray(record.rows)) return record.rows as UnknownRecord[];
+  if (Array.isArray(record.value)) return record.value as UnknownRecord[];
   return [];
 }
 
 function normalizeRondas(input: unknown): Array<{ id: number; rondaNumero: number; orden: number; concluido: boolean }> {
   return extractArray(input)
-    .map((x: any) => ({
-      id: Number(x.id ?? x.rondaId ?? x.ronda?.id),
-      rondaNumero: Number(x.rondaNumero ?? x.numero ?? x.num ?? x.ronda?.numero ?? 0),
-      orden: Number(x.orden ?? x.order ?? 0),
-      concluido: Boolean(
-        x.concluido ??
-          x.finalizado ??
-          x.terminado ??
-          (typeof x.estado === "string" ? x.estado.toUpperCase() === "CONCLUIDO" : x.estado === true)
-      ),
-    }))
+    .map((x) => {
+      const ronda = asRecord(x.ronda);
+      return {
+        id: Number(x.id ?? x.rondaId ?? ronda.id),
+        rondaNumero: Number(x.rondaNumero ?? x.numero ?? x.num ?? ronda.numero ?? 0),
+        orden: Number(x.orden ?? x.order ?? 0),
+        concluido: Boolean(
+          x.concluido ??
+            x.finalizado ??
+            x.terminado ??
+            (typeof x.estado === "string" ? x.estado.toUpperCase() === "CONCLUIDO" : x.estado === true)
+        ),
+      };
+    })
     .filter((r) => Number.isFinite(r.id));
 }
 
@@ -97,8 +113,8 @@ function isTornoConcluido(status?: string | null) {
 }
 
 function normalizeMovimientoCollection(input: unknown): MovimientoRecord[] {
-  const source = input as any;
-  return extractArray(source?.data ?? source?.items ?? source?.rows ?? source);
+  const source = asRecord(input);
+  return extractArray(source.data ?? source.items ?? source.rows ?? input) as MovimientoRecord[];
 }
 
 function movementToRondaOut(mv: MovimientoRecord, index: number, concluido: boolean): RondaOut | null {
@@ -147,6 +163,72 @@ function authHeaders(req: NextRequest, token?: string) {
   };
 }
 
+function readRole(cookieStore: Awaited<ReturnType<typeof cookies>>) {
+  return String(cookieStore.get(process.env.ROLE_COOKIE_NAME || "role")?.value || "").toUpperCase();
+}
+
+function readEmpresaId(cookieStore: Awaited<ReturnType<typeof cookies>>) {
+  return (
+    Number(cookieStore.get("empresaId")?.value) ||
+    Number(cookieStore.get("empresald")?.value) ||
+    Number(cookieStore.get("empresaID")?.value) ||
+    null
+  );
+}
+
+function shouldScopeToEmpresa(role: string, empresaId: number | null) {
+  if (!empresaId) return false;
+  return !["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR"].includes(role);
+}
+
+function getInfoEmpresaId(info: RondaInfoRecord | null) {
+  return Number(info?.empresa?.id ?? info?.movimiento?.empresa?.id ?? NaN) || null;
+}
+
+async function fetchJsonFirst(urls: string[], headers: HeadersInit) {
+  let lastStatus = 404;
+  for (const url of urls) {
+    const response = await fetch(url, { method: "GET", headers, cache: "no-store" });
+    lastStatus = response.status;
+    if (!response.ok) continue;
+    return await readTextAsJsonSafe(response);
+  }
+  throw new Error(`No se pudo validar pertenencia (${lastStatus})`);
+}
+
+async function fetchRondaInfo(base: string, headers: HeadersInit, rondaId: number) {
+  const raw = await fetchJsonFirst(
+    [
+      `${base}/movimientos/ronda/${encodeURIComponent(String(rondaId))}/info`,
+      `${base}/rondas/${encodeURIComponent(String(rondaId))}/info`,
+    ],
+    headers
+  );
+  return raw as RondaInfoRecord;
+}
+
+async function fetchMovimientoDetail(base: string, headers: HeadersInit, movimientoId: number) {
+  const raw = await fetchJsonFirst(
+    [
+      `${base}/movimientos/${encodeURIComponent(String(movimientoId))}/edicion`,
+      `${base}/movimientos/${encodeURIComponent(String(movimientoId))}`,
+    ],
+    headers
+  );
+  const data = raw as MovimientoDetailRecord;
+  return (data?.movimiento ?? data) as MovimientoRecord;
+}
+
+function assertEmpresaScope(shouldScopeEmpresa: boolean, empresaId: number | null, targetEmpresaIds: Array<number | null>) {
+  if (!shouldScopeEmpresa) return;
+  if (!empresaId) {
+    throw new Error("No se pudo validar tu empresa.");
+  }
+  if (targetEmpresaIds.some((id) => id !== empresaId)) {
+    throw new Error("Solo puedes modificar movimientos de tu empresa.");
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams, origin } = new URL(req.url);
@@ -159,7 +241,9 @@ export async function GET(req: NextRequest) {
 
     const cookieStore = await cookies();
     const token = cookieStore.get(process.env.JWT_COOKIE_NAME || "token")?.value;
-    const empresaId = Number(cookieStore.get("empresaId")?.value) || null;
+    const empresaId = readEmpresaId(cookieStore);
+    const role = readRole(cookieStore);
+    const shouldScopeEmpresa = shouldScopeToEmpresa(role, empresaId);
     const base = getApiBase(origin);
     const headers = authHeaders(req, token);
 
@@ -195,7 +279,7 @@ export async function GET(req: NextRequest) {
             headers,
           });
           if (rr.ok) {
-            const detail = (await readTextAsJsonSafe(rr)) as any;
+            const detail = (await readTextAsJsonSafe(rr)) as MovimientoDetailRecord;
             const mv = detail?.movimiento ?? detail;
             localidadMovimientoId = Number(mv?.localidad?.id ?? mv?.localidadId ?? NaN) || null;
             empresa = mv?.empresa ? { id: Number(mv.empresa.id ?? 0), nombre: String(mv.empresa.nombre ?? "—") } : null;
@@ -220,7 +304,7 @@ export async function GET(req: NextRequest) {
         }
 
         if (localidadMovimientoId && Number(localidadId) !== localidadMovimientoId) return null;
-        if (empresaId && empresa && empresa.id !== empresaId) return null;
+        if (shouldScopeEmpresa && empresa?.id !== empresaId) return null;
 
         return {
           id: -Math.abs(servicioId),
@@ -247,7 +331,7 @@ export async function GET(req: NextRequest) {
         page: "1",
         pageSize: "100",
       });
-      if (empresaId) qs.set("empresaId", String(empresaId));
+      if (shouldScopeEmpresa && empresaId) qs.set("empresaId", String(empresaId));
       const r = await fetch(`${base}/movimientos/buscar?${qs.toString()}`, {
         method: "GET",
         headers,
@@ -287,13 +371,13 @@ export async function GET(req: NextRequest) {
             headers,
           });
           if (!rr.ok) return [r.id, null] as const;
-          return [r.id, await readTextAsJsonSafe(rr)] as const;
+          return [r.id, (await readTextAsJsonSafe(rr)) as RondaInfoRecord] as const;
         } catch {
           return [r.id, null] as const;
         }
       })
     );
-    const infoMap = new Map<number, any>(infoPairs);
+    const infoMap = new Map<number, RondaInfoRecord | null>(infoPairs);
 
     let out: RondaOut[] = baseList.map((r) => {
       const inf = infoMap.get(r.id);
@@ -324,12 +408,90 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    if (empresaId) out = out.filter((r) => r.empresa?.id === empresaId);
+    if (shouldScopeEmpresa) out = out.filter((r) => r.empresa?.id === empresaId);
     out.sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden || a.id - b.id);
 
     return NextResponse.json(out, { status: 200 });
   } catch (err) {
     console.error("[api/cliente/rondas] error:", err);
     return NextResponse.json<RondaOut[]>([], { status: 200 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const { origin } = new URL(req.url);
+    const body = await req.json().catch(() => ({}));
+    const action = String(body?.action || "").toLowerCase();
+
+    const cookieStore = await cookies();
+    const token = cookieStore.get(process.env.JWT_COOKIE_NAME || "token")?.value;
+    if (!token) return NextResponse.json({ message: "No autorizado" }, { status: 401 });
+
+    const role = readRole(cookieStore);
+    const empresaId = readEmpresaId(cookieStore);
+    const shouldScopeEmpresa = shouldScopeToEmpresa(role, empresaId);
+    const base = getApiBase(origin);
+    const headers = authHeaders(req, token);
+    const jsonHeaders = { ...headers, "content-type": "application/json" };
+
+    if (action === "swap") {
+      const rondaAId = Number(body?.rondaAId);
+      const rondaBId = Number(body?.rondaBId);
+      if (!Number.isFinite(rondaAId) || !Number.isFinite(rondaBId) || rondaAId <= 0 || rondaBId <= 0) {
+        return NextResponse.json({ message: "Faltan rondaAId y rondaBId numéricos" }, { status: 400 });
+      }
+
+      try {
+        const [infoA, infoB] = await Promise.all([
+          fetchRondaInfo(base, headers, rondaAId),
+          fetchRondaInfo(base, headers, rondaBId),
+        ]);
+        assertEmpresaScope(shouldScopeEmpresa, empresaId, [getInfoEmpresaId(infoA), getInfoEmpresaId(infoB)]);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "No se pudo validar el intercambio.";
+        return NextResponse.json({ message }, { status: message.includes("Solo puedes") ? 403 : 400 });
+      }
+
+      const response = await fetch(`${base}/rondas/intercambiar-movimientos`, {
+        method: "PATCH",
+        headers: jsonHeaders,
+        body: JSON.stringify({ rondaAId, rondaBId }),
+        cache: "no-store",
+      });
+      const data = await readTextAsJsonSafe(response);
+      return NextResponse.json(data, { status: response.ok ? 200 : response.status });
+    }
+
+    if (action === "cancel") {
+      const movimientoId = Number(body?.movimientoId);
+      const razon = String(body?.razon || "Cancelado por cliente");
+      if (!Number.isFinite(movimientoId) || movimientoId <= 0) {
+        return NextResponse.json({ message: "Falta movimientoId numérico" }, { status: 400 });
+      }
+
+      try {
+        const movimiento = await fetchMovimientoDetail(base, headers, movimientoId);
+        const targetEmpresaId = Number(movimiento?.empresa?.id ?? NaN) || null;
+        assertEmpresaScope(shouldScopeEmpresa, empresaId, [targetEmpresaId]);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "No se pudo validar el movimiento.";
+        return NextResponse.json({ message }, { status: message.includes("Solo puedes") ? 403 : 400 });
+      }
+
+      const response = await fetch(`${base}/movimientos/${encodeURIComponent(String(movimientoId))}/cancelar`, {
+        method: "PATCH",
+        headers: jsonHeaders,
+        body: JSON.stringify({ razon }),
+        cache: "no-store",
+      });
+      const data = await readTextAsJsonSafe(response);
+      return NextResponse.json(data, { status: response.ok ? 200 : response.status });
+    }
+
+    return NextResponse.json({ message: "Acción no soportada" }, { status: 400 });
+  } catch (err) {
+    console.error("[api/cliente/rondas] POST error:", err);
+    return NextResponse.json({ message: "Error inesperado" }, { status: 500 });
   }
 }
