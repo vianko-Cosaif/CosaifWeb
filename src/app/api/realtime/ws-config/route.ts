@@ -24,8 +24,23 @@ export async function GET(req: Request) {
   }
 
   const currentUrl = new URL(req.url);
-  const ticketUrl = new URL(`${API_ORIGIN}/realtime/ws-ticket`);
   const localidadId = toPositiveInt(currentUrl.searchParams.get("localidadId"));
+  const forwardedProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const requestProto = forwardedProto || currentUrl.protocol.replace(":", "");
+  const defaultWsUrl = apiOriginToWebSocketUrl(API_ORIGIN);
+  const wouldBeMixedContent = requestProto === "https" && defaultWsUrl.protocol === "ws:";
+
+  if (wouldBeMixedContent) {
+    return NextResponse.json({
+      ok: true,
+      transport: "sse",
+      url: null,
+      reason: "WebSocket directo desactivado en PWA HTTPS; usar SSE mismo-origen.",
+      expiresAt: null,
+    });
+  }
+
+  const ticketUrl = new URL(`${API_ORIGIN}/realtime/ws-ticket`);
   if (localidadId) ticketUrl.searchParams.set("localidadId", String(localidadId));
 
   const ticketResponse = await fetch(ticketUrl.toString(), {

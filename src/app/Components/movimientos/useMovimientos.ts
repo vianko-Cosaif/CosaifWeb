@@ -788,7 +788,8 @@ export function useMovimientos({
 
   const eventMatchesCurrentScope = useCallback(
     (event: RealtimeMovementEvent): boolean => {
-      if (!event.type || event.type === "realtime.ready") return false;
+      if (event.type === "realtime.ready" || event.type === "realtime.resume") return true;
+      if (!event.type) return false;
 
       const eventEmpresaId = Number(event.empresaId ?? NaN);
       const eventLocalidadId = Number(event.localidadId ?? NaN);

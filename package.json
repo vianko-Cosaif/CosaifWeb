@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev -p 3012",
     "dev:https": "next dev -p 3012 --experimental-https",
-    "dev:https:lan": "next dev -p 3012 -H 0.0.0.0 --experimental-https --experimental-https-key certificates/localhost-key.pem --experimental-https-cert certificates/localhost.pem",
+    "cert:lan": "node scripts/create-lan-cert.mjs",
+    "pwa:urls": "node scripts/print-pwa-urls.mjs",
+    "dev:https:lan": "npm run cert:lan && next dev -p 3012 -H 0.0.0.0 --experimental-https --experimental-https-key certificates/cosaif-lan-key.pem --experimental-https-cert certificates/cosaif-lan.pem",
     "build": "next build ",
     "start": "next start -p 3012",
     "lint": "eslint"

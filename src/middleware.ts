@@ -24,7 +24,9 @@ export function middleware(req: NextRequest) {
     pathname === "/login" ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico" ||
-    pathname === "/manifest.webmanifest"
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/offline.html" ||
+    pathname === "/sw.js"
   ) return NextResponse.next();
 
   // requiere sesión
@@ -63,5 +65,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|bff|_next|manifest.webmanifest|.*\\.(?:png|jpg|jpeg|gif|svg|ico|css|js|map|txt|webmanifest)).*)"],
+  matcher: ["/((?!api|bff|_next|manifest.webmanifest|offline.html|sw.js|.*\\.(?:png|jpg|jpeg|gif|svg|ico|css|js|map|txt|webmanifest)).*)"],
 };

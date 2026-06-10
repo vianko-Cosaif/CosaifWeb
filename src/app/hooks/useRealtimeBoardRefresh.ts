@@ -27,6 +27,7 @@ function toPositiveInt(value: unknown): number | null {
 
 function isBoardRefreshEvent(event: RealtimeMovementEvent) {
   const type = String(event.type ?? "");
+  if (type === "realtime.ready" || type === "realtime.resume") return true;
   return !type || !type.startsWith("realtime.");
 }
 

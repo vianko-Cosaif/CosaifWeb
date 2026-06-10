@@ -21,24 +21,34 @@ export const metadata: Metadata = {
     telephone: false,
   },
   icons: {
-    icon: "/cosaif-logo.png",
-    apple: "/cosaif-logo.png",
+    icon: [
+      { url: "/icons/cosaif-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/cosaif-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/cosaif-192.png", sizes: "192x192", type: "image/png" }],
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+    "msapplication-TileColor": "#0f172a",
+    "msapplication-TileImage": "/icons/cosaif-192.png",
   },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover",
+  colorScheme: "light dark",
   themeColor: [
     { media: "(prefers-color-scheme: dark)", color: "#0B1220" },
-    { color: "#ffffff" },
+    { color: "#f8fafc" },
   ],
 };
 
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es" >
+    <html lang="es-MX">
       <head>
         {/* Evita FOUC de tema antes de hidratar */}
         <script dangerouslySetInnerHTML={{ __html: initThemeSSRScript() }} />

@@ -2,17 +2,24 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Cosaif Logistics",
-    short_name: "Cosaif",
-    description: "Operacion ferroviaria para movimientos, incidentes y reporteria.",
-    id: "/",
-    start_url: "/login",
+    name: "COSAIF Logistics",
+    short_name: "COSAIF",
+    description: "Operacion ferroviaria para movimientos, incidentes, rondas y reporteria.",
+    id: "/?source=pwa",
+    start_url: "/login?source=pwa",
     scope: "/",
     display: "standalone",
-    background_color: "#ffffff",
-    theme_color: "#0ea5e9",
+    display_override: ["window-controls-overlay", "standalone", "minimal-ui", "browser"],
+    background_color: "#f8fafc",
+    theme_color: "#0f172a",
+    lang: "es-MX",
+    dir: "ltr",
     orientation: "any",
     categories: ["business", "productivity"],
+    prefer_related_applications: false,
+    launch_handler: {
+      client_mode: ["focus-existing", "navigate-existing"],
+    },
     icons: [
       {
         src: "/icons/cosaif-192.png",

@@ -7,6 +7,7 @@ export type RealtimeMovementEventType =
   | "movimiento.incidente"
   | "incidente.estado"
   | "realtime.ready"
+  | "realtime.resume"
   | "realtime.pong";
 
 export type RealtimeMovementEvent = {
@@ -33,11 +34,15 @@ type Subscriber = (event: RealtimeMovementEvent) => void;
 type StreamState = {
   abortController: AbortController | null;
   reconnectTimer: number | null;
+  healthTimer: number | null;
   attempt: number;
   running: boolean;
+  connecting: boolean;
   sseUrl: string;
   wsConfigUrl: string;
   webSocket: WebSocket | null;
+  connectionToken: number;
+  lastActivityAt: number;
 };
 
 const DEFAULT_REALTIME_SSE_URL =
@@ -50,12 +55,27 @@ const subscribers = new Set<Subscriber>();
 const streamState: StreamState = {
   abortController: null,
   reconnectTimer: null,
+  healthTimer: null,
   attempt: 0,
   running: false,
+  connecting: false,
   sseUrl: DEFAULT_REALTIME_SSE_URL,
   wsConfigUrl: DEFAULT_REALTIME_WS_CONFIG_URL,
   webSocket: null,
+  connectionToken: 0,
+  lastActivityAt: 0,
 };
+
+let lifecycleListenersBound = false;
+const suppressedReconnectSockets = new WeakSet<WebSocket>();
+
+function browserIsOnline() {
+  return typeof navigator === "undefined" || navigator.onLine !== false;
+}
+
+function markActivity() {
+  streamState.lastActivityAt = Date.now();
+}
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null;
@@ -83,6 +103,14 @@ function notifySubscribers(event: RealtimeMovementEvent) {
   for (const subscriber of subscribers) {
     subscriber(event);
   }
+}
+
+function notifyRealtimeResume(reason: string) {
+  notifySubscribers({
+    type: "realtime.resume",
+    eventId: `realtime.resume:${reason}:${Date.now()}`,
+    occurredAt: new Date().toISOString(),
+  });
 }
 
 function parseJsonEvent(data: unknown): RealtimeMovementEvent | null {
@@ -122,6 +150,8 @@ function parseSseBlock(block: string): RealtimeMovementEvent | null {
 
 function scheduleReconnect() {
   if (!streamState.running || streamState.reconnectTimer != null) return;
+  if (!browserIsOnline()) return;
+
   const base = Math.min(30_000, 1_000 * 2 ** streamState.attempt);
   const jitter = Math.floor(Math.random() * 1_000);
 
@@ -150,12 +180,15 @@ async function readSseStream(response: Response, signal: AbortSignal) {
 
     for (const block of blocks) {
       const event = parseSseBlock(block);
-      if (event) notifySubscribers(event);
+      if (event) {
+        markActivity();
+        notifySubscribers(event);
+      }
     }
   }
 }
 
-async function connectStream(url: string) {
+async function connectStream(url: string, token: number) {
   streamState.abortController?.abort();
   const abortController = new AbortController();
   streamState.abortController = abortController;
@@ -170,8 +203,13 @@ async function connectStream(url: string) {
     });
 
     if (!response.ok) throw new Error(`Realtime SSE HTTP ${response.status}`);
+    if (streamState.connectionToken !== token || !streamState.running) {
+      abortController.abort();
+      return;
+    }
 
     streamState.attempt = 0;
+    markActivity();
     await readSseStream(response, abortController.signal);
   } catch (error) {
     if (!abortController.signal.aborted) {
@@ -181,8 +219,19 @@ async function connectStream(url: string) {
     if (streamState.abortController === abortController) {
       streamState.abortController = null;
     }
-    if (!abortController.signal.aborted) scheduleReconnect();
+    if (!abortController.signal.aborted && streamState.connectionToken === token) scheduleReconnect();
   }
+}
+
+function webSocketAllowedForPage(rawUrl: string): string {
+  const wsUrl = new URL(rawUrl, window.location.href);
+  if (window.location.protocol === "https:" && wsUrl.protocol === "ws:") {
+    throw new Error("Realtime WS bloqueado por HTTPS; usando SSE PWA");
+  }
+  if (wsUrl.protocol !== "ws:" && wsUrl.protocol !== "wss:") {
+    throw new Error("Realtime WS URL invalida");
+  }
+  return wsUrl.toString();
 }
 
 async function resolveWebSocketUrl(configUrl: string): Promise<string> {
@@ -193,13 +242,48 @@ async function resolveWebSocketUrl(configUrl: string): Promise<string> {
   });
 
   if (!response.ok) throw new Error(`Realtime WS config HTTP ${response.status}`);
-  const payload = (await response.json()) as { url?: string };
+  const payload = (await response.json()) as { url?: string | null; transport?: string; reason?: string };
+  if (payload.transport && payload.transport !== "websocket") {
+    throw new Error(payload.reason || "Realtime WS no disponible para esta conexion");
+  }
   if (!payload.url) throw new Error("Realtime WS sin URL");
-  return payload.url;
+  return webSocketAllowedForPage(payload.url);
 }
 
-async function connectWebSocket(configUrl: string): Promise<void> {
+function clearWebSocketHealthTimer() {
+  if (streamState.healthTimer != null) {
+    window.clearInterval(streamState.healthTimer);
+    streamState.healthTimer = null;
+  }
+}
+
+function startWebSocketHealthTimer(ws: WebSocket) {
+  clearWebSocketHealthTimer();
+  streamState.healthTimer = window.setInterval(() => {
+    if (streamState.webSocket !== ws) {
+      clearWebSocketHealthTimer();
+      return;
+    }
+
+    if (ws.readyState !== WebSocket.OPEN) return;
+
+    const staleMs = Date.now() - streamState.lastActivityAt;
+    if (staleMs > 120_000) {
+      ws.close();
+      return;
+    }
+
+    try {
+      ws.send("ping");
+    } catch {
+      ws.close();
+    }
+  }, 45_000);
+}
+
+async function connectWebSocket(configUrl: string, token: number): Promise<void> {
   const wsUrl = await resolveWebSocketUrl(configUrl);
+  if (streamState.connectionToken !== token || !streamState.running) return;
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -210,23 +294,35 @@ async function connectWebSocket(configUrl: string): Promise<void> {
       reject(new Error("Realtime WS timeout"));
     }, 8_000);
 
-    const ws = new WebSocket(wsUrl);
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(wsUrl);
+    } catch (error) {
+      window.clearTimeout(timeoutId);
+      reject(error);
+      return;
+    }
     streamState.webSocket = ws;
 
     ws.onopen = () => {
-      if (streamState.webSocket !== ws) {
+      if (streamState.webSocket !== ws || streamState.connectionToken !== token) {
         ws.close();
         return;
       }
       settled = true;
       streamState.attempt = 0;
+      markActivity();
+      startWebSocketHealthTimer(ws);
       window.clearTimeout(timeoutId);
       resolve();
     };
 
     ws.onmessage = (message) => {
       const event = parseJsonEvent(message.data);
-      if (event) notifySubscribers(event);
+      if (event) {
+        markActivity();
+        notifySubscribers(event);
+      }
     };
 
     ws.onerror = () => {
@@ -237,43 +333,116 @@ async function connectWebSocket(configUrl: string): Promise<void> {
     };
 
     ws.onclose = () => {
-      if (streamState.webSocket === ws) streamState.webSocket = null;
+      if (streamState.webSocket === ws) {
+        streamState.webSocket = null;
+        clearWebSocketHealthTimer();
+      }
       window.clearTimeout(timeoutId);
       if (!settled) {
         settled = true;
         reject(new Error("Realtime WS cerrado"));
         return;
       }
-      if (streamState.running && subscribers.size > 0) scheduleReconnect();
+      if (suppressedReconnectSockets.has(ws)) {
+        suppressedReconnectSockets.delete(ws);
+        return;
+      }
+      if (streamState.running && subscribers.size > 0 && streamState.connectionToken === token) {
+        scheduleReconnect();
+      }
     };
   });
 }
 
-function closeActiveConnection() {
+function closeActiveConnection({ suppressWsReconnect = true } = {}) {
   streamState.abortController?.abort();
   streamState.abortController = null;
+  clearWebSocketHealthTimer();
 
   const ws = streamState.webSocket;
   streamState.webSocket = null;
+  if (ws && suppressWsReconnect) suppressedReconnectSockets.add(ws);
   ws?.close();
 }
 
 async function connectRealtime() {
-  closeActiveConnection();
-
-  if (streamState.wsConfigUrl) {
-    try {
-      await connectWebSocket(streamState.wsConfigUrl);
-      return;
-    } catch (error) {
-      console.warn("[realtime] WS no disponible, usando SSE:", error);
-    }
+  if (!streamState.running || subscribers.size === 0 || streamState.connecting) return;
+  if (!browserIsOnline()) {
+    scheduleReconnect();
+    return;
   }
 
-  await connectStream(streamState.sseUrl);
+  const token = streamState.connectionToken + 1;
+  streamState.connectionToken = token;
+  streamState.connecting = true;
+  closeActiveConnection();
+
+  try {
+    if (streamState.wsConfigUrl) {
+      try {
+        await connectWebSocket(streamState.wsConfigUrl, token);
+        return;
+      } catch (error) {
+        console.warn("[realtime] WS no disponible, usando SSE:", error);
+      }
+    }
+
+    if (streamState.connectionToken === token && streamState.running) {
+      await connectStream(streamState.sseUrl, token);
+    }
+  } finally {
+    if (streamState.connectionToken === token) streamState.connecting = false;
+  }
+}
+
+function clearReconnectTimer() {
+  if (streamState.reconnectTimer != null) {
+    window.clearTimeout(streamState.reconnectTimer);
+    streamState.reconnectTimer = null;
+  }
+}
+
+function forceRealtimeReconnect(reason: string, notify = true) {
+  if (!streamState.running || subscribers.size === 0) return;
+  streamState.connectionToken += 1;
+  streamState.connecting = false;
+  streamState.attempt = 0;
+  clearReconnectTimer();
+  closeActiveConnection();
+  if (notify) notifyRealtimeResume(reason);
+  if (browserIsOnline()) void connectRealtime();
+}
+
+function bindLifecycleListeners() {
+  if (lifecycleListenersBound || typeof window === "undefined") return;
+  lifecycleListenersBound = true;
+
+  const reconnectIfVisible = (reason: string) => {
+    if (document.visibilityState === "hidden") return;
+    forceRealtimeReconnect(reason);
+  };
+
+  window.addEventListener("online", () => forceRealtimeReconnect("online"));
+  window.addEventListener("focus", () => {
+    const inactiveMs = Date.now() - streamState.lastActivityAt;
+    if (!streamState.webSocket && !streamState.abortController) {
+      forceRealtimeReconnect("focus");
+    } else if (inactiveMs > 90_000) {
+      forceRealtimeReconnect("focus-stale");
+    }
+  });
+  window.addEventListener("pageshow", () => reconnectIfVisible("pageshow"));
+  document.addEventListener("visibilitychange", () => reconnectIfVisible("visible"));
+  window.addEventListener("pagehide", () => {
+    streamState.connectionToken += 1;
+    streamState.connecting = false;
+    clearReconnectTimer();
+    closeActiveConnection();
+  });
 }
 
 function startRealtime(sseUrl: string, wsConfigUrl: string, localidadId?: number | null) {
+  bindLifecycleListeners();
   const nextSseUrl = scopedUrl(sseUrl || DEFAULT_REALTIME_SSE_URL, localidadId);
   const nextWsConfigUrl = scopedUrl(wsConfigUrl, localidadId);
   const shouldReconnect =
@@ -284,24 +453,22 @@ function startRealtime(sseUrl: string, wsConfigUrl: string, localidadId?: number
   streamState.running = true;
 
   if (shouldReconnect) {
+    streamState.connectionToken += 1;
+    streamState.connecting = false;
     closeActiveConnection();
-    if (streamState.reconnectTimer != null) {
-      clearTimeout(streamState.reconnectTimer);
-      streamState.reconnectTimer = null;
-    }
+    clearReconnectTimer();
   }
 
-  if (streamState.abortController || streamState.webSocket) return;
+  if (streamState.abortController || streamState.webSocket || streamState.connecting) return;
   void connectRealtime();
 }
 
 function stopRealtime() {
   streamState.running = false;
+  streamState.connectionToken += 1;
+  streamState.connecting = false;
   closeActiveConnection();
-  if (streamState.reconnectTimer != null) {
-    clearTimeout(streamState.reconnectTimer);
-    streamState.reconnectTimer = null;
-  }
+  clearReconnectTimer();
 }
 
 export function useRealtimeMovimientos({

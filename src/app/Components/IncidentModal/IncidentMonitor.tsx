@@ -244,6 +244,11 @@ export default function IncidentMonitor({
     onEvent: (event) => {
       if (!eventMatchesScope(event, empresaId, localidadId)) return;
 
+      if (event.type === "realtime.ready" || event.type === "realtime.resume") {
+        scheduleRealtimeIncidentCheck();
+        return;
+      }
+
       if (event.type === "movimiento.incidente" || event.type === "incidente.estado") {
         const notice = realtimeNoticeForEvent(event);
         if (notice) {
