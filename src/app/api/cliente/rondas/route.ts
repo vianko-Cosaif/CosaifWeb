@@ -219,6 +219,23 @@ async function fetchMovimientoDetail(base: string, headers: HeadersInit, movimie
   return (data?.movimiento ?? data) as MovimientoRecord;
 }
 
+function getTornoQueueCreatedTime(item: RondaOut): number {
+  const candidates = [
+    item.createdAt,
+    item.movimiento?.fechaSolicitud,
+    item.movimiento?.createdAt
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const timestamp = Date.parse(String(candidate));
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+
+  const numericId = Math.abs(Number(item.id));
+  return Number.isFinite(numericId) ? numericId : Number.MAX_SAFE_INTEGER;
+}
+
 function assertEmpresaScope(shouldScopeEmpresa: boolean, empresaId: number | null, targetEmpresaIds: Array<number | null>) {
   if (!shouldScopeEmpresa) return;
   if (!empresaId) {
@@ -318,10 +335,27 @@ export async function GET(req: NextRequest) {
         };
       }));
 
-      const filtered = out
-        .filter((item): item is RondaOut => Boolean(item))
-        .sort((a, b) => a.orden - b.orden || a.id - b.id);
-      return NextResponse.json(filtered, { status: 200 });
+      let filtered = out.filter((item): item is RondaOut => Boolean(item));
+
+      if (concluido) {
+        // Concluidos: más recientes primero (updatedAt desc o createdAt desc)
+        filtered.sort((a, b) => getTornoQueueCreatedTime(b) - getTornoQueueCreatedTime(a));
+      } else {
+        // Activos/pendientes: FIFO (oldest first), igual a CosaifLogistcs
+        filtered.sort((a, b) => {
+          const diff = getTornoQueueCreatedTime(a) - getTornoQueueCreatedTime(b);
+          if (diff !== 0) return diff;
+          return a.id - b.id; // Desempate por ID (que son negativos)
+        });
+      }
+
+      // Re-asignar orden secuencialmente para que el frontend lo ordene de forma estable
+      const finalized = filtered.map((item, idx) => ({
+        ...item,
+        orden: idx + 1,
+      }));
+
+      return NextResponse.json(finalized, { status: 200 });
     }
 
     if (concluido) {

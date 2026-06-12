@@ -452,6 +452,8 @@ export default function StepOne(props: StepOneProps) {
         <ScheduledTornoActivationModal
           enabled={form.service === "Torno"}
           locomotiveNumber={form.locomotiveNumber}
+          viaOrigenId={form.fromTrack}
+          localidadId={form.selectedLocalityId}
           scheduledMovements={scheduledTornoMovements}
           loading={scheduledTornoLoading}
           companyName={companyName}
