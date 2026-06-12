@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next";
 import { initThemeSSRScript } from "@/lib/theme";
 import AdaptiveMode from "@/app/Components/layout/AdaptiveMode";
 import PwaInstallPrompt from "@/app/Components/layout/PwaInstallPrompt";
+import FirebaseNotificationPrompt from "@/app/Components/layout/FirebaseNotificationPrompt";
 
 export const metadata: Metadata = {
   title: {
@@ -25,10 +26,13 @@ export const metadata: Metadata = {
       { url: "/icons/cosaif-192.png", sizes: "192x192", type: "image/png" },
       { url: "/icons/cosaif-512.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/icons/cosaif-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
   other: {
     "mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-title": "COSAIF",
+    "apple-mobile-web-app-status-bar-style": "default",
     "msapplication-TileColor": "#0f172a",
     "msapplication-TileImage": "/icons/cosaif-192.png",
   },
@@ -65,6 +69,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Theme Toggle global - solo se muestra fuera de rutas /cliente */}
 
         <main id="main">{children}</main>
+        <FirebaseNotificationPrompt />
         <PwaInstallPrompt />
       </body>
     </html>
