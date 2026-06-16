@@ -2,6 +2,11 @@
 
 import React, { useEffect } from "react";
 import { useMounted } from "@/app/hooks/useMounted";
+import {
+  GuidedManualProvider,
+  useGuidedManualApi,
+  type GuidedManualStep,
+} from "@/app/Components/GuidedManualAtom";
 import { getInitialTheme, applyTheme, onThemeChange } from "@/lib/theme";
 import { Movimiento } from "../Movimiento";
 import StepOne from "./components/StepOne";
@@ -11,6 +16,24 @@ import StepThree from "./components/StepThree";
 import StepFourTorno from "./components/StepFourTorno";
 import { Badge, RoleBadge } from "./components/ui";
 import { useCrearMovimientoController } from "./useCrearMovimientoController";
+
+function TornoMeasurementGuideButton() {
+  const api = useGuidedManualApi();
+
+  if (!api) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => api.start(0)}
+      className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-sky-200 bg-sky-50 text-lg font-bold text-sky-700 shadow-sm transition-all hover:bg-sky-100 active:scale-[0.97] dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-900/60"
+      title="Mostrar guía de medición"
+      aria-label="Mostrar guía de medición"
+    >
+      ?
+    </button>
+  );
+}
 
 /**
  * Pantalla principal "Crear Movimiento".
@@ -115,9 +138,38 @@ export default function CrearMovimiento() {
     empresas.find((empresa) => empresa.id === form.empresaId)?.nombre ||
     userCompanyName ||
     "";
+  const tornoGuideSteps: GuidedManualStep[] = useTornoMedicionStep
+    ? [
+        {
+          id: "torno-wheel-count",
+          targetId: "torno-wheel-count",
+          title: "Selecciona el numero de ruedas",
+          description:
+            "Empieza indicando cuantas ruedas vas a medir. La tabla se ajusta automaticamente al total que selecciones.",
+          mode: "wizard",
+        },
+        {
+          id: "torno-movement-type",
+          targetId: "torno-movement-type",
+          title: "Define el tipo de movimiento",
+          description:
+            "Marca si la locomotora viene trabajando o remolcada. Si eliges Remolcada, tambien se habilita la direccion para completar ese caso.",
+          mode: "wizard",
+        },
+        {
+          id: "torno-measures-table",
+          targetId: "torno-measures-table",
+          title: "Captura las medidas de cada rueda",
+          description:
+            "Llena cada celda usando entero, numerador y denominador en pulgadas. Puedes avanzar fila por fila hasta completar las posiciones necesarias.",
+          mode: "wizard",
+        },
+      ]
+    : [];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white dark:from-zinc-950 dark:to-zinc-900 text-slate-900 dark:text-white transition-colors duration-200 p-4 md:p-6 lg:p-8">
+    <GuidedManualProvider steps={tornoGuideSteps}>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white dark:from-zinc-950 dark:to-zinc-900 text-slate-900 dark:text-white transition-colors duration-200 p-4 md:p-6 lg:p-8">
       <style jsx global>{`
         @media (max-width: 640px) {
           select, select option { font-size: 16px !important; line-height: 1.45 !important; }
@@ -311,6 +363,8 @@ export default function CrearMovimiento() {
             </button>
           )}
 
+          {isTornoMeasurementStep && <TornoMeasurementGuideButton />}
+
           <button onClick={goSalir} className="ml-auto rounded-xl border border-rose-200 dark:border-rose-800 px-4 py-2.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all active:scale-95" title="Volver a mis movimientos">
             Salir
           </button>
@@ -327,6 +381,7 @@ export default function CrearMovimiento() {
           </div>
         ) : null}
       </div>
-    </div>
+      </div>
+    </GuidedManualProvider>
   );
 }

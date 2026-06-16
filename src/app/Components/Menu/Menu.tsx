@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Menu as MenuIcon,
@@ -18,6 +18,8 @@ import {
   Settings,
   BarChart3,
   Wrench,
+  CircleHelp,
+  Search,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import ThemeToggle from "@/app/Components/ui/ThemeToggle";
@@ -116,8 +118,13 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
 
   const [isOpen, setIsOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpQuery, setHelpQuery] = useState("");
+  const [helpSuggestionModalOpen, setHelpSuggestionModalOpen] = useState(false);
   const [session, setSession] = useState<UserSession | null>(null);
   const [mounted, setMounted] = useState(false);
+  const helpPanelRef = useRef<HTMLDivElement | null>(null);
+  const helpSuggestionModalRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -147,13 +154,17 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
   }, [isOpen, mounted]);
 
   useEffect(() => {
-    if (!mobileOpen) return;
-
     const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    if (mobileOpen) {
+      document.body.style.overflow = "hidden";
+    }
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileOpen(false);
+      if (event.key === "Escape") {
+        setHelpSuggestionModalOpen(false);
+        setMobileOpen(false);
+        setHelpOpen(false);
+      }
     };
 
     window.addEventListener("keydown", onKeyDown);
@@ -162,6 +173,34 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [mobileOpen]);
+
+  useEffect(() => {
+    if (!helpOpen) return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (helpSuggestionModalOpen) return;
+      const target = event.target as Node;
+      if (helpSuggestionModalRef.current?.contains(target)) return;
+      if (!helpPanelRef.current?.contains(target)) {
+        setHelpOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", onPointerDown);
+    return () => window.removeEventListener("mousedown", onPointerDown);
+  }, [helpOpen, helpSuggestionModalOpen]);
+
+  useEffect(() => {
+    if (!helpOpen) {
+      setHelpSuggestionModalOpen(false);
+    }
+  }, [helpOpen]);
+
+  useEffect(() => {
+    setHelpQuery("");
+    setHelpSuggestionModalOpen(false);
+    setHelpOpen(false);
+  }, [pathname, isOpen, mobileOpen]);
 
   const normRol = useMemo<Rol>(() => {
     const r = String(session?.rol || "").toUpperCase();
@@ -173,6 +212,11 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
 
   const base = useMemo(() => `/${normRol.toLowerCase()}`, [normRol]);
   const roleConfig = ROLE_CONFIG[normRol] || ROLE_CONFIG.CLIENTE;
+  const showExpandedSidebar = isOpen || mobileOpen;
+  const showMovimientoSuggestions = helpQuery.trim().toLowerCase().includes("movimiento");
+  const helpSuggestions = showMovimientoSuggestions
+    ? ["¿como crear un movimiento?", "¿como crear un movimiento con torno?"]
+    : [];
 
   const navigation = useMemo<NavigationItem[]>(() => {
     return [
@@ -269,7 +313,10 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
           "fixed inset-0 z-40 bg-zinc-950/80 backdrop-blur-sm transition-opacity duration-300 md:hidden",
           mobileOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         )}
-        onClick={() => setMobileOpen(false)}
+        onClick={() => {
+          setMobileOpen(false);
+          setHelpOpen(false);
+        }}
       />
 
       {/* SIDEBAR CONTAINER */}
@@ -363,7 +410,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
         {/* NAVIGATION */}
         <nav className="flex-1 space-y-1 px-3 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-200 dark:scrollbar-thumb-zinc-800">
           <div className="mb-2 px-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-600">
-            {(isOpen || mobileOpen) ? "Módulos" : "..."}
+            {showExpandedSidebar ? "Módulos" : "..."}
           </div>
 
           {navigation.map((item) => {
@@ -374,17 +421,92 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
 
         {/* FOOTER */}
         <div className="mt-auto border-t border-slate-100 bg-slate-50/50 p-4 dark:border-zinc-800 dark:bg-zinc-900/30 backdrop-blur-sm">
+          <div
+            ref={helpPanelRef}
+            className={cn("relative mb-3 flex items-center", showExpandedSidebar ? "justify-between" : "justify-center")}
+          >
+            {showExpandedSidebar && (
+              <span className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-zinc-600">
+                ¿en que te puedo ayudar?
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() =>
+                setHelpOpen((current) => {
+                  const next = !current;
+                  if (!next) setHelpSuggestionModalOpen(false);
+                  return next;
+                })
+              }
+              className={cn(
+                "inline-flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 active:scale-[.98] transition dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700",
+                showExpandedSidebar ? "h-9 px-3" : "h-9 w-9"
+              )}
+              title="Abrir ayuda"
+              aria-label={showExpandedSidebar ? undefined : "Abrir ayuda"}
+              aria-expanded={helpOpen}
+              aria-controls="sidebar-help-panel"
+            >
+              <CircleHelp className="h-4 w-4" />
+            </button>
+
+            {helpOpen && (
+              <div
+                id="sidebar-help-panel"
+                className="absolute bottom-0 left-full z-[60] ml-3 w-80 max-w-[calc(100vw-6rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-900"
+                role="dialog"
+                aria-label="Panel de ayuda"
+              >
+                <div className="border-b border-slate-100 px-4 py-3 dark:border-zinc-800">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-zinc-100">¿en que te puedo ayudar?</p>
+                </div>
+                <div className="px-4 py-5">
+                  <label htmlFor="sidebar-help-search" className="sr-only">
+                    Buscar ayuda
+                  </label>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-zinc-500" />
+                    <input
+                      id="sidebar-help-search"
+                      type="text"
+                      value={helpQuery}
+                      onChange={(event) => setHelpQuery(event.target.value)}
+                      placeholder="Escribe una palabra clave"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm text-slate-700 outline-none transition focus:border-sky-400 focus:bg-white dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-sky-500"
+                    />
+                  </div>
+
+                  {helpSuggestions.length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      {helpSuggestions.map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          onClick={() => setHelpSuggestionModalOpen(true)}
+                          className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left text-sm text-slate-700 transition hover:border-sky-300 hover:bg-sky-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:border-sky-700 dark:hover:bg-zinc-900"
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* THEME TOGGLE */}
-          <div className={cn("mb-3 flex items-center", (isOpen || mobileOpen) ? "justify-between" : "justify-center")}>
-            {(isOpen || mobileOpen) && (
+          <div className={cn("mb-3 flex items-center", showExpandedSidebar ? "justify-between" : "justify-center")}>
+            {showExpandedSidebar && (
               <span className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-zinc-600">
                 Tema
               </span>
             )}
             <ThemeToggle
               size="sm"
-              withLabel={isOpen || mobileOpen}
-              className={cn(!(isOpen || mobileOpen) && "h-9 w-9")}
+              withLabel={showExpandedSidebar}
+              className={cn(!showExpandedSidebar && "h-9 w-9")}
             />
           </div>
           {/* LOGOUT + VERSION */}
@@ -419,6 +541,40 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
           isOpen ? "w-[280px]" : "w-[80px]"
         )}
       />
+
+      {helpSuggestionModalOpen && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-zinc-950/50 px-4 backdrop-blur-sm"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setHelpSuggestionModalOpen(false);
+            }
+          }}
+        >
+          <div
+            ref={helpSuggestionModalRef}
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-900"
+            role="dialog"
+            aria-label="Respuesta de ayuda"
+          >
+            <div className="border-b border-slate-100 px-4 py-3 dark:border-zinc-800">
+              <p className="text-sm font-semibold text-slate-900 dark:text-zinc-100">Ayuda</p>
+            </div>
+            <div className="px-4 py-5">
+              <p className="text-sm text-slate-600 dark:text-zinc-300">hola</p>
+            </div>
+            <div className="flex justify-end border-t border-slate-100 px-4 py-3 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setHelpSuggestionModalOpen(false)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
