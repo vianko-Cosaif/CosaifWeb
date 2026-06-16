@@ -35,6 +35,33 @@ function hasValue(value: string | undefined) {
   return Boolean(value && !value.startsWith("TU_"));
 }
 
+function toPositiveInt(value: unknown) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : null;
+}
+
+function readClientCookie(name: string) {
+  if (typeof document === "undefined") return null;
+  const item = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`));
+  return item ? decodeURIComponent(item.slice(name.length + 1)) : null;
+}
+
+export function getActiveFirebaseLocalidadId(explicit?: number | string | null) {
+  const explicitId = toPositiveInt(explicit);
+  if (explicitId) return explicitId;
+  if (typeof window === "undefined") return null;
+
+  return (
+    toPositiveInt(readClientCookie("locId")) ??
+    toPositiveInt(readClientCookie("localidadId")) ??
+    toPositiveInt(window.localStorage.getItem("locId")) ??
+    toPositiveInt(window.localStorage.getItem("localidadId"))
+  );
+}
+
 export function isFirebaseConfigured() {
   return requiredFirebaseValues.every(hasValue);
 }
@@ -131,21 +158,40 @@ export async function requestFirebaseNotificationToken(): Promise<string | null>
   return token;
 }
 
-export async function registerFirebaseNotificationToken(token: string) {
+export async function registerFirebaseNotificationToken(
+  token: string,
+  accessToken?: string,
+  localidadId?: number | string | null
+) {
   if (typeof window === "undefined") return;
   if (!token.trim()) return;
 
-  const response = await fetch("/xapi/fcm", {
+  const activeLocalidadId = getActiveFirebaseLocalidadId(localidadId);
+  const body: { token: string; accessToken?: string; localidadId?: number } = { token };
+  if (accessToken) body.accessToken = accessToken;
+  if (activeLocalidadId) body.localidadId = activeLocalidadId;
+
+  const response = await fetch(accessToken ? "/api/fcm/register" : "/xapi/fcm", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
     const details = await response.text().catch(() => "");
     throw new Error(`No se pudo registrar token FCM (${response.status}) ${details}`);
   }
+}
+
+export async function syncFirebaseNotificationLocalidad(localidadId?: number | string | null) {
+  if (typeof window === "undefined") return;
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+  const token = await requestFirebaseNotificationToken();
+  if (!token) return;
+
+  await registerFirebaseNotificationToken(token, undefined, localidadId);
 }
 
 export async function listenFirebaseForegroundMessages(

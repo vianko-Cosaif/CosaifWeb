@@ -7,7 +7,7 @@ const ROLE = process.env.ROLE_COOKIE_NAME ?? "role";
 const MAX  = Number(process.env.COOKIE_MAX_AGE ?? 60 * 60 * 8); // 8h
 
 export async function POST(req: Request) {
-  const { token, role } = await req.json().catch(() => ({}));
+  const { token, role, locId } = await req.json().catch(() => ({}));
   if (!token || !role) {
     return NextResponse.json({ error: "bad_payload" }, { status: 400 });
   }
@@ -24,6 +24,16 @@ export async function POST(req: Request) {
 
   res.cookies.set(JWT, String(token), base);
   res.cookies.set(ROLE, String(role).toUpperCase(), base);
+
+  const localidadId = Number(locId);
+  if (Number.isFinite(localidadId) && localidadId > 0) {
+    res.cookies.set("locId", String(Math.trunc(localidadId)), {
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      secure: process.env.NODE_ENV === "production",
+    });
+  }
 
   return res;
 }
