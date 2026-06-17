@@ -4,6 +4,7 @@ import { initThemeSSRScript } from "@/lib/theme";
 import AdaptiveMode from "@/app/Components/layout/AdaptiveMode";
 import PwaInstallPrompt from "@/app/Components/layout/PwaInstallPrompt";
 import FirebaseNotificationPrompt from "@/app/Components/layout/FirebaseNotificationPrompt";
+import { ClientMovementGuideProvider } from "@/app/Components/GuidedManualAtom/ClientMovementGuide";
 
 export const metadata: Metadata = {
   title: {
@@ -58,19 +59,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: initThemeSSRScript() }} />
       </head>
       <body className="min-h-svh bg-white text-slate-900 antialiased selection:bg-sky-200/60 dark:bg-slate-950 dark:text-slate-100 dark:selection:bg-sky-600/40">
-        <AdaptiveMode />
-        <a
-          href="#main"
-          className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:shadow"
-        >
-          Saltar al contenido
-        </a>
+        <ClientMovementGuideProvider>
+          <AdaptiveMode />
+          <a
+            href="#main"
+            className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:shadow"
+          >
+            Saltar al contenido
+          </a>
 
-        {/* Theme Toggle global - solo se muestra fuera de rutas /cliente */}
+          {/* Theme Toggle global - solo se muestra fuera de rutas /cliente */}
 
-        <main id="main">{children}</main>
-        <FirebaseNotificationPrompt />
-        <PwaInstallPrompt />
+          <main id="main">{children}</main>
+          <FirebaseNotificationPrompt />
+          <PwaInstallPrompt />
+        </ClientMovementGuideProvider>
       </body>
     </html>
   );

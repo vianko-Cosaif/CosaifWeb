@@ -11,6 +11,7 @@ import StepThree from "./components/StepThree";
 import StepFourTorno from "./components/StepFourTorno";
 import { Badge, RoleBadge } from "./components/ui";
 import { useCrearMovimientoController } from "./useCrearMovimientoController";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 
 /**
  * Pantalla principal "Crear Movimiento".
@@ -129,7 +130,10 @@ export default function CrearMovimiento() {
         aria-hidden
         className="pointer-events-none absolute inset-0 z-0 bg-[linear-gradient(to_right,rgba(0,0,0,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.03)_1px,transparent_1px)] bg-[size:24px_24px] dark:opacity-[0.05]"
       />
-      <div className={Movimiento.clsx("relative z-10 mx-auto", useTornoMedicionStep ? "max-w-7xl" : "max-w-4xl")}>
+      <div
+        data-guide-movement-variant={useTornoMedicionStep ? "torno" : "standard"}
+        className={Movimiento.clsx("relative z-10 mx-auto", useTornoMedicionStep ? "max-w-7xl" : "max-w-4xl")}
+      >
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Badge tone={online ? "ok" : "error"}>{online ? "En línea" : "Sin conexión"}</Badge>
@@ -217,73 +221,85 @@ export default function CrearMovimiento() {
         {/* Contenido de steps (1,2,3) desacoplado en componentes especializados. */}
         <div className="mt-6 rounded-2xl border border-slate-200/80 dark:border-zinc-800/60 bg-white/95 dark:bg-zinc-950/90 backdrop-blur-sm p-5 sm:p-6 shadow-xl shadow-slate-200/30 dark:shadow-zinc-900/30">
           {step === 1 && (
-            <StepOne
-              form={form}
-              setForm={setForm}
-              errors={errors}
-              empresas={empresas}
-              localidades={localidades}
-              vias={vias}
-              canManageAll={canManageAll}
-              userCompanyName={userCompanyName}
-              showFromOpts={showFromOpts}
-              setShowFromOpts={setShowFromOpts}
-              showToOpts={showToOpts}
-              setShowToOpts={setShowToOpts}
-              selectionMode={selectionMode}
-              setSelectionMode={setSelectionMode}
-              tapToggle={(k, a, b) => tapToggle(k, a, b)}
-              sectionsByVia={sectionsByVia}
-              secLoading={secLoading}
-              ensureSections={ensureSections}
-              fromSection={fromSection}
-              toSection={toSection}
-              setFromSection={selectFromSection}
-              setToSection={setToSection}
-              viaName={viaName}
-              companyName={selectedCompanyName}
-              scheduledTornoMovements={scheduledTornoMovements}
-              scheduledTornoLoading={scheduledTornoLoading}
-              onRefreshScheduledTorno={refreshScheduledTornoMovements}
-              onActivateScheduledTorno={activateScheduledTornoMovement}
-            />
+            <GuidedTarget id="create-movement-step-1">
+              <StepOne
+                form={form}
+                setForm={setForm}
+                errors={errors}
+                empresas={empresas}
+                localidades={localidades}
+                vias={vias}
+                canManageAll={canManageAll}
+                userCompanyName={userCompanyName}
+                showFromOpts={showFromOpts}
+                setShowFromOpts={setShowFromOpts}
+                showToOpts={showToOpts}
+                setShowToOpts={setShowToOpts}
+                selectionMode={selectionMode}
+                setSelectionMode={setSelectionMode}
+                tapToggle={(k, a, b) => tapToggle(k, a, b)}
+                sectionsByVia={sectionsByVia}
+                secLoading={secLoading}
+                ensureSections={ensureSections}
+                fromSection={fromSection}
+                toSection={toSection}
+                setFromSection={selectFromSection}
+                setToSection={setToSection}
+                viaName={viaName}
+                companyName={selectedCompanyName}
+                scheduledTornoMovements={scheduledTornoMovements}
+                scheduledTornoLoading={scheduledTornoLoading}
+                onRefreshScheduledTorno={refreshScheduledTornoMovements}
+                onActivateScheduledTorno={activateScheduledTornoMovement}
+              />
+            </GuidedTarget>
           )}
-          {step === 2 && !useTornoMedicionStep && <StepTwo form={form} setForm={setForm} errors={errors} isService={isService} />}
+          {step === 2 && !useTornoMedicionStep && (
+            <GuidedTarget id="create-movement-step-2-standard">
+              <StepTwo form={form} setForm={setForm} errors={errors} isService={isService} />
+            </GuidedTarget>
+          )}
           {step === 2 && useTornoMedicionStep && (
-            <StepTwoTorno
-              form={form}
-              setForm={setForm}
-              errors={errors}
-              tornoMedicion={tornoMedicion}
-              setTornoWheelCount={setTornoWheelCount}
-              updateTornoMedicion={updateTornoMedicion}
-              companyName={selectedCompanyName}
-            />
+            <GuidedTarget id="create-movement-step-2-torno">
+              <StepTwoTorno
+                form={form}
+                setForm={setForm}
+                errors={errors}
+                tornoMedicion={tornoMedicion}
+                setTornoWheelCount={setTornoWheelCount}
+                updateTornoMedicion={updateTornoMedicion}
+                companyName={selectedCompanyName}
+              />
+            </GuidedTarget>
           )}
           {step === 3 && (
-            <StepThree
-              form={form}
-              setForm={setForm}
-              sending={sending}
-              submit={submit}
-              submitLabel={useTornoMedicionStep ? "Confirmar y Continuar al PDF" : undefined}
-              fromSection={fromSection}
-              toSection={toSection}
-              viaName={viaName}
-              selectionMode={selectionMode}
-            />
+            <GuidedTarget id="create-movement-step-3">
+              <StepThree
+                form={form}
+                setForm={setForm}
+                sending={sending}
+                submit={submit}
+                submitLabel={useTornoMedicionStep ? "Confirmar y Continuar al PDF" : undefined}
+                fromSection={fromSection}
+                toSection={toSection}
+                viaName={viaName}
+                selectionMode={selectionMode}
+              />
+            </GuidedTarget>
           )}
           {step === 4 && useTornoMedicionStep && (
-            <StepFourTorno
-              form={form}
-              tornoMedicion={tornoMedicion}
-              companyName={selectedCompanyName}
-              tornoMovimientoId={tornoMovimientoId}
-              tornoPdfSending={tornoPdfSending}
-              tornoPdfStatus={tornoPdfStatus}
-              onEditMedicion={goBackToTornoMedicion}
-              onGeneratePdf={generateTornoPdf}
-            />
+            <GuidedTarget id="create-movement-step-4">
+              <StepFourTorno
+                form={form}
+                tornoMedicion={tornoMedicion}
+                companyName={selectedCompanyName}
+                tornoMovimientoId={tornoMovimientoId}
+                tornoPdfSending={tornoPdfSending}
+                tornoPdfStatus={tornoPdfStatus}
+                onEditMedicion={goBackToTornoMedicion}
+                onGeneratePdf={generateTornoPdf}
+              />
+            </GuidedTarget>
           )}
         </div>
 
@@ -305,13 +321,19 @@ export default function CrearMovimiento() {
           {step < 3 && (
             <button
               onClick={goNext}
+              data-guide-action="create-movement-next"
               className="rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:from-emerald-600 hover:to-emerald-700 transition-all active:scale-[0.97]"
             >
               {nextLabel}
             </button>
           )}
 
-          <button onClick={goSalir} className="ml-auto rounded-xl border border-rose-200 dark:border-rose-800 px-4 py-2.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all active:scale-95" title="Volver a mis movimientos">
+          <button
+            onClick={goSalir}
+            data-guide-action="create-movement-exit"
+            className="ml-auto rounded-xl border border-rose-200 dark:border-rose-800 px-4 py-2.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all active:scale-95"
+            title="Volver a mis movimientos"
+          >
             Salir
           </button>
         </div>

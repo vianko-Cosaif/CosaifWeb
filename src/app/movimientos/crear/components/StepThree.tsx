@@ -92,7 +92,13 @@ export default function StepThree({
         {showHint && <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">Se anadira: {sectionHint.trim()}</span>}
       </label>
 
-      <button onClick={handleSubmitClick} disabled={sending} className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" title="Ctrl/Cmd + Enter para enviar">
+      <button
+        onClick={handleSubmitClick}
+        disabled={sending}
+        data-guide-action="create-movement-submit"
+        className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+        title="Ctrl/Cmd + Enter para enviar"
+      >
         {sending ? "Enviando..." : (submitLabel || "Confirmar solicitud")}
       </button>
 
