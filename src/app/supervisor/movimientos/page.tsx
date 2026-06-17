@@ -7,12 +7,17 @@ export const dynamic = "force-dynamic";
 
 export default async function Page() {
   const c = await cookies();
-  const token = c.get(process.env.JWT_COOKIE_NAME ?? "token")?.value;
+  const cookieName = process.env.JWT_COOKIE_NAME ?? "token";
+  const token = c.get(cookieName)?.value;
   if (!token) redirect("/login");
 
   const empIdCookie =
     Number(c.get("empId")?.value ?? "") ||
     Number(c.get("empresaId")?.value ?? "") ||
+    null;
+  const locIdCookie =
+    Number(c.get("locId")?.value ?? "") ||
+    Number(c.get("localidadId")?.value ?? "") ||
     null;
 
   if (empIdCookie == null) {
@@ -27,7 +32,9 @@ export default async function Page() {
         <MovimientosPanel
           apiBase="/bff"
           rol="SUPERVISOR"
+          token={token}
           empresaIdUsuario={empIdCookie}
+          localidadIdUsuario={locIdCookie}
           puedeCrear
           intervaloAutoMs={15000}
         />

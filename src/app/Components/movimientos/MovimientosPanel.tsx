@@ -48,6 +48,7 @@ interface MovimientosPanelProps {
   puedeCrear?: boolean;
   apiBase?: string;
   empresaIdUsuario?: number | null;
+  localidadIdUsuario?: number | null;
   intervaloAutoMs?: number;
 }
 
@@ -60,6 +61,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     puedeCrear = false,
     apiBase,
     empresaIdUsuario,
+    localidadIdUsuario,
     intervaloAutoMs,
   } = props;
   const router = useRouter();
@@ -70,7 +72,11 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
   const [userEmpresaId, setUserEmpresaId] = useState<number | null>(
     () => empresaIdUsuario ?? null
   );
-  const [userLocalidadId, setUserLocalidadId] = useState<number | null>(null);
+  const [userLocalidadId, setUserLocalidadId] = useState<number | null>(
+    () => localidadIdUsuario ?? null
+  );
+  const rolNormalizado = String(rol || "").toUpperCase();
+  const esAdministrador = rolNormalizado === "ADMINISTRADOR";
 
   /* ================== RESOLVER SESIÓN ================== */
 
@@ -96,6 +102,12 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
       setUserEmpresaId(empresaIdUsuario);
     }
   }, [empresaIdUsuario]);
+
+  useEffect(() => {
+    if (localidadIdUsuario != null && Number.isFinite(localidadIdUsuario)) {
+      setUserLocalidadId(localidadIdUsuario);
+    }
+  }, [localidadIdUsuario]);
 
   useEffect(() => {
     try {
@@ -147,6 +159,8 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     token,
     apiBase,
     autoRefreshMs: intervaloAutoMs,
+    initialEmpresaId: esAdministrador ? null : userEmpresaId,
+    initialLocalidadId: esAdministrador ? null : userLocalidadId,
   });
 
   const [movimientoSeleccionado, setMovimientoSeleccionado] =
@@ -165,7 +179,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
   const puedeVerTodasEmpresas = puedeElegirLocalidad;
 
   useEffect(() => {
-    if (puedeElegirLocalidad) return;
+    if (esAdministrador) return;
 
     setFiltros((prev) => ({
       ...prev,
@@ -179,7 +193,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
           : prev.localidadId ?? undefined,
       pagina: 1,
     }));
-  }, [puedeElegirLocalidad, userEmpresaId, userLocalidadId, setFiltros]);
+  }, [esAdministrador, userEmpresaId, userLocalidadId, setFiltros]);
 
   const listaEmpresas = useMemo(() => {
     if (puedeVerTodasEmpresas) return empresas;
@@ -313,10 +327,12 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     setFiltros((prev) => ({
       ...prev,
       pagina: 1,
-      empresaId: undefined,
-      localidadId: puedeElegirLocalidad
+      empresaId: esAdministrador
         ? undefined
-        : prev.localidadId ?? undefined,
+        : userEmpresaId ?? prev.empresaId ?? undefined,
+      localidadId: esAdministrador
+        ? undefined
+        : userLocalidadId ?? prev.localidadId ?? undefined,
       desde: undefined,
       hasta: undefined,
       estado: undefined,
@@ -324,7 +340,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
       locomotiveNumber: undefined,
       fechaCampo: "solicitud",
     }));
-  }, [setFiltros, puedeElegirLocalidad]);
+  }, [setFiltros, esAdministrador, userEmpresaId, userLocalidadId]);
 
   const handlePagina = useCallback(
     (pagina: number) => {

@@ -166,6 +166,8 @@ export interface UseMovimientosOptions {
   token?: string;
   apiBase?: string;
   autoRefreshMs?: number;
+  initialEmpresaId?: number | null;
+  initialLocalidadId?: number | null;
 }
 
 export interface OpcionCatalogo {
@@ -501,6 +503,8 @@ export function useMovimientos({
   token,
   apiBase,
   autoRefreshMs,
+  initialEmpresaId = null,
+  initialLocalidadId = null,
 }: UseMovimientosOptions) {
   const [ambito, setAmbito] = useState<Ambito>("actuales");
 
@@ -519,6 +523,8 @@ export function useMovimientos({
   const [totalEstimado, setTotalEstimado] = useState(false);
 
   const [filtros, setFiltros] = useState<FiltrosMovimientos>({
+    empresaId: initialEmpresaId ?? undefined,
+    localidadId: initialLocalidadId ?? undefined,
     pagina: 1,
     tamPagina: 25,
     campoOrden: "id",
@@ -538,8 +544,8 @@ export function useMovimientos({
   const abortRef = useRef<AbortController | null>(null);
   const realtimeRefreshTimerRef = useRef<number | null>(null);
   const base = normalizeBase(apiBase);
-  const urlEmpresas = `${base}/empresas`;
-  const urlLocalidades = `${base}/localidades`;
+  const urlEmpresas = `${base}/empresas/lite`;
+  const urlLocalidades = `${base}/localidades/lite`;
 
   const shouldUseBuscar = useMemo(() => {
     const hasBusqueda = filtros.busqueda.trim().length > 0;
@@ -670,6 +676,13 @@ export function useMovimientos({
         const data: unknown = await res.json();
         if (esOpcionCatalogoArray(data)) {
           setter(data);
+        } else if (
+          typeof data === "object" &&
+          data !== null &&
+          "data" in data &&
+          esOpcionCatalogoArray((data as { data?: unknown }).data)
+        ) {
+          setter((data as { data: OpcionCatalogo[] }).data);
         }
       } catch {
         // silencioso

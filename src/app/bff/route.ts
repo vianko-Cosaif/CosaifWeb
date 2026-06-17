@@ -26,12 +26,24 @@ async function proxy(req: NextRequest) {
     return NextResponse.json({ error: "API_ORIGIN not set" }, { status: 500 });
   }
 
-  const token = (await cookies()).get("token")?.value || "";
+  const cookieStore = await cookies();
+  const cookieName = process.env.JWT_COOKIE_NAME ?? "token";
+  const token =
+    cookieStore.get(cookieName)?.value ||
+    cookieStore.get("token")?.value ||
+    "";
+  const incomingAuthorization = req.headers.get("authorization") || "";
   const headers = new Headers(req.headers);
   headers.set("host", new URL(ORIGIN).host);
   headers.set("origin", ORIGIN);
   headers.set("referer", ORIGIN);
-  if (token) headers.set("authorization", `Bearer ${token}`);
+  if (token) {
+    headers.set("authorization", `Bearer ${token}`);
+  } else if (incomingAuthorization) {
+    headers.set("authorization", incomingAuthorization);
+  } else {
+    headers.delete("authorization");
+  }
   headers.delete("cookie");
 
   const init: RequestInit = {

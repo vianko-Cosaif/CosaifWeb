@@ -31,14 +31,25 @@ async function proxy(req: NextRequest) {
 
   // 2) Leer cookies **DENTRO** del handler y con await
   const cookieStore = await cookies();
-  const token = cookieStore.get("token")?.value || "";
+  const cookieName = process.env.JWT_COOKIE_NAME ?? "token";
+  const token =
+    cookieStore.get(cookieName)?.value ||
+    cookieStore.get("token")?.value ||
+    "";
+  const incomingAuthorization = req.headers.get("authorization") || "";
 
   // 3) Copiar headers y meter Authorization
   const headers = new Headers(req.headers);
   headers.set("host", new URL(ORIGIN).host);
   headers.set("origin", ORIGIN);
   headers.set("referer", ORIGIN);
-  headers.set("authorization", token ? `Bearer ${token}` : "");
+  if (token) {
+    headers.set("authorization", `Bearer ${token}`);
+  } else if (incomingAuthorization) {
+    headers.set("authorization", incomingAuthorization);
+  } else {
+    headers.delete("authorization");
+  }
   headers.delete("cookie"); // no reenvíes cookies internas
 
   const init: RequestInit = {

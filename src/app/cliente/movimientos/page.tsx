@@ -15,6 +15,10 @@ export default async function Page() {
     Number(c.get("empId")?.value ?? "") ||
     Number(c.get("empresaId")?.value ?? "") ||
     null;
+  const locIdCookie =
+    Number(c.get("locId")?.value ?? "") ||
+    Number(c.get("localidadId")?.value ?? "") ||
+    null;
 
   if (empIdCookie == null) {
     redirect("/login?loc=cliente");
@@ -41,6 +45,7 @@ export default async function Page() {
           rol="CLIENTE"
           token={token}
           empresaIdUsuario={empIdCookie}
+          localidadIdUsuario={locIdCookie}
           puedeCrear
           intervaloAutoMs={15000}
         />
