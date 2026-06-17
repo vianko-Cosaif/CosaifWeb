@@ -169,13 +169,17 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
 
     setFiltros((prev) => ({
       ...prev,
+      empresaId:
+        userEmpresaId != null
+          ? userEmpresaId
+          : prev.empresaId ?? undefined,
       localidadId:
         userLocalidadId != null
           ? userLocalidadId
           : prev.localidadId ?? undefined,
       pagina: 1,
     }));
-  }, [puedeElegirLocalidad, userLocalidadId, setFiltros]);
+  }, [puedeElegirLocalidad, userEmpresaId, userLocalidadId, setFiltros]);
 
   const listaEmpresas = useMemo(() => {
     if (puedeVerTodasEmpresas) return empresas;
