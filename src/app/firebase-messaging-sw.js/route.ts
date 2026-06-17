@@ -42,13 +42,16 @@ if (requiredConfig.every(hasValue)) {
     const data = payload.data || {};
     const title = notification.title || data.title || "Nueva notificacion";
     const url = data.url || data.click_action || "/";
+    const tag = data.tag || data.eventId || data.movimientoId || data.incidenteId || data.tipo || title;
 
     self.registration.showNotification(title, {
       body: notification.body || data.body || "",
       icon: notification.icon || data.icon || "/icons/cosaif-192.png",
       badge: data.badge || "/icons/cosaif-192.png",
       data: { ...data, url },
-      tag: data.tag,
+      tag,
+      renotify: true,
+      requireInteraction: true,
     });
   });
 } else {

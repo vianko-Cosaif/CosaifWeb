@@ -11,6 +11,9 @@ export type Resumen = Partial<{
   totalMovimientos: number;
   totalLocomotoras: number;
   estadosGeneral: Record<string, number>;
+  usuarioCliente: string;
+  totalUsuarioCliente: number;
+  estadosUsuarioCliente: Record<string, number>;
 }>;
 
 export type Locomotora = {
@@ -23,6 +26,8 @@ export type Movimiento = {
   id: number;
   locomotiveNumber?: number | string;
   estado?: string;
+  solicitadoPor?: string;
+  cliente?: string | null;
   fechaSolicitudMX?: string;
   fechaInicioMX?: string;
   fechaFinMX?: string;
@@ -40,4 +45,5 @@ export type ReporteEmpresaLocomotoras = Partial<{
   resumen: Resumen;
   locomotoras: Locomotora[];
   movimientos: Movimiento[];
+  movimientosUsuarioCliente: Movimiento[];
 }>;

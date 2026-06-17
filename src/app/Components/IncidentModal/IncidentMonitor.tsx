@@ -61,6 +61,15 @@ const realtimeNoticeForEvent = (event: RealtimeMovementEvent) => {
   const incidentId = event.incidenteId ? `Incidente #${event.incidenteId}` : "Incidente";
   const loco = event.locomotiveNumber ? ` · Loco ${event.locomotiveNumber}` : "";
 
+  if (event.type === "movimiento.creado") {
+    return {
+      title: "Movimiento creado",
+      description: `${movementId}${loco}`,
+      tone: "sky" as const,
+      icon: "movement" as const,
+    };
+  }
+
   if (event.type === "movimiento.incidente") {
     return {
       title: "Incidente reportado",
@@ -131,6 +140,36 @@ const realtimeNoticeToneClass = (tone: "emerald" | "sky" | "rose" | "amber") => 
   return "border-rose-200 text-rose-800 dark:border-rose-800 dark:text-rose-200";
 };
 
+function showBrowserRealtimeNotification(params: {
+  id: string;
+  title: string;
+  body: string;
+  url?: string;
+}) {
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+
+  try {
+    const options: NotificationOptions & Record<string, unknown> = {
+      body: params.body,
+      icon: "/icons/cosaif-192.png",
+      badge: "/icons/cosaif-192.png",
+      tag: params.id,
+      renotify: true,
+      requireInteraction: true,
+      data: { url: params.url ?? "/" },
+    };
+    const notification = new Notification(params.title, options);
+    notification.onclick = (event) => {
+      event.preventDefault();
+      window.focus();
+      window.location.assign(params.url ?? "/");
+    };
+  } catch (error) {
+    console.warn("No se pudo mostrar notificacion del navegador.", error);
+  }
+}
+
 /* ========== Tipos ========== */
 interface IncidentMonitorProps {
   apiBase?: string;
@@ -180,6 +219,7 @@ export default function IncidentMonitor({
   const [isMinimized, setIsMinimized] = useState(false);
   const constraintsRef = useRef(null);
   const realtimeCheckTimerRef = useRef<number | null>(null);
+  const browserNoticeIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     setEmpresaId(empresaIdProp ?? getEmpresaIdFromCookie());
@@ -252,22 +292,42 @@ export default function IncidentMonitor({
       if (event.type === "movimiento.incidente" || event.type === "incidente.estado") {
         const notice = realtimeNoticeForEvent(event);
         if (notice) {
+          const id = event.eventId ?? `${event.type}:${event.movimientoId}:${event.incidenteId}:${event.estado}:${Date.now()}`;
           setRealtimeNotice({
             ...notice,
-            id: event.eventId ?? `${event.type}:${event.movimientoId}:${event.incidenteId}:${event.estado}:${Date.now()}`,
+            id,
           });
+          if (!browserNoticeIdsRef.current.has(id)) {
+            browserNoticeIdsRef.current.add(id);
+            showBrowserRealtimeNotification({
+              id,
+              title: notice.title,
+              body: notice.description,
+              url: "/incidentes",
+            });
+          }
         }
         scheduleRealtimeIncidentCheck();
         return;
       }
 
-      if (event.type === "movimiento.estado") {
+      if (event.type === "movimiento.creado" || event.type === "movimiento.estado") {
         const notice = realtimeNoticeForEvent(event);
         if (notice) {
+          const id = event.eventId ?? `${event.type}:${event.movimientoId}:${event.estado}:${Date.now()}`;
           setRealtimeNotice({
             ...notice,
-            id: event.eventId ?? `${event.type}:${event.movimientoId}:${event.estado}:${Date.now()}`,
+            id,
           });
+          if (!browserNoticeIdsRef.current.has(id)) {
+            browserNoticeIdsRef.current.add(id);
+            showBrowserRealtimeNotification({
+              id,
+              title: notice.title,
+              body: notice.description,
+              url: "/movimientos",
+            });
+          }
         }
       }
     },

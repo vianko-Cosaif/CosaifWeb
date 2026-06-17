@@ -36,30 +36,47 @@ export default function ScopedIncidentMonitor({
   const [localidadId, setLocalidadId] = useState<number | null>(null);
 
   useEffect(() => {
-    const role = getRoleClient();
-    const resolvedScope =
-      scope === "auto"
-        ? role === "ADMINISTRADOR"
-          ? "admin"
-          : role === "CLIENTE"
-            ? "cliente"
-            : "localidad"
-        : scope;
+    const refreshScope = () => {
+      const role = getRoleClient();
+      const resolvedScope =
+        scope === "auto"
+          ? role === "ADMINISTRADOR"
+            ? "admin"
+            : role === "CLIENTE"
+              ? "cliente"
+              : "localidad"
+          : scope;
 
-    if (resolvedScope === "admin") {
+      if (resolvedScope === "admin") {
+        setEmpresaId(null);
+        setLocalidadId(null);
+        return;
+      }
+
+      if (resolvedScope === "cliente") {
+        setEmpresaId(getEmpresaIdClient());
+        setLocalidadId(getStoredLocalidadId());
+        return;
+      }
+
       setEmpresaId(null);
-      setLocalidadId(null);
-      return;
-    }
-
-    if (resolvedScope === "cliente") {
-      setEmpresaId(getEmpresaIdClient());
       setLocalidadId(getStoredLocalidadId());
-      return;
-    }
+    };
 
-    setEmpresaId(null);
-    setLocalidadId(getStoredLocalidadId());
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key || event.key === "locId" || event.key === "localidadId") refreshScope();
+    };
+
+    refreshScope();
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("cosaif:localidad-change", refreshScope);
+    const interval = window.setInterval(refreshScope, 1500);
+
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("cosaif:localidad-change", refreshScope);
+      window.clearInterval(interval);
+    };
   }, [scope]);
 
   return (

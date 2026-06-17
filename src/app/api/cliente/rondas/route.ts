@@ -23,6 +23,7 @@ type RondaOut = {
     fechaSolicitud?: string | null;
     fechaInicio?: string | null;
     fechaFin?: string | null;
+    createdAt?: string | null;
     instrucciones?: string | null;
   } | null;
   movimientoId?: number | null;
