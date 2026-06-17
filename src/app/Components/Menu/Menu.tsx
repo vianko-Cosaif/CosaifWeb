@@ -22,6 +22,7 @@ import {
   Search,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import ThemeToggle from "@/app/Components/ui/ThemeToggle";
 
 /* ==========================================================================
@@ -46,6 +47,11 @@ type NavigationItem = {
   href: string;
   icon: LucideIcon;
   hide?: boolean;
+};
+
+type HelpSuggestion = {
+  id: string;
+  label: string;
 };
 
 // PREMIUM COLOR CONFIGURATION
@@ -214,8 +220,11 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
   const roleConfig = ROLE_CONFIG[normRol] || ROLE_CONFIG.CLIENTE;
   const showExpandedSidebar = isOpen || mobileOpen;
   const showMovimientoSuggestions = helpQuery.trim().toLowerCase().includes("movimiento");
-  const helpSuggestions = showMovimientoSuggestions
-    ? ["¿como crear un movimiento?", "¿como crear un movimiento con torno?"]
+  const helpSuggestions: HelpSuggestion[] = showMovimientoSuggestions
+    ? [
+        { id: "create-movement-guide", label: "¿como crear un movimiento?" },
+        { id: "create-movement-torno", label: "¿como crear un movimiento con torno?" },
+      ]
     : [];
 
   const navigation = useMemo<NavigationItem[]>(() => {
@@ -415,7 +424,17 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
 
           {navigation.map((item) => {
             const active = pathname === item.href || (item.href !== base && pathname.startsWith(item.href));
-            return <NavItem key={item.id} item={item} isActive={active} />;
+            const navItem = <NavItem key={item.id} item={item} isActive={active} />;
+
+            if (item.id === "movs") {
+              return (
+                <GuidedTarget key={item.id} id="sidebar-menu-movimientos" className="w-full">
+                  {navItem}
+                </GuidedTarget>
+              );
+            }
+
+            return navItem;
           })}
         </nav>
 
@@ -481,12 +500,22 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
                     <div className="mt-4 space-y-2">
                       {helpSuggestions.map((suggestion) => (
                         <button
-                          key={suggestion}
+                          key={suggestion.id}
                           type="button"
-                          onClick={() => setHelpSuggestionModalOpen(true)}
+                          onClick={() => {
+                            if (suggestion.id === "create-movement-guide") {
+                              window.dispatchEvent(new CustomEvent("cosaif:start-create-movement-guide"));
+                              setHelpOpen(false);
+                              setHelpQuery("");
+                              setHelpSuggestionModalOpen(false);
+                              return;
+                            }
+
+                            setHelpSuggestionModalOpen(true);
+                          }}
                           className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left text-sm text-slate-700 transition hover:border-sky-300 hover:bg-sky-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:border-sky-700 dark:hover:bg-zinc-900"
                         >
-                          {suggestion}
+                          {suggestion.label}
                         </button>
                       ))}
                     </div>

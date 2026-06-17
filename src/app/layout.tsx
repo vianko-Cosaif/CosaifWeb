@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next";
 import { initThemeSSRScript } from "@/lib/theme";
 import AdaptiveMode from "@/app/Components/layout/AdaptiveMode";
 import PwaInstallPrompt from "@/app/Components/layout/PwaInstallPrompt";
+import GuidedManualRoot from "@/app/Components/GuidedManualRoot";
 
 export const metadata: Metadata = {
   title: {
@@ -55,17 +56,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-svh bg-white text-slate-900 antialiased selection:bg-sky-200/60 dark:bg-slate-950 dark:text-slate-100 dark:selection:bg-sky-600/40">
         <AdaptiveMode />
-        <a
-          href="#main"
-          className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:shadow"
-        >
-          Saltar al contenido
-        </a>
+        <GuidedManualRoot>
+          <a
+            href="#main"
+            className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:shadow"
+          >
+            Saltar al contenido
+          </a>
 
-        {/* Theme Toggle global - solo se muestra fuera de rutas /cliente */}
+          {/* Theme Toggle global - solo se muestra fuera de rutas /cliente */}
 
-        <main id="main">{children}</main>
-        <PwaInstallPrompt />
+          <main id="main">{children}</main>
+          <PwaInstallPrompt />
+        </GuidedManualRoot>
       </body>
     </html>
   );

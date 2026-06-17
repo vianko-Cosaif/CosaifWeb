@@ -3,7 +3,7 @@
 import React, { useEffect } from "react";
 import { useMounted } from "@/app/hooks/useMounted";
 import {
-  GuidedManualProvider,
+  GuidedTarget,
   useGuidedManualApi,
   type GuidedManualStep,
 } from "@/app/Components/GuidedManualAtom";
@@ -17,15 +17,15 @@ import StepFourTorno from "./components/StepFourTorno";
 import { Badge, RoleBadge } from "./components/ui";
 import { useCrearMovimientoController } from "./useCrearMovimientoController";
 
-function TornoMeasurementGuideButton() {
+function TornoMeasurementGuideButton({ steps }: { steps: GuidedManualStep[] }) {
   const api = useGuidedManualApi();
 
-  if (!api) return null;
+  if (!api || steps.length === 0) return null;
 
   return (
     <button
       type="button"
-      onClick={() => api.start(0)}
+      onClick={() => api.startWithSteps(steps, 0)}
       className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-sky-200 bg-sky-50 text-lg font-bold text-sky-700 shadow-sm transition-all hover:bg-sky-100 active:scale-[0.97] dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-900/60"
       title="Mostrar guía de medición"
       aria-label="Mostrar guía de medición"
@@ -168,7 +168,6 @@ export default function CrearMovimiento() {
     : [];
 
   return (
-    <GuidedManualProvider steps={tornoGuideSteps}>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white dark:from-zinc-950 dark:to-zinc-900 text-slate-900 dark:text-white transition-colors duration-200 p-4 md:p-6 lg:p-8">
       <style jsx global>{`
         @media (max-width: 640px) {
@@ -226,6 +225,7 @@ export default function CrearMovimiento() {
         )}
 
         {/* Stepper declarativo (sin estado local extra). */}
+        <GuidedTarget id="create-movement-stepper">
         <div className="mt-5 flex items-center justify-center gap-0" aria-label="Progreso">
           {stepNames.map((stepName, i) => {
             const s = i + 1;
@@ -265,8 +265,10 @@ export default function CrearMovimiento() {
             );
           })}
         </div>
+        </GuidedTarget>
 
         {/* Contenido de steps (1,2,3) desacoplado en componentes especializados. */}
+        <GuidedTarget id="create-movement-step-content">
         <div className="mt-6 rounded-2xl border border-slate-200/80 dark:border-zinc-800/60 bg-white/95 dark:bg-zinc-950/90 backdrop-blur-sm p-5 sm:p-6 shadow-xl shadow-slate-200/30 dark:shadow-zinc-900/30">
           {step === 1 && (
             <StepOne
@@ -338,6 +340,7 @@ export default function CrearMovimiento() {
             />
           )}
         </div>
+        </GuidedTarget>
 
         {/* Navegacion declarativa del wizard. */}
         <div className="mt-5 flex flex-wrap gap-3">
@@ -355,15 +358,17 @@ export default function CrearMovimiento() {
           )}
 
           {step < 3 && (
-            <button
-              onClick={goNext}
-              className="rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:from-emerald-600 hover:to-emerald-700 transition-all active:scale-[0.97]"
-            >
-              {nextLabel}
-            </button>
+            <GuidedTarget id="create-movement-next-step" className="inline-flex">
+              <button
+                onClick={goNext}
+                className="rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:from-emerald-600 hover:to-emerald-700 transition-all active:scale-[0.97]"
+              >
+                {nextLabel}
+              </button>
+            </GuidedTarget>
           )}
 
-          {isTornoMeasurementStep && <TornoMeasurementGuideButton />}
+          {isTornoMeasurementStep && <TornoMeasurementGuideButton steps={tornoGuideSteps} />}
 
           <button onClick={goSalir} className="ml-auto rounded-xl border border-rose-200 dark:border-rose-800 px-4 py-2.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all active:scale-95" title="Volver a mis movimientos">
             Salir
@@ -382,6 +387,5 @@ export default function CrearMovimiento() {
         ) : null}
       </div>
       </div>
-    </GuidedManualProvider>
   );
 }
