@@ -126,11 +126,9 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
   const [mobileOpen, setMobileOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpQuery, setHelpQuery] = useState("");
-  const [helpSuggestionModalOpen, setHelpSuggestionModalOpen] = useState(false);
   const [session, setSession] = useState<UserSession | null>(null);
   const [mounted, setMounted] = useState(false);
   const helpPanelRef = useRef<HTMLDivElement | null>(null);
-  const helpSuggestionModalRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -167,7 +165,6 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setHelpSuggestionModalOpen(false);
         setMobileOpen(false);
         setHelpOpen(false);
       }
@@ -184,9 +181,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
     if (!helpOpen) return;
 
     const onPointerDown = (event: MouseEvent) => {
-      if (helpSuggestionModalOpen) return;
       const target = event.target as Node;
-      if (helpSuggestionModalRef.current?.contains(target)) return;
       if (!helpPanelRef.current?.contains(target)) {
         setHelpOpen(false);
       }
@@ -194,17 +189,10 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
 
     window.addEventListener("mousedown", onPointerDown);
     return () => window.removeEventListener("mousedown", onPointerDown);
-  }, [helpOpen, helpSuggestionModalOpen]);
-
-  useEffect(() => {
-    if (!helpOpen) {
-      setHelpSuggestionModalOpen(false);
-    }
   }, [helpOpen]);
 
   useEffect(() => {
     setHelpQuery("");
-    setHelpSuggestionModalOpen(false);
     setHelpOpen(false);
   }, [pathname, isOpen, mobileOpen]);
 
@@ -446,7 +434,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
           >
             {showExpandedSidebar && (
               <span className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-zinc-600">
-                ¿en que te puedo ayudar?
+                Ayuda
               </span>
             )}
             <button
@@ -454,7 +442,6 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
               onClick={() =>
                 setHelpOpen((current) => {
                   const next = !current;
-                  if (!next) setHelpSuggestionModalOpen(false);
                   return next;
                 })
               }
@@ -478,7 +465,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
                 aria-label="Panel de ayuda"
               >
                 <div className="border-b border-slate-100 px-4 py-3 dark:border-zinc-800">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-zinc-100">¿en que te puedo ayudar?</p>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-zinc-100">¿En que te puedo ayudar?</p>
                 </div>
                 <div className="px-4 py-5">
                   <label htmlFor="sidebar-help-search" className="sr-only">
@@ -491,7 +478,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
                       type="text"
                       value={helpQuery}
                       onChange={(event) => setHelpQuery(event.target.value)}
-                      placeholder="Escribe una palabra clave"
+                      placeholder="Palabra clave: movimiento, incidente"
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm text-slate-700 outline-none transition focus:border-sky-400 focus:bg-white dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-sky-500"
                     />
                   </div>
@@ -507,11 +494,14 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
                               window.dispatchEvent(new CustomEvent("cosaif:start-create-movement-guide"));
                               setHelpOpen(false);
                               setHelpQuery("");
-                              setHelpSuggestionModalOpen(false);
                               return;
                             }
 
-                            setHelpSuggestionModalOpen(true);
+                            if (suggestion.id === "create-movement-torno") {
+                              window.dispatchEvent(new CustomEvent("cosaif:start-create-movement-torno-guide"));
+                              setHelpOpen(false);
+                              setHelpQuery("");
+                            }
                           }}
                           className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left text-sm text-slate-700 transition hover:border-sky-300 hover:bg-sky-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:border-sky-700 dark:hover:bg-zinc-900"
                         >
@@ -571,39 +561,6 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
         )}
       />
 
-      {helpSuggestionModalOpen && (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-zinc-950/50 px-4 backdrop-blur-sm"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) {
-              setHelpSuggestionModalOpen(false);
-            }
-          }}
-        >
-          <div
-            ref={helpSuggestionModalRef}
-            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-900"
-            role="dialog"
-            aria-label="Respuesta de ayuda"
-          >
-            <div className="border-b border-slate-100 px-4 py-3 dark:border-zinc-800">
-              <p className="text-sm font-semibold text-slate-900 dark:text-zinc-100">Ayuda</p>
-            </div>
-            <div className="px-4 py-5">
-              <p className="text-sm text-slate-600 dark:text-zinc-300">hola</p>
-            </div>
-            <div className="flex justify-end border-t border-slate-100 px-4 py-3 dark:border-zinc-800">
-              <button
-                type="button"
-                onClick={() => setHelpSuggestionModalOpen(false)}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }

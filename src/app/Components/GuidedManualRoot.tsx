@@ -10,6 +10,7 @@ import {
 } from "@/app/Components/GuidedManualAtom";
 
 const START_CREATE_MOVEMENT_GUIDE_EVENT = "cosaif:start-create-movement-guide";
+const START_CREATE_MOVEMENT_TORNO_GUIDE_EVENT = "cosaif:start-create-movement-torno-guide";
 
 function getRoleBaseFromPathname(pathname: string) {
   const firstSegment = pathname.split("/").filter(Boolean)[0] ?? "";
@@ -116,6 +117,150 @@ function buildCreateMovementGuideSteps(roleBase: string): GuidedManualStep[] {
   ];
 }
 
+function buildCreateMovementTornoGuideSteps(roleBase: string): GuidedManualStep[] {
+  return [
+    {
+      id: "torno-open-sidebar-movements",
+      targetId: "sidebar-menu-movimientos",
+      title: "Abre el modulo de movimientos",
+      description: "Entra a Movimientos desde el menu lateral para iniciar una solicitud de servicio de torno.",
+      mode: "wizard",
+      actionOnNext: {
+        type: "event",
+        eventName: "guide:navigate-role-movements",
+        detail: { base: roleBase },
+        delayMs: 350,
+      },
+    },
+    {
+      id: "torno-open-new-movement-form",
+      targetId: "movimientos-new-button",
+      title: "Crea un nuevo movimiento",
+      description: "Pulsa Nuevo para abrir el formulario donde se capturan los datos del movimiento.",
+      mode: "wizard",
+      actionOnNext: {
+        type: "event",
+        eventName: "guide:navigate-create-movement",
+        detail: { base: roleBase },
+        delayMs: 350,
+      },
+    },
+    {
+      id: "torno-fill-base-data",
+      targetId: "create-movement-step-content",
+      title: "Captura los datos operativos",
+      description: "Selecciona empresa y localidad cuando aplique. Enseguida elige Torno como servicio para habilitar sus opciones.",
+      mode: "wizard",
+    },
+    {
+      id: "torno-select-service",
+      targetId: "create-movement-torno-service",
+      title: "Selecciona el servicio Torno",
+      description: "Pulsa Torno. Si el trabajo sera para otra fecha, tambien puedes marcar Agendar movimiento y elegir la fecha y hora.",
+      mode: "wizard",
+    },
+    {
+      id: "torno-select-mode",
+      targetId: "create-movement-torno-selection-mode",
+      title: "Elige De via",
+      description: "Selecciona De via para registrar el ingreso de la locomotora al torno y habilitar la captura de mediciones.",
+      mode: "wizard",
+    },
+    {
+      id: "torno-complete-step-one",
+      targetId: "create-movement-step-content",
+      title: "Completa los datos del movimiento",
+      description: "Indica la locomotora, la via de origen y su seccion. Revisa los campos obligatorios antes de continuar.",
+      mode: "wizard",
+    },
+    {
+      id: "torno-continue-step-one",
+      targetId: "create-movement-next-step",
+      title: "Avanza a la medicion",
+      description: "Cuando los datos esten completos, pulsa Siguiente para abrir la captura de ruedas.",
+      mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: "[data-guide-id='create-movement-next-step'] button",
+        delayMs: 250,
+      },
+    },
+    {
+      id: "torno-wheel-count",
+      targetId: "torno-wheel-count",
+      title: "Selecciona el numero de ruedas",
+      description: "Indica cuantas ruedas se mediran. La tabla se ajustara automaticamente al total seleccionado.",
+      mode: "wizard",
+    },
+    {
+      id: "torno-movement-type",
+      targetId: "torno-movement-type",
+      title: "Define el tipo de movimiento",
+      description: "Marca Trabajando o Remolcada. Si eliges Remolcada, completa tambien la direccion de empuje.",
+      mode: "wizard",
+    },
+    {
+      id: "torno-measures-table",
+      targetId: "torno-measures-table",
+      title: "Captura las medidas",
+      description: "Registra las medidas de cada rueda usando entero, numerador y denominador. Completa las posiciones requeridas antes de guardar.",
+      mode: "wizard",
+    },
+    {
+      id: "torno-save-measures",
+      targetId: "create-movement-next-step",
+      title: "Guarda las mediciones",
+      description: "Pulsa Guardar y Continuar para conservar las medidas y pasar a la confirmacion.",
+      mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: "[data-guide-id='create-movement-next-step'] button",
+        delayMs: 250,
+      },
+    },
+    {
+      id: "torno-review-summary",
+      targetId: "create-movement-step3-summary",
+      title: "Revisa el resumen",
+      description: "Verifica localidad, origen, locomotora, tipo de movimiento y servicio antes de confirmar.",
+      mode: "guide",
+    },
+    {
+      id: "torno-add-comments",
+      targetId: "create-movement-step3-comments",
+      title: "Agrega observaciones",
+      description: "Escribe instrucciones o comentarios adicionales si el movimiento los necesita.",
+      mode: "wizard",
+    },
+    {
+      id: "torno-submit-movement",
+      targetId: "create-movement-submit",
+      title: "Confirma el movimiento",
+      description: "Pulsa Confirmar y Continuar al PDF. Espera a que se guarde el movimiento antes de avanzar en esta ayuda.",
+      mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: "[data-guide-id='create-movement-submit'] button",
+        delayMs: 250,
+      },
+    },
+    {
+      id: "torno-review-measures",
+      targetId: "create-movement-torno-pdf-summary",
+      title: "Revisa las medidas finales",
+      description: "Comprueba la unidad, las posiciones y las medidas guardadas. Puedes volver a editar si detectas algun dato incorrecto.",
+      mode: "guide",
+    },
+    {
+      id: "torno-generate-pdf",
+      targetId: "create-movement-torno-pdf-actions",
+      title: "Genera el PDF",
+      description: "Pulsa Generar PDF para descargar el reporte de medidas y terminar el proceso.",
+      mode: "wizard",
+    },
+  ];
+}
+
 function GuidedManualEventBridge() {
   const api = useGuidedManualApi();
   const pathname = usePathname();
@@ -128,8 +273,17 @@ function GuidedManualEventBridge() {
       api.startWithSteps(buildCreateMovementGuideSteps(roleBase), 0);
     };
 
+    const startCreateMovementTornoGuide = () => {
+      const roleBase = getRoleBaseFromPathname(pathname);
+      api.startWithSteps(buildCreateMovementTornoGuideSteps(roleBase), 0);
+    };
+
     window.addEventListener(START_CREATE_MOVEMENT_GUIDE_EVENT, startCreateMovementGuide);
-    return () => window.removeEventListener(START_CREATE_MOVEMENT_GUIDE_EVENT, startCreateMovementGuide);
+    window.addEventListener(START_CREATE_MOVEMENT_TORNO_GUIDE_EVENT, startCreateMovementTornoGuide);
+    return () => {
+      window.removeEventListener(START_CREATE_MOVEMENT_GUIDE_EVENT, startCreateMovementGuide);
+      window.removeEventListener(START_CREATE_MOVEMENT_TORNO_GUIDE_EVENT, startCreateMovementTornoGuide);
+    };
   }, [api, pathname]);
 
   return null;

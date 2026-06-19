@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import { Movimiento } from "../../Movimiento";
 import {
   ALTA_PASSWORDS,
@@ -308,6 +309,7 @@ export default function StepOne(props: StepOneProps) {
       )}
 
       <div className="sm:col-span-2">
+        <GuidedTarget id="create-movement-torno-service">
         <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Servicio</span>
         <div className="flex flex-wrap gap-2">
           {(["Lavado", "Torno"] as const).map((svc) => {
@@ -339,6 +341,7 @@ export default function StepOne(props: StepOneProps) {
           })}
           {form.service ? <span className="self-center text-xs text-slate-500 dark:text-slate-400">Doble clic para desmarcar</span> : null}
         </div>
+        </GuidedTarget>
       </div>
 
       {form.service === "Torno" ? (
@@ -386,6 +389,7 @@ export default function StepOne(props: StepOneProps) {
 
       {form.service && (
         <div className="sm:col-span-2">
+          <GuidedTarget id="create-movement-torno-selection-mode">
           <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Modo de seleccion</span>
           <div className="flex flex-wrap gap-2">
             <button
@@ -412,6 +416,7 @@ export default function StepOne(props: StepOneProps) {
             </button>
         
           </div>
+          </GuidedTarget>
         </div>
       )}
 
