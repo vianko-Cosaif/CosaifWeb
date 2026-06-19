@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { getClientCookie, getEmpresaIdClient, getLocIdClient, getRoleClient } from "@/lib/cookies";
 import IncidentMonitor from "./IncidentMonitor";
 
+const DEFAULT_API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL || "/bff";
+
 type ScopeMode = "auto" | "cliente" | "localidad" | "admin";
 
 type ScopedIncidentMonitorProps = {
@@ -81,7 +84,7 @@ export default function ScopedIncidentMonitor({
 
   return (
     <IncidentMonitor
-      apiBase="/bff"
+      apiBase={DEFAULT_API_BASE}
       intervalMs={intervalMs}
       enabled={true}
       empresaId={empresaId}

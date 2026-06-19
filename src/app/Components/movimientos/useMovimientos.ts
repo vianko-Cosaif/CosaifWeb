@@ -5,7 +5,8 @@ import {
 } from "@/app/hooks/useRealtimeMovimientos";
 
 /* ================== CONFIGURACIÓN ================== */
-const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_URL || "/bff";
+const DEFAULT_API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL || "/bff";
 const DEFAULT_AUTO_REFRESH_MS = 60_000;
 
 function normalizeBase(base?: string): string {

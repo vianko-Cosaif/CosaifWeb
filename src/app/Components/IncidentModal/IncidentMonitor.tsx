@@ -12,6 +12,9 @@ import IncidentModal from "./IncidentModal";
 import { motion, AnimatePresence } from "framer-motion";
 import { Maximize2, Minimize2, GripHorizontal, Activity, AlertTriangle } from "lucide-react";
 
+const DEFAULT_API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL || "/bff";
+
 /* ========== Helpers cookies/auth ========== */
 const getCookie = (name: string) => {
   if (typeof document === "undefined") return null;
@@ -186,7 +189,7 @@ interface IncidentMonitorProps {
 
 /* ========== Componente ========== */
 export default function IncidentMonitor({
-  apiBase = "/bff",
+  apiBase = DEFAULT_API_BASE,
   intervalMs = 120000, // 2 minutos
   enabled = true,
   empresaId: empresaIdProp = null,

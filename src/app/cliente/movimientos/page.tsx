@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
+const MOVIMIENTOS_API_BASE = process.env.NEXT_PUBLIC_API_BASE || "/bff";
 
 export default async function Page() {
   const c = await cookies();
@@ -41,7 +42,7 @@ export default async function Page() {
         "
       >
         <MovimientosPanel
-          apiBase="/bff"
+          apiBase={MOVIMIENTOS_API_BASE}
           rol="CLIENTE"
           token={token}
           empresaIdUsuario={empIdCookie}
