@@ -541,6 +541,22 @@ const GuidedManualOverlay = () => {
   }, [isOpen, resolveTargetRect]);
 
   useEffect(() => {
+    if (!isOpen || !targetNode || typeof ResizeObserver === 'undefined') return;
+
+    const handleUpdate = () => resolveTargetRect(false);
+    const resizeObserver = new ResizeObserver(() => handleUpdate());
+
+    resizeObserver.observe(targetNode);
+    Array.from(targetNode.children).forEach((child) => {
+      if (child instanceof HTMLElement) {
+        resizeObserver.observe(child);
+      }
+    });
+
+    return () => resizeObserver.disconnect();
+  }, [isOpen, targetNode, resolveTargetRect]);
+
+  useEffect(() => {
     if (!isOpen) return;
     resolveTargetRect(false);
   }, [isOpen, targetsVersion, resolveTargetRect]);

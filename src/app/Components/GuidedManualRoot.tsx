@@ -62,10 +62,55 @@ function buildCreateMovementGuideSteps(roleBase: string): GuidedManualStep[] {
       mode: "wizard",
     },
     {
-      id: "continue-create-movement-flow",
+      id: "continue-create-movement-step-one",
       targetId: "create-movement-next-step",
-      title: "Continúa al siguiente bloque",
-      description: "Cuando termines este bloque, usa Siguiente para pasar a Detalles y después revisar la confirmación final.",
+      title: "Pasa al paso 2",
+      description: "Cuando completes los datos iniciales, usa este botón para avanzar al bloque de detalles del movimiento.",
+      mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: "[data-guide-id='create-movement-next-step'] button",
+        delayMs: 250,
+      },
+    },
+    {
+      id: "fill-create-movement-step-two-general",
+      targetId: "create-movement-step2-general",
+      title: "Completa el paso 2",
+      description: "Aquí defines los detalles del movimiento. Si eliges Remolcada, también deberás seleccionar su dirección.",
+      mode: "wizard",
+    },
+    {
+      id: "continue-create-movement-step-two",
+      targetId: "create-movement-next-step",
+      title: "Pasa al paso 3",
+      description: "Cuando termines los detalles, avanza para revisar el resumen final antes de confirmar el movimiento.",
+      mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: "[data-guide-id='create-movement-next-step'] button",
+        delayMs: 250,
+      },
+    },
+    {
+      id: "review-create-movement-step-three-summary",
+      targetId: "create-movement-step3-summary",
+      title: "Revisa el resumen",
+      description: "Aquí verificas que la localidad, vías, locomotora, tipo y servicio coincidan con lo que capturaste.",
+      mode: "guide",
+    },
+    {
+      id: "fill-create-movement-step-three-comments",
+      targetId: "create-movement-step3-comments",
+      title: "Agrega comentarios si hace falta",
+      description: "En este espacio puedes dejar instrucciones u observaciones para complementar la solicitud.",
+      mode: "wizard",
+    },
+    {
+      id: "submit-create-movement",
+      targetId: "create-movement-submit",
+      title: "Confirma el movimiento",
+      description: "Cuando todo esté correcto, usa este botón para enviar la solicitud y terminar el proceso.",
       mode: "wizard",
     },
   ];
@@ -98,9 +143,15 @@ export default function GuidedManualRoot({ children }: { children: React.ReactNo
     (action: GuidedManualAction) => {
       const delayMs = Math.max(0, Number(action.delayMs || 0));
 
-      if (action.type !== "event") return delayMs;
-
       const execute = () => {
+        if (action.type === "click" && action.selector) {
+          const node = document.querySelector(action.selector) as HTMLElement | null;
+          node?.click();
+          return;
+        }
+
+        if (action.type !== "event") return;
+
         const baseFromAction =
           typeof action.detail?.base === "string" && action.detail.base.trim()
             ? action.detail.base.trim()

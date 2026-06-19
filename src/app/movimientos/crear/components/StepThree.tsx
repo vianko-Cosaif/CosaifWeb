@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import { Movimiento } from "../../Movimiento";
 import { MovementFormData } from "../../movimientos.shared";
 import { inputBase } from "./ui";
@@ -62,6 +63,7 @@ export default function StepThree({
 
   return (
     <div className="grid gap-4 relative">
+      <GuidedTarget id="create-movement-step3-summary">
       <div className="rounded-lg border p-3 text-sm dark:border-slate-700">
         <div className="font-semibold mb-2 text-slate-800 dark:text-slate-100">Resumen</div>
         <ul className="grid gap-1 text-slate-700 dark:text-slate-300">
@@ -79,7 +81,9 @@ export default function StepThree({
           <li>Servicio: {form.service || "-"}</li>
         </ul>
       </div>
+      </GuidedTarget>
 
+      <GuidedTarget id="create-movement-step3-comments">
       <label className="mb-3 block">
         <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Comentarios / instrucciones</span>
         <textarea
@@ -91,10 +95,13 @@ export default function StepThree({
         />
         {showHint && <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">Se anadira: {sectionHint.trim()}</span>}
       </label>
+      </GuidedTarget>
 
-      <button onClick={handleSubmitClick} disabled={sending} className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" title="Ctrl/Cmd + Enter para enviar">
-        {sending ? "Enviando..." : (submitLabel || "Confirmar solicitud")}
-      </button>
+      <GuidedTarget id="create-movement-submit" className="inline-flex">
+        <button onClick={handleSubmitClick} disabled={sending} className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" title="Ctrl/Cmd + Enter para enviar">
+          {sending ? "Enviando..." : (submitLabel || "Confirmar solicitud")}
+        </button>
+      </GuidedTarget>
 
       {showAgendadoModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
