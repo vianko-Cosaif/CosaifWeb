@@ -259,9 +259,6 @@ export async function GET(req: NextRequest) {
 
     const cookieStore = await cookies();
     const token = cookieStore.get(process.env.JWT_COOKIE_NAME || "token")?.value;
-    const empresaId = readEmpresaId(cookieStore);
-    const role = readRole(cookieStore);
-    const shouldScopeEmpresa = shouldScopeToEmpresa(role, empresaId);
     const base = getApiBase(origin);
     const headers = authHeaders(req, token);
 
@@ -322,8 +319,6 @@ export async function GET(req: NextRequest) {
         }
 
         if (localidadMovimientoId && Number(localidadId) !== localidadMovimientoId) return null;
-        if (shouldScopeEmpresa && empresa?.id !== empresaId) return null;
-
         return {
           id: -Math.abs(servicioId),
           rondaNumero: 1,
@@ -366,7 +361,6 @@ export async function GET(req: NextRequest) {
         page: "1",
         pageSize: "100",
       });
-      if (shouldScopeEmpresa && empresaId) qs.set("empresaId", String(empresaId));
       const r = await fetch(`${base}/movimientos/buscar?${qs.toString()}`, {
         method: "GET",
         headers,
@@ -443,7 +437,6 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    if (shouldScopeEmpresa) out = out.filter((r) => r.empresa?.id === empresaId);
     out.sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden || a.id - b.id);
 
     return NextResponse.json(out, { status: 200 });
