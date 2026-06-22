@@ -233,6 +233,33 @@ function buildComparisonRowHeights(args: {
   });
 }
 
+function chunkPositionsByHeight(
+  positions: string[],
+  rowHeights: number[],
+  maxRowsHeight: number,
+): string[][] {
+  if (!positions.length) return [[]];
+
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let currentHeight = 0;
+
+  positions.forEach((position, index) => {
+    const rowHeight = rowHeights[index] ?? 38;
+    if (current.length && currentHeight + rowHeight > maxRowsHeight) {
+      chunks.push(current);
+      current = [];
+      currentHeight = 0;
+    }
+
+    current.push(position);
+    currentHeight += rowHeight;
+  });
+
+  if (current.length) chunks.push(current);
+  return chunks;
+}
+
 function orderedHistoryPositions(previous?: TornoHistoryMeasures, final?: TornoHistoryMeasures): string[] {
   const base = ["L1", "R1", "L2", "R2", "L3", "R3", "L4", "R4", "L5", "R5", "L6", "R6"];
   const present = new Set([...Object.keys(previous ?? {}), ...Object.keys(final ?? {})].map((key) => key.toUpperCase()));
@@ -755,6 +782,49 @@ function buildHistoryContents(args: TornoHistoryPdfArgs): string[] {
   const positions = orderedHistoryPositions(args.previousMeasures, args.finalMeasures);
   const columns = args.columns?.filter(Boolean) ?? collectHistoryColumns(positions, args.previousMeasures, args.finalMeasures);
   const safeColumns = columns.length ? columns : ["Medida"];
+  const tableW = PAGE_W - MARGIN * 2 - 44;
+  const positionColumnW = 46;
+  const measureColumnW = safeColumns.length > 0
+    ? (tableW - positionColumnW) / safeColumns.length
+    : tableW - positionColumnW;
+  const tableTitleAndHeaderHeight = 48;
+  const tableTop = MARGIN + 72;
+  const tableBottom = PAGE_H - MARGIN - 42;
+  const maxRowsHeight = tableBottom - tableTop - tableTitleAndHeaderHeight;
+
+  const previousChunks = chunkPositionsByHeight(
+    positions,
+    buildMeasureRowHeights({
+      positions,
+      columns: safeColumns,
+      measures: args.previousMeasures,
+      columnWidth: measureColumnW,
+      minimum: 30,
+    }),
+    maxRowsHeight,
+  );
+  const finalChunks = chunkPositionsByHeight(
+    positions,
+    buildMeasureRowHeights({
+      positions,
+      columns: safeColumns,
+      measures: args.finalMeasures,
+      columnWidth: measureColumnW,
+      minimum: 30,
+    }),
+    maxRowsHeight,
+  );
+  const comparisonChunks = chunkPositionsByHeight(
+    positions,
+    buildComparisonRowHeights({
+      positions,
+      columns: safeColumns,
+      previousMeasures: args.previousMeasures,
+      finalMeasures: args.finalMeasures,
+      columnWidth: measureColumnW,
+    }),
+    maxRowsHeight,
+  );
 
   const createPage = (
     pageTitle: string,
@@ -840,45 +910,63 @@ function buildHistoryContents(args: TornoHistoryPdfArgs): string[] {
     return cmds.join("\n");
   };
 
+  const withContinuation = (title: string, index: number, total: number) =>
+    total > 1 ? `${title} (${index + 1}/${total})` : title;
+
   return [
-    createPage("Medidas previas solicitadas", ({ cmds, tableX, tableY, tableW }) => {
+    ...previousChunks.map((pagePositions, index) =>
+      createPage(
+        withContinuation("Medidas previas solicitadas", index, previousChunks.length),
+        ({ cmds, tableX, tableY, tableW }) => {
       drawHistoryMeasureTable({
         cmds,
         title: "Medidas previas",
         x: tableX,
         y: tableY,
         w: tableW,
-        positions,
+        positions: pagePositions,
         columns: safeColumns,
         measures: args.previousMeasures,
         rowH: 30,
       });
-    }),
-    createPage("Medidas actuales al finalizar el torneado", ({ cmds, tableX, tableY, tableW }) => {
+        },
+      ),
+    ),
+    ...finalChunks.map((pagePositions, index) =>
+      createPage(
+        withContinuation("Medidas actuales al finalizar el torneado", index, finalChunks.length),
+        ({ cmds, tableX, tableY, tableW }) => {
       drawHistoryMeasureTable({
         cmds,
         title: "Medidas actuales",
         x: tableX,
         y: tableY,
         w: tableW,
-        positions,
+        positions: pagePositions,
         columns: safeColumns,
         measures: args.finalMeasures,
         rowH: 30,
       });
-    }),
-    createPage("Comparativa de medidas previas y actuales", ({ cmds, tableX, tableY, tableW }) => {
+        },
+      ),
+    ),
+    ...comparisonChunks.map((pagePositions, index) =>
+      createPage(
+        withContinuation("Comparativa de medidas previas y actuales", index, comparisonChunks.length),
+        ({ cmds, tableX, tableY, tableW }) => {
       drawHistoryComparisonTable({
         cmds,
         x: tableX,
         y: tableY,
         w: tableW,
-        positions,
+        positions: pagePositions,
         columns: safeColumns,
         previousMeasures: args.previousMeasures,
         finalMeasures: args.finalMeasures,
       });
-    }),
+        },
+      ),
+    ),
   ];
 }
 
