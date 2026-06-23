@@ -5,6 +5,7 @@ export const CLIENT_MOVEMENT_GUIDE_ID = "client-create-movement";
 export const CLIENT_MOVEMENT_GUIDE = defineGuidedManual({
   id: CLIENT_MOVEMENT_GUIDE_ID,
   title: "Crear un movimiento",
+  disableAppElements: ['[data-guide-action="create-movement-next"]'],
   steps: [
     {
       id: "open-movements",
@@ -56,6 +57,10 @@ export const CLIENT_MOVEMENT_GUIDE = defineGuidedManual({
         type: "click",
         selector: '[data-guide-action="create-movement-next"]',
       },
+      actionOnPrevious: {
+        type: "click",
+        selector: '[data-guide-action="create-movement-prev"]',
+      },
     },
     {
       id: "torno-measures",
@@ -70,6 +75,10 @@ export const CLIENT_MOVEMENT_GUIDE = defineGuidedManual({
       actionOnNext: {
         type: "click",
         selector: '[data-guide-action="create-movement-next"]',
+      },
+      actionOnPrevious: {
+        type: "click",
+        selector: '[data-guide-action="create-movement-prev"]',
       },
     },
     {
@@ -86,6 +95,10 @@ export const CLIENT_MOVEMENT_GUIDE = defineGuidedManual({
         type: "click",
         selector: '[data-guide-action="create-movement-next"]',
       },
+      actionOnPrevious: {
+        type: "click",
+        selector: '[data-guide-action="create-movement-prev"]',
+      },
     },
     {
       id: "movement-comments",
@@ -94,9 +107,32 @@ export const CLIENT_MOVEMENT_GUIDE = defineGuidedManual({
       targetId: "create-movement-step-3",
       mode: "wizard",
       tone: "critical",
+      icon: "⚠️",
+      customTitleSize: 26,
+      customTitleColor: "#fca5a5",
+      customDescriptionSize: 18,
+      customDescriptionColor: "#fecaca",
+      disableAppElements: ['[data-guide-action="create-movement-submit"]'],
+      confirmation: {
+        title: "¡ALERTA CRÍTICA!",
+        description: "Si desea continuar se creará el movimiento y se pondrá en Ronda el movimiento de forma definitiva.",
+        confirmText: "Sí, crear movimiento",
+        cancelText: "Cancelar y revisar",
+        tone: "critical",
+        icon: "🚨",
+        confirmDelaySeconds: 5,
+        customTitleSize: 28,
+        customDescriptionSize: 18,
+        customTitleColor: "#ef4444",
+        customDescriptionColor: "#fee2e2",
+      },
       actionOnNext: {
         type: "click",
         selector: '[data-guide-action="create-movement-submit"]',
+      },
+      actionOnPrevious: {
+        type: "click",
+        selector: '[data-guide-action="create-movement-prev"]',
       },
     },
     {

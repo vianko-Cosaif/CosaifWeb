@@ -56,9 +56,30 @@ export type GuidedManualStep = {
   when?: GuidedManualCondition;
   mode?: GuidedManualMode;
   tone?: GuidedManualStepTone;
+  icon?: string;
+  customTitleColor?: string;
+  customTitleSize?: number | string;
+  customDescriptionColor?: string;
+  customDescriptionSize?: number | string;
+  confirmation?: {
+    title: string;
+    description: string;
+    confirmText?: string;
+    cancelText?: string;
+    tone?: GuidedManualStepTone;
+    icon?: string;
+    customTitleColor?: string;
+    customTitleSize?: number | string;
+    customDescriptionColor?: string;
+    customDescriptionSize?: number | string;
+    confirmDelaySeconds?: number;
+  };
   actionOnEnter?: GuidedManualAction;
   actionOnNext?: GuidedManualAction;
   actionOnPrevious?: GuidedManualAction;
+  hidePrevious?: boolean;
+  disablePrevious?: boolean;
+  disableAppElements?: string[];
 };
 
 export type GuidedManualToneAppearance = {
@@ -73,6 +94,7 @@ export type GuidedManualToneAppearance = {
 export type GuidedManualDefinition = {
   id: string;
   title?: string;
+  disableAppElements?: string[];
   steps: GuidedManualStep[];
 };
 
@@ -269,6 +291,7 @@ export const normalizeGuidedManualDefinition = (
   return {
     id,
     title: raw.title ? String(raw.title) : undefined,
+    disableAppElements: Array.isArray(raw.disableAppElements) ? raw.disableAppElements.map(String) : undefined,
     steps,
   };
 };

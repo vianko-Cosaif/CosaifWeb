@@ -132,6 +132,7 @@ export default function CrearMovimiento() {
       />
       <div
         data-guide-movement-variant={useTornoMedicionStep ? "torno" : "standard"}
+        data-guide-movement-step={step}
         className={Movimiento.clsx("relative z-10 mx-auto", useTornoMedicionStep ? "max-w-7xl" : "max-w-4xl")}
       >
 
@@ -313,7 +314,11 @@ export default function CrearMovimiento() {
           </button>
 
           {step > 1 && !(useTornoMedicionStep && step === 4) && (
-            <button onClick={goPrev} className="rounded-xl border border-amber-300 dark:border-amber-700 px-4 py-2.5 text-sm font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all active:scale-[0.97]">
+            <button
+              onClick={goPrev}
+              data-guide-action="create-movement-prev"
+              className="rounded-xl border border-amber-300 dark:border-amber-700 px-4 py-2.5 text-sm font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all active:scale-[0.97]"
+            >
               ← Anterior
             </button>
           )}
