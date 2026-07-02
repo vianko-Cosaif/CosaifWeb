@@ -6,6 +6,8 @@ import {
   registerFirebaseNotificationToken,
   requestFirebaseNotificationToken,
 } from "@/lib/firebase";
+import { getNotificationRuntimePolicy } from "@/lib/notificationRuntime";
+import { isClienteAreaRole, isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 
 const DEST: Record<string, string> = {
   CLIENTE: "/cliente",
@@ -19,10 +21,10 @@ const DEST: Record<string, string> = {
 const API_BASE = "/bff";
 const LOGIN_PATH = "/login";
 
-type NotificationGateState = "checking" | "required" | "requesting" | "ready" | "denied" | "unsupported" | "error";
+type NotificationGateState = "checking" | "required" | "requesting" | "ready" | "denied" | "unsupported" | "disabled" | "error";
 
 function notificationPermission() {
-  if (typeof window === "undefined" || !("Notification" in window)) return null;
+  if (typeof window === "undefined" || !("Notification" in window)) return undefined;
   return Notification.permission;
 }
 
@@ -30,11 +32,17 @@ export default function LoginForm() {
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [notificationPolicy] = useState(() => getNotificationRuntimePolicy());
   const [notificationGate, setNotificationGate] = useState<NotificationGateState>("checking");
-  const [notificationToken, setNotificationToken] = useState<string | null>(null);
+  const [notificationToken, setNotificationToken] = useState<string>();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+
+    if (!notificationPolicy.enabled) {
+      setNotificationGate("disabled");
+      return;
+    }
 
     if (!("Notification" in window) || !("serviceWorker" in navigator) || !window.isSecureContext) {
       setNotificationGate("unsupported");
@@ -51,33 +59,35 @@ export default function LoginForm() {
       return;
     }
 
-    setNotificationGate("required");
-  }, []);
+    setNotificationGate(notificationPolicy.requiredForLogin ? "required" : "ready");
+  }, [notificationPolicy.enabled, notificationPolicy.requiredForLogin]);
 
-  async function requireNotificationToken() {
+  async function prepareNotificationAfterLogin(accessToken: string, localidadId?: number) {
+    if (!notificationPolicy.enabled) return true;
+
     if (!isFirebaseConfigured()) {
       setNotificationGate("error");
       setErr("Firebase no esta configurado para notificaciones.");
-      return null;
+      return !notificationPolicy.requiredForLogin;
     }
 
-    if (typeof window === "undefined") return null;
+    if (typeof window === "undefined") return !notificationPolicy.requiredForLogin;
 
     if (!("Notification" in window) || !("serviceWorker" in navigator) || !window.isSecureContext) {
       setNotificationGate("unsupported");
       setErr("Este navegador no permite notificaciones en esta pagina.");
-      return null;
+      return !notificationPolicy.requiredForLogin;
     }
 
     if (Notification.permission === "denied") {
       setNotificationGate("denied");
       setErr("Activa las notificaciones en permisos del sitio para poder iniciar sesion.");
-      return null;
+      return !notificationPolicy.requiredForLogin;
     }
 
     if (notificationToken && Notification.permission === "granted") {
-      setNotificationGate("ready");
-      return notificationToken;
+      await registerFirebaseNotificationToken(notificationToken, accessToken, localidadId);
+      return true;
     }
 
     setNotificationGate("requesting");
@@ -88,24 +98,25 @@ export default function LoginForm() {
 
       if (token && permission === "granted") {
         setNotificationToken(token);
+        await registerFirebaseNotificationToken(token, accessToken, localidadId);
         setNotificationGate("ready");
-        return token;
+        return true;
       }
 
       if (permission === "denied") {
         setNotificationGate("denied");
         setErr("Activa las notificaciones en permisos del sitio para poder iniciar sesion.");
-        return null;
+        return !notificationPolicy.requiredForLogin;
       }
 
       setNotificationGate("error");
       setErr("Debes aceptar las notificaciones para poder iniciar sesion.");
-      return null;
+      return !notificationPolicy.requiredForLogin;
     } catch (error) {
       console.warn("No se pudo preparar Firebase Messaging antes del login.", error);
       setNotificationGate("error");
       setErr("No se pudieron activar las notificaciones. Revisa Firebase y la llave VAPID.");
-      return null;
+      return !notificationPolicy.requiredForLogin;
     }
   }
 
@@ -122,9 +133,6 @@ export default function LoginForm() {
       setErr("Completa usuario y contraseña");
       return;
     }
-
-    const fcmToken = await requireNotificationToken();
-    if (!fcmToken) return;
 
     setLoading(true);
     const trace = Math.random().toString(36).slice(2);
@@ -173,15 +181,11 @@ export default function LoginForm() {
         return;
       }
 
-      try {
-        await registerFirebaseNotificationToken(
-          fcmToken,
-          token,
-          Number.isFinite(localidadId) ? localidadId : undefined
-        );
-      } catch (error) {
-        console.warn("No se pudo registrar token FCM despues del login.", error);
-        setErr("No se pudo registrar este dispositivo para notificaciones.");
+      const notificationsReady = await prepareNotificationAfterLogin(
+        token,
+        Number.isFinite(localidadId) ? localidadId : undefined
+      );
+      if (!notificationsReady) {
         return;
       }
 
@@ -195,7 +199,7 @@ export default function LoginForm() {
           role,
           // pasamos locId para que el server pueda setear cookie también
           locId: Number.isFinite(localidadId) ? localidadId : undefined,
-          debug: { trace, status: payload?.status ?? r.status, role, user: payload?.user ?? null },
+          debug: { trace, status: payload?.status ?? r.status, role, user: payload?.user },
         }),
       });
       if (!setCookie.ok) {
@@ -214,21 +218,20 @@ export default function LoginForm() {
 
       // 4) Persistir user (opcional, sin localidad)
       try {
-        localStorage.setItem(
-          "user",
-          JSON.stringify({
-            id: uid,
-            rol: role,
-            nombre: payload?.user?.nombre || "",
-            empresaId: Number.isFinite(empresaId) ? empresaId : null,
-            empresa: Number.isFinite(empresaId) ? { id: empresaId, nombre: empresaNombre } : null,
-            localidadId: Number.isFinite(localidadId) ? localidadId : null,
-          })
-        );
+        const storedUser = {
+          id: uid,
+          rol: role,
+          nombre: payload?.user?.nombre || "",
+          ...(Number.isFinite(empresaId) ? { empresaId, empresa: { id: empresaId, nombre: empresaNombre } } : {}),
+          ...(Number.isFinite(localidadId) ? { localidadId } : {}),
+        };
+        localStorage.setItem("user", JSON.stringify(storedUser));
       } catch {}
 
       // 5) Redirección por rol, sin query ?loc
-      const destBase = DEST[role] || "/cliente";
+      const destBase = isClienteAreaRole(role) && isTorreonLocalidadId(localidadId)
+        ? "/cliente/torreon"
+        : DEST[role] || "/cliente";
       console.log("Ingresamos ✅", {
         trace,
         role,
@@ -247,7 +250,7 @@ export default function LoginForm() {
 
   return (
     <form onSubmit={onSubmit} className="relative p-6 sm:p-8">
-      {loading ? <div className="top-loader" /> : null}
+      {loading && <div className="top-loader" />}
       <h1 className="text-center text-xl font-semibold">Iniciar sesión</h1>
 
       <div className="mt-6 space-y-4">
@@ -308,7 +311,7 @@ export default function LoginForm() {
         )}
       </div>
 
-      {notificationGate !== "ready" && (
+      {notificationGate !== "ready" && notificationGate !== "disabled" && (
         <p className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
@@ -318,7 +321,9 @@ export default function LoginForm() {
                 ? "Este navegador no permite notificaciones aqui."
                 : notificationGate === "requesting"
                   ? "Activando notificaciones..."
-                  : "Debes aceptar las notificaciones antes de entrar."}
+                  : notificationPolicy.requiredForLogin
+                    ? "Despues de validar tus credenciales se pedira permiso de notificaciones."
+                    : "Puedes activar notificaciones despues de entrar."}
           </span>
         </p>
       )}

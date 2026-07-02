@@ -8,8 +8,7 @@ import {
   registerFirebaseNotificationToken,
   requestFirebaseNotificationToken,
 } from "@/lib/firebase";
-
-const STATUS_KEY = "cosaif:firebase-notifications:status:v1";
+import { assertSameOriginUrl, getNotificationRuntimePolicy } from "@/lib/notificationRuntime";
 
 type PromptState =
   | "checking"
@@ -35,10 +34,12 @@ function browserPermission() {
 
 export default function FirebaseNotificationPrompt() {
   const pathname = usePathname();
+  const policy = useMemo(() => getNotificationRuntimePolicy(), []);
   const [state, setState] = useState<PromptState>("checking");
-  const shouldRegisterToken = !pathname.startsWith("/login");
+  const shouldRegisterToken = policy.enabled && !pathname.startsWith("/login");
 
   const enableNotifications = useCallback(async () => {
+    if (!shouldRegisterToken) return;
     setState("requesting");
 
     try {
@@ -49,13 +50,13 @@ export default function FirebaseNotificationPrompt() {
         if (shouldRegisterToken) {
           await registerFirebaseNotificationToken(token);
         }
-        safeSet(STATUS_KEY, "granted");
+        safeSet(policy.statusKey, "granted");
         setState("granted");
         return;
       }
 
       if (permission === "denied") {
-        safeSet(STATUS_KEY, "denied");
+        safeSet(policy.statusKey, "denied");
         setState("denied");
         return;
       }
@@ -65,10 +66,14 @@ export default function FirebaseNotificationPrompt() {
       console.warn("No se pudo activar Firebase Messaging.", error);
       setState("error");
     }
-  }, [shouldRegisterToken]);
+  }, [policy.statusKey, shouldRegisterToken]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!shouldRegisterToken) {
+      setState("unsupported");
+      return;
+    }
     if (!("Notification" in window) || !("serviceWorker" in navigator) || !window.isSecureContext) {
       setState("unsupported");
       return;
@@ -77,22 +82,23 @@ export default function FirebaseNotificationPrompt() {
     const permission = Notification.permission;
 
     if (permission === "granted") {
-      safeSet(STATUS_KEY, "granted");
+      safeSet(policy.statusKey, "granted");
       void enableNotifications();
       return;
     }
 
     if (permission === "denied") {
-      safeSet(STATUS_KEY, "denied");
+      safeSet(policy.statusKey, "denied");
       setState("denied");
       return;
     }
 
     setState("idle");
-  }, [enableNotifications]);
+  }, [enableNotifications, policy.statusKey, shouldRegisterToken]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!policy.enabled) return;
     if (browserPermission() !== "granted") return;
 
     let unsubscribe: (() => void) | undefined;
@@ -103,7 +109,7 @@ export default function FirebaseNotificationPrompt() {
 
       const title = payload.notification?.title || payload.data?.title || "Nueva notificacion";
       const body = payload.notification?.body || payload.data?.body || "";
-      const url = payload.data?.url || "/";
+      const url = assertSameOriginUrl(payload.data?.url || "/", "/");
       const tag =
         payload.data?.tag ||
         payload.data?.eventId ||
@@ -135,7 +141,7 @@ export default function FirebaseNotificationPrompt() {
       mounted = false;
       unsubscribe?.();
     };
-  }, [state]);
+  }, [policy.enabled, state]);
 
   const copy = useMemo(() => {
     if (state === "denied") {

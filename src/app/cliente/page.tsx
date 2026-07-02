@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import ClientPageWrapper from "./ClientPageWrapper";
+import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<SP>
 
   const localidadId = toInt(qLoc) ?? toInt(c.get("locId")?.value) ?? null;
   const empresaId  = toInt(c.get("empresaId")?.value) ?? null;
+
+  if (isTorreonLocalidadId(localidadId)) {
+    redirect("/cliente/torreon");
+  }
 
   return (
     <section className="w-full">

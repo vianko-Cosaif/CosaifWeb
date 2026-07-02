@@ -10,9 +10,16 @@ export const metadata: Metadata = {
 };
 
 export default async function Page() {
-    const token = (await cookies()).get("token")?.value;
-    if (!token) {
-      redirect("/login?loc=cliente");
-    }
+  const cookieStore = await cookies();
+  const token = cookieStore.get(process.env.JWT_COOKIE_NAME ?? "token")?.value;
+  if (!token) {
+    redirect("/login?loc=cliente");
+  }
+
+  const role = cookieStore.get(process.env.ROLE_COOKIE_NAME ?? "role")?.value?.toUpperCase() ?? "";
+  if (role === "ARRASTRE_TORREON") {
+    redirect("/cliente/torreon/crear");
+  }
+
   return <CrearMovimiento />;
 }

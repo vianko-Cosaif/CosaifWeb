@@ -2,6 +2,8 @@
 import MovimientosPanel from "@/app/Components/movimientos/MovimientosPanel";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
+import CoordinatorTorreonMovimientos from "../torreon/CoordinatorTorreonMovimientos";
 
 export const dynamic = "force-dynamic";
 const MOVIMIENTOS_API_BASE = process.env.NEXT_PUBLIC_API_BASE || "/bff";
@@ -23,6 +25,17 @@ export default async function Page() {
 
   if (empIdCookie == null) {
     redirect("/login");
+  }
+
+  if (locIdCookie && isTorreonLocalidadId(locIdCookie)) {
+    return (
+      <CoordinatorTorreonMovimientos
+        apiBase={MOVIMIENTOS_API_BASE}
+        token={token}
+        empresaIdUsuario={empIdCookie}
+        localidadIdUsuario={locIdCookie}
+      />
+    );
   }
 
   return (

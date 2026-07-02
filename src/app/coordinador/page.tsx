@@ -5,6 +5,8 @@ import RailQueueBoard from "./RailQueueBoard";
 import { DynamicBanner } from "@/app/Components/DynamicBanner";
 import { getClientCookie, setClientCookie } from "@/lib/cookies";
 import { syncFirebaseNotificationLocalidad } from "@/lib/firebase";
+import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
+import CoordinatorTorreonDashboard from "./torreon/CoordinatorTorreonDashboard";
 
 const CoordinadorPage: React.FC = () => {
   const [localidadId, setLocalidadId] = useState<number | null>(null);
@@ -38,12 +40,14 @@ const CoordinadorPage: React.FC = () => {
 
   return (
     <section className="w-full min-w-0">
-      {localidadId && (
+      {localidadId && isTorreonLocalidadId(localidadId) ? (
+        <CoordinatorTorreonDashboard localidadId={localidadId} />
+      ) : localidadId ? (
         <div className="mx-auto w-full max-w-[1400px] space-y-6 sm:space-y-8 min-w-0">
           <DynamicBanner />
           <RailQueueBoard localidadId={localidadId} />
         </div>
-      )}
+      ) : null}
     </section>
   );
 };

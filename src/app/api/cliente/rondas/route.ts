@@ -1,6 +1,7 @@
 // app/api/cliente/rondas/route.ts
 import { NextResponse, NextRequest } from "next/server";
 import { cookies } from "next/headers";
+import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ type RondaOut = {
   } | null;
   movimientoId?: number | null;
   createdAt?: string | null;
+  source?: "cosaif" | "torreon" | "torno" | string;
 };
 
 type TornoServiceRecord = {
@@ -72,12 +74,81 @@ type RondaInfoRecord = {
 type UnknownRecord = Record<string, unknown>;
 type MovimientoDetailRecord = MovimientoRecord & { movimiento?: MovimientoRecord | null };
 
+type TorreonIncidenteRecord = {
+  id?: number | string | null;
+  estado?: string | null;
+  motivo?: string | null;
+  viaBloqueadaId?: number | string | null;
+  seccionBloqueadaId?: number | string | null;
+  fechaInicio?: string | null;
+};
+
+type TorreonMovimientoRecord = {
+  id?: number | string | null;
+  empresaId?: number | string | null;
+  localidadId?: number | string | null;
+  viaOrigenId?: number | string | null;
+  viaDestinoId?: number | string | null;
+  seccionOrigenId?: number | string | null;
+  seccionDestinoId?: number | string | null;
+  locomotiveNumber?: number | string | null;
+  prioridad?: string | null;
+  estado?: string | null;
+  fechaSolicitud?: string | null;
+  fechaInicio?: string | null;
+  fechaFin?: string | null;
+  createdAt?: string | null;
+  instrucciones?: string | null;
+  empresaNombreSnapshot?: string | null;
+  viaOrigenNombreSnapshot?: string | null;
+  viaDestinoNombreSnapshot?: string | null;
+  seccionOrigenNombreSnapshot?: string | null;
+  seccionDestinoNombreSnapshot?: string | null;
+};
+
+type TorreonRondaMovimientoRecord = {
+  id?: number | string | null;
+  movimientoId?: number | string | null;
+  empresaId?: number | string | null;
+  orden?: number | string | null;
+  prioridad?: string | null;
+  estado?: string | null;
+  fechaAsignado?: string | null;
+  fechaInicio?: string | null;
+  fechaFin?: string | null;
+  movimiento?: TorreonMovimientoRecord | null;
+  bloqueadoPorIncidente?: TorreonIncidenteRecord | null;
+};
+
+type TorreonRondaRecord = {
+  id?: number | string | null;
+  numeroRonda?: number | string | null;
+  estado?: string | null;
+  fechaApertura?: string | null;
+  createdAt?: string | null;
+  movimientos?: TorreonRondaMovimientoRecord[] | null;
+};
+
 function getApiBase(origin: string) {
   return (process.env.API_ORIGIN || process.env.NEXT_PUBLIC_API_URL || `${origin}/bff`).replace(/\/$/, "");
 }
 
 function asRecord(input: unknown): UnknownRecord {
   return input && typeof input === "object" ? (input as UnknownRecord) : {};
+}
+
+function asNumber(input: unknown): number | null {
+  const value = Number(input);
+  return Number.isFinite(value) ? value : null;
+}
+
+function asDateString(input: unknown): string | null {
+  return typeof input === "string" && input.trim() ? input : null;
+}
+
+function asPriority(input: unknown): "BAJA" | "ALTA" | null {
+  const value = String(input ?? "").toUpperCase();
+  return value === "BAJA" || value === "ALTA" ? value : null;
 }
 
 function extractArray(input: unknown): UnknownRecord[] {
@@ -182,6 +253,120 @@ function shouldScopeToEmpresa(role: string, empresaId: number | null) {
   return !["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR"].includes(role);
 }
 
+function canSeeAllEmpresas(role: string) {
+  return ["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR"].includes(role);
+}
+
+function formatTorreonRef(snapshot: unknown, fallbackPrefix: string, id: unknown) {
+  const snapshotText = typeof snapshot === "string" && snapshot.trim() ? snapshot.trim() : null;
+  if (snapshotText) return snapshotText;
+  const numericId = asNumber(id);
+  return numericId ? `${fallbackPrefix} ${numericId}` : null;
+}
+
+function formatTorreonVia(
+  viaSnapshot: unknown,
+  viaId: unknown,
+  seccionSnapshot: unknown,
+  seccionId: unknown
+) {
+  const via = formatTorreonRef(viaSnapshot, "Via", viaId);
+  const seccion = formatTorreonRef(seccionSnapshot, "Seccion", seccionId);
+  if (via && seccion) return `${via} / ${seccion}`;
+  return via || seccion || null;
+}
+
+function buildTorreonInstructions(movimiento: TorreonMovimientoRecord, incidente?: TorreonIncidenteRecord | null) {
+  const base = typeof movimiento.instrucciones === "string" ? movimiento.instrucciones.trim() : "";
+  const incidenteAbierto = String(incidente?.estado ?? "").toUpperCase() === "ABIERTO";
+  if (!incidenteAbierto) return base || null;
+
+  const incidenteId = asNumber(incidente?.id);
+  const motivo = typeof incidente?.motivo === "string" && incidente.motivo.trim() ? incidente.motivo.trim() : "sin detalle";
+  const bloqueo = `Incidente abierto${incidenteId ? ` #${incidenteId}` : ""}: ${motivo}`;
+  return [base, bloqueo].filter(Boolean).join("\n");
+}
+
+function isTorreonDetailDone(detail: TorreonRondaMovimientoRecord, movimiento: TorreonMovimientoRecord) {
+  const detailState = String(detail.estado ?? "").toUpperCase();
+  const movementState = String(movimiento.estado ?? "").toUpperCase();
+  return ["CONCLUIDO", "CANCELADO"].includes(detailState) || ["CONCLUIDO", "CANCELADO"].includes(movementState);
+}
+
+function mapTorreonRondasToOut(input: unknown, concluido: boolean, empresaScopeId?: number | null): RondaOut[] {
+  const rondas = extractArray(input) as TorreonRondaRecord[];
+  const out: RondaOut[] = [];
+
+  for (const ronda of rondas) {
+    const numeroRonda = asNumber(ronda.numeroRonda) ?? 0;
+    const movimientos = Array.isArray(ronda.movimientos) ? ronda.movimientos : [];
+
+    movimientos.forEach((detail, index) => {
+      const movimiento = detail.movimiento ?? {};
+      const detailId = asNumber(detail.id);
+      const movimientoId = asNumber(detail.movimientoId ?? movimiento.id);
+      if (!detailId || !movimientoId) return;
+
+      const empresaId = asNumber(detail.empresaId ?? movimiento.empresaId);
+      if (empresaScopeId && empresaId !== empresaScopeId) return;
+
+      const itemDone = isTorreonDetailDone(detail, movimiento);
+      if (itemDone !== concluido) return;
+
+      const incidente = detail.bloqueadoPorIncidente ?? null;
+      const bloqueado = String(detail.estado ?? "").toUpperCase() === "BLOQUEADO"
+        || String(incidente?.estado ?? "").toUpperCase() === "ABIERTO";
+      const estado = bloqueado ? "BLOQUEADO" : String(detail.estado ?? movimiento.estado ?? "SOLICITADO").toUpperCase();
+      const locomotiveNumber = movimiento.locomotiveNumber ?? null;
+      const empresaNombre = typeof movimiento.empresaNombreSnapshot === "string" && movimiento.empresaNombreSnapshot.trim()
+        ? movimiento.empresaNombreSnapshot.trim()
+        : empresaId ? `Empresa ${empresaId}` : "—";
+
+      out.push({
+        id: detailId,
+        rondaNumero: numeroRonda,
+        orden: asNumber(detail.orden) ?? index + 1,
+        concluido: itemDone,
+        empresa: empresaId ? { id: empresaId, nombre: empresaNombre } : null,
+        movimiento: {
+          id: movimientoId,
+          viaOrigen: {
+            nombre: formatTorreonVia(
+              movimiento.viaOrigenNombreSnapshot,
+              movimiento.viaOrigenId,
+              movimiento.seccionOrigenNombreSnapshot,
+              movimiento.seccionOrigenId
+            ),
+          },
+          viaDestino: {
+            nombre: formatTorreonVia(
+              movimiento.viaDestinoNombreSnapshot,
+              movimiento.viaDestinoId,
+              movimiento.seccionDestinoNombreSnapshot,
+              movimiento.seccionDestinoId
+            ),
+          },
+          lavado: false,
+          torno: false,
+          estado,
+          prioridad: asPriority(detail.prioridad ?? movimiento.prioridad),
+          locomotiveNumber,
+          locomotora: locomotiveNumber == null ? null : String(locomotiveNumber),
+          fechaSolicitud: asDateString(movimiento.fechaSolicitud ?? movimiento.createdAt ?? detail.fechaAsignado),
+          fechaInicio: asDateString(detail.fechaInicio ?? movimiento.fechaInicio),
+          fechaFin: asDateString(detail.fechaFin ?? movimiento.fechaFin),
+          instrucciones: buildTorreonInstructions(movimiento, incidente),
+        },
+        movimientoId,
+        createdAt: asDateString(detail.fechaAsignado ?? movimiento.fechaSolicitud ?? ronda.fechaApertura ?? ronda.createdAt),
+        source: "torreon",
+      });
+    });
+  }
+
+  return out.sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden || a.id - b.id);
+}
+
 function getInfoEmpresaId(info: RondaInfoRecord | null) {
   return Number(info?.empresa?.id ?? info?.movimiento?.empresa?.id ?? NaN) || null;
 }
@@ -259,6 +444,8 @@ export async function GET(req: NextRequest) {
 
     const cookieStore = await cookies();
     const token = cookieStore.get(process.env.JWT_COOKIE_NAME || "token")?.value;
+    const role = readRole(cookieStore);
+    const empresaId = readEmpresaId(cookieStore);
     const base = getApiBase(origin);
     const headers = authHeaders(req, token);
 
@@ -331,7 +518,7 @@ export async function GET(req: NextRequest) {
         };
       }));
 
-      let filtered = out.filter((item): item is RondaOut => Boolean(item));
+      const filtered = out.filter((item): item is RondaOut => Boolean(item));
 
       if (concluido) {
         // Concluidos: más recientes primero (updatedAt desc o createdAt desc)
@@ -352,6 +539,15 @@ export async function GET(req: NextRequest) {
       }));
 
       return NextResponse.json(finalized, { status: 200 });
+    }
+
+    if (isTorreonLocalidad(localidadId)) {
+      const raw = await fetchTorreonMsJson(`/rondas?localidadId=${encodeURIComponent(localidadId)}`);
+      const scopedEmpresaId = canSeeAllEmpresas(role) ? null : empresaId;
+      const out = scopedEmpresaId || canSeeAllEmpresas(role)
+        ? mapTorreonRondasToOut(raw, concluido, scopedEmpresaId)
+        : [];
+      return NextResponse.json(out, { status: 200 });
     }
 
     if (concluido) {
@@ -408,7 +604,7 @@ export async function GET(req: NextRequest) {
     );
     const infoMap = new Map<number, RondaInfoRecord | null>(infoPairs);
 
-    let out: RondaOut[] = baseList.map((r) => {
+    const out: RondaOut[] = baseList.map((r) => {
       const inf = infoMap.get(r.id);
       const mv = inf?.movimiento ?? null;
       const emp = inf?.empresa ?? mv?.empresa ?? null;
@@ -462,6 +658,13 @@ export async function POST(req: NextRequest) {
     const base = getApiBase(origin);
     const headers = authHeaders(req, token);
     const jsonHeaders = { ...headers, "content-type": "application/json" };
+
+    if (isTorreonLocalidad(body?.localidadId)) {
+      return NextResponse.json(
+        { message: "Las rondas de Torreon se consultan desde ms_torreon; mover/cancelar requiere endpoint propio." },
+        { status: 409 }
+      );
+    }
 
     if (action === "swap") {
       const rondaAId = Number(body?.rondaAId);

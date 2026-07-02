@@ -18,6 +18,7 @@ import {
   Settings,
   BarChart3,
   Wrench,
+  Boxes,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import ThemeToggle from "@/app/Components/ui/ThemeToggle";
@@ -167,16 +168,26 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
 
   const normRol = useMemo<Rol>(() => {
     const r = String(session?.rol || "").toUpperCase();
+    if (["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON"].includes(r)) return "CLIENTE";
     if (r.includes("ADMIN")) return "ADMINISTRADOR";
     if (r.includes("COORD")) return "COORDINADOR";
     if (r.includes("SUP")) return "SUPERVISOR";
     return "CLIENTE";
   }, [session]);
 
+  const isArrastreTorreon = useMemo(() => String(session?.rol || "").toUpperCase() === "ARRASTRE_TORREON", [session]);
   const base = useMemo(() => `/${normRol.toLowerCase()}`, [normRol]);
   const roleConfig = ROLE_CONFIG[normRol] || ROLE_CONFIG.CLIENTE;
 
   const navigation = useMemo<NavigationItem[]>(() => {
+    if (isArrastreTorreon) {
+      return [
+        { id: "dash", label: "Dashboard", href: "/cliente/torreon", icon: LayoutDashboard },
+        { id: "movs", label: "Movimientos", href: "/cliente/torreon/movimientos", icon: Boxes },
+        { id: "inc", label: "Incidentes", href: "/cliente/torreon/incidentes", icon: TriangleAlert },
+      ];
+    }
+
     return [
       { id: "dash", label: "Dashboard", href: base, icon: LayoutDashboard },
       { id: "movs", label: "Movimientos", href: `${base}/movimientos`, icon: Train },
@@ -197,7 +208,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
         icon: BarChart3,
       },
     ].filter((item) => !item.hide);
-  }, [normRol, base]);
+  }, [normRol, base, isArrastreTorreon]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -381,7 +392,10 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
           </div>
 
           {navigation.map((item) => {
-            const active = pathname === item.href || (item.href !== base && pathname.startsWith(item.href));
+            const torreonClientDashboard = !isArrastreTorreon && item.id === "dash" && item.href === base && pathname === "/cliente/torreon";
+            const active = item.id === "dash"
+              ? pathname === item.href || torreonClientDashboard
+              : pathname === item.href || pathname.startsWith(`${item.href}/`);
             return <NavItem key={item.id} item={item} isActive={active} />;
           })}
         </nav>

@@ -9,6 +9,7 @@ export const TORNO_ROLES: TornoRole[] = [
 
 export function normalizeTornoRole(input?: string | null): TornoRole {
   const role = String(input || "").trim().toUpperCase();
+  if (["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON"].includes(role)) return "CLIENTE";
   if (role.includes("ADMIN")) return "ADMINISTRADOR";
   if (role.includes("SUP")) return "SUPERVISOR";
   if (role.includes("COORD")) return "COORDINADOR";

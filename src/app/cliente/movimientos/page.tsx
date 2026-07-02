@@ -12,6 +12,11 @@ export default async function Page() {
   const token = c.get(cookieName)?.value;
   if (!token) redirect("/login");
 
+  const role = c.get(process.env.ROLE_COOKIE_NAME ?? "role")?.value?.toUpperCase() ?? "";
+  if (role === "ARRASTRE_TORREON") {
+    redirect("/cliente/torreon/movimientos");
+  }
+
   const empIdCookie =
     Number(c.get("empId")?.value ?? "") ||
     Number(c.get("empresaId")?.value ?? "") ||

@@ -3,7 +3,7 @@
 /** =========================
  *  Roles soportados
  *  ========================= */
-export const ALL_ROLES = ["CLIENTE", "ADMINISTRADOR", "SUPERVISOR", "COORDINADOR"] as const;
+export const ALL_ROLES = ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON", "ADMINISTRADOR", "SUPERVISOR", "COORDINADOR"] as const;
 export type Role = (typeof ALL_ROLES)[number];
 
 export const DEFAULT_HOME = "/cliente";
@@ -11,6 +11,9 @@ export const DEFAULT_HOME = "/cliente";
 /** Áreas por rol (regex de guard) */
 export const AREAS_REGEX: Record<Role, RegExp> = {
   CLIENTE: /^\/cliente(\/|$)/i,
+  CLIENTE_ADMIN: /^\/cliente(\/|$)/i,
+  CLIENTE_COOR: /^\/cliente(\/|$)/i,
+  ARRASTRE_TORREON: /^\/cliente\/torreon(\/|$)/i,
   ADMINISTRADOR: /^\/administrador(\/|$)/i,
   SUPERVISOR: /^\/supervisor(\/|$)/i,
   COORDINADOR: /^\/coordinador(\/|$)/i,
@@ -19,6 +22,9 @@ export const AREAS_REGEX: Record<Role, RegExp> = {
 /** Home por rol */
 export const HOME_BY_ROLE: Record<Role, string> = {
   CLIENTE: "/cliente",
+  CLIENTE_ADMIN: "/cliente",
+  CLIENTE_COOR: "/cliente",
+  ARRASTRE_TORREON: "/cliente/torreon",
   ADMINISTRADOR: "/administrador",
   SUPERVISOR: "/supervisor",
   COORDINADOR: "/coordinador",
@@ -172,12 +178,12 @@ export type UserMeta = {
 /** CLIENTE bloqueado; ADMINISTRADOR/COORDINADOR libres */
 export function getFilterPolicy(user: UserMeta): FilterPolicy {
   const role = normalizeRole(user.rol);
-  if (role === "CLIENTE") {
+  if (["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON"].includes(String(role))) {
     return {
       forcedEmpresaId: user.empresaId ?? undefined,
-      forcedLocalidadId: user.localidadId ?? undefined,
+      forcedLocalidadId: role === "CLIENTE_COOR" || role === "CLIENTE_ADMIN" ? undefined : user.localidadId ?? undefined,
       canEditEmpresa: false,
-      canEditLocalidad: false,
+      canEditLocalidad: role === "CLIENTE_COOR" || role === "CLIENTE_ADMIN",
       canEditDates: true,
       canSearch: true,
     };

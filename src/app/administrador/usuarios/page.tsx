@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search, Plus, RefreshCw, X, Check, AlertCircle, Users, Mail, Building, MapPin,
-  Edit2, Trash2, Filter, ChevronDown, User as UserIcon, KeyRound, Eye, EyeOff,
+  Edit2, Filter, ChevronDown, User as UserIcon, KeyRound, Eye, EyeOff, Power, PowerOff,
 } from "lucide-react";
 
 /** ================== CONFIG ================== */
@@ -10,7 +10,7 @@ const API_BASE = "/bff";
 const FETCH_TIMEOUT_MS = 12000;
 
 /** ================== TIPOS ================== */
-export type Rol = "CLIENTE" | "SUPERVISOR" | "COORDINADOR" | "ADMINISTRADOR";
+export type Rol = "CLIENTE" | "CLIENTE_ADMIN" | "CLIENTE_COOR" | "ARRASTRE_TORREON" | "SUPERVISOR" | "COORDINADOR" | "ADMINISTRADOR" | "MAQUINISTA" | "MAQUINISTA_ARRASTRE" | "TORNO" | "LAVADO";
 type ID = number;
 
 export interface Empresa { id: ID; nombre: string }
@@ -22,23 +22,53 @@ export interface UserData {
   email: string;
   rol: Rol;
   empresaId: ID;
-  localidadId?: ID | null;
-  empresa?: { id?: ID; nombre: string } | null;
-  localidad?: { id?: ID; nombre: string; estado?: string } | null;
-  usuario?: string | null;   // se mantiene por compatibilidad con backend
-  activo?: boolean | null;   // no se edita/crea desde este form
+  localidadId?: ID;
+  empresa?: { id?: ID; nombre: string };
+  localidad?: { id?: ID; nombre: string; estado?: string };
+  usuario?: string;   // se mantiene por compatibilidad con backend
+  activo?: boolean;   // no se edita/crea desde este form
 }
 
 type ToastType = "success" | "error" | "info";
 interface Toast { id: string; type: ToastType; message: string }
 
+const USER_ROLE_OPTIONS: Rol[] = ["COORDINADOR", "SUPERVISOR", "TORNO", "LAVADO", "CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON", "MAQUINISTA", "MAQUINISTA_ARRASTRE"];
+const LOCAL_COORDINATOR_ROLE_OPTIONS: Rol[] = ["CLIENTE", "ARRASTRE_TORREON", "MAQUINISTA", "MAQUINISTA_ARRASTRE"];
+const ADMIN_ROLE_OPTIONS: Rol[] = ["ADMINISTRADOR", ...USER_ROLE_OPTIONS];
+
+const ROLE_LABELS: Record<Rol, string> = {
+  ADMINISTRADOR: "Administrador",
+  COORDINADOR: "Coordinador",
+  SUPERVISOR: "Supervisor",
+  TORNO: "Tornero",
+  LAVADO: "Lavadero",
+  CLIENTE: "Cliente",
+  CLIENTE_ADMIN: "Cliente admin",
+  CLIENTE_COOR: "Cliente coor",
+  ARRASTRE_TORREON: "Arrastre Torreon",
+  MAQUINISTA: "Maquinista",
+  MAQUINISTA_ARRASTRE: "Maquinista arrastre",
+};
+
 /** ================== UTILS ================== */
-const clsx = (...xs: Array<string | false | null | undefined>) => xs.filter(Boolean).join(" ");
+const clsx = (...xs: Array<string | false | undefined>) => xs.filter(Boolean).join(" ");
 
 const getCookie = (name: string) => {
   if (typeof document === "undefined") return "";
   const m = document.cookie.match(new RegExp(`(^|; )${name}=([^;]*)`));
   return m ? decodeURIComponent(m[2]) : "";
+};
+
+const normalizeLocalidadName = (value?: string) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
+
+const isGdlLocalidad = (value?: string) => {
+  const name = normalizeLocalidadName(value);
+  return name === "GDL" || name.includes("GUADALAJARA");
 };
 
 function tokenHeader(): Headers {
@@ -67,7 +97,7 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs =
   } finally { clearTimeout(to); }
 }
 
-function parseJsonSafe<T>(txt: string): T | null { try { return JSON.parse(txt) as T; } catch { return null; } }
+function parseJsonSafe<T>(txt: string): T | undefined { try { return JSON.parse(txt) as T; } catch { return undefined; } }
 
 async function fetchJSON<T>(url: string, init: RequestInit = {}): Promise<T> {
   const isGet = !init.method || init.method.toUpperCase() === "GET";
@@ -75,9 +105,9 @@ async function fetchJSON<T>(url: string, init: RequestInit = {}): Promise<T> {
   const res = await fetchWithTimeout(url, { ...init, headers });
   const ct = res.headers.get("content-type") || "";
   const txt = await res.text().catch(() => "");
-  const body = ct.includes("application/json") ? parseJsonSafe<T>(txt) : null;
+  const body = ct.includes("application/json") ? parseJsonSafe<T>(txt) : undefined;
   if (!res.ok) {
-    const errorBody = body && typeof body === "object" ? (body as { message?: unknown; error?: unknown }) : null;
+    const errorBody = body && typeof body === "object" ? (body as { message?: unknown; error?: unknown }) : undefined;
     const msg =
       (typeof errorBody?.message === "string" ? errorBody.message : undefined) ??
       (typeof errorBody?.error === "string" ? errorBody.error : undefined) ??
@@ -93,16 +123,30 @@ const roleBadge = (r: Rol) =>
     ADMINISTRADOR: "bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-300 dark:border-indigo-800",
     COORDINADOR:  "bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200 dark:bg-fuchsia-900/20 dark:text-fuchsia-300 dark:border-fuchsia-800",
     SUPERVISOR:   "bg-sky-50 text-sky-700 border border-sky-200 dark:bg-sky-900/20 dark:text-sky-300 dark:border-sky-800",
+    TORNO:         "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800",
+    LAVADO:        "bg-cyan-50 text-cyan-700 border border-cyan-200 dark:bg-cyan-900/20 dark:text-cyan-300 dark:border-cyan-800",
     CLIENTE:      "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-800",
-  } as const)[r];
+    CLIENTE_ADMIN:"bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-900/20 dark:text-teal-300 dark:border-teal-800",
+    CLIENTE_COOR: "bg-lime-50 text-lime-700 border border-lime-200 dark:bg-lime-900/20 dark:text-lime-300 dark:border-lime-800",
+    ARRASTRE_TORREON: "bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-800",
+    MAQUINISTA:   "bg-violet-50 text-violet-700 border border-violet-200 dark:bg-violet-900/20 dark:text-violet-300 dark:border-violet-800",
+    MAQUINISTA_ARRASTRE: "bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-900/20 dark:text-purple-300 dark:border-purple-800",
+  } as const)[r] ?? "bg-slate-50 text-slate-700 border border-slate-200 dark:bg-slate-900/20 dark:text-slate-300 dark:border-slate-800";
 
 const roleAccent = (r: Rol) =>
   ({
     ADMINISTRADOR: { ring: "ring-indigo-500/20", grad: "from-indigo-600 to-violet-600", text: "text-indigo-700 dark:text-indigo-300" },
     COORDINADOR:  { ring: "ring-fuchsia-500/20", grad: "from-fuchsia-600 to-pink-600",  text: "text-fuchsia-700 dark:text-fuchsia-300" },
     SUPERVISOR:   { ring: "ring-sky-500/20",     grad: "from-sky-600 to-cyan-600",      text: "text-sky-700 dark:text-sky-300" },
+    TORNO:         { ring: "ring-amber-500/20",   grad: "from-amber-600 to-yellow-600",  text: "text-amber-700 dark:text-amber-300" },
+    LAVADO:        { ring: "ring-cyan-500/20",    grad: "from-cyan-600 to-blue-600",     text: "text-cyan-700 dark:text-cyan-300" },
     CLIENTE:      { ring: "ring-emerald-500/20", grad: "from-emerald-600 to-teal-600",  text: "text-emerald-700 dark:text-emerald-300" },
-  } as const)[r];
+    CLIENTE_ADMIN:{ ring: "ring-teal-500/20",    grad: "from-teal-600 to-emerald-600",  text: "text-teal-700 dark:text-teal-300" },
+    CLIENTE_COOR: { ring: "ring-lime-500/20",    grad: "from-lime-600 to-green-600",    text: "text-lime-700 dark:text-lime-300" },
+    ARRASTRE_TORREON: { ring: "ring-orange-500/20", grad: "from-orange-600 to-amber-600", text: "text-orange-700 dark:text-orange-300" },
+    MAQUINISTA:   { ring: "ring-violet-500/20",  grad: "from-violet-600 to-purple-600", text: "text-violet-700 dark:text-violet-300" },
+    MAQUINISTA_ARRASTRE: { ring: "ring-purple-500/20", grad: "from-purple-600 to-fuchsia-600", text: "text-purple-700 dark:text-purple-300" },
+  } as const)[r] ?? { ring: "ring-slate-500/20", grad: "from-slate-600 to-slate-700", text: "text-slate-700 dark:text-slate-300" };
 
 /** ================== PASSWORD SCORE ================== */
 function passwordScore(p: string): number {
@@ -153,19 +197,32 @@ export default function Usuarios() {
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [localidades, setLocalidades] = useState<Localidad[]>([]);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<string>();
   const [q, setQ] = useState("");
   const [filterRol, setFilterRol] = useState<Rol | "">("");
   const [filterActivo, setFilterActivo] = useState<"all" | "active" | "inactive">("all");
   const [showFilters, setShowFilters] = useState(false);
 
-  const [editing, setEditing] = useState<UserData | null>(null);
+  const [editing, setEditing] = useState<UserData>();
   const [creating, setCreating] = useState(false);
-  const [deleting, setDeleting] = useState<UserData | null>(null);
+  const [statusTarget, setStatusTarget] = useState<UserData>();
 
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const abortRef = useRef<AbortController | null>(null);
+  const abortRef = useRef<AbortController | undefined>(undefined);
   useEffect(() => () => abortRef.current?.abort(), []);
+  const canManageAdministrators = useMemo(() => getCookie("role").toUpperCase() === "ADMINISTRADOR", []);
+  const actorRole = getCookie("role").toUpperCase();
+  const actorLocalidadId = Number(getCookie("locId") || NaN);
+  const actorLocalidad = localidades.find((localidad) => localidad.id === actorLocalidadId);
+  const restrictedLocalCoordinator = actorRole === "COORDINADOR" && !isGdlLocalidad(actorLocalidad?.nombre);
+  const roleOptions = canManageAdministrators
+    ? ADMIN_ROLE_OPTIONS
+    : restrictedLocalCoordinator
+      ? LOCAL_COORDINATOR_ROLE_OPTIONS
+      : USER_ROLE_OPTIONS;
+  const formLocalidades = restrictedLocalCoordinator && Number.isFinite(actorLocalidadId)
+    ? localidades.filter((localidad) => localidad.id === actorLocalidadId)
+    : localidades;
 
   const addToast = useCallback((type: ToastType, message: string) => {
     const id = Math.random().toString(36);
@@ -175,7 +232,7 @@ export default function Usuarios() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setErr(null);
+    setErr(undefined);
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
@@ -219,14 +276,26 @@ export default function Usuarios() {
   async function saveEdit(u: UserData & { password?: string }) {
     try {
       const nextPassword = String(u.password || "").trim();
-      const body: { nombre: string; email: string; contrasena?: string } = {
+      const body: {
+        nombre: string;
+        usuario: string;
+        email: string;
+        rol: Rol;
+        empresaId: number;
+        localidadId: number;
+        contrasena?: string;
+      } = {
         nombre: String(u.nombre || "").trim(),
+        usuario: String(u.nombre || "").trim(),
         email: String(u.email || "").trim(),
+        rol: u.rol,
+        empresaId: Number(u.empresaId),
+        localidadId: Number(u.localidad?.id ?? u.localidadId),
       };
       if (nextPassword) body.contrasena = nextPassword;
 
       await fetchJSON<unknown>(`${API_BASE}/usuarios/${u.id}`, {
-        method: "PUT",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
@@ -242,7 +311,7 @@ export default function Usuarios() {
     email: string;
     rol: Rol;
     empresaId: number;
-    localidadId: number | null;
+    localidadId: number;
     password: string;
   }) {
     try {
@@ -269,14 +338,19 @@ export default function Usuarios() {
     }
   }
 
-  async function deleteUser(u: UserData) {
+  async function changeUserStatus(u: UserData) {
     try {
-      await fetchJSON<unknown>(`${API_BASE}/usuarios/${u.id}`, { method: "DELETE" });
-      addToast("success", "Usuario eliminado");
-      setDeleting(null);
+      const nextActivo = !u.activo;
+      await fetchJSON<unknown>(`${API_BASE}/usuarios/${u.id}/estado`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ activo: nextActivo }),
+      });
+      addToast("success", nextActivo ? "Acceso reactivado correctamente" : "Acceso desactivado y sesiones cerradas");
+      setStatusTarget(undefined);
       await load();
     } catch (e) {
-      addToast("error", e instanceof Error ? e.message : "Error al eliminar");
+      addToast("error", e instanceof Error ? e.message : "Error al cambiar el acceso");
     }
   }
 
@@ -352,10 +426,9 @@ export default function Usuarios() {
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                   >
                     <option value="">Todos los roles</option>
-                    <option value="ADMINISTRADOR">Administrador</option>
-                    <option value="COORDINADOR">Coordinador</option>
-                    <option value="SUPERVISOR">Supervisor</option>
-                    <option value="CLIENTE">Cliente</option>
+                    {roleOptions.map((role) => (
+                      <option key={role} value={role}>{ROLE_LABELS[role]}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -463,7 +536,7 @@ export default function Usuarios() {
 
                   <div className="mt-4">
                     <span className={clsx("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium", roleBadge(u.rol))}>
-                      {u.rol}
+                      {ROLE_LABELS[u.rol] ?? u.rol}
                     </span>
                   </div>
 
@@ -475,10 +548,16 @@ export default function Usuarios() {
                       <Edit2 className="mx-auto h-4 w-4" />
                     </button>
                     <button
-                      onClick={() => setDeleting(u)}
-                      className="flex-1 rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-50 dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-400 dark:hover:bg-rose-950/50"
+                      onClick={() => setStatusTarget(u)}
+                      className={clsx(
+                        "flex-1 rounded-lg border bg-white px-3 py-2 text-sm font-medium transition-colors dark:bg-slate-900",
+                        u.activo
+                          ? "border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                          : "border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                      )}
+                      title={u.activo ? "Desactivar acceso" : "Reactivar acceso"}
                     >
-                      <Trash2 className="mx-auto h-4 w-4" />
+                      {u.activo ? <PowerOff className="mx-auto h-4 w-4" /> : <Power className="mx-auto h-4 w-4" />}
                     </button>
                   </div>
                 </div>
@@ -494,7 +573,8 @@ export default function Usuarios() {
           <UserForm
             mode="create"
             empresas={empresas}
-            localidades={localidades}
+            localidades={formLocalidades}
+            roleOptions={roleOptions}
             onSubmit={async (values) => {
               await createUser(values);
               setCreating(false);
@@ -506,46 +586,71 @@ export default function Usuarios() {
       )}
 
       {editing && (
-        <Modal title="Editar Usuario" onClose={() => setEditing(null)}>
+        <Modal title="Editar Usuario" onClose={() => setEditing(undefined)}>
           <UserForm
             mode="edit"
             empresas={empresas}
-            localidades={localidades}
+            localidades={formLocalidades}
+            roleOptions={roleOptions}
             initial={editing}
             onSubmit={async (values) => {
               await saveEdit({ ...editing, ...values, id: editing.id });
-              setEditing(null);
+              setEditing(undefined);
               await load();
             }}
-            onCancel={() => setEditing(null)}
+            onCancel={() => setEditing(undefined)}
           />
         </Modal>
       )}
 
-      {deleting && (
-        <Modal title="Confirmar Eliminación" onClose={() => setDeleting(null)} maxWidth="max-w-md">
+      {statusTarget && (
+        <Modal
+          title={statusTarget.activo ? "Desactivar acceso" : "Reactivar acceso"}
+          onClose={() => setStatusTarget(undefined)}
+          maxWidth="max-w-md"
+        >
           <div className="space-y-4">
-            <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 dark:border-rose-800 dark:bg-rose-950/30">
+            <div className={clsx(
+              "rounded-lg border p-4",
+              statusTarget.activo
+                ? "border-rose-200 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/30"
+                : "border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30"
+            )}>
               <div className="flex gap-3">
-                <AlertCircle className="h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" />
-                <div className="text-sm text-rose-900 dark:text-rose-100">
-                  <p className="font-medium">Esta acción no se puede deshacer</p>
-                  <p className="mt-1">¿Estás seguro de eliminar a <span className="font-semibold">{deleting.nombre}</span>?</p>
+                <AlertCircle className={clsx(
+                  "h-5 w-5 shrink-0",
+                  statusTarget.activo ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"
+                )} />
+                <div className={clsx(
+                  "text-sm",
+                  statusTarget.activo ? "text-rose-900 dark:text-rose-100" : "text-emerald-900 dark:text-emerald-100"
+                )}>
+                  <p className="font-medium">
+                    {statusTarget.activo ? "Se negará el acceso inmediatamente" : "El usuario podrá iniciar sesión de nuevo"}
+                  </p>
+                  <p className="mt-1">
+                    {statusTarget.activo
+                      ? <>Al desactivar a <span className="font-semibold">{statusTarget.nombre}</span>, se cierran sus sesiones activas y sus tokens dejan de ser válidos.</>
+                      : <>¿Quieres reactivar el acceso de <span className="font-semibold">{statusTarget.nombre}</span>?</>}
+                  </p>
                 </div>
               </div>
             </div>
             <div className="flex gap-3">
               <button
-                onClick={() => setDeleting(null)}
+                onClick={() => setStatusTarget(undefined)}
                 className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               >
                 Cancelar
               </button>
               <button
-                onClick={() => deleteUser(deleting)}
-                className="flex-1 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700"
+                onClick={() => changeUserStatus(statusTarget)}
+                className={clsx(
+                  "flex-1 rounded-lg px-4 py-2 text-sm font-medium text-white",
+                  statusTarget.activo ? "bg-rose-600 hover:bg-rose-700" : "bg-emerald-600 hover:bg-emerald-700"
+                )}
               >
-                Eliminar
+                {statusTarget.activo ? "Desactivar" : "Reactivar"}
               </button>
             </div>
           </div>
@@ -592,18 +697,19 @@ function Modal({
 
 /** ================== FORM alineado a móvil ================== */
 function UserForm({
-  mode, empresas, localidades, initial, onSubmit, onCancel,
+  mode, empresas, localidades, roleOptions, initial, onSubmit, onCancel,
 }: {
   mode: "create" | "edit";
   empresas: Empresa[];
   localidades: Localidad[];
-  initial?: UserData | null;
+  roleOptions: Rol[];
+  initial?: UserData;
   onSubmit: (values: {
     nombre: string;
     email: string;
     rol: Rol;
     empresaId: number;
-    localidadId: number | null;
+    localidadId: number;
     password: string;
   }) => Promise<void>;
   onCancel: () => void;
@@ -659,14 +765,15 @@ function UserForm({
       touched.confirm && shouldValidatePassword && passwordDraft !== confirmDraft
         ? "Las contraseñas no coinciden"
         : "",
-    empresa: mode === "create" && !form.empresaId ? "Selecciona una empresa" : "",
-    localidad: mode === "create" && !form.localidadId ? "Selecciona una localidad" : "",
+    empresa: !form.empresaId ? "Selecciona una empresa" : "",
+    localidad: !form.localidadId ? "Selecciona una localidad" : "",
   };
 
   const canSubmit =
     form.nombre.trim() &&
     form.email.trim() &&
-    (mode === "edit" || (!!form.empresaId && !!form.localidadId)) &&
+    !!form.empresaId &&
+    !!form.localidadId &&
     passwordReady &&
     !saving;
 
@@ -679,7 +786,7 @@ function UserForm({
         email: form.email.trim(),
         rol: form.rol,
         empresaId: Number(form.empresaId),
-        localidadId: form.localidadId ? Number(form.localidadId) : null,
+        localidadId: Number(form.localidadId),
         password: passwordDraft.trim(),
       });
     } finally { setSaving(false); }
@@ -697,8 +804,8 @@ function UserForm({
         </div>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
           {mode === "create"
-            ? "Define los datos de acceso y la ubicación del nuevo usuario."
-            : "Actualiza nombre, correo o asigna una nueva contraseña. Si dejas la contraseña vacía, se conserva la actual."}
+            ? "Define los datos de acceso, rol y ubicación del nuevo usuario."
+            : "Actualiza acceso, rol, empresa, localidad o contraseña. Los cambios sensibles cierran sesiones vigentes."}
         </p>
       </div>
 
@@ -828,30 +935,27 @@ function UserForm({
       {/* Rol */}
       <div>
         <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
-          {mode === "edit" ? "Rol actual" : "Rol"}
+          Rol
         </label>
         <div className="grid grid-cols-2 gap-2">
-          {(["CLIENTE", "SUPERVISOR", "COORDINADOR", "ADMINISTRADOR"] as Rol[]).map((r) => (
+          {roleOptions.map((r) => (
             <button
               key={r}
               type="button"
-              disabled={mode === "edit"}
               onClick={() => setForm((f) => ({ ...f, rol: r }))}
               className={clsx(
-                "rounded-xl border px-3 py-2.5 text-sm font-medium transition-all disabled:cursor-not-allowed disabled:opacity-70",
+                "rounded-xl border px-3 py-2.5 text-sm font-medium transition-all",
                 form.rol === r
                   ? "border-sky-500 bg-sky-50 text-sky-700 shadow-sm ring-2 ring-sky-500/20 dark:bg-sky-950/50 dark:text-sky-300"
                   : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               )}
             >
-              {r}
+              {ROLE_LABELS[r] ?? r}
             </button>
           ))}
         </div>
         {mode === "edit" && (
-          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-            Rol, empresa y localidad se conservan en este flujo.
-          </p>
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Cambiar rol, empresa o localidad obliga a iniciar sesión de nuevo.</p>
         )}
       </div>
 
@@ -861,9 +965,8 @@ function UserForm({
           <Building className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <select
             value={form.empresaId}
-            onChange={(e) => setForm((f) => ({ ...f, empresaId: Number(e.target.value) }))}
-            disabled={mode === "edit"}
-            className={clsx(baseInput, errors.empresa ? errCls : okCls, "appearance-none", mode === "edit" && "cursor-not-allowed bg-slate-50 text-slate-500 dark:bg-slate-900/60")}
+            onChange={(e) => setForm((f) => ({ ...f, empresaId: e.target.value ? Number(e.target.value) : "" }))}
+            className={clsx(baseInput, errors.empresa ? errCls : okCls, "appearance-none")}
           >
             <option value="">Selecciona una empresa</option>
             {empresas.map((e) => (<option key={e.id} value={e.id}>{e.nombre}</option>))}
@@ -875,9 +978,8 @@ function UserForm({
           <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <select
             value={form.localidadId}
-            onChange={(e) => setForm((f) => ({ ...f, localidadId: Number(e.target.value) }))}
-            disabled={mode === "edit"}
-            className={clsx(baseInput, errors.localidad ? errCls : okCls, "appearance-none", mode === "edit" && "cursor-not-allowed bg-slate-50 text-slate-500 dark:bg-slate-900/60")}
+            onChange={(e) => setForm((f) => ({ ...f, localidadId: e.target.value ? Number(e.target.value) : "" }))}
+            className={clsx(baseInput, errors.localidad ? errCls : okCls, "appearance-none")}
           >
             <option value="">Selecciona una localidad</option>
             {localidades.map((l) => (<option key={l.id} value={l.id}>{l.nombre}{l.estado ? `, ${l.estado}` : ""}</option>))}

@@ -30,11 +30,10 @@ import {
 } from "lucide-react";
 import { fetchJSON } from "@/lib/api";
 
-/** Base same-origin proxy. Zero CORS. */
-const BASE = "/bff";
-const INCIDENTES = `${BASE}/incidentes`;
-const EMPRESAS = `${BASE}/empresas`;
-const LOCALIDADES = `${BASE}/localidades`;
+/** Incidentes son locality-aware: Torreon usa ms_torreon y el resto Cosaif normal. */
+const INCIDENTES = "/api/incidentes";
+const EMPRESAS = "/bff/empresas";
+const LOCALIDADES = "/bff/localidades";
 
 /** Read token from non-HttpOnly cookie and build Authorization header. */
 function authFromCookie(): HeadersInit {
@@ -83,18 +82,18 @@ function prettyError(object: any): string {
 
 // Cache optimizado con TTL
 class DetailCache {
-  private cache = new Map<number, { data: any; timestamp: number }>();
+  private cache = new Map<string, { data: any; timestamp: number }>();
   private TTL = 5 * 60 * 1000; // 5 minutos
 
-  set(id: number, data: any) {
-    this.cache.set(id, { data, timestamp: Date.now() });
+  set(key: string, data: any) {
+    this.cache.set(key, { data, timestamp: Date.now() });
   }
 
-  get(id: number) {
-    const entry = this.cache.get(id);
+  get(key: string) {
+    const entry = this.cache.get(key);
     if (!entry) return null;
     if (Date.now() - entry.timestamp > this.TTL) {
-      this.cache.delete(id);
+      this.cache.delete(key);
       return null;
     }
     return entry.data;
@@ -107,28 +106,54 @@ class DetailCache {
 
 const detailCache = new DetailCache();
 
+function incidentSourceQuery(incident: any): string {
+  const source = String(incident?._source || incident?.source || incident?._detalle?._source || "").toLowerCase();
+  if (source !== "torreon") return "";
+  const params = new URLSearchParams({ source: "torreon" });
+  const localidadId =
+    incident?.localidadId ??
+    incident?.movimiento?.localidadId ??
+    incident?._detalle?.localidadId ??
+    incident?._detalle?.movimiento?.localidadId;
+  if (localidadId) params.set("localidadId", String(localidadId));
+  return `?${params.toString()}`;
+}
+
+function incidentCacheKey(incident: any) {
+  return `${String(incident?._source || incident?.source || "cosaif").toLowerCase()}:${Number(incident?.id) || incident?.id}`;
+}
+
 async function fetchIncidenteDetailsBulk(
-  ids: number[],
+  incidents: any[],
   maxConcurrency = 6
 ): Promise<Record<number, any>> {
-  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
   const result: Record<number, any> = {};
-  const pendingIds: number[] = [];
+  const uniqueIncidents = Array.from(
+    new Map(
+      incidents
+        .filter((incident) => incident?.id)
+        .map((incident) => [incidentCacheKey(incident), incident])
+    ).values()
+  );
+  const pending: any[] = [];
 
-  for (const id of uniqueIds) {
-    const cached = detailCache.get(id);
-    if (cached) result[id] = cached;
-    else pendingIds.push(id);
+  for (const incident of uniqueIncidents) {
+    const key = incidentCacheKey(incident);
+    const cached = detailCache.get(key);
+    if (cached) result[Number(incident.id)] = cached;
+    else pending.push(incident);
   }
 
-  for (let i = 0; i < pendingIds.length; i += maxConcurrency) {
-    const chunk = pendingIds.slice(i, i + maxConcurrency);
+  for (let i = 0; i < pending.length; i += maxConcurrency) {
+    const chunk = pending.slice(i, i + maxConcurrency);
     await Promise.all(
-      chunk.map(async (id) => {
+      chunk.map(async (incident) => {
+        const id = Number(incident.id);
+        const key = incidentCacheKey(incident);
         try {
-          const response = await withCreds<any>(`${INCIDENTES}/${id}`);
+          const response = await withCreds<any>(`${INCIDENTES}/${encodeURIComponent(String(incident.id))}${incidentSourceQuery(incident)}`);
           const data = (response as any)?.data ?? response;
-          detailCache.set(id, data);
+          detailCache.set(key, data);
           result[id] = data;
           return { id, data };
         } catch {
@@ -410,11 +435,7 @@ export default function IncidenteController() {
           );
         }
 
-        const incidentIds = response.data
-          .map((x: any) => Number(x.id))
-          .filter(Boolean);
-
-        const detailsMap = await fetchIncidenteDetailsBulk(incidentIds);
+        const detailsMap = await fetchIncidenteDetailsBulk(response.data);
 
         const statusDisplayMap: Record<string, string> = {
           ABIERTO: "Activo",
@@ -441,7 +462,7 @@ export default function IncidenteController() {
               destino:
                 movement?.viaDestino?.nombre ??
                 incident?.movimiento?.viaDestino?.nombre,
-              descripcion: details.descripcion ?? incident.descripcion,
+              descripcion: details.descripcion ?? details.motivo ?? incident.descripcion ?? incident.motivo,
               fecha: incident.fechaInicio
                 ? formatDate(incident.fechaInicio)
                 : "—",
@@ -567,7 +588,7 @@ export default function IncidenteController() {
         setModalKey((k) => k + 1);
 
         if (action === "resolve") {
-          await withCreds(`${INCIDENTES}/${uiState.selectedIncident.id}`, {
+          await withCreds(`${INCIDENTES}/${uiState.selectedIncident.id}${incidentSourceQuery(uiState.selectedIncident)}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -578,7 +599,7 @@ export default function IncidenteController() {
           showNotification("success", "Incidente resuelto correctamente");
         } else {
           await withCreds(
-            `${INCIDENTES}/${uiState.selectedIncident.id}/cerrar`,
+            `${INCIDENTES}/${uiState.selectedIncident.id}/cerrar${incidentSourceQuery(uiState.selectedIncident)}`,
             { method: "POST" }
           );
           showNotification("success", "Incidente cerrado");

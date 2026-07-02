@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 // home por rol
 const HOME: Record<string, string> = {
   CLIENTE: "/cliente",
+  CLIENTE_ADMIN: "/cliente",
+  CLIENTE_COOR: "/cliente",
+  ARRASTRE_TORREON: "/cliente/torreon",
   SUPERVISOR: "/supervisor",
   MAQUINISTA: "/maquinista",
   OPERADOR: "/operador",
@@ -10,7 +13,7 @@ const HOME: Record<string, string> = {
 };
 // reglas por ruta
 const RULES: [RegExp, string[]][] = [
-  [/^\/cliente(\/|$)/i, ["CLIENTE"]],
+  [/^\/cliente(\/|$)/i, ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON"]],
   [/^\/supervisor(\/|$)/i, ["SUPERVISOR"]],
   [/^\/administrador(\/|$)/i, ["ADMINISTRADOR"]],
   [/^\/coordinador(\/|$)/i, ["COORDINADOR"]],
@@ -44,6 +47,11 @@ export function middleware(req: NextRequest) {
       const url = new URL(HOME[role] ?? "/login", req.url);
       return NextResponse.redirect(url);
     }
+  }
+
+  if (role === "ARRASTRE_TORREON" && pathname.startsWith("/cliente") && !pathname.startsWith("/cliente/torreon")) {
+    const url = new URL("/cliente/torreon", req.url);
+    return NextResponse.redirect(url);
   }
 
   if (pathname === "/") {

@@ -104,6 +104,7 @@ function SortableRondaCard({
   onCancelRequest: () => void;
   isCancelling: boolean;
 }) {
+  const isTorreon = ronda.source === 'torreon';
   const {
     attributes,
     listeners,
@@ -111,7 +112,7 @@ function SortableRondaCard({
     transform,
     transition,
     isDragging
-  } = useSortable({ id: ronda.id });
+  } = useSortable({ id: ronda.id, disabled: isTorreon });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -128,7 +129,7 @@ function SortableRondaCard({
         onSwapRequest={onSwapRequest}
         onCancelRequest={onCancelRequest}
         isCancelling={isCancelling}
-        dragHandleProps={{ ...attributes, ...listeners }}
+        dragHandleProps={isTorreon ? undefined : { ...attributes, ...listeners }}
       />
     </div>
   );
@@ -151,6 +152,7 @@ function RondaCardContent({
 }) {
   const [open, setOpen] = useState(false);
   const badgeClass = priorityBadge(ronda.movimiento?.prioridad);
+  const isTorreon = ronda.source === 'torreon';
 
   return (
     <div className={`group relative rounded-lg border ${THEME.border} ${THEME.surface} p-3 mb-2 transition-all hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600`}>
@@ -237,9 +239,12 @@ function RondaCardContent({
           <div className="flex items-center justify-end gap-2 pt-2">
             <button
               onClick={onCancelRequest}
-              disabled={isCancelling}
+              disabled={isCancelling || isTorreon}
+              title={isTorreon ? 'Movimiento de Torreon en solo lectura' : undefined}
               className={`px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 transition-colors ${isCancelling
                 ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                : isTorreon
+                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-500'
                 : 'text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/10'
                 }`}
             >
@@ -248,7 +253,12 @@ function RondaCardContent({
             </button>
             <button
               onClick={onSwapRequest}
-              className="px-3 py-1.5 rounded text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition-colors"
+              disabled={isTorreon}
+              title={isTorreon ? 'Ronda de Torreon en solo lectura' : undefined}
+              className={`px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 transition-colors ${isTorreon
+                ? 'bg-slate-100 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-500'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200'
+              }`}
             >
               <ArrowLeftRight size={14} /> Mover
             </button>
@@ -422,7 +432,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
     const base = swapModal.base;
     if (!base || !otra || !user) return;
     try {
-      await apiSwapMovimientos(base.id, otra.id);
+      await apiSwapMovimientos(base.id, otra.id, localidadId);
       const swappedA: Ronda = { ...base, movimiento: { ...otra.movimiento } };
       const swappedB: Ronda = { ...otra, movimiento: { ...base.movimiento } };
 
@@ -439,7 +449,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
       console.error(e);
       alert(errorMessage(e, 'Error al intercambiar'));
     }
-  }, [swapModal.base, setGroupedByRonda, setList, user]);
+  }, [localidadId, swapModal.base, setGroupedByRonda, setList, user]);
 
   const handleCancelRequest = useCallback(async (item: Ronda) => {
     if (!confirm('¿Cancelar este movimiento? Solo se permite si pertenece a tu empresa.')) return;
@@ -447,7 +457,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
       const mid = item.movimiento?.id;
       if (!mid) throw new Error('ID inválido');
       setCancellingId(mid);
-      await apiCancelarMovimiento(mid);
+      await apiCancelarMovimiento(mid, undefined, localidadId);
 
       setGroupedByRonda(prev => {
         const copy = { ...prev };
@@ -462,7 +472,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
     } finally {
       setCancellingId(null);
     }
-  }, [setGroupedByRonda, setList]);
+  }, [localidadId, setGroupedByRonda, setList]);
 
 
   // Drag End Handler - STRICT SWAP LOGIC (LIVE UPDATE)
@@ -477,9 +487,16 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
 
     if (activeId === overId) return;
 
+    const activeItem = todasLasRondas.find((r) => r.id === activeId);
+    const overItem = todasLasRondas.find((r) => r.id === overId);
+    if (activeItem?.source === 'torreon' || overItem?.source === 'torreon') {
+      alert('Las rondas de Torreon estan en solo lectura por ahora.');
+      return;
+    }
+
     // Call API immediately
     try {
-      await apiSwapMovimientos(activeId, overId);
+      await apiSwapMovimientos(activeId, overId, localidadId);
 
       // Update local state ONLY on success (or optimistically revert on failure)
       // For now, we update local state optimistically or re-fetch?
