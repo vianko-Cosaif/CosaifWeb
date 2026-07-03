@@ -19,6 +19,19 @@ export function isTorreonLocalidadId(localidadId?: string | number | null) {
   return parseIds(configured).includes(target);
 }
 
+export function getTorreonLocalidadIds() {
+  const configured =
+    process.env.NEXT_PUBLIC_TORREON_LOCALIDAD_IDS ||
+    process.env.NEXT_PUBLIC_TORREON_LOCALIDAD_ID ||
+    DEFAULT_TORREON_LOCALIDAD_IDS;
+
+  return parseIds(configured);
+}
+
+export function getPrimaryTorreonLocalidadId() {
+  return getTorreonLocalidadIds()[0] ?? Number(DEFAULT_TORREON_LOCALIDAD_IDS);
+}
+
 export function normalizeRoleName(role?: string | null) {
   return String(role || "").trim().toUpperCase();
 }

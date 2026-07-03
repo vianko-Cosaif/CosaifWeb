@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
 import { canViewTorreonArrastreRole } from "@/lib/torreonLocalidad";
+import { toTorreonImageProxyUrl } from "@/lib/torreonImageProxy";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,60 @@ function extractArray(input: unknown): ArrastreRecord[] {
     if (Array.isArray(record.rows)) return record.rows as ArrastreRecord[];
   }
   return [];
+}
+
+function asRecord(input: unknown): ArrastreRecord {
+  return input && typeof input === "object" ? input as ArrastreRecord : {};
+}
+
+function asNumber(input: unknown) {
+  const value = Number(input);
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : null;
+}
+
+function cleanText(input: unknown) {
+  return typeof input === "string" && input.trim() ? input.trim() : null;
+}
+
+function mapFotos(input: unknown) {
+  return extractArray(input)
+    .map((foto) => {
+      const url = toTorreonImageProxyUrl(foto.url);
+      if (!url) return null;
+      return {
+        id: asNumber(foto.id),
+        orden: asNumber(foto.orden) ?? 1,
+        url,
+        storageKey: cleanText(foto.storageKey),
+        comentario: cleanText(foto.comentario),
+        tomadaAt: cleanText(foto.tomadaAt),
+      };
+    })
+    .filter((foto): foto is NonNullable<typeof foto> => Boolean(foto));
+}
+
+function mapIncidentes(input: unknown) {
+  return extractArray(input).map((item) => ({
+    ...item,
+    id: asNumber(item.id) ?? item.id,
+    estado: cleanText(item.estado) || "ABIERTO",
+    motivo: cleanText(item.motivo),
+    solucion: cleanText(item.solucion),
+    fechaInicio: cleanText(item.fechaInicio),
+    fechaResolucion: cleanText(item.fechaResolucion),
+    viaBloqueadaId: asNumber(item.viaBloqueadaId),
+    seccionBloqueadaId: asNumber(item.seccionBloqueadaId),
+    vagonId: asNumber(item.vagonId),
+    fotos: mapFotos(item.fotos),
+  }));
+}
+
+function mapArrastre(input: ArrastreRecord) {
+  const record = asRecord(input);
+  return {
+    ...record,
+    incidentes: mapIncidentes(record.incidentes),
+  };
 }
 
 function filterByVista(rows: ArrastreRecord[], vista: string | null) {
@@ -110,7 +165,7 @@ export async function GET(req: NextRequest) {
     if (scopedEmpresaId) qs.set("empresaId", String(scopedEmpresaId));
 
     const data = await fetchTorreonMsJson(`/arrastres?${qs.toString()}`);
-    return NextResponse.json(filterByVista(extractArray(data), vista), { status: 200 });
+    return NextResponse.json(filterByVista(extractArray(data).map(mapArrastre), vista), { status: 200 });
   } catch (error) {
     console.error("[api/cliente/torreon/arrastres] error:", error);
     return NextResponse.json([], { status: 200 });

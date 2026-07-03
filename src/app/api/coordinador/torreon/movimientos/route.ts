@@ -68,6 +68,22 @@ function formatRef(snapshot: unknown, fallbackPrefix: string, id: unknown) {
   return numericId ? `${fallbackPrefix} ${numericId}` : null;
 }
 
+function firstCleanText(input: UnknownRecord, keys: string[]) {
+  for (const key of keys) {
+    const value = cleanText(input[key]);
+    if (value) return value;
+  }
+  return null;
+}
+
+function firstNumber(input: UnknownRecord, keys: string[]) {
+  for (const key of keys) {
+    const value = asNumber(input[key]);
+    if (value) return value;
+  }
+  return null;
+}
+
 function formatVia(movimiento: UnknownRecord, prefix: "Origen" | "Destino") {
   const via = formatRef(movimiento[`via${prefix}NombreSnapshot`], "Via", movimiento[`via${prefix}Id`]);
   const seccion = formatRef(movimiento[`seccion${prefix}NombreSnapshot`], "Seccion", movimiento[`seccion${prefix}Id`]);
@@ -92,14 +108,54 @@ function mapFotos(input: unknown) {
     .filter((foto): foto is NonNullable<typeof foto> => Boolean(foto));
 }
 
+function mapIncidentes(input: unknown) {
+  return asArray(input).map((incidente) => ({
+    id: asNumber(incidente.id) ?? incidente.id,
+    estado: cleanText(incidente.estado) || "ABIERTO",
+    motivo: cleanText(incidente.motivo),
+    solucion: cleanText(incidente.solucion),
+    fechaInicio: cleanText(incidente.fechaInicio),
+    fechaResolucion: cleanText(incidente.fechaResolucion),
+    viaBloqueadaId: asNumber(incidente.viaBloqueadaId),
+    seccionBloqueadaId: asNumber(incidente.seccionBloqueadaId),
+    fotos: mapFotos(incidente.fotos),
+  }));
+}
+
 function mapMovimiento(input: UnknownRecord) {
   const empresaId = asNumber(input.empresaId);
   const fotos = mapFotos(input.fotos);
+  const creadoPorId = firstNumber(input, ["creadoPorId", "usuarioCreacionId", "usuarioId"]);
+  const operadorId = firstNumber(input, ["operadorId", "maquinistaId"]);
+  const iniciadoPorId = firstNumber(input, ["iniciadoPorId", "usuarioInicioId"]) || operadorId || creadoPorId;
+  const operadorNombre = firstCleanText(input, [
+    "operadorNombre",
+    "operadorNombreSnapshot",
+    "maquinistaNombre",
+    "maquinistaNombreSnapshot",
+  ]);
+  const creadoPorNombre = firstCleanText(input, ["creadoPorNombre", "creadoPorNombreSnapshot", "usuarioCreacionNombre"]);
+  const iniciadoPorNombre =
+    firstCleanText(input, ["iniciadoPorNombre", "iniciadoPorNombreSnapshot", "usuarioInicioNombre"]) ||
+    operadorNombre ||
+    creadoPorNombre;
   return {
     id: asNumber(input.id) ?? input.id,
     empresaId,
     empresaNombre: cleanText(input.empresaNombreSnapshot) || (empresaId ? `Empresa ${empresaId}` : "Empresa"),
     localidadId: asNumber(input.localidadId),
+    clienteId: firstNumber(input, ["clienteId"]),
+    clienteNombre: firstCleanText(input, ["clienteNombre", "clienteNombreSnapshot"]),
+    supervisorId: firstNumber(input, ["supervisorId"]),
+    supervisorNombre: firstCleanText(input, ["supervisorNombre", "supervisorNombreSnapshot"]),
+    coordinadorId: firstNumber(input, ["coordinadorId"]),
+    coordinadorNombre: firstCleanText(input, ["coordinadorNombre", "coordinadorNombreSnapshot"]),
+    operadorId,
+    operadorNombre,
+    creadoPorId,
+    creadoPorNombre,
+    iniciadoPorId,
+    iniciadoPorNombre,
     locomotiveNumber: input.locomotiveNumber ?? null,
     estado: cleanText(input.estado) || "SOLICITADO",
     prioridad: cleanText(input.prioridad) || "BAJA",
@@ -116,7 +172,7 @@ function mapMovimiento(input: UnknownRecord) {
       PROCESO_MOVIMIENTO: fotos.filter((foto) => foto.tipo === "PROCESO_MOVIMIENTO"),
       FIN_MOVIMIENTO: fotos.filter((foto) => foto.tipo === "FIN_MOVIMIENTO"),
     },
-    incidentes: asArray(input.incidentes),
+    incidentes: mapIncidentes(input.incidentes),
   };
 }
 

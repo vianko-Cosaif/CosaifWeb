@@ -5,6 +5,8 @@ import type React from "react";
 import { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { Button, ConfigProvider, Empty, Table } from "antd";
+import type { ColumnsType } from "antd/es/table";
 import { S } from "./RailQueueBoard.styles";
 import TornoMeasuresViewerModal from "../movimientos/torno/TornoMeasuresViewerModal";
 import { parseTornoMedicionFromApi } from "../movimientos/torno/tornoMeasureParser";
@@ -900,6 +902,23 @@ export default function RailQueueBoardPage({
         </div>
       </section>
 
+      <section className="mx-auto w-full max-w-screen-2xl px-3 pb-6 sm:px-4 md:px-6 lg:px-8">
+        <RondasQueueTable
+          items={items}
+          info={info}
+          loading={loading}
+          onViewMeasures={(ronda) => {
+            const inf = info[ronda.id];
+            const mv = inf?.movimiento ?? ronda.movimiento ?? null;
+            openMeasuresModal({
+              movementId: inf?.movimientoId ?? mv?.id ?? ronda.movimientoId,
+              locomotiveLabel: fmtLoco(mv?.locomotiveNumber ?? mv?.locomotora),
+              companyName: inf?.empresa?.nombre ?? ronda.empresa?.nombre ?? "—",
+            });
+          }}
+        />
+      </section>
+
       <audio ref={bellRef} preload="auto" aria-hidden="true">
         <source src="/sounds/notification.mp3" type="audio/mp3" />
       </audio>
@@ -988,6 +1007,240 @@ function ServiceChip({
   return <span className={S.serviceChip(active)}>{icon} {text}</span>;
 }
 
+function RondasQueueTable({
+  items,
+  info,
+  loading,
+  onViewMeasures,
+}: {
+  items: Ronda[];
+  info: Record<number, RondaInfo>;
+  loading: boolean;
+  onViewMeasures: (ronda: Ronda) => void;
+}) {
+  const columns = useMemo<ColumnsType<Ronda>>(
+    () => [
+      {
+        title: "Turno",
+        key: "orden",
+        width: 150,
+        sorter: (a, b) => a.orden - b.orden,
+        render: (_value, ronda, index) => (
+          <div className="font-mono">
+            <span className={`inline-flex rounded-sm border px-2 py-1 text-xs font-black tracking-widest ${
+              index === 0
+                ? "border-emerald-400 bg-emerald-400/10 text-emerald-300 animate-pulse"
+                : "border-amber-300/60 bg-amber-300/10 text-amber-200"
+            }`}>
+              {index === 0 ? "EN ATENCION" : "EN ESPERA"}
+            </span>
+            <div className="mt-1 text-[11px] font-bold text-slate-400">POS {index + 1}</div>
+          </div>
+        ),
+      },
+      {
+        title: "Ronda",
+        dataIndex: "rondaNumero",
+        key: "rondaNumero",
+        width: 110,
+        sorter: (a, b) => a.rondaNumero - b.rondaNumero,
+        render: (value: Ronda["rondaNumero"]) => (
+          <span className="font-mono text-lg font-black text-emerald-300">#{value}</span>
+        ),
+      },
+      {
+        title: "Locomotora",
+        key: "locomotora",
+        width: 150,
+        render: (_value, ronda) => {
+          const mv = info[ronda.id]?.movimiento ?? ronda.movimiento;
+          return (
+            <span className="font-mono font-black tracking-wide tabular-nums text-cyan-200">
+              {fmtLoco(mv?.locomotiveNumber ?? mv?.locomotora)}
+            </span>
+          );
+        },
+      },
+      {
+        title: "Empresa",
+        key: "empresa",
+        width: 210,
+        render: (_value, ronda) => (
+          <span className="block max-w-[200px] truncate font-mono text-xs font-semibold uppercase text-slate-200">
+            {info[ronda.id]?.empresa?.nombre ?? ronda.empresa?.nombre ?? "—"}
+          </span>
+        ),
+      },
+      {
+        title: "Origen",
+        key: "origen",
+        width: 160,
+        render: (_value, ronda) => {
+          const mv = info[ronda.id]?.movimiento ?? ronda.movimiento;
+          return <span className="font-mono text-xs font-bold uppercase text-emerald-200">{mv?.viaOrigen?.nombre || "—"}</span>;
+        },
+      },
+      {
+        title: "Destino",
+        key: "destino",
+        width: 160,
+        render: (_value, ronda) => {
+          const mv = info[ronda.id]?.movimiento ?? ronda.movimiento;
+          return <span className="font-mono text-xs font-bold uppercase text-cyan-200">{mv?.viaDestino?.nombre || "—"}</span>;
+        },
+      },
+      {
+        title: "Servicios",
+        key: "servicios",
+        width: 170,
+        render: (_value, ronda) => {
+          const mv = info[ronda.id]?.movimiento ?? ronda.movimiento;
+          return (
+            <div className="flex flex-wrap gap-1 font-mono">
+              <ServiceChip active={Boolean(mv?.lavado)} icon="💧" text="Lavado" />
+              <ServiceChip active={Boolean(mv?.torno)} icon="⚙️" text="Torno" />
+            </div>
+          );
+        },
+      },
+      {
+        title: "Estado",
+        key: "estado",
+        width: 140,
+        render: (_value, ronda, index) => {
+          const mv = info[ronda.id]?.movimiento ?? ronda.movimiento;
+          return (
+            <div className="font-mono">
+              <span className={`inline-flex rounded-sm border px-2 py-1 text-[11px] font-black uppercase tracking-wider ${
+                index === 0
+                  ? "border-emerald-400 bg-emerald-400/10 text-emerald-300"
+                  : "border-slate-500 bg-slate-500/10 text-slate-300"
+              }`}>
+                {index === 0 ? "SIGUE" : "COLA"}
+              </span>
+              <div className="mt-1 text-[11px] font-bold uppercase text-slate-400">{mv?.estado || "—"}</div>
+            </div>
+          );
+        },
+      },
+      {
+        title: "Creado",
+        key: "creado",
+        width: 165,
+        render: (_value, ronda) => {
+          const mv = info[ronda.id]?.movimiento ?? ronda.movimiento;
+          return (
+            <span className="font-mono text-xs text-slate-300">
+              {formatDateTimeMX(ronda.createdAt ?? mv?.fechaSolicitud ?? mv?.fechaInicio ?? mv?.fechaFin ?? null)}
+            </span>
+          );
+        },
+      },
+      {
+        title: "Acción",
+        key: "accion",
+        width: 110,
+        fixed: "right",
+        align: "center",
+        render: (_value, ronda) => {
+          const mv = info[ronda.id]?.movimiento ?? ronda.movimiento;
+          return Boolean(mv?.torno) ? (
+            <Button size="small" onClick={() => onViewMeasures(ronda)} className="font-bold">
+              Medidas
+            </Button>
+          ) : (
+            <span className="font-mono text-xs font-semibold text-slate-500">N/A</span>
+          );
+        },
+      },
+    ],
+    [info, onViewMeasures]
+  );
+
+  return (
+    <div className="hidden rounded-2xl border border-emerald-400/30 bg-slate-950 p-4 shadow-xl shadow-slate-950/20 lg:block">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <p className="font-mono text-xs font-black uppercase tracking-[0.22em] text-emerald-300">
+            Terminal de rondas
+          </p>
+          <h2 className="font-mono text-lg font-black uppercase text-slate-100">Cola de operacion</h2>
+        </div>
+        <span className="rounded-sm border border-emerald-400/50 bg-emerald-400/10 px-3 py-1.5 font-mono text-xs font-black uppercase tracking-widest text-emerald-200">
+          {items.length} pendientes
+        </span>
+      </div>
+      <ConfigProvider
+        theme={{
+          token: {
+            colorPrimary: "#059669",
+            borderRadius: 4,
+            colorBgContainer: "#020617",
+            colorText: "#e2e8f0",
+            colorBorder: "#1e293b",
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+          },
+          components: {
+            Table: {
+              headerBg: "#0f172a",
+              headerColor: "#86efac",
+              rowHoverBg: "#111827",
+              borderColor: "#1f2937",
+            },
+          },
+        }}
+      >
+        <Table<Ronda>
+          rowKey="id"
+          className="cosaif-terminal-table"
+          columns={columns}
+          dataSource={items}
+          loading={loading ? { spinning: true, tip: "Cargando rondas..." } : false}
+          size="middle"
+          scroll={{ x: 1420 }}
+          rowClassName={(_ronda, index) => index === 0 ? "terminal-row-current" : ""}
+          pagination={{
+            pageSize: 8,
+            showSizeChanger: false,
+            position: ["bottomCenter"],
+          }}
+          expandable={{
+            expandedRowRender: (ronda) => {
+              const mv = info[ronda.id]?.movimiento ?? ronda.movimiento;
+              return (
+                <div className="grid gap-3 rounded-sm border border-emerald-400/20 bg-slate-900 p-3 font-mono text-sm md:grid-cols-3">
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-wide text-emerald-300">Instrucciones</div>
+                    <p className="mt-1 font-medium text-slate-200">
+                      {mv?.instrucciones?.trim() || "Sin instrucciones."}
+                    </p>
+                  </div>
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-wide text-emerald-300">Prioridad</div>
+                    <p className="mt-1 font-black text-slate-100">{mv?.prioridad || "—"}</p>
+                  </div>
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-wide text-emerald-300">Movimiento</div>
+                    <p className="mt-1 text-slate-200">#{info[ronda.id]?.movimientoId ?? mv?.id ?? ronda.movimientoId ?? "—"}</p>
+                  </div>
+                </div>
+              );
+            },
+          }}
+          locale={{
+            emptyText: (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="Sin rondas pendientes"
+              />
+            ),
+          }}
+        />
+      </ConfigProvider>
+    </div>
+  );
+}
+
 function SkeletonCurrent() {
   return (
     <div className="animate-pulse space-y-4">
@@ -1054,4 +1307,3 @@ function DateBox({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-

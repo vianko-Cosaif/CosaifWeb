@@ -206,6 +206,126 @@
   .dark .kpi{
     border-color:#334155; background:#0B1220; box-shadow:0 1px 2px rgba(0,0,0,.35);
   }
+
+  .cosaif-ant-table{
+    font-family:inherit;
+  }
+  .cosaif-ant-table .ant-table{
+    overflow:hidden;
+    border:1px solid #e2e8f0;
+    border-radius:.875rem;
+    color:#0f172a;
+  }
+  .cosaif-ant-table .ant-table-thead > tr > th{
+    border-bottom-color:#e2e8f0;
+    font-size:.72rem;
+    font-weight:800;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+  }
+  .cosaif-ant-table .ant-table-tbody > tr > td{
+    border-bottom-color:#eef2f7;
+    font-size:.82rem;
+    vertical-align:middle;
+  }
+  .cosaif-ant-table .ant-table-expanded-row > td{
+    background:#f8fafc;
+  }
+  .cosaif-ant-table .ant-pagination{
+    margin:1rem 0 .25rem;
+  }
+  .cosaif-ant-table .ant-table-cell-fix-right{
+    background:#fff;
+  }
+  .dark .cosaif-ant-table .ant-table{
+    border-color:#1e293b;
+    background:#020617;
+    color:#e2e8f0;
+  }
+  .dark .cosaif-ant-table .ant-table-thead > tr > th{
+    border-bottom-color:#1e293b;
+    background:#0f172a !important;
+    color:#cbd5e1 !important;
+  }
+  .dark .cosaif-ant-table .ant-table-tbody > tr > td{
+    border-bottom-color:#1e293b;
+    background:#020617;
+    color:#e2e8f0;
+  }
+  .dark .cosaif-ant-table .ant-table-tbody > tr.ant-table-row:hover > td{
+    background:#0f172a !important;
+  }
+  .dark .cosaif-ant-table .ant-table-expanded-row > td{
+    background:#0f172a !important;
+  }
+  .dark .cosaif-ant-table .ant-table-cell-fix-right{
+    background:#020617;
+  }
+  .dark .cosaif-ant-table .ant-empty-description,
+  .dark .cosaif-ant-table .ant-pagination,
+  .dark .cosaif-ant-table .ant-pagination-item a,
+  .dark .cosaif-ant-table .ant-pagination-prev,
+  .dark .cosaif-ant-table .ant-pagination-next{
+    color:#cbd5e1;
+  }
+
+  .cosaif-terminal-table .ant-table{
+    overflow:hidden;
+    border:1px solid rgba(16,185,129,.28);
+    border-radius:.5rem;
+    background:#020617;
+    color:#e2e8f0;
+  }
+  .cosaif-terminal-table .ant-table-container,
+  .cosaif-terminal-table .ant-table-content,
+  .cosaif-terminal-table .ant-table-tbody > tr > td,
+  .cosaif-terminal-table .ant-table-thead > tr > th{
+    background:#020617 !important;
+  }
+  .cosaif-terminal-table .ant-table-thead > tr > th{
+    border-bottom:1px solid rgba(16,185,129,.35) !important;
+    color:#86efac !important;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+    font-size:.7rem;
+    font-weight:900;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+  }
+  .cosaif-terminal-table .ant-table-tbody > tr > td{
+    border-bottom:1px solid rgba(51,65,85,.75) !important;
+    color:#e2e8f0;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+    font-size:.8rem;
+    vertical-align:middle;
+  }
+  .cosaif-terminal-table .ant-table-tbody > tr:hover > td{
+    background:#0f172a !important;
+  }
+  .cosaif-terminal-table .ant-table-tbody > tr.terminal-row-current > td{
+    background:linear-gradient(90deg, rgba(6,78,59,.55), rgba(2,6,23,.98)) !important;
+    box-shadow:inset 3px 0 0 #34d399;
+  }
+  .cosaif-terminal-table .ant-table-expanded-row > td{
+    background:#020617 !important;
+  }
+  .cosaif-terminal-table .ant-pagination,
+  .cosaif-terminal-table .ant-pagination-item a,
+  .cosaif-terminal-table .ant-pagination-prev,
+  .cosaif-terminal-table .ant-pagination-next,
+  .cosaif-terminal-table .ant-empty-description{
+    color:#94a3b8 !important;
+  }
+  .cosaif-terminal-table .ant-pagination-item{
+    border-color:rgba(16,185,129,.35);
+    background:#020617;
+  }
+  .cosaif-terminal-table .ant-pagination-item-active{
+    border-color:#34d399;
+  }
+  .cosaif-terminal-table .ant-spin-text{
+    color:#86efac !important;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  }
 }
 
 /* ---------- ANIMACIONES ---------- */

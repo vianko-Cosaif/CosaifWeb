@@ -215,6 +215,7 @@ function movementToRondaOut(mv: MovimientoRecord, index: number, concluido: bool
     },
     movimientoId,
     createdAt: mv.fechaSolicitud ?? mv.createdAt ?? null,
+    source: "cosaif",
   };
 }
 
@@ -250,11 +251,11 @@ function readEmpresaId(cookieStore: Awaited<ReturnType<typeof cookies>>) {
 
 function shouldScopeToEmpresa(role: string, empresaId: number | null) {
   if (!empresaId) return false;
-  return !["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR"].includes(role);
+  return !["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR", "CLIENTE_ADMIN", "CLIENTE_COOR"].includes(role);
 }
 
 function canSeeAllEmpresas(role: string) {
-  return ["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR"].includes(role);
+  return ["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR", "CLIENTE_ADMIN", "CLIENTE_COOR"].includes(role);
 }
 
 function formatTorreonRef(snapshot: unknown, fallbackPrefix: string, id: unknown) {
@@ -291,6 +292,79 @@ function isTorreonDetailDone(detail: TorreonRondaMovimientoRecord, movimiento: T
   const detailState = String(detail.estado ?? "").toUpperCase();
   const movementState = String(movimiento.estado ?? "").toUpperCase();
   return ["CONCLUIDO", "CANCELADO"].includes(detailState) || ["CONCLUIDO", "CANCELADO"].includes(movementState);
+}
+
+function isTorreonMovimientoDone(movimiento: TorreonMovimientoRecord) {
+  return ["CONCLUIDO", "CANCELADO"].includes(String(movimiento.estado ?? "").toUpperCase());
+}
+
+function mapTorreonMovimientosToRondasOut(
+  input: unknown,
+  concluido: boolean,
+  empresaScopeId?: number | null,
+  excludedMovimientoIds = new Set<number>()
+): RondaOut[] {
+  const movimientos = extractArray(input) as TorreonMovimientoRecord[];
+  return movimientos
+    .map((movimiento, index): RondaOut | null => {
+      const movimientoId = asNumber(movimiento.id);
+      if (!movimientoId || excludedMovimientoIds.has(movimientoId)) return null;
+
+      const empresaId = asNumber(movimiento.empresaId);
+      if (empresaScopeId && empresaId !== empresaScopeId) return null;
+      if (isTorreonMovimientoDone(movimiento) !== concluido) return null;
+
+      const empresaNombre = typeof movimiento.empresaNombreSnapshot === "string" && movimiento.empresaNombreSnapshot.trim()
+        ? movimiento.empresaNombreSnapshot.trim()
+        : empresaId ? `Empresa ${empresaId}` : "—";
+
+      return {
+        id: -Math.abs(2_000_000 + movimientoId),
+        rondaNumero: 1,
+        orden: index + 1,
+        concluido,
+        empresa: empresaId ? { id: empresaId, nombre: empresaNombre } : null,
+        movimiento: {
+          id: movimientoId,
+          viaOrigen: {
+            nombre: formatTorreonVia(
+              movimiento.viaOrigenNombreSnapshot,
+              movimiento.viaOrigenId,
+              movimiento.seccionOrigenNombreSnapshot,
+              movimiento.seccionOrigenId
+            ),
+          },
+          viaDestino: {
+            nombre: formatTorreonVia(
+              movimiento.viaDestinoNombreSnapshot,
+              movimiento.viaDestinoId,
+              movimiento.seccionDestinoNombreSnapshot,
+              movimiento.seccionDestinoId
+            ),
+          },
+          lavado: false,
+          torno: false,
+          estado: movimiento.estado ?? (concluido ? "CONCLUIDO" : "SOLICITADO"),
+          prioridad: asPriority(movimiento.prioridad),
+          locomotiveNumber: movimiento.locomotiveNumber ?? null,
+          locomotora: movimiento.locomotiveNumber == null ? null : String(movimiento.locomotiveNumber),
+          fechaSolicitud: asDateString(movimiento.fechaSolicitud ?? movimiento.createdAt),
+          fechaInicio: asDateString(movimiento.fechaInicio),
+          fechaFin: asDateString(movimiento.fechaFin),
+          instrucciones: buildTorreonInstructions(movimiento),
+        },
+        movimientoId,
+        createdAt: asDateString(movimiento.fechaSolicitud ?? movimiento.createdAt),
+        source: "torreon",
+      };
+    })
+    .filter((item): item is RondaOut => Boolean(item))
+    .sort((a, b) => {
+      const aTime = Date.parse(String(a.createdAt ?? a.movimiento?.fechaSolicitud ?? "")) || 0;
+      const bTime = Date.parse(String(b.createdAt ?? b.movimiento?.fechaSolicitud ?? "")) || 0;
+      return aTime - bTime || a.orden - b.orden || a.id - b.id;
+    })
+    .map((item, index) => ({ ...item, orden: index + 1 }));
 }
 
 function mapTorreonRondasToOut(input: unknown, concluido: boolean, empresaScopeId?: number | null): RondaOut[] {
@@ -432,6 +506,54 @@ function assertEmpresaScope(shouldScopeEmpresa: boolean, empresaId: number | nul
   }
 }
 
+function sortRondaQueue(rows: RondaOut[]) {
+  return [...rows].sort((a, b) => {
+    const rondaDiff = a.rondaNumero - b.rondaNumero;
+    if (rondaDiff) return rondaDiff;
+    const ordenDiff = a.orden - b.orden;
+    if (ordenDiff) return ordenDiff;
+    const aTime = Date.parse(String(a.createdAt ?? a.movimiento?.fechaSolicitud ?? "")) || 0;
+    const bTime = Date.parse(String(b.createdAt ?? b.movimiento?.fechaSolicitud ?? "")) || 0;
+    return aTime - bTime || a.id - b.id;
+  }).map((item, index) => ({ ...item, orden: index + 1 }));
+}
+
+async function fetchCosaifMovimientosAsRondas(params: {
+  base: string;
+  headers: HeadersInit;
+  localidadId: string;
+  concluido: boolean;
+  empresaId?: number | null;
+}) {
+  const qs = new URLSearchParams({
+    localidadId: params.localidadId,
+    page: "1",
+    pageSize: "100",
+    sortBy: params.concluido ? "fin" : "solicitud",
+    sortDir: params.concluido ? "desc" : "asc",
+  });
+
+  if (params.empresaId) qs.set("empresaId", String(params.empresaId));
+  if (params.concluido) {
+    qs.set("estado", "CONCLUIDO,CANCELADO");
+  } else {
+    qs.set("estado", "SOLICITADO,EN_PROCESO,ESPERA,DETENIDO,AGENDADO");
+    qs.set("finalizado", "false");
+  }
+
+  const response = await fetch(`${params.base}/movimientos/buscar?${qs.toString()}`, {
+    method: "GET",
+    headers: params.headers,
+    cache: "no-store",
+  });
+
+  if (!response.ok) return [];
+
+  return normalizeMovimientoCollection(await readTextAsJsonSafe(response))
+    .map((mv, index) => movementToRondaOut(mv, index, params.concluido))
+    .filter((item): item is RondaOut => Boolean(item));
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams, origin } = new URL(req.url);
@@ -542,11 +664,50 @@ export async function GET(req: NextRequest) {
     }
 
     if (isTorreonLocalidad(localidadId)) {
-      const raw = await fetchTorreonMsJson(`/rondas?localidadId=${encodeURIComponent(localidadId)}`);
       const scopedEmpresaId = canSeeAllEmpresas(role) ? null : empresaId;
-      const out = scopedEmpresaId || canSeeAllEmpresas(role)
-        ? mapTorreonRondasToOut(raw, concluido, scopedEmpresaId)
-        : [];
+      const canReadTorreon = Boolean(scopedEmpresaId || canSeeAllEmpresas(role));
+      if (!canReadTorreon) return NextResponse.json<RondaOut[]>([], { status: 200 });
+
+      let out: RondaOut[] = [];
+      try {
+        const raw = await fetchTorreonMsJson(`/rondas?localidadId=${encodeURIComponent(localidadId)}`);
+        out = mapTorreonRondasToOut(raw, concluido, scopedEmpresaId);
+      } catch (error) {
+        console.warn("[api/cliente/rondas] rondas Torreon error; se intentara fallback:", error);
+      }
+
+      if (!concluido) {
+        try {
+          const params = new URLSearchParams({ localidadId });
+          if (scopedEmpresaId) params.set("empresaId", String(scopedEmpresaId));
+          const rawMovimientos = await fetchTorreonMsJson(`/movimientos?${params.toString()}`);
+          const excludedIds = new Set(
+            out
+              .map((item) => Number(item.movimientoId ?? item.movimiento?.id))
+              .filter((value) => Number.isFinite(value) && value > 0)
+          );
+          const fallback = mapTorreonMovimientosToRondasOut(rawMovimientos, concluido, scopedEmpresaId, excludedIds);
+          out = sortRondaQueue([...out, ...fallback]);
+        } catch (error) {
+          console.warn("[api/cliente/rondas] fallback movimientos Torreon error:", error);
+        }
+      }
+
+      if (out.length) return NextResponse.json(out, { status: 200 });
+
+      try {
+        const cosaifFallback = await fetchCosaifMovimientosAsRondas({
+          base,
+          headers,
+          localidadId,
+          concluido,
+          empresaId: scopedEmpresaId,
+        });
+        return NextResponse.json(sortRondaQueue(cosaifFallback), { status: 200 });
+      } catch (error) {
+        console.warn("[api/cliente/rondas] fallback Cosaif para Torreon error:", error);
+      }
+
       return NextResponse.json(out, { status: 200 });
     }
 

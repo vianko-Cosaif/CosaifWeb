@@ -5,6 +5,7 @@ import React,
   useState,
   useMemo,
   useCallback,
+  useEffect,
   memo,
   Fragment,
 } from "react";
@@ -29,9 +30,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Edit3,
+  Timer,
 } from "lucide-react";
+import { Button, ConfigProvider, Empty, Table } from "antd";
+import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
+import type { SorterResult } from "antd/es/table/interface";
 import styles from "./Tabla.module.scss";
-import type { Movement, CampoOrden, DireccionOrden } from "./useMovimientos";
+import type { Movement, CampoOrden, DireccionOrden, Rol } from "./useMovimientos";
 import TornoMeasuresViewerModal from "../../movimientos/torno/TornoMeasuresViewerModal";
 import { parseTornoMedicionFromApi } from "../../movimientos/torno/tornoMeasureParser";
 import { DEFAULT_TORNO_MEDICION_STATE, type TornoMedicionState } from "../../movimientos/crear/tornoMedicion.types";
@@ -51,6 +56,7 @@ interface TablaProps {
   onPagina: (p: number) => void;
   onOrden: (c: CampoOrden, d: DireccionOrden) => void;
   onEditar?: (id: number) => void;
+  rol?: Rol;
 }
 
 type MeasuresModalState = {
@@ -112,7 +118,9 @@ function TablaInner({
   onPagina,
   onOrden,
   onEditar,
+  rol,
 }: TablaProps) {
+  const clienteSoloIds = String(rol || "").toUpperCase() === "CLIENTE";
   const NO_EDIT_STATES = useMemo(
     () => new Set(["DETENIDO", "EN_PROCESO", "CONCLUIDO"]),
     []
@@ -128,6 +136,7 @@ function TablaInner({
   const showMeasuresColumn = false;
   const tableColumnSpan = 10 + (showEditColumn ? 1 : 0) + (showMeasuresColumn ? 1 : 0);
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+  const [isDarkTheme, setIsDarkTheme] = useState(false);
   const [measuresModal, setMeasuresModal] = useState<MeasuresModalState>({
     open: false,
     loading: false,
@@ -141,6 +150,15 @@ function TablaInner({
   );
 
   const tieneFilas = filas.length > 0;
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const syncTheme = () => setIsDarkTheme(root.classList.contains("dark"));
+    syncTheme();
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
 
   const startIndex = useMemo(
     () => (total === 0 ? 0 : (pagina - 1) * tamPagina + 1),
@@ -224,6 +242,264 @@ function TablaInner({
     return pages;
   }, [pagina, totalPaginas]);
 
+  const getSortOrder = useCallback(
+    (key: CampoOrden) => {
+      if (campoOrden !== key) return null;
+      return direccionOrden === "asc" ? "ascend" : "descend";
+    },
+    [campoOrden, direccionOrden]
+  );
+
+  const antColumns = useMemo<ColumnsType<Movement>>(() => {
+    const base: ColumnsType<Movement> = [
+      {
+        title: "Orden",
+        key: "orden",
+        width: 96,
+        fixed: "left",
+        render: (_value: unknown, _movement, index) => (
+          <span className="inline-flex min-w-10 justify-center rounded-md bg-slate-950 px-2 py-1 font-mono text-xs font-black text-white">
+            {startIndex + index}
+          </span>
+        ),
+      },
+      {
+        title: "ID",
+        dataIndex: "id",
+        key: "id",
+        width: 92,
+        sorter: true,
+        sortOrder: getSortOrder("id"),
+        render: (value: Movement["id"]) => (
+          <span className="rounded-md bg-slate-100 px-2 py-1 font-mono text-xs font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+            #{value}
+          </span>
+        ),
+      },
+      {
+        title: "Locomotora",
+        dataIndex: "locomotora",
+        key: "locomotora",
+        width: 150,
+        sorter: true,
+        sortOrder: getSortOrder("locomotora"),
+        render: (_value: unknown, movement) => (
+          <div className="flex items-center gap-3">
+            <span className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+              <TrainFront size={17} />
+            </span>
+            <div className="min-w-0">
+              <div className="font-black tabular-nums text-slate-950 dark:text-slate-100">
+                {movement.locomotora ?? "—"}
+              </div>
+              {movement.prioridad === "ALTA" && (
+                <div className="text-[10px] font-black uppercase tracking-wide text-rose-500">
+                  Prioridad alta
+                </div>
+              )}
+            </div>
+          </div>
+        ),
+      },
+      {
+        title: "Tipo",
+        dataIndex: "tipoMovimiento",
+        key: "tipo",
+        width: 140,
+        align: "center",
+        sorter: true,
+        sortOrder: getSortOrder("tipo"),
+        render: (value: Movement["tipoMovimiento"]) => <BadgeTipoMovimiento tipo={value} />,
+      },
+      {
+        title: "Localidad",
+        dataIndex: "localidadNombre",
+        key: "localidad",
+        width: 170,
+        sorter: true,
+        sortOrder: getSortOrder("localidad"),
+        render: (value: Movement["localidadNombre"]) => (
+          <span className="inline-flex max-w-[160px] items-center gap-1.5 truncate font-semibold text-slate-600 dark:text-slate-300">
+            <MapPin size={13} className="shrink-0 text-slate-400" />
+            <span className="truncate">{value || "—"}</span>
+          </span>
+        ),
+      },
+      {
+        title: "Empresa",
+        dataIndex: "empresaNombre",
+        key: "empresa",
+        width: 190,
+        sorter: true,
+        sortOrder: getSortOrder("empresa"),
+        render: (value: Movement["empresaNombre"]) => (
+          <span className="block max-w-[180px] truncate font-semibold text-slate-700 dark:text-slate-200">
+            {value || "—"}
+          </span>
+        ),
+      },
+      {
+        title: "Personal",
+        key: "personal",
+        width: 250,
+        render: (_value: unknown, movement) => {
+          const people = [
+            ["Cliente", movement.clienteNombre],
+            ["Operador", movement.operadorNombre],
+            ["Supervisor", movement.supervisorNombre],
+            ["Maquinista", movement.maquinistaNombre],
+          ] as const;
+          const ids = {
+            Cliente: movement.clienteId,
+            Operador: movement.operadorId,
+            Supervisor: movement.supervisorId,
+            Maquinista: movement.maquinistaId,
+          };
+          return (
+            <div className="grid grid-cols-2 gap-1">
+              {people.map(([label, value]) => (
+                <span
+                  key={label}
+                  className="inline-flex items-center justify-between gap-2 rounded-md bg-slate-50 px-2 py-1 text-[11px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300"
+                >
+                  <span>{label}</span>
+                  <strong className="truncate text-right text-slate-900 dark:text-slate-100">
+                    {clienteSoloIds ? ids[label] ?? "—" : value ?? "—"}
+                  </strong>
+                </span>
+              ))}
+            </div>
+          );
+        },
+      },
+      {
+        title: "Origen",
+        dataIndex: "viaOrigen",
+        key: "viaOrigen",
+        width: 130,
+        render: (value: Movement["viaOrigen"]) => (
+          <span className="font-bold text-emerald-700 dark:text-emerald-300">{value || "—"}</span>
+        ),
+      },
+      {
+        title: "Destino",
+        dataIndex: "viaDestino",
+        key: "viaDestino",
+        width: 130,
+        render: (value: Movement["viaDestino"]) => (
+          <span className="font-bold text-sky-700 dark:text-sky-300">{value || "—"}</span>
+        ),
+      },
+      {
+        title: "Solicitud",
+        dataIndex: "fechaSolicitud",
+        key: "solicitud",
+        width: 150,
+        sorter: true,
+        sortOrder: getSortOrder("solicitud"),
+        render: (value: Movement["fechaSolicitud"]) => (
+          <span className="font-mono text-xs text-slate-600 dark:text-slate-300">{formatoFecha(value)}</span>
+        ),
+      },
+      {
+        title: "Inicio",
+        dataIndex: "fechaInicio",
+        key: "inicio",
+        width: 150,
+        sorter: true,
+        sortOrder: getSortOrder("inicio"),
+        render: (value: Movement["fechaInicio"]) => (
+          <span className="font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-300">{formatoFecha(value)}</span>
+        ),
+      },
+      {
+        title: "Fin",
+        dataIndex: "fechaFin",
+        key: "fin",
+        width: 150,
+        sorter: true,
+        sortOrder: getSortOrder("fin"),
+        render: (value: Movement["fechaFin"]) => (
+          <span className="font-mono text-xs text-slate-600 dark:text-slate-300">{formatoFecha(value)}</span>
+        ),
+      },
+      {
+        title: "Resolución",
+        key: "resolucion",
+        width: 140,
+        render: (_value: unknown, movement) => (
+          <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-50 px-2 py-1 text-xs font-black text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            <Timer size={13} className="text-slate-400" />
+            {formatoDuracionMovimiento(movement.fechaInicio, movement.fechaFin)}
+          </span>
+        ),
+      },
+      {
+        title: "Estado",
+        dataIndex: "estado",
+        key: "estado",
+        width: 150,
+        align: "center",
+        sorter: true,
+        sortOrder: getSortOrder("estado"),
+        render: (value: Movement["estado"]) => <BadgeEstado estado={value} />,
+      },
+    ];
+
+    if (showEditColumn) {
+      base.push({
+        title: "Acción",
+        key: "accion",
+        width: 120,
+        fixed: "right",
+        align: "center",
+        render: (_value, movement) => {
+          const canEdit = puedeEditarMovimiento(movement.estado);
+          return canEdit ? (
+            <Button
+              size="small"
+              onClick={(event) => {
+                event.stopPropagation();
+                onEditar?.(movement.id);
+              }}
+              className="font-bold"
+            >
+              Editar
+            </Button>
+          ) : (
+            <span className="text-xs font-semibold text-slate-400">No editable</span>
+          );
+        },
+      });
+    }
+
+    return base;
+  }, [clienteSoloIds, getSortOrder, onEditar, puedeEditarMovimiento, showEditColumn, startIndex]);
+
+  const handleAntTableChange = useCallback(
+    (
+      pagination: TablePaginationConfig,
+      _filters: Record<string, unknown>,
+      sorter: SorterResult<Movement> | SorterResult<Movement>[],
+      extra?: { action?: "paginate" | "sort" | "filter" }
+    ) => {
+      const nextPage = Number(pagination.current || 1);
+      if (nextPage !== pagina) {
+        setExpanded({});
+        onPagina(nextPage);
+      }
+
+      if (extra?.action !== "sort") return;
+
+      const activeSorter = Array.isArray(sorter) ? sorter[0] : sorter;
+      const key = String(activeSorter?.columnKey || "") as CampoOrden;
+      if (key && activeSorter?.order) {
+        onOrden(key, activeSorter.order === "ascend" ? "asc" : "desc");
+      }
+    },
+    [onOrden, onPagina, pagina]
+  );
+
   return (
     <div className="flex h-full w-full flex-col space-y-3 sm:space-y-4 font-sans">
       <div className="relative w-full overflow-hidden rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900/95 shadow-sm transition-all">
@@ -265,158 +541,93 @@ function TablaInner({
                 canEdit={puedeEditarMovimiento(movement.estado)}
                 showMeasures={showMeasuresColumn}
                 onViewMeasures={handleViewMeasures}
+                clienteSoloIds={clienteSoloIds}
               />
             ))
           )}
         </div>
 
-        {/* Tabla (desktop) */}
-        <div className={`hidden xl:block w-full overflow-x-auto ${styles.tableContainer}`}>
-          <table className="w-full border-collapse text-left">
-            {/* HEADER */}
-            <thead
-              className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 ${styles.glassHeader}`}
-            >
-              <tr>
-                <th className="hidden sm:table-cell w-10 px-2 py-3 text-center sm:w-12 sm:px-4 sm:py-4">
-                  #
-                </th>
-                <HeaderCell
-                  label="ID"
-                  sortKey="id"
-                  currentSort={campoOrden}
-                  dir={direccionOrden}
-                  onSort={onOrden}
-                  icon={Hash}
-                />
-                <HeaderCell
-                  label="Locomotora"
-                  sortKey="locomotora"
-                  currentSort={campoOrden}
-                  dir={direccionOrden}
-                  onSort={onOrden}
-                  icon={TrainFront}
-                />
-                <HeaderCell
-                  label="Tipo"
-                  sortKey="tipo"
-                  currentSort={campoOrden}
-                  dir={direccionOrden}
-                  onSort={onOrden}
-                  icon={Tags}
-                  align="center"
-                />
-
-                <HeaderCell
-                  label="Localidad"
-                  sortKey="localidad"
-                  currentSort={campoOrden}
-                  dir={direccionOrden}
-                  onSort={onOrden}
-                  icon={MapPin}
-                  className="hidden md:table-cell"
-                />
-                <HeaderCell
-                  label="Empresa"
-                  sortKey="empresa"
-                  currentSort={campoOrden}
-                  dir={direccionOrden}
-                  onSort={onOrden}
-                  icon={Building2}
-                  className="hidden md:table-cell"
-                />
-                <HeaderCell
-                  label="Solicitud"
-                  sortKey="solicitud"
-                  currentSort={campoOrden}
-                  dir={direccionOrden}
-                  onSort={onOrden}
-                  icon={CalendarClock}
-                  className="hidden lg:table-cell"
-                />
-                <HeaderCell
-                  label="Inicio"
-                  sortKey="inicio"
-                  currentSort={campoOrden}
-                  dir={direccionOrden}
-                  onSort={onOrden}
-                  icon={CalendarClock}
-                  className="hidden xl:table-cell"
-                />
-                <HeaderCell
-                  label="Fin"
-                  sortKey="fin"
-                  currentSort={campoOrden}
-                  dir={direccionOrden}
-                  onSort={onOrden}
-                  icon={CalendarClock}
-                  className="hidden xl:table-cell"
-                />
-
-                <HeaderCell
-                  label="Estado"
-                  sortKey="estado"
-                  currentSort={campoOrden}
-                  dir={direccionOrden}
-                  onSort={onOrden}
-                  icon={Activity}
-                  align="center"
-                />
-
-                {showEditColumn && (
-                  <th className="px-2 py-3 text-center sm:px-4 sm:py-4">
-                    Editar
-                  </th>
-                )}
-                {showMeasuresColumn && (
-                  <th className="px-2 py-3 text-center sm:px-4 sm:py-4">
-                    Medidas
-                  </th>
-                )}
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs sm:text-xs md:text-sm">
-              {!tieneFilas ? (
-                <tr>
-                  <td colSpan={tableColumnSpan} className="py-16 text-center sm:py-20">
-                    <div className="flex flex-col items-center justify-center gap-4">
-                      <div className="rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 p-5">
-                        <TrainFront size={36} strokeWidth={1.2} className="text-slate-300 dark:text-slate-600" />
-                      </div>
-                      <div className="text-center">
-                        <p className="font-medium text-slate-500 dark:text-slate-400">
-                          No hay movimientos registrados
-                        </p>
-                        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                          Los movimientos aparecerán aquí cuando estén disponibles
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filas.map((movement) => (
-                  <MovimientoRow
-                    key={movement.id}
+        <div className="hidden xl:block">
+          <ConfigProvider
+            theme={{
+              token: {
+                colorPrimary: "#059669",
+                borderRadius: 10,
+                fontFamily: "inherit",
+                colorBgContainer: isDarkTheme ? "#0f172a" : "#ffffff",
+                colorText: isDarkTheme ? "#e2e8f0" : "#0f172a",
+                colorTextSecondary: isDarkTheme ? "#94a3b8" : "#475569",
+                colorBorderSecondary: isDarkTheme ? "#1e293b" : "#e2e8f0",
+              },
+              components: {
+                Table: {
+                  headerBg: isDarkTheme ? "#020617" : "#f8fafc",
+                  headerColor: isDarkTheme ? "#cbd5e1" : "#475569",
+                  rowHoverBg: isDarkTheme ? "#111827" : "#f8fafc",
+                  borderColor: isDarkTheme ? "#1e293b" : "#e2e8f0",
+                  colorBgContainer: isDarkTheme ? "#0f172a" : "#ffffff",
+                },
+              },
+            }}
+          >
+            <Table<Movement>
+              rowKey="id"
+              className="cosaif-ant-table"
+              columns={antColumns}
+              dataSource={filas}
+              loading={cargando ? { spinning: true, tip: "Sincronizando..." } : false}
+              size="middle"
+              scroll={{ x: 1880 }}
+              onChange={handleAntTableChange}
+              onRow={(movement) => ({
+                onClick: (event) => {
+                  const target = event.target as HTMLElement | null;
+                  if (target?.closest("button,a,input,select,textarea,[role='button']")) return;
+                  toggle(movement.id);
+                },
+                className: "cursor-pointer",
+              })}
+              expandable={{
+                expandedRowKeys: Object.entries(expanded)
+                  .filter(([, isOpen]) => isOpen)
+                  .map(([id]) => Number(id)),
+                showExpandColumn: false,
+                expandIcon: () => null,
+                onExpand: (_open, movement) => toggle(movement.id),
+                expandedRowRender: (movement) => (
+                  <ExpandedDetailsContent
                     movement={movement}
-                    isOpen={Boolean(expanded[movement.id])}
-                    onToggle={toggle}
-                    onEditar={onEditar}
-                    showEdit={showEditColumn}
-                    canEdit={puedeEditarMovimiento(movement.estado)}
-                    showMeasures={showMeasuresColumn}
-                    onViewMeasures={handleViewMeasures}
-                    tableColumnSpan={tableColumnSpan}
+                    fechaSolicitudFmt={formatoFecha(movement.fechaSolicitud)}
+                    fechaInicioFmt={formatoFecha(movement.fechaInicio)}
+                    fechaFinFmt={formatoFecha(movement.fechaFin)}
+                    isPriorityHigh={movement.prioridad === "ALTA"}
+                    clienteSoloIds={clienteSoloIds}
                   />
-                ))
-              )}
-            </tbody>
-          </table>
+                ),
+              }}
+              pagination={{
+                current: pagina,
+                pageSize: tamPagina,
+                total,
+                showSizeChanger: false,
+                position: ["bottomCenter"],
+                showTotal: (count, range) =>
+                  `Mostrando ${range[0]}-${range[1]} de ${count}${totalEstimado ? "+" : ""}`,
+              }}
+              locale={{
+                emptyText: (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description="No hay movimientos registrados"
+                  />
+                ),
+              }}
+            />
+          </ConfigProvider>
         </div>
 
         {/* Footer con page pills */}
-        <div className="flex flex-col items-center justify-between gap-3 sm:gap-4 rounded-b-xl sm:rounded-b-2xl border-t border-slate-200 dark:border-slate-800/60 bg-gradient-to-b from-slate-50 to-white dark:from-slate-900/80 dark:to-slate-900/60 p-2.5 sm:p-3 text-[10px] sm:flex-row sm:p-4 sm:text-xs">
+        <div className="flex flex-col items-center justify-between gap-3 sm:gap-4 rounded-b-xl sm:rounded-b-2xl border-t border-slate-200 bg-gradient-to-b from-slate-50 to-white p-2.5 text-[10px] dark:border-slate-800/60 dark:from-slate-900/80 dark:to-slate-900/60 sm:flex-row sm:p-4 sm:text-xs xl:hidden">
           <p className="order-2 font-medium text-slate-500 dark:text-slate-400 sm:order-1">
             {total === 0 ? (
               "Sin registros"
@@ -527,6 +738,7 @@ interface MovimientoRowProps {
   showMeasures?: boolean;
   onViewMeasures?: (movement: Movement) => void;
   tableColumnSpan?: number;
+  clienteSoloIds?: boolean;
 }
 
 const MovimientoRow = memo(function MovimientoRow({
@@ -539,6 +751,7 @@ const MovimientoRow = memo(function MovimientoRow({
   showMeasures = false,
   onViewMeasures,
   tableColumnSpan = 10,
+  clienteSoloIds = false,
 }: MovimientoRowProps) {
   const handleRowClick = useCallback(() => {
     onToggle(movement.id);
@@ -727,6 +940,7 @@ const MovimientoRow = memo(function MovimientoRow({
               fechaInicioFmt={fechaInicioFmt}
               fechaFinFmt={fechaFinFmt}
               isPriorityHigh={isPriorityHigh}
+              clienteSoloIds={clienteSoloIds}
             />
           </div>
         </td>
@@ -744,6 +958,7 @@ const MobileCard = memo(function MobileCard({
   canEdit = true,
   showMeasures = false,
   onViewMeasures,
+  clienteSoloIds = false,
 }: MovimientoRowProps) {
   const fechaSolicitudFmt = useMemo(
     () => formatoFecha(movement.fechaSolicitud),
@@ -931,6 +1146,7 @@ const MobileCard = memo(function MobileCard({
           fechaInicioFmt={fechaInicioFmt}
           fechaFinFmt={fechaFinFmt}
           isPriorityHigh={isPriorityHigh}
+          clienteSoloIds={clienteSoloIds}
         />
       </div>
     </div>
@@ -943,12 +1159,14 @@ function ExpandedDetailsContent({
   fechaInicioFmt,
   fechaFinFmt,
   isPriorityHigh,
+  clienteSoloIds,
 }: {
   movement: Movement;
   fechaSolicitudFmt: string;
   fechaInicioFmt: string;
   fechaFinFmt: string;
   isPriorityHigh: boolean;
+  clienteSoloIds: boolean;
 }) {
   return (
     <div
@@ -987,6 +1205,10 @@ function ExpandedDetailsContent({
               label="Fin"
               value={fechaFinFmt}
               className="xl:hidden"
+            />
+            <InfoBlock
+              label="Resolución"
+              value={formatoDuracionMovimiento(movement.fechaInicio, movement.fechaFin)}
             />
           </div>
         </div>
@@ -1030,14 +1252,14 @@ function ExpandedDetailsContent({
           <div className="mt-3 space-y-2">
             <InfoRow
               label="Supervisor"
-              value={movement.supervisorId}
+              value={clienteSoloIds ? movement.supervisorId : movement.supervisorNombre}
             />
             <InfoRow
               label="Maquinista"
-              value={movement.maquinistaId}
+              value={clienteSoloIds ? movement.maquinistaId : movement.maquinistaNombre}
             />
-            <InfoRow label="Operador" value={movement.operadorId} />
-            <InfoRow label="Cliente ID" value={movement.clienteId} />
+            <InfoRow label="Operador" value={clienteSoloIds ? movement.operadorId : movement.operadorNombre} />
+            <InfoRow label="Cliente" value={clienteSoloIds ? movement.clienteId : movement.clienteNombre} />
           </div>
         </div>
 
@@ -1322,4 +1544,16 @@ const formatoFecha = (iso: string | null): string => {
     hour: "2-digit",
     minute: "2-digit",
   });
+};
+
+const formatoDuracionMovimiento = (inicio?: string | null, fin?: string | null): string => {
+  if (!inicio || !fin) return "—";
+  const start = Date.parse(inicio);
+  const end = Date.parse(fin);
+  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return "—";
+  const minutes = Math.round((end - start) / 60000);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours} h ${rest} min` : `${hours} h`;
 };

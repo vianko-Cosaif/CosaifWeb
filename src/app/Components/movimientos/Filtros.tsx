@@ -55,7 +55,7 @@ export default function Filtros({
   onLimpiarFiltros,
   deshabilitado = false,
 }: FiltrosProps) {
-  const [abierto, setAbierto] = useState(false);
+  const [abierto, setAbierto] = useState(true);
   const ESTADOS = [
     "SOLICITADO",
     "EN_PROCESO",
@@ -121,6 +121,28 @@ export default function Filtros({
   const handleTamPaginaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const n = Number(e.target.value);
     if (!Number.isNaN(n)) onCambiarTamPagina(n);
+  };
+
+  const applyDatePreset = (field: "solicitud" | "inicio" | "fin" | "creacion", from: Date, to: Date) => {
+    onCambiarFechaCampo(field);
+    onCambiarRangoFechas(toLocalDateTimeInput(from), toLocalDateTimeInput(to));
+  };
+
+  const applyTodayPreset = (field: "inicio" | "fin") => {
+    const now = new Date();
+    const from = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const to = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 0);
+    applyDatePreset(field, from, to);
+  };
+
+  const applyLastHoursPreset = (hours: number) => {
+    const to = new Date();
+    const from = new Date(to.getTime() - hours * 60 * 60 * 1000);
+    applyDatePreset("inicio", from, to);
+  };
+
+  const clearDateRange = () => {
+    onCambiarRangoFechas(null, null);
   };
 
   /* Active filter chips */
@@ -457,6 +479,54 @@ export default function Filtros({
                 </select>
               </div>
 
+              <div className="min-w-0 col-span-1 sm:col-span-2 xl:col-span-12">
+                <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+                  <span className="inline-flex items-center px-2 text-[11px] font-black uppercase tracking-wide text-slate-400">
+                    Atajos de tiempo
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => applyTodayPreset("inicio")}
+                    disabled={deshabilitado}
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
+                  >
+                    Inicio hoy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyTodayPreset("fin")}
+                    disabled={deshabilitado}
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
+                  >
+                    Cierres hoy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyLastHoursPreset(1)}
+                    disabled={deshabilitado}
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
+                  >
+                    Última hora
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyLastHoursPreset(24 * 7)}
+                    disabled={deshabilitado}
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
+                  >
+                    Últimos 7 días
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearDateRange}
+                    disabled={deshabilitado}
+                    className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-bold text-rose-600 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-800 dark:text-rose-300"
+                  >
+                    Limpiar fechas
+                  </button>
+                </div>
+              </div>
+
               {/* Acciones */}
               <div className="min-w-0 col-span-1 sm:col-span-2 xl:col-span-12 flex gap-2 justify-stretch xl:justify-end pt-1">
                 <button
@@ -485,6 +555,21 @@ function toInputDateTime(valor: string | null | undefined): string {
   }
   const base = valor.length >= 10 ? valor.slice(0, 10) : valor;
   return `${base}T00:00`;
+}
+
+function toLocalDateTimeInput(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return [
+    date.getFullYear(),
+    "-",
+    pad(date.getMonth() + 1),
+    "-",
+    pad(date.getDate()),
+    "T",
+    pad(date.getHours()),
+    ":",
+    pad(date.getMinutes()),
+  ].join("");
 }
 
 function stringOrVacio(id: number | null | undefined): string {

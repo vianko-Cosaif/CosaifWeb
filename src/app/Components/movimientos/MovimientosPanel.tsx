@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import Nav from "./Nav";
 import Filtros from "./Filtros";
 import Tabla from "./Tabla";
-import { useMovimientos, Rol } from "./useMovimientos";
+import { useMovimientos, Rol, type Movement } from "./useMovimientos";
 import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 
 /* ================== HELPERS SESIÓN ================== */
@@ -40,6 +40,59 @@ function getRoleFromSession(): Rol {
   return "CLIENTE";
 }
 
+function formatPanelDate(value?: string | null) {
+  if (!value) return "—";
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) return "—";
+  return new Date(timestamp).toLocaleString("es-MX", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function durationMinutes(start?: string | null, end?: string | null) {
+  if (!start || !end) return null;
+  const a = Date.parse(start);
+  const b = Date.parse(end);
+  if (Number.isNaN(a) || Number.isNaN(b) || b < a) return null;
+  return Math.round((b - a) / 60000);
+}
+
+function formatPanelDuration(minutes?: number | null) {
+  if (!Number.isFinite(Number(minutes))) return "—";
+  const safe = Math.max(0, Math.round(Number(minutes)));
+  if (safe < 60) return `${safe} min`;
+  const hours = Math.floor(safe / 60);
+  const rest = safe % 60;
+  return rest ? `${hours} h ${rest} min` : `${hours} h`;
+}
+
+function buildExecutionSummary(rows: Movement[]) {
+  const starts = rows
+    .map((row) => row.fechaInicio)
+    .filter((value): value is string => Boolean(value))
+    .sort((a, b) => Date.parse(a) - Date.parse(b));
+  const ends = rows
+    .map((row) => row.fechaFin)
+    .filter((value): value is string => Boolean(value))
+    .sort((a, b) => Date.parse(a) - Date.parse(b));
+  const durations = rows
+    .map((row) => durationMinutes(row.fechaInicio, row.fechaFin))
+    .filter((value): value is number => typeof value === "number");
+  const avg = durations.length
+    ? Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length)
+    : null;
+
+  return {
+    firstStart: starts[0] ?? null,
+    lastEnd: ends[ends.length - 1] ?? null,
+    resolved: durations.length,
+    avg,
+  };
+}
+
 /* ================== PROPS ================== */
 
 interface MovimientosPanelProps {
@@ -49,6 +102,7 @@ interface MovimientosPanelProps {
   apiBase?: string;
   empresaIdUsuario?: number | null;
   localidadIdUsuario?: number | null;
+  bloquearLocalidad?: boolean;
   intervaloAutoMs?: number;
 }
 
@@ -62,6 +116,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     apiBase,
     empresaIdUsuario,
     localidadIdUsuario,
+    bloquearLocalidad = false,
     intervaloAutoMs,
   } = props;
   const router = useRouter();
@@ -168,7 +223,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
 
   /* ================== PERMISOS POR ROL ================== */
 
-  const puedeElegirLocalidad = useMemo(
+  const puedeElegirLocalidadPorRol = useMemo(
     () =>
       ["ADMINISTRADOR", "COORDINADOR"].includes(
         String(rol || "").toUpperCase()
@@ -176,7 +231,8 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     [rol]
   );
 
-  const puedeVerTodasEmpresas = puedeElegirLocalidad;
+  const puedeElegirLocalidad = puedeElegirLocalidadPorRol && !bloquearLocalidad;
+  const puedeVerTodasEmpresas = puedeElegirLocalidadPorRol;
 
   useEffect(() => {
     if (esAdministrador) return;
@@ -213,6 +269,23 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     return localidades;
   }, [localidades, puedeElegirLocalidad, userLocalidadId]);
 
+  const resumenEjecucion = useMemo(() => buildExecutionSummary(filas), [filas]);
+  const ordenActual = useMemo(() => {
+    const labelMap: Record<string, string> = {
+      id: "ID",
+      locomotora: "Locomotora",
+      solicitud: "Solicitud",
+      inicio: "Inicio real",
+      fin: "Fin real",
+      estado: "Estado",
+      prioridad: "Prioridad",
+      tipo: "Tipo",
+      localidad: "Localidad",
+      empresa: "Empresa",
+    };
+    return `${labelMap[filtros.campoOrden] ?? filtros.campoOrden} ${filtros.direccionOrden === "asc" ? "ascendente" : "descendente"}`;
+  }, [filtros.campoOrden, filtros.direccionOrden]);
+
   /* ================== HANDLERS ================== */
 
   const handleCambiarAmbito = useCallback(
@@ -247,13 +320,14 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
 
   const handleCambiarLocalidadId = useCallback(
     (localidadId: number | null) => {
+      if (!puedeElegirLocalidad) return;
       setFiltros((prev) => ({
         ...prev,
         pagina: 1,
         localidadId: localidadId ?? undefined,
       }));
     },
-    [setFiltros]
+    [puedeElegirLocalidad, setFiltros]
   );
 
   const handleCambiarRangoFechas = useCallback(
@@ -491,6 +565,14 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
             onLimpiarFiltros={handleLimpiarFiltros}
             deshabilitado={false}
           />
+
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+            <ResumenChip label="Total filtrado" value={`${total}${totalEstimado ? "+" : ""}`} />
+            <ResumenChip label="Primer inicio visible" value={formatPanelDate(resumenEjecucion.firstStart)} />
+            <ResumenChip label="Último fin visible" value={formatPanelDate(resumenEjecucion.lastEnd)} />
+            <ResumenChip label="Resolución promedio" value={formatPanelDuration(resumenEjecucion.avg)} />
+            <ResumenChip label="Orden actual" value={ordenActual} />
+          </div>
         </section>
 
         {/* Card: Tabla */}
@@ -535,6 +617,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
                 campoOrden={filtros.campoOrden}
                 direccionOrden={filtros.direccionOrden}
                 cargando={cargando}
+                rol={rol}
                 onPagina={handlePagina}
                 onOrden={(campo, dir) =>
                   setFiltros((prev) => ({
@@ -552,5 +635,14 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
         </GuidedTarget>
       </div>
     </section>
+  );
+}
+
+function ResumenChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mt-1 truncate text-sm font-black text-slate-900 dark:text-slate-100">{value}</p>
+    </div>
   );
 }

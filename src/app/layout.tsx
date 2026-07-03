@@ -1,3 +1,4 @@
+import "antd/dist/reset.css";
 import "./globals.scss";
 import type { Metadata, Viewport } from "next";
 import { initThemeSSRScript } from "@/lib/theme";

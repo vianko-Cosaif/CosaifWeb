@@ -1,9 +1,6 @@
-// src/app/cliente/movimientos/page.tsx
-import MovimientosPanel from "@/app/Components/movimientos/MovimientosPanel";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
-import CoordinatorTorreonMovimientos from "../torreon/CoordinatorTorreonMovimientos";
+import CoordinatorMovimientosPageClient from "./CoordinatorMovimientosPageClient";
 
 export const dynamic = "force-dynamic";
 const MOVIMIENTOS_API_BASE = process.env.NEXT_PUBLIC_API_BASE || "/bff";
@@ -27,32 +24,12 @@ export default async function Page() {
     redirect("/login");
   }
 
-  if (locIdCookie && isTorreonLocalidadId(locIdCookie)) {
-    return (
-      <CoordinatorTorreonMovimientos
-        apiBase={MOVIMIENTOS_API_BASE}
-        token={token}
-        empresaIdUsuario={empIdCookie}
-        localidadIdUsuario={locIdCookie}
-      />
-    );
-  }
-
   return (
-    // Contenedor de página: no permite scroll horizontal global
-    <section className="w-full min-h-screen overflow-x-hidden">
-      {/* Contenedor centrado del panel */}
-      <div className="mx-auto w-full max-w-5xl px-3 sm:px-4 lg:px-6">
-        <MovimientosPanel
-          apiBase={MOVIMIENTOS_API_BASE}
-          rol="COORDINADOR"
-          token={token}
-          empresaIdUsuario={empIdCookie}
-          localidadIdUsuario={locIdCookie}
-          puedeCrear
-          intervaloAutoMs={15000}
-        />
-      </div>
-    </section>
+    <CoordinatorMovimientosPageClient
+      apiBase={MOVIMIENTOS_API_BASE}
+      token={token}
+      empresaIdUsuario={empIdCookie}
+      localidadIdUsuario={locIdCookie}
+    />
   );
 }

@@ -122,10 +122,15 @@ export interface Movement {
   estado: string;
 
   clienteId: number;
+  clienteNombre?: string;
   supervisorId: number | null;
+  supervisorNombre?: string;
   coordinadorId: number | null;
+  coordinadorNombre?: string;
   operadorId: number | null;
+  operadorNombre?: string;
   maquinistaId: number | null;
+  maquinistaNombre?: string;
   empresaId: number;
   empresaNombre?: string;
 
@@ -186,6 +191,12 @@ interface EmpresaDTO {
   nombre?: string | null;
 }
 
+interface UsuarioDTO {
+  id?: number;
+  nombre?: string | null;
+  rol?: string | null;
+}
+
 interface LocalidadDTO {
   id?: number;
   nombre?: string | null;
@@ -217,10 +228,20 @@ interface MovementDTO {
   estado?: string | null;
 
   clienteId?: number | null;
+  clienteNombre?: string | null;
+  cliente?: UsuarioDTO | null;
   supervisorId?: number | null;
+  supervisorNombre?: string | null;
+  supervisor?: UsuarioDTO | null;
   coordinadorId?: number | null;
+  coordinadorNombre?: string | null;
+  coordinador?: UsuarioDTO | null;
   operadorId?: number | null;
+  operadorNombre?: string | null;
+  operador?: UsuarioDTO | null;
   maquinistaId?: number | null;
+  maquinistaNombre?: string | null;
+  maquinista?: UsuarioDTO | null;
 
   empresaId?: number | null;
   empresaNombre?: string | null;
@@ -315,6 +336,18 @@ function normalizarNombre(value: unknown): string {
   return "—";
 }
 
+function normalizarNombreUsuario(
+  directo: unknown,
+  usuario: UsuarioDTO | null | undefined,
+  _fallbackId?: number | null
+): string {
+  const nombreDirecto = typeof directo === "string" ? directo.trim() : "";
+  if (nombreDirecto) return nombreDirecto;
+  const nombreUsuario = typeof usuario?.nombre === "string" ? usuario.nombre.trim() : "";
+  if (nombreUsuario) return nombreUsuario;
+  return "—";
+}
+
 function esMovementDTOArray(value: unknown): value is MovementDTO[] {
   return Array.isArray(value);
 }
@@ -373,10 +406,19 @@ function mapearDTO(dto: MovementDTO): Movement {
     estado: dto.estado ?? "DESCONOCIDO",
 
     clienteId: dto.clienteId ?? 0,
+    clienteNombre: normalizarNombreUsuario(dto.clienteNombre, dto.cliente, dto.clienteId),
     supervisorId: dto.supervisorId ?? null,
+    supervisorNombre: normalizarNombreUsuario(dto.supervisorNombre, dto.supervisor, dto.supervisorId),
     coordinadorId: dto.coordinadorId ?? null,
+    coordinadorNombre: normalizarNombreUsuario(dto.coordinadorNombre, dto.coordinador, dto.coordinadorId),
     operadorId: dto.operadorId ?? null,
+    operadorNombre: normalizarNombreUsuario(dto.operadorNombre, dto.operador, dto.operadorId),
     maquinistaId: dto.maquinistaId ?? null,
+    maquinistaNombre: normalizarNombreUsuario(
+      dto.maquinistaNombre,
+      dto.maquinista ?? dto.operador,
+      dto.maquinistaId ?? dto.operadorId
+    ),
     empresaId: dto.empresaId ?? 0,
 
     empresaNombre: empresaNombreFinal,
@@ -559,6 +601,7 @@ export function useMovimientos({
       filtros.locomotivePrefix && String(filtros.locomotivePrefix).trim()
     );
     const hasFechas = Boolean(filtros.desde || filtros.hasta);
+    const hasCustomSort = filtros.campoOrden !== "id" || filtros.direccionOrden !== "desc";
 
     return (
       ambito === "pasados" ||
@@ -567,7 +610,8 @@ export function useMovimientos({
       hasPrioridad ||
       hasLocoNum ||
       hasLocoPrefix ||
-      hasFechas
+      hasFechas ||
+      hasCustomSort
     );
   }, [
     ambito,
@@ -578,6 +622,8 @@ export function useMovimientos({
     filtros.locomotivePrefix,
     filtros.desde,
     filtros.hasta,
+    filtros.campoOrden,
+    filtros.direccionOrden,
   ]);
 
   /* ---------- HEADERS AUTH ---------- */
@@ -596,6 +642,8 @@ export function useMovimientos({
 
     qs.set("page", String(filtros.pagina));
     qs.set("pageSize", String(filtros.tamPagina));
+    qs.set("sortBy", filtros.campoOrden);
+    qs.set("sortDir", filtros.direccionOrden);
 
     if (shouldUseBuscar) {
       if (filtros.busqueda.trim()) qs.set("q", filtros.busqueda.trim());
@@ -641,6 +689,8 @@ export function useMovimientos({
     filtros.desde,
     filtros.hasta,
     filtros.fechaCampo,
+    filtros.campoOrden,
+    filtros.direccionOrden,
     ambito,
     shouldUseBuscar,
   ]);
