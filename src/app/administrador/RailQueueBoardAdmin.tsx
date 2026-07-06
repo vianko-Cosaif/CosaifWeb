@@ -2,7 +2,8 @@
 import { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { MapPin, Sparkles } from "lucide-react";
-import { getClientCookie } from "@/lib/cookies";
+import { getClientCookie, setClientCookie } from "@/lib/cookies";
+import { syncFirebaseNotificationLocalidad } from "@/lib/firebase";
 import TornoMeasuresViewerModal from "../movimientos/torno/TornoMeasuresViewerModal";
 import { parseTornoMedicionFromApi } from "../movimientos/torno/tornoMeasureParser";
 import { DEFAULT_TORNO_MEDICION_STATE, type TornoMedicionState } from "../movimientos/crear/tornoMedicion.types";
@@ -238,6 +239,22 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
     return Number.isFinite(n) && n > 0 ? n : 0; // 0 = TODAS
   });
   const activeLoc = useMemo(() => localidades.find(l => l.id === activeLocId) || null, [localidades, activeLocId]);
+
+  useEffect(() => {
+    if (activeLocId <= 0) return;
+    try {
+      localStorage.setItem("locId", String(activeLocId));
+    } catch {}
+    setClientCookie("locId", String(activeLocId), {
+      path: "/",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 365,
+    });
+    window.dispatchEvent(new CustomEvent("cosaif:localidad-change", { detail: { localidadId: activeLocId } }));
+    void syncFirebaseNotificationLocalidad(activeLocId).catch((error) => {
+      console.warn("No se pudo sincronizar localidad FCM.", error);
+    });
+  }, [activeLocId]);
 
   async function loadLocalidades() {
     try {
@@ -1143,4 +1160,3 @@ function EmptyState() {
     </div>
   );
 }
-

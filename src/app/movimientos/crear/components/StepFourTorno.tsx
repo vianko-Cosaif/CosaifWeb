@@ -5,6 +5,7 @@ import {
   formatTornoMeasure,
   getTornoPositions,
   EMPTY_TORNO_ROW,
+  EMPTY_TORNO_VALUE,
   type TornoMeasurementField,
   type TornoMeasurementValue,
   type TornoMedicionState,
@@ -73,7 +74,7 @@ export default function StepFourTorno(props: StepFourTornoProps) {
       width: 120,
       align: "center",
       render: ({ row }) => {
-        const val = formatTornoMeasure(row[field.key]);
+        const val = formatTornoMeasure(row[field.key] ?? EMPTY_TORNO_VALUE);
         return <span className={val ? "text-slate-700 dark:text-slate-200" : "text-slate-400 dark:text-slate-500"}>{val || "-"}</span>;
       },
     })),

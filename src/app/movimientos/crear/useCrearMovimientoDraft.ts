@@ -154,8 +154,10 @@ export function useCrearMovimientoDraft(args: {
       toSection,
       locoLockedBy,
       tornoMedicion,
-      tornoStep2Completed: !!tornoStep2Completed,
-      tornoMovimientoId: typeof tornoMovimientoId === "number" ? tornoMovimientoId : null,
+      // Estos estados son de una corrida ya enviada al backend. No deben
+      // sobrevivir recargas porque hacen que el wizard salte de medicion a PDF.
+      tornoStep2Completed: false,
+      tornoMovimientoId: null,
     };
     if (draftTimer.current) clearTimeout(draftTimer.current);
     draftTimer.current = setTimeout(() => {
@@ -194,16 +196,11 @@ export function useCrearMovimientoDraft(args: {
       }
 
       if (setTornoMovimientoId) {
-        const persisted = Number(d.tornoMovimientoId);
-        if (Number.isFinite(persisted) && persisted >= 0) {
-          setTornoMovimientoId(persisted);
-        } else {
-          setTornoMovimientoId(null);
-        }
+        setTornoMovimientoId(null);
       }
 
       if (setTornoStep2Completed) {
-        setTornoStep2Completed(Boolean(d.tornoStep2Completed));
+        setTornoStep2Completed(false);
       }
     } catch { }
   }, [setForm, setFromSection, setToSection, setLocoLockedBy, setTornoMedicion, setTornoStep2Completed, setTornoMovimientoId]);

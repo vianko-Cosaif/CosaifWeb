@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Menu as MenuIcon,
@@ -22,8 +22,9 @@ import {
   Search,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
+import { GuidedTarget, useGuidedManualApi } from "@/app/Components/GuidedManualAtom";
 import ThemeToggle from "@/app/Components/ui/ThemeToggle";
+import { CLIENT_MOVEMENT_GUIDE_ID } from "@/app/Components/GuidedManualAtom/ClientMovementGuide.config";
 
 /* ==========================================================================
    INTERFACES & TYPES
@@ -49,10 +50,49 @@ type NavigationItem = {
   hide?: boolean;
 };
 
+type HelpGuideAction = "client-create-movement" | "legacy-create-movement" | "legacy-create-movement-torno";
+
 type HelpSuggestion = {
   id: string;
   label: string;
+  description: string;
+  keywords: string[];
+  roles?: Rol[];
+  action: HelpGuideAction;
 };
+
+const HELP_GUIDE_CATALOG: HelpSuggestion[] = [
+  {
+    id: "client-guide-button-flow",
+    label: "Wizard del boton Guia",
+    description: "Mismo flujo del boton Guia: acompana al cliente desde Movimientos hasta confirmar la solicitud.",
+    keywords: ["guia", "boton", "wizard", "cliente", "movimiento", "paso", "confirmar"],
+    roles: ["CLIENTE"],
+    action: "client-create-movement",
+  },
+  {
+    id: "client-create-movement",
+    label: "Crear movimiento paso a paso",
+    description: "Wizard interactivo para cliente: abre Movimientos, Nuevo y guia la captura hasta confirmar.",
+    keywords: ["movimiento", "crear", "nuevo", "cliente", "solicitud", "wizard", "guia"],
+    roles: ["CLIENTE"],
+    action: "client-create-movement",
+  },
+  {
+    id: "create-movement-guide",
+    label: "Como crear un movimiento",
+    description: "Guia general compatible con los flujos anteriores para crear movimientos.",
+    keywords: ["movimiento", "crear", "nuevo", "general", "captura", "guia"],
+    action: "legacy-create-movement",
+  },
+  {
+    id: "create-movement-torno",
+    label: "Como crear un movimiento con torno",
+    description: "Asistente para el flujo con mediciones de ruedas, PDF y cierre del movimiento.",
+    keywords: ["movimiento", "torno", "ruedas", "medicion", "pdf", "calendarizar", "wizard"],
+    action: "legacy-create-movement-torno",
+  },
+];
 
 // PREMIUM COLOR CONFIGURATION
 const ROLE_CONFIG: Record<
@@ -121,6 +161,7 @@ function cn(...classes: (string | undefined | null | false)[]) {
 export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }) {
   const router = useRouter();
   const pathname = usePathname();
+  const guidedManualApi = useGuidedManualApi();
 
   const [isOpen, setIsOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -207,13 +248,44 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
   const base = useMemo(() => `/${normRol.toLowerCase()}`, [normRol]);
   const roleConfig = ROLE_CONFIG[normRol] || ROLE_CONFIG.CLIENTE;
   const showExpandedSidebar = isOpen || mobileOpen;
-  const showMovimientoSuggestions = helpQuery.trim().toLowerCase().includes("movimiento");
-  const helpSuggestions: HelpSuggestion[] = showMovimientoSuggestions
-    ? [
-        { id: "create-movement-guide", label: "¿como crear un movimiento?" },
-        { id: "create-movement-torno", label: "¿como crear un movimiento con torno?" },
-      ]
-    : [];
+  const normalizedHelpQuery = helpQuery.trim().toLowerCase();
+  const helpSuggestions = useMemo(() => {
+    const available = HELP_GUIDE_CATALOG.filter((item) => !item.roles || item.roles.includes(normRol));
+    if (!normalizedHelpQuery) return available.slice(0, 4);
+
+    return available.filter((item) => {
+      const haystack = [item.label, item.description, ...item.keywords].join(" ").toLowerCase();
+      return normalizedHelpQuery
+        .split(/\s+/)
+        .filter(Boolean)
+        .every((term) => haystack.includes(term));
+    });
+  }, [normRol, normalizedHelpQuery]);
+
+  const closeHelpAssistant = useCallback(() => {
+    setHelpOpen(false);
+    setHelpQuery("");
+  }, []);
+
+  const runHelpSuggestion = useCallback(
+    (suggestion: HelpSuggestion) => {
+      if (suggestion.action === "client-create-movement" && guidedManualApi) {
+        guidedManualApi.startManual(CLIENT_MOVEMENT_GUIDE_ID);
+        closeHelpAssistant();
+        return;
+      }
+
+      if (suggestion.action === "legacy-create-movement-torno") {
+        window.dispatchEvent(new CustomEvent("cosaif:start-create-movement-torno-guide"));
+        closeHelpAssistant();
+        return;
+      }
+
+      window.dispatchEvent(new CustomEvent("cosaif:start-create-movement-guide"));
+      closeHelpAssistant();
+    },
+    [closeHelpAssistant, guidedManualApi]
+  );
 
   const navigation = useMemo<NavigationItem[]>(() => {
     return [
@@ -249,8 +321,9 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
   if (!mounted) return null;
 
   // NavItem Component
-  const NavItem = ({ item, isActive }: { item: NavigationItem, isActive: boolean }) => (
-    <button
+  const NavItem = ({ item, isActive }: { item: NavigationItem, isActive: boolean }) => {
+    const button = (
+      <button
       onClick={() => {
         router.push(item.href);
         setMobileOpen(false);
@@ -264,7 +337,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
         !isOpen && !mobileOpen ? "justify-center px-2" : ""
       )}
       title={!isOpen ? item.label : undefined}
-    >
+      >
       <item.icon
         className={cn(
           "h-5 w-5 shrink-0 transition-transform duration-300",
@@ -288,8 +361,19 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
           {item.label}
         </div>
       )}
-    </button>
-  );
+      </button>
+    );
+
+    if (normRol === "CLIENTE" && item.id === "movs") {
+      return (
+        <GuidedTarget id="client-nav-movements" className="w-full">
+          {button}
+        </GuidedTarget>
+      );
+    }
+
+    return button;
+  };
 
   return (
     <>
@@ -465,7 +549,10 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
                 aria-label="Panel de ayuda"
               >
                 <div className="border-b border-slate-100 px-4 py-3 dark:border-zinc-800">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-zinc-100">¿En que te puedo ayudar?</p>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-zinc-100">Asistente de guias</p>
+                  <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
+                    Busca un proceso y lanza la guia o wizard correspondiente.
+                  </p>
                 </div>
                 <div className="px-4 py-5">
                   <label htmlFor="sidebar-help-search" className="sr-only">
@@ -478,55 +565,53 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
                       type="text"
                       value={helpQuery}
                       onChange={(event) => setHelpQuery(event.target.value)}
-                      placeholder="Palabra clave: movimiento, incidente"
+                      placeholder="Ej. movimiento, torno, PDF, solicitud"
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm text-slate-700 outline-none transition focus:border-sky-400 focus:bg-white dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-sky-500"
                     />
                   </div>
 
-                  {helpSuggestions.length > 0 && (
-                    <div className="mt-4 space-y-2">
-                      {helpSuggestions.map((suggestion) => (
+                  <div className="mt-4 space-y-2">
+                    {helpSuggestions.length > 0 ? (
+                      helpSuggestions.map((suggestion) => (
                         <button
                           key={suggestion.id}
                           type="button"
-                          onClick={() => {
-                            if (suggestion.id === "create-movement-guide") {
-                              window.dispatchEvent(new CustomEvent("cosaif:start-create-movement-guide"));
-                              setHelpOpen(false);
-                              setHelpQuery("");
-                              return;
-                            }
-
-                            if (suggestion.id === "create-movement-torno") {
-                              window.dispatchEvent(new CustomEvent("cosaif:start-create-movement-torno-guide"));
-                              setHelpOpen(false);
-                              setHelpQuery("");
-                            }
-                          }}
-                          className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left text-sm text-slate-700 transition hover:border-sky-300 hover:bg-sky-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:border-sky-700 dark:hover:bg-zinc-900"
+                          onClick={() => runHelpSuggestion(suggestion)}
+                          className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left transition hover:border-sky-300 hover:bg-sky-50 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:border-sky-700 dark:hover:bg-zinc-900"
                         >
-                          {suggestion.label}
+                          <span className="block text-sm font-semibold text-slate-800 dark:text-zinc-100">
+                            {suggestion.label}
+                          </span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-zinc-400">
+                            {suggestion.description}
+                          </span>
                         </button>
-                      ))}
-                    </div>
-                  )}
+                      ))
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-xs text-slate-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-400">
+                        No encontre una guia con esa busqueda. Intenta con movimiento, torno o PDF.
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
           </div>
 
           {/* THEME TOGGLE */}
-          <div className={cn("mb-3 flex items-center", showExpandedSidebar ? "justify-between" : "justify-center")}>
-            {showExpandedSidebar && (
+          <div className={cn("mb-3 flex items-center gap-2", (isOpen || mobileOpen) ? "justify-between" : "justify-center")}>
+            {(isOpen || mobileOpen) && (
               <span className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-zinc-600">
                 Tema
               </span>
             )}
-            <ThemeToggle
-              size="sm"
-              withLabel={showExpandedSidebar}
-              className={cn(!showExpandedSidebar && "h-9 w-9")}
-            />
+            <div className="flex items-center gap-2">
+              <ThemeToggle
+                size="sm"
+                withLabel={isOpen || mobileOpen}
+                className={cn(!(isOpen || mobileOpen) && "h-9 w-9")}
+              />
+            </div>
           </div>
           {/* LOGOUT + VERSION */}
           <div className={cn("flex items-center", isOpen ? "justify-between" : "flex-col gap-3 justify-center")}>

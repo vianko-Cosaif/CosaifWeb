@@ -98,7 +98,13 @@ export default function StepThree({
       </GuidedTarget>
 
       <GuidedTarget id="create-movement-submit" className="inline-flex">
-        <button onClick={handleSubmitClick} disabled={sending} className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" title="Ctrl/Cmd + Enter para enviar">
+        <button
+          onClick={handleSubmitClick}
+          disabled={sending}
+          data-guide-action="create-movement-submit"
+          className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+          title="Ctrl/Cmd + Enter para enviar"
+        >
           {sending ? "Enviando..." : (submitLabel || "Confirmar solicitud")}
         </button>
       </GuidedTarget>
@@ -114,7 +120,7 @@ export default function StepThree({
               </div>
               <h3 className="text-xl font-bold text-slate-900 dark:text-white text-center">Movimiento Agendado</h3>
             </div>
-            
+
             <p className="text-sm text-slate-600 dark:text-slate-300 text-center mb-6 leading-relaxed">
               El movimiento de torno queda agendado para el <strong className="text-slate-900 dark:text-white">{formattedScheduledDate}</strong>.<br/><br/>
               <strong className="text-slate-900 dark:text-white">Si no se activa antes de 10 minutos despues de esa fecha se perdera la calendarizacion.</strong>

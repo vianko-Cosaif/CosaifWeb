@@ -22,11 +22,15 @@ export type ScheduledTornoMovement = {
   tipo?: string | null;
   temporaryRecovery?: boolean;
   recovery?: boolean;
+  usuarioIntentoNombre?: string | null;
+  fechaIntento?: string | null;
 };
 
 type Props = {
   enabled: boolean;
   locomotiveNumber: string;
+  viaOrigenId?: number | null;
+  localidadId?: number | null;
   scheduledMovements?: ScheduledTornoMovement[];
   loading?: boolean;
   companyName?: string;
@@ -121,6 +125,10 @@ export default function ScheduledTornoActivationModal(props: Props) {
   }, [enabled, locomotiveNumber]);
 
   useEffect(() => {
+    setDismissedMatchId(null);
+  }, [locomotiveNumber]);
+
+  useEffect(() => {
     if (!locomotiveNumber.trim()) {
       setDismissedMatchId(null);
     }
@@ -132,8 +140,15 @@ export default function ScheduledTornoActivationModal(props: Props) {
     return scheduledMovements.find((item) => {
       const sameLocomotive = Number(item?.locomotiveNumber) === Number(debouncedLocomotive);
       if (!sameLocomotive) return false;
+      const isRecovery =
+        item?.temporaryRecovery === true ||
+        item?.recovery === true ||
+        String(item?.tipo ?? "").toUpperCase() === "TORNO_RECUPERACION";
       const limit = item?.fechaLimiteActivacion ? new Date(item.fechaLimiteActivacion).getTime() : null;
-      return !limit || Number.isNaN(limit) || now <= limit;
+      const inWindow = !limit || Number.isNaN(limit) || now <= limit;
+      if (!inWindow) return false;
+      if (isRecovery) return true;
+      return true;
     }) ?? null;
   }, [debouncedLocomotive, scheduledMovements]);
 
@@ -143,6 +158,8 @@ export default function ScheduledTornoActivationModal(props: Props) {
     match?.temporaryRecovery === true ||
     match?.recovery === true ||
     String(match?.tipo ?? "").toUpperCase() === "TORNO_RECUPERACION";
+  const recoveryUserName = String(match?.usuarioIntentoNombre || "correspondiente");
+  const recoveryAttemptDate = formatDate(match?.fechaIntento ?? match?.fechaProgramada);
   const fieldDefs = useMemo(() => TORNO_PROFILE_FIELDS[resolveTornoProfile(companyName)], [companyName]);
   const rows = useMemo(() => buildProfileMeasureRows(match?.medidasTorno, fieldDefs), [fieldDefs, match?.medidasTorno]);
   const columns = useMemo<DynamicTableColumn<MeasureRow>[]>(
@@ -185,7 +202,9 @@ export default function ScheduledTornoActivationModal(props: Props) {
                 {isRecovery ? "Torneado cancelado recuperable" : "Movimiento de torno agendado encontrado"}
               </h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                {isRecovery ? "Guardado temporal" : "Solicitud"} #{match?.id ?? "-"} para locomotora {match?.locomotiveNumber ?? "-"}
+                {isRecovery
+                  ? `Guardado temporal para locomotora ${match?.locomotiveNumber ?? "-"}`
+                  : `Solicitud #${match?.id ?? "-"} para locomotora ${match?.locomotiveNumber ?? "-"}`}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -215,7 +234,7 @@ export default function ScheduledTornoActivationModal(props: Props) {
             <div className="mt-1">Limite de activacion: <strong>{formatDate(match?.fechaLimiteActivacion)}</strong></div>
             {isRecovery ? (
               <div className="mt-2 font-medium text-amber-700 dark:text-amber-300">
-                Este registro recupera las medidas de un torneado cancelado y creara un movimiento nuevo.
+                El usuario {recoveryUserName} intentó realizar este movimiento en la fecha {recoveryAttemptDate}. ¿Deseas reintentarlo y recuperar las medidas solicitadas?
               </div>
             ) : null}
           </div>
@@ -254,7 +273,7 @@ export default function ScheduledTornoActivationModal(props: Props) {
               }}
               className="rounded-xl bg-emerald-600 px-5 py-2 text-sm font-bold text-white shadow shadow-emerald-500/20 hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {activating ? (isRecovery ? "Recuperando..." : "Activando...") : (isRecovery ? "Recuperar medidas" : "Activar Movimiento")}
+              {activating ? (isRecovery ? "Recuperando..." : "Activando...") : (isRecovery ? "Recuperar datos" : "Activar Movimiento")}
             </button>
           </div>
         </div>

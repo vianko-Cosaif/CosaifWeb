@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Download, Info, X } from "lucide-react";
+import { Download, Info, Share2, X } from "lucide-react";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 };
 
-type InstallTarget = "native" | "ios" | "secure-context" | "browser-menu";
+type InstallTarget = "native" | "ios-safari" | "ios-browser" | "secure-context" | "browser-menu";
 
 const DISMISSED_KEY = "cosaif:pwa-install-dismissed:v2";
 const DISMISS_MS = 24 * 60 * 60 * 1000;
@@ -19,13 +19,24 @@ function isStandalone() {
   return window.matchMedia("(display-mode: standalone)").matches || nav.standalone === true;
 }
 
+function isIosLike() {
+  const nav = navigator as Navigator & { userAgentData?: unknown };
+  const userAgent = nav.userAgent.toLowerCase();
+  const platform = nav.platform?.toLowerCase() ?? "";
+
+  return /iphone|ipad|ipod/.test(userAgent) || (platform === "macintel" && nav.maxTouchPoints > 1);
+}
+
+function isSafariLike() {
+  const userAgent = navigator.userAgent.toLowerCase();
+  return /safari/.test(userAgent) && !/crios|fxios|edgios|opios|duckduckgo/.test(userAgent);
+}
+
 function getInstallTarget(hasNativePrompt: boolean): InstallTarget {
   if (hasNativePrompt) return "native";
 
-  const userAgent = window.navigator.userAgent.toLowerCase();
-  const isIos = /iphone|ipad|ipod/.test(userAgent);
-  if (isIos) return "ios";
   if (!window.isSecureContext) return "secure-context";
+  if (isIosLike()) return isSafariLike() ? "ios-safari" : "ios-browser";
 
   return "browser-menu";
 }
@@ -34,10 +45,12 @@ function getInstallMessage(target: InstallTarget) {
   switch (target) {
     case "native":
       return "Lista para instalarse como app en este equipo.";
-    case "ios":
-      return "En iPhone o iPad abre Compartir y toca Agregar a pantalla de inicio.";
+    case "ios-safari":
+      return "iOS no permite abrir el instalador con un boton automatico. Toca Compartir y luego Agregar a pantalla de inicio.";
+    case "ios-browser":
+      return "En iOS abre esta pagina en Safari. Despues toca Compartir y Agregar a pantalla de inicio.";
     case "secure-context":
-      return "Para instalar desde celular u otra compu usa HTTPS con la IP real de la Mac. No abras 0.0.0.0; eso solo levanta el server.";
+      return "Para instalar en movil necesitas HTTPS confiable. En local usa localhost o una IP con certificado confiado; 0.0.0.0 no sirve para navegar.";
     default:
       return "Si no abre el instalador, usa el menu del navegador y elige Instalar app.";
   }
@@ -72,7 +85,7 @@ export default function PwaInstallPrompt() {
       if (!dismissedRecently && !isStandalone()) {
         setReady(true);
         setDismissed(false);
-        setExpanded(!window.isSecureContext || /iphone|ipad|ipod/i.test(window.navigator.userAgent));
+        setExpanded(!window.isSecureContext || isIosLike());
       }
     }, 1800);
 
@@ -112,6 +125,9 @@ export default function PwaInstallPrompt() {
   }, [installTarget, serviceWorkerReady]);
 
   const shouldShow = ready && !dismissed && !installed;
+  const isIosTarget = installTarget === "ios-safari" || installTarget === "ios-browser";
+  const InstallIcon = isIosTarget ? Share2 : Download;
+  const buttonLabel = isIosTarget ? "Instalar en iOS" : "Descargar app";
 
   const dismiss = () => {
     window.localStorage.setItem(DISMISSED_KEY, String(Date.now()));
@@ -143,8 +159,8 @@ export default function PwaInstallPrompt() {
           onClick={install}
           className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
         >
-          <Download className="h-4 w-4 shrink-0" />
-          <span>Descargar app</span>
+          <InstallIcon className="h-4 w-4 shrink-0" />
+          <span>{buttonLabel}</span>
         </button>
         <button
           type="button"

@@ -125,15 +125,17 @@ export default function Nav({
 
           {puedeCrear && (
             <GuidedTarget id="movimientos-new-button" className="inline-flex">
-              <button
-                type="button"
-                onClick={onNuevo}
-                className="inline-flex items-center justify-center gap-2 rounded-lg sm:rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-4 sm:px-4 py-2 min-h-[44px] sm:min-h-[38px] text-xs font-bold shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:from-emerald-600 hover:to-emerald-700 active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                disabled={estaCargando}
-              >
-                <Plus size={18} aria-hidden />
-                <span>Nuevo</span>
-              </button>
+              <GuidedTarget id="client-new-movement" className="inline-flex">
+                <button
+                  type="button"
+                  onClick={onNuevo}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg sm:rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-4 sm:px-4 py-2 min-h-[44px] sm:min-h-[38px] text-xs font-bold shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:from-emerald-600 hover:to-emerald-700 active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                  disabled={estaCargando}
+                >
+                  <Plus size={18} aria-hidden />
+                  <span>Nuevo</span>
+                </button>
+              </GuidedTarget>
             </GuidedTarget>
           )}
         </div>

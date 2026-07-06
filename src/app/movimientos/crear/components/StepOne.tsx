@@ -345,46 +345,48 @@ export default function StepOne(props: StepOneProps) {
       </div>
 
       {form.service === "Torno" ? (
-        <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/50">
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 dark:border-slate-700"
-              checked={!!form.agendado}
-              onChange={(event) => {
-                const checked = event.target.checked;
-                setForm((p) => ({
-                  ...p,
-                  agendado: checked,
-                  fechaProgramada: checked
-                    ? (p.fechaProgramada || new Date(Date.now() + 60 * 60 * 1000).toISOString())
-                    : "",
-                }));
-              }}
-            />
-            <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Agendar movimiento</span>
-          </label>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Programa este torno para otra fecha y hora. Al activarlo se colocara en ronda.
-          </p>
-          {form.agendado ? (
-            <div className="mt-3 max-w-sm">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Fecha y hora programada
-              </label>
+        <GuidedTarget id="create-movement-torno-schedule" className="sm:col-span-2">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/50">
+            <label className="flex items-center gap-2">
               <input
-                type="datetime-local"
-                className={inputBase}
-                value={toDatetimeLocalValue(form.fechaProgramada)}
-                min={toDatetimeLocalValue(new Date().toISOString())}
+                type="checkbox"
+                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 dark:border-slate-700"
+                checked={!!form.agendado}
                 onChange={(event) => {
-                  const nextValue = fromDatetimeLocalValue(event.target.value);
-                  setForm((p) => ({ ...p, agendado: true, fechaProgramada: nextValue }));
+                  const checked = event.target.checked;
+                  setForm((p) => ({
+                    ...p,
+                    agendado: checked,
+                    fechaProgramada: checked
+                      ? (p.fechaProgramada || new Date(Date.now() + 60 * 60 * 1000).toISOString())
+                      : "",
+                  }));
                 }}
               />
-            </div>
-          ) : null}
-        </div>
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Agendar movimiento</span>
+            </label>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Programa este torno para otra fecha y hora. Al activarlo se colocara en ronda.
+            </p>
+            {form.agendado ? (
+              <div className="mt-3 max-w-sm">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Fecha y hora programada
+                </label>
+                <input
+                  type="datetime-local"
+                  className={inputBase}
+                  value={toDatetimeLocalValue(form.fechaProgramada)}
+                  min={toDatetimeLocalValue(new Date().toISOString())}
+                  onChange={(event) => {
+                    const nextValue = fromDatetimeLocalValue(event.target.value);
+                    setForm((p) => ({ ...p, agendado: true, fechaProgramada: nextValue }));
+                  }}
+                />
+              </div>
+            ) : null}
+          </div>
+        </GuidedTarget>
       ) : null}
 
       {form.service && (
@@ -457,6 +459,8 @@ export default function StepOne(props: StepOneProps) {
         <ScheduledTornoActivationModal
           enabled={form.service === "Torno"}
           locomotiveNumber={form.locomotiveNumber}
+          viaOrigenId={form.fromTrack}
+          localidadId={form.selectedLocalityId}
           scheduledMovements={scheduledTornoMovements}
           loading={scheduledTornoLoading}
           companyName={companyName}

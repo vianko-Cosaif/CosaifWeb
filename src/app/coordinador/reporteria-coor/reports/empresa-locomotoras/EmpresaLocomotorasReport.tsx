@@ -1,14 +1,14 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { FileDown, RefreshCw, Train } from "lucide-react";
+import { FileDown, FileSpreadsheet, RefreshCw, Train } from "lucide-react";
 import ChartCard from "../../components/ChartCard";
 import KpiCard from "../../components/KpiCard";
 import { fmtMaybeInt, hasArray, n } from "../../lib/utils";
 import { useEmpresaLocomotorasReport } from "./useEmpresaLocomotorasReport";
 import type { Locomotora, Movimiento } from "./types";
 
-type TabKey = "resumen" | "movimientos";
+type TabKey = "resumen" | "movimientos" | "jesus";
 
 function EstadosChart({ estados }: { estados: Record<string, number> }) {
   const data = Object.entries(estados ?? {}).map(([estado, total]) => ({ estado, total: n(total) }));
@@ -74,13 +74,13 @@ function LocomotorasTable({ rows }: { rows: Locomotora[] }) {
   );
 }
 
-function MovimientosTable({ rows }: { rows: Movimiento[] }) {
+function MovimientosTable({ rows, title = "Movimientos" }: { rows: Movimiento[]; title?: string }) {
   if (!hasArray(rows)) return null;
   return (
     <section className="rounded-3xl border border-slate-200/70 bg-white p-6 shadow-sm">
-      <div className="text-sm font-semibold text-slate-900">Movimientos</div>
+      <div className="text-sm font-semibold text-slate-900">{title}</div>
       <div className="mt-4 w-full overflow-auto rounded-2xl border border-slate-200">
-        <table className="min-w-[1100px] w-full text-sm">
+        <table className="min-w-[1320px] w-full text-sm">
           <thead className="bg-slate-50">
             <tr className="text-left text-[11px] uppercase tracking-[0.18em] text-slate-400">
               <th className="px-4 py-3">ID</th>
@@ -89,6 +89,8 @@ function MovimientosTable({ rows }: { rows: Movimiento[] }) {
               <th className="px-4 py-3">Solicitud</th>
               <th className="px-4 py-3">Inicio</th>
               <th className="px-4 py-3">Fin</th>
+              <th className="px-4 py-3">Solicitado por</th>
+              <th className="px-4 py-3">Cliente</th>
               <th className="px-4 py-3">Descripción</th>
             </tr>
           </thead>
@@ -101,6 +103,8 @@ function MovimientosTable({ rows }: { rows: Movimiento[] }) {
                 <td className="px-4 py-3 text-slate-700">{row.fechaSolicitudMX ?? "—"}</td>
                 <td className="px-4 py-3 text-slate-700">{row.fechaInicioMX ?? "—"}</td>
                 <td className="px-4 py-3 text-slate-700">{row.fechaFinMX ?? "—"}</td>
+                <td className="px-4 py-3 text-slate-700">{row.solicitadoPor ?? "—"}</td>
+                <td className="px-4 py-3 text-slate-700">{row.cliente ?? "—"}</td>
                 <td className="px-4 py-3 text-slate-500">{row.descripcion ?? "—"}</td>
               </tr>
             ))}
@@ -118,9 +122,12 @@ export default function EmpresaLocomotorasReport() {
   const resumenCards = useMemo(() => {
     const totalMov = report.resumen?.totalMovimientos;
     const totalLocos = report.resumen?.totalLocomotoras;
+    const totalUsuario = report.resumen?.totalUsuarioCliente;
+    const usuario = report.resumen?.usuarioCliente ?? report.usuarioObjetivo;
     return [
       { title: "Total movimientos", value: fmtMaybeInt(totalMov), accent: "indigo" as const },
       { title: "Total locomotoras", value: fmtMaybeInt(totalLocos), accent: "emerald" as const },
+      { title: usuario, value: fmtMaybeInt(totalUsuario), accent: "amber" as const },
     ];
   }, [report.resumen]);
 
@@ -151,6 +158,15 @@ export default function EmpresaLocomotorasReport() {
             <FileDown className="h-4 w-4" />
             {report.pdfBusy ? "Descargando…" : "Descargar PDF"}
           </button>
+          <button
+            type="button"
+            onClick={report.exportExcel}
+            disabled={report.excelBusy}
+            className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-emerald-700 disabled:opacity-60"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            {report.excelBusy ? "Descargando…" : "Descargar Excel"}
+          </button>
         </div>
       </header>
 
@@ -172,18 +188,48 @@ export default function EmpresaLocomotorasReport() {
           <div className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Rango</p>
             <div className="mt-4 space-y-3">
-              <input
-                className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
-                type="date"
-                value={report.desde}
-                onChange={(e) => report.setDesde(e.target.value)}
-              />
-              <input
-                className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
-                type="date"
-                value={report.hasta}
-                onChange={(e) => report.setHasta(e.target.value)}
-              />
+              <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
+                {(["mes", "fechas"] as const).map((modo) => (
+                  <button
+                    key={modo}
+                    type="button"
+                    onClick={() => report.setModoRango(modo)}
+                    className={`rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] ${
+                      report.modoRango === modo ? "bg-slate-900 text-white shadow-sm" : "text-slate-500"
+                    }`}
+                  >
+                    {modo === "mes" ? "Mes" : "Fechas"}
+                  </button>
+                ))}
+              </div>
+
+              {report.modoRango === "mes" ? (
+                <input
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                  type="month"
+                  value={report.mesYM}
+                  onChange={(e) => report.setMesYM(e.target.value)}
+                />
+              ) : (
+                <>
+                  <input
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                    type="date"
+                    value={report.desde}
+                    onChange={(e) => report.setDesde(e.target.value)}
+                  />
+                  <input
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                    type="date"
+                    value={report.hasta}
+                    onChange={(e) => report.setHasta(e.target.value)}
+                  />
+                </>
+              )}
+
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">
+                {report.desde} 00:00 → {report.hasta} 23:59
+              </div>
             </div>
           </div>
         </aside>
@@ -191,7 +237,7 @@ export default function EmpresaLocomotorasReport() {
         <main className="space-y-6 min-w-0">
           <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm">
             <div className="flex flex-wrap gap-2">
-              {(["resumen", "movimientos"] as TabKey[]).map((k) => (
+              {(["resumen", "movimientos", "jesus"] as TabKey[]).map((k) => (
                 <button
                   key={k}
                   type="button"
@@ -200,7 +246,7 @@ export default function EmpresaLocomotorasReport() {
                     tab === k ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500"
                   }`}
                 >
-                  {k === "resumen" ? "Resumen" : "Movimientos"}
+                  {k === "resumen" ? "Resumen" : k === "jesus" ? report.usuarioObjetivo : "Movimientos"}
                 </button>
               ))}
             </div>
@@ -221,6 +267,45 @@ export default function EmpresaLocomotorasReport() {
           )}
 
           {tab === "movimientos" && <MovimientosTable rows={report.movimientos} />}
+
+          {tab === "jesus" && (
+            <div className="space-y-4">
+              <section className="flex flex-col gap-3 rounded-3xl border border-slate-200/70 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">
+                    {report.resumen?.usuarioCliente ?? report.usuarioObjetivo}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    {fmtMaybeInt(report.resumen?.totalUsuarioCliente)} movimientos en el rango
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={report.exportUsuarioPdf}
+                    disabled={report.pdfUsuarioBusy}
+                    className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-60"
+                  >
+                    <FileDown className="h-4 w-4" />
+                    {report.pdfUsuarioBusy ? "Descargando..." : "PDF Jesus"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={report.exportUsuarioExcel}
+                    disabled={report.excelUsuarioBusy}
+                    className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
+                  >
+                    <FileSpreadsheet className="h-4 w-4" />
+                    {report.excelUsuarioBusy ? "Descargando..." : "Excel Jesus"}
+                  </button>
+                </div>
+              </section>
+              <MovimientosTable
+                title={`Movimientos generados por ${report.resumen?.usuarioCliente ?? report.usuarioObjetivo}`}
+                rows={report.movimientosUsuarioCliente}
+              />
+            </div>
+          )}
 
           <div className="text-xs text-slate-400">
             {report.fetchedAt ? `Actualizado: ${report.fetchedAt.toLocaleString("es-MX")}` : "Sin carga inicial"}

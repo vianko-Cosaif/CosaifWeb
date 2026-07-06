@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { CSSProperties } from 'react';
 import { resolveGuidedManualAppearance, type GuidedManualAppearance } from './GuidedManualAtom.core';
 
@@ -51,6 +52,7 @@ export const createGuidedManualWebStyles = (appearance?: GuidedManualAppearance)
       boxShadow: effects.panelShadow,
       backdropFilter: effects.panelBackdropFilter,
       WebkitBackdropFilter: effects.panelBackdropFilter,
+      transition: effects.transition,
     } as CSSProperties,
     title: {
       margin: '0 0 6px',
@@ -70,6 +72,20 @@ export const createGuidedManualWebStyles = (appearance?: GuidedManualAppearance)
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: 8,
+    } as CSSProperties,
+    progressTrack: {
+      marginTop: layout.panelGap,
+      height: 6,
+      borderRadius: 999,
+      overflow: 'hidden',
+      background: 'rgba(255, 255, 255, 0.12)',
+      border: `1px solid ${colors.panelBorder}`,
+    } as CSSProperties,
+    progressFill: {
+      height: '100%',
+      borderRadius: 999,
+      transition: 'width 0.28s ease, background 0.28s ease',
+      background: colors.accent,
     } as CSSProperties,
     progress: {
       fontSize: 11,
@@ -107,6 +123,7 @@ export const createGuidedManualWebStyles = (appearance?: GuidedManualAppearance)
       border: colors.panelBorder,
       text: colors.textMain,
     },
+    stepTones: resolved.stepTones,
   };
 };
 

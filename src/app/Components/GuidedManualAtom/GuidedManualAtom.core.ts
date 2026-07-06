@@ -1,4 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export type GuidedManualMode = 'guide' | 'wizard';
+export type GuidedManualStepTone = 'default' | 'info' | 'warning' | 'critical' | 'success';
 
 export type GuidedManualAction = {
   type: 'event' | 'click';
@@ -10,20 +12,89 @@ export type GuidedManualAction = {
 
 export type GuidedManualActionRunner = (action: GuidedManualAction) => number | void;
 
+export type GuidedManualTrackingOptions = {
+  mutations?: boolean;
+  resize?: boolean;
+  transitions?: boolean;
+  autoScrollWhenHidden?: boolean;
+  mutationDebounceMs?: number;
+};
+
+export type GuidedManualTransitionOptions = {
+  waitForTarget?: boolean;
+  targetStableMs?: number;
+  targetTimeoutMs?: number;
+};
+
+export type GuidedManualCondition =
+  | (() => boolean)
+  | {
+      type: 'selector';
+      selector: string;
+      exists?: boolean;
+    }
+  | {
+      type: 'target';
+      targetId: string;
+      exists?: boolean;
+    }
+  | {
+      type: 'all' | 'any';
+      conditions: GuidedManualCondition[];
+    }
+  | {
+      type: 'not';
+      condition: GuidedManualCondition;
+    };
+
 export type GuidedManualStep = {
   id: string;
   title: string;
   description: string;
   targetId?: string;
   selector?: string;
+  when?: GuidedManualCondition;
   mode?: GuidedManualMode;
+  tone?: GuidedManualStepTone;
+  icon?: string;
+  customTitleColor?: string;
+  customTitleSize?: number | string;
+  customDescriptionColor?: string;
+  customDescriptionSize?: number | string;
+  confirmation?: {
+    title: string;
+    description: string;
+    confirmText?: string;
+    cancelText?: string;
+    tone?: GuidedManualStepTone;
+    icon?: string;
+    customTitleColor?: string;
+    customTitleSize?: number | string;
+    customDescriptionColor?: string;
+    customDescriptionSize?: number | string;
+    confirmDelaySeconds?: number;
+  };
   actionOnEnter?: GuidedManualAction;
   actionOnNext?: GuidedManualAction;
+  actionOnPrevious?: GuidedManualAction;
+  hidePrevious?: boolean;
+  disablePrevious?: boolean;
+  disableAppElements?: string[];
+};
+
+export type GuidedManualToneAppearance = {
+  panelBg?: string;
+  panelBorder?: string;
+  accent?: string;
+  textMain?: string;
+  textMuted?: string;
+  buttonPrimaryBg?: string;
 };
 
 export type GuidedManualDefinition = {
   id: string;
   title?: string;
+  disableAppElements?: string[];
   steps: GuidedManualStep[];
 };
 
@@ -65,6 +136,7 @@ export type GuidedManualAppearance = {
     panelBackdropFilter?: string;
     transition?: string;
   };
+  stepTones?: Partial<Record<GuidedManualStepTone, GuidedManualToneAppearance>>;
 };
 
 export const defaultGuidedManualAppearance: Required<{
@@ -72,7 +144,10 @@ export const defaultGuidedManualAppearance: Required<{
   layout: Required<NonNullable<GuidedManualAppearance['layout']>>;
   typography: Required<NonNullable<GuidedManualAppearance['typography']>>;
   effects: Required<NonNullable<GuidedManualAppearance['effects']>>;
-}> & { mode: 'dark' } = {
+}> & {
+  mode: 'dark';
+  stepTones: Record<GuidedManualStepTone, Required<GuidedManualToneAppearance>>;
+} = {
   mode: 'dark',
   colors: {
     overlay: 'rgba(2, 6, 23, 0.72)',
@@ -104,6 +179,48 @@ export const defaultGuidedManualAppearance: Required<{
     panelBackdropFilter: 'blur(8px)',
     transition: 'top 0.2s ease, left 0.2s ease, width 0.2s ease, height 0.2s ease',
   },
+  stepTones: {
+    default: {
+      panelBg: 'rgba(15, 23, 42, 0.94)',
+      panelBorder: 'rgba(148, 163, 184, 0.26)',
+      accent: '#22d3ee',
+      textMain: '#f8fafc',
+      textMuted: '#cbd5e1',
+      buttonPrimaryBg: 'rgba(34, 211, 238, 0.22)',
+    },
+    info: {
+      panelBg: 'rgba(14, 30, 58, 0.96)',
+      panelBorder: 'rgba(96, 165, 250, 0.42)',
+      accent: '#60a5fa',
+      textMain: '#eff6ff',
+      textMuted: '#bfdbfe',
+      buttonPrimaryBg: 'rgba(96, 165, 250, 0.24)',
+    },
+    warning: {
+      panelBg: 'rgba(66, 42, 8, 0.96)',
+      panelBorder: 'rgba(245, 158, 11, 0.5)',
+      accent: '#f59e0b',
+      textMain: '#fff7ed',
+      textMuted: '#fed7aa',
+      buttonPrimaryBg: 'rgba(245, 158, 11, 0.26)',
+    },
+    critical: {
+      panelBg: 'rgba(69, 10, 10, 0.97)',
+      panelBorder: 'rgba(248, 113, 113, 0.62)',
+      accent: '#f87171',
+      textMain: '#fff1f2',
+      textMuted: '#fecdd3',
+      buttonPrimaryBg: 'rgba(248, 113, 113, 0.28)',
+    },
+    success: {
+      panelBg: 'rgba(5, 46, 22, 0.96)',
+      panelBorder: 'rgba(52, 211, 153, 0.48)',
+      accent: '#34d399',
+      textMain: '#ecfdf5',
+      textMuted: '#bbf7d0',
+      buttonPrimaryBg: 'rgba(52, 211, 153, 0.24)',
+    },
+  },
 };
 
 export const resolveGuidedManualAppearance = (appearance?: GuidedManualAppearance) => ({
@@ -123,6 +240,18 @@ export const resolveGuidedManualAppearance = (appearance?: GuidedManualAppearanc
   effects: {
     ...defaultGuidedManualAppearance.effects,
     ...(appearance?.effects || {}),
+  },
+  stepTones: {
+    ...defaultGuidedManualAppearance.stepTones,
+    ...(Object.fromEntries(
+      Object.entries(appearance?.stepTones || {}).map(([tone, values]) => [
+        tone,
+        {
+          ...defaultGuidedManualAppearance.stepTones[tone as GuidedManualStepTone],
+          ...(values || {}),
+        },
+      ])
+    ) as Partial<Record<GuidedManualStepTone, Required<GuidedManualToneAppearance>>>),
   },
 });
 
@@ -162,9 +291,13 @@ export const normalizeGuidedManualDefinition = (
   return {
     id,
     title: raw.title ? String(raw.title) : undefined,
+    disableAppElements: Array.isArray(raw.disableAppElements) ? raw.disableAppElements.map(String) : undefined,
     steps,
   };
 };
+
+export const defineGuidedManual = <T extends GuidedManualDefinition>(definition: T): T =>
+  definition;
 
 export const createGuidedManualRegistry = (definitions: unknown[]) => {
   const manuals = definitions

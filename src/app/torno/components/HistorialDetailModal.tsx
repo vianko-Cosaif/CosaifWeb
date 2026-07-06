@@ -1,9 +1,14 @@
 "use client";
 
-import { ArrowLeft, CalendarClock, CircleGauge, Loader2, TrainFront, UserRound } from "lucide-react";
-import type { ReactNode } from "react";
+import { ArrowLeft, CalendarClock, CircleGauge, FileDown, Loader2, TrainFront, UserRound } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import MeasuresSection from "./MeasuresSection";
 import IncidentTree from "./IncidentTree";
+import { downloadTornoHistoryPdf } from "../../movimientos/crear/tornoPdf";
+import {
+  resolveTornoProfile,
+  TORNO_PROFILE_FIELDS,
+} from "../../movimientos/crear/tornoProfiles";
 import type {
   TornoHistoryItem,
   TornoIncidentChild,
@@ -66,7 +71,42 @@ export default function HistorialDetailModal({
   onResolveChild?: (child: TornoIncidentChild, payload?: TornoResolvePayload) => Promise<void>;
   onNavajas?: () => void;
 }) {
+  const [pdfSending, setPdfSending] = useState(false);
+
   if (!item) return null;
+
+  const handleDownloadPdf = () => {
+    if (pdfSending) return;
+    const original = item.original && typeof item.original === "object" ? (item.original as Record<string, any>) : {};
+    const movimientoId = original.movimientoId ?? original.movimiento?.id ?? original.movimiento?.movimientoId ?? item.id;
+    const companyName =
+      original.empresa?.nombre ??
+      original.company?.name ??
+      original.companyName ??
+      original.empresaNombre ??
+      original.movimiento?.empresa?.nombre ??
+      original.ruedaSolicitud?.movimiento?.empresa?.nombre ??
+      "";
+    const profile = resolveTornoProfile(String(companyName));
+
+    try {
+      setPdfSending(true);
+      downloadTornoHistoryPdf({
+        locomotiveNumber: item.locomotive ?? item.numeroLocomotora ?? "",
+        movimientoId,
+        servicioId: item.servicioId ?? item.rondaServicioId,
+        status: item.status,
+        startAt: item.startAt,
+        endAt: item.endAt,
+        previousMeasures: item.measuresRequested,
+        finalMeasures: item.measuresFinal,
+        columns: TORNO_PROFILE_FIELDS[profile].map((field) => field.label),
+        comments: `Reporte generado desde Detalle Torno. Incidentes registrados: ${item.incidents?.length ?? 0}.`,
+      });
+    } finally {
+      window.setTimeout(() => setPdfSending(false), 500);
+    }
+  };
 
   const details = [
     ["Estado", item.status || "—", null],
@@ -108,6 +148,15 @@ export default function HistorialDetailModal({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              disabled={pdfSending}
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-cyan-200 bg-cyan-50 px-3 text-xs font-black text-cyan-800 shadow-sm transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-cyan-900 dark:bg-cyan-950/40 dark:text-cyan-100 dark:hover:bg-cyan-950/70"
+            >
+              {pdfSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+              {pdfSending ? "Generando" : "Generar PDF"}
+            </button>
             {loading && (
               <span className="inline-flex h-9 items-center gap-2 rounded-md border border-cyan-200 bg-cyan-50 px-3 text-xs font-black text-cyan-800 dark:border-cyan-900 dark:bg-cyan-950/40 dark:text-cyan-100">
                 <Loader2 className="h-4 w-4 animate-spin" />

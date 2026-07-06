@@ -270,6 +270,12 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     setTornoPdfStatus(null);
   }, [hasTornoPdfStep, step]);
 
+  /** Invalida seccion origen ante cambio de via origen. */
+  useEffect(() => {
+    setFromSection(undefined);
+    if (form.fromTrack) ensureSections(form.fromTrack);
+  }, [form.fromTrack, ensureSections]);
+
   /** Invalida seccion destino ante cambio de via destino. */
   useEffect(() => {
     setToSection(undefined);

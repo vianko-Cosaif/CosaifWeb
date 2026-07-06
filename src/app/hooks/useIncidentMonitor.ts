@@ -5,6 +5,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useVisibleInterval } from "./useVisibleInterval";
 import { useAuthErrorHandler } from "./useAuthErrorHandler";
 
+const DEFAULT_API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL || "/bff";
+
 export type IncidenteEmergente = {
   id: number;
   descripcion: string;
@@ -58,7 +61,7 @@ export interface UseIncidentMonitorReturn {
 /* =============== Hook =============== */
 
 export function useIncidentMonitor({
-  apiBase = "/bff",
+  apiBase = DEFAULT_API_BASE,
   intervalMs = 60000, // 1 minuto por defecto
   enabled = true,
   onIncidentDetected,

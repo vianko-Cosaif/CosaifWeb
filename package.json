@@ -24,6 +24,7 @@
     "@react-three/postprocessing": "^3.0.4",
     "@tanstack/react-virtual": "^3.13.12",
     "clsx": "^2.1.1",
+    "firebase": "^12.14.0",
     "framer-motion": "^12.23.12",
     "ionicons": "^8.0.13",
     "jose": "^6.1.0",

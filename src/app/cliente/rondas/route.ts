@@ -21,9 +21,11 @@ type RondaOut = RondaBase & {
     fechaSolicitud?: string | null;
     fechaInicio?: string | null;
     fechaFin?: string | null;
+    createdAt?: string | null;
     instrucciones?: string | null;
   } | null;
   movimientoId?: number | null;
+  createdAt?: string | null;
 };
 
 type TornoServiceRecord = {
@@ -91,6 +93,23 @@ async function readTextAsJsonSafe(r: Response): Promise<unknown> {
   }
 }
 
+function getTornoQueueCreatedTime(item: RondaOut): number {
+  const candidates = [
+    item.createdAt,
+    item.movimiento?.fechaSolicitud,
+    item.movimiento?.createdAt
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const timestamp = Date.parse(String(candidate));
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+
+  const numericId = Math.abs(Number(item.id));
+  return Number.isFinite(numericId) ? numericId : Number.MAX_SAFE_INTEGER;
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams, origin } = new URL(req.url);
@@ -151,6 +170,9 @@ export async function GET(req: Request) {
               prioridad: mv?.prioridad ?? null,
               locomotiveNumber: mv?.locomotiveNumber ?? mv?.locomotora ?? null,
               locomotora: mv?.locomotora ?? null,
+              fechaSolicitud: mv?.fechaSolicitud ?? record.creadoEn ?? null,
+              fechaInicio: record.inicio ?? mv?.fechaInicio ?? null,
+              fechaFin: record.fin ?? mv?.fechaFin ?? null,
             };
           }
         } catch {
@@ -165,13 +187,32 @@ export async function GET(req: Request) {
           empresa,
           movimiento,
           movimientoId,
+          createdAt: record.creadoEn ?? record.inicio ?? null,
         };
       }));
 
       let filtered = out.filter((item): item is RondaOut => Boolean(item));
       if (empresaId) filtered = filtered.filter((item) => !item.empresa || item.empresa.id === empresaId);
-      filtered.sort((a, b) => a.orden - b.orden || a.id - b.id);
-      return NextResponse.json<RondaOut[]>(filtered, { status: 200 });
+
+      if (concluido) {
+        // Concluidos: más recientes primero (updatedAt desc o createdAt desc)
+        filtered.sort((a, b) => getTornoQueueCreatedTime(b) - getTornoQueueCreatedTime(a));
+      } else {
+        // Activos/pendientes: FIFO (oldest first), igual a CosaifLogistcs
+        filtered.sort((a, b) => {
+          const diff = getTornoQueueCreatedTime(a) - getTornoQueueCreatedTime(b);
+          if (diff !== 0) return diff;
+          return a.id - b.id; // Desempate por ID (que son negativos)
+        });
+      }
+
+      // Re-asignar orden secuencialmente para que el frontend lo ordene de forma estable
+      const finalized = filtered.map((item, idx) => ({
+        ...item,
+        orden: idx + 1,
+      }));
+
+      return NextResponse.json<RondaOut[]>(finalized, { status: 200 });
     }
 
     const concluidoParam = concluido ? "true" : "false";

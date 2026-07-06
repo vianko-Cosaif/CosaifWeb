@@ -19,6 +19,30 @@ function getErrorStatus(error: unknown): 502 | 504 {
   return 502;
 }
 
+function buildUpstreamHeaders(req: NextRequest, token: string) {
+  const headers = new Headers();
+  const accept = req.headers.get("accept");
+  const contentType = req.headers.get("content-type");
+  const userAgent = req.headers.get("user-agent");
+  const forwardedFor = req.headers.get("x-forwarded-for");
+  const forwardedProto = req.headers.get("x-forwarded-proto");
+  const incomingAuthorization = req.headers.get("authorization") || "";
+
+  if (accept) headers.set("accept", accept);
+  if (contentType) headers.set("content-type", contentType);
+  if (userAgent) headers.set("user-agent", userAgent);
+  if (forwardedFor) headers.set("x-forwarded-for", forwardedFor);
+  if (forwardedProto) headers.set("x-forwarded-proto", forwardedProto);
+
+  if (token) {
+    headers.set("authorization", `Bearer ${token}`);
+  } else if (incomingAuthorization) {
+    headers.set("authorization", incomingAuthorization);
+  }
+
+  return headers;
+}
+
 async function proxy(req: NextRequest) {
   const up = upstreamUrl(req.nextUrl.pathname.replace(/^\/bff/, ""), req.nextUrl.search);
   if (!ORIGIN) {
@@ -26,13 +50,13 @@ async function proxy(req: NextRequest) {
     return NextResponse.json({ error: "API_ORIGIN not set" }, { status: 500 });
   }
 
-  const token = (await cookies()).get("token")?.value || "";
-  const headers = new Headers(req.headers);
-  headers.set("host", new URL(ORIGIN).host);
-  headers.set("origin", ORIGIN);
-  headers.set("referer", ORIGIN);
-  if (token) headers.set("authorization", `Bearer ${token}`);
-  headers.delete("cookie");
+  const cookieStore = await cookies();
+  const cookieName = process.env.JWT_COOKIE_NAME ?? "token";
+  const token =
+    cookieStore.get(cookieName)?.value ||
+    cookieStore.get("token")?.value ||
+    "";
+  const headers = buildUpstreamHeaders(req, token);
 
   const init: RequestInit = {
     method: req.method,

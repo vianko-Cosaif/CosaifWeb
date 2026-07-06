@@ -4,15 +4,21 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
+const MOVIMIENTOS_API_BASE = process.env.NEXT_PUBLIC_API_BASE || "/bff";
 
 export default async function Page() {
   const c = await cookies();
-  const token = c.get(process.env.JWT_COOKIE_NAME ?? "token")?.value;
+  const cookieName = process.env.JWT_COOKIE_NAME ?? "token";
+  const token = c.get(cookieName)?.value;
   if (!token) redirect("/login");
 
   const empIdCookie =
     Number(c.get("empId")?.value ?? "") ||
     Number(c.get("empresaId")?.value ?? "") ||
+    null;
+  const locIdCookie =
+    Number(c.get("locId")?.value ?? "") ||
+    Number(c.get("localidadId")?.value ?? "") ||
     null;
 
   if (empIdCookie == null) {
@@ -25,9 +31,11 @@ export default async function Page() {
       {/* Contenedor centrado del panel */}
       <div className="mx-auto w-full max-w-5xl px-3 sm:px-4 lg:px-6">
         <MovimientosPanel
-          apiBase="/bff"
+          apiBase={MOVIMIENTOS_API_BASE}
           rol="COORDINADOR"
+          token={token}
           empresaIdUsuario={empIdCookie}
+          localidadIdUsuario={locIdCookie}
           puedeCrear
           intervaloAutoMs={15000}
         />

@@ -23,7 +23,9 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
     h.set("host", new URL(API_URL).host);
   }
   h.delete("connection");
-  if (token) h.set("authorization", `Bearer ${token}`);
+  if (!h.get("authorization") && token) {
+    h.set("authorization", `Bearer ${token}`);
+  }
 
   const hasBody = !["GET", "HEAD"].includes(req.method);
   const upstream = await fetch(destURL, {

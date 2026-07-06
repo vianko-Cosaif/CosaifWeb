@@ -11,6 +11,16 @@ const API_BASE = normalizeHttpOrigin(
 );
 const JWT_NAME = process.env.JWT_COOKIE_NAME || "token";
 type RouteCtx = { params: Promise<{ path: string[] }> };
+const HOP_BY_HOP_HEADERS = [
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+];
 
 function targetUrl(base: string, path: string[], search: string) {
   const cleanBase = base.trim();
@@ -32,8 +42,9 @@ async function forward(req: NextRequest, ctx: RouteCtx) {
   }
 
   const headers = new Headers(req.headers);
-  headers.delete("host");
   headers.delete("content-length");
+  headers.delete("host");
+  HOP_BY_HOP_HEADERS.forEach((header) => headers.delete(header));
 
   // Levanta Bearer desde cookie si falta
   const token = req.cookies.get(JWT_NAME)?.value;
@@ -45,7 +56,14 @@ async function forward(req: NextRequest, ctx: RouteCtx) {
 
   const body = req.method === "GET" || req.method === "HEAD" ? undefined : Buffer.from(await req.arrayBuffer());
 
-  const upstream = await fetch(url, { method: req.method, headers, body, redirect: "manual", cache: "no-store" });
+  let upstream: Response;
+  try {
+    upstream = await fetch(url, { method: req.method, headers, body, redirect: "manual", cache: "no-store" });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Upstream unavailable";
+    console.error("[/api/passthrough] fetch error:", { url, message });
+    return NextResponse.json({ message: "Upstream unavailable" }, { status: 502 });
+  }
 
   const resp = new NextResponse(upstream.body, { status: upstream.status });
   upstream.headers.forEach((v, k) => {

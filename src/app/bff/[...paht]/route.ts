@@ -18,6 +18,30 @@ function upstreamUrl(path: string, search: string) {
   return `${ORIGIN}/${p}${search || ""}`;
 }
 
+function buildUpstreamHeaders(req: NextRequest, token: string) {
+  const headers = new Headers();
+  const accept = req.headers.get("accept");
+  const contentType = req.headers.get("content-type");
+  const userAgent = req.headers.get("user-agent");
+  const forwardedFor = req.headers.get("x-forwarded-for");
+  const forwardedProto = req.headers.get("x-forwarded-proto");
+  const incomingAuthorization = req.headers.get("authorization") || "";
+
+  if (accept) headers.set("accept", accept);
+  if (contentType) headers.set("content-type", contentType);
+  if (userAgent) headers.set("user-agent", userAgent);
+  if (forwardedFor) headers.set("x-forwarded-for", forwardedFor);
+  if (forwardedProto) headers.set("x-forwarded-proto", forwardedProto);
+
+  if (token) {
+    headers.set("authorization", `Bearer ${token}`);
+  } else if (incomingAuthorization) {
+    headers.set("authorization", incomingAuthorization);
+  }
+
+  return headers;
+}
+
 async function proxy(req: NextRequest) {
   if (!ORIGIN) {
     return NextResponse.json({ error: "API_ORIGIN not set" }, { status: 500 });
@@ -31,15 +55,12 @@ async function proxy(req: NextRequest) {
 
   // 2) Leer cookies **DENTRO** del handler y con await
   const cookieStore = await cookies();
-  const token = cookieStore.get("token")?.value || "";
-
-  // 3) Copiar headers y meter Authorization
-  const headers = new Headers(req.headers);
-  headers.set("host", new URL(ORIGIN).host);
-  headers.set("origin", ORIGIN);
-  headers.set("referer", ORIGIN);
-  headers.set("authorization", token ? `Bearer ${token}` : "");
-  headers.delete("cookie"); // no reenvíes cookies internas
+  const cookieName = process.env.JWT_COOKIE_NAME ?? "token";
+  const token =
+    cookieStore.get(cookieName)?.value ||
+    cookieStore.get("token")?.value ||
+    "";
+  const headers = buildUpstreamHeaders(req, token);
 
   const init: RequestInit = {
     method: req.method,

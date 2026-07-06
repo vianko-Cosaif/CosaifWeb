@@ -12,6 +12,7 @@ import Nav from "./Nav";
 import Filtros from "./Filtros";
 import Tabla from "./Tabla";
 import { useMovimientos, Rol } from "./useMovimientos";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 
 /* ================== HELPERS SESIÓN ================== */
 
@@ -47,6 +48,7 @@ interface MovimientosPanelProps {
   puedeCrear?: boolean;
   apiBase?: string;
   empresaIdUsuario?: number | null;
+  localidadIdUsuario?: number | null;
   intervaloAutoMs?: number;
 }
 
@@ -59,6 +61,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     puedeCrear = false,
     apiBase,
     empresaIdUsuario,
+    localidadIdUsuario,
     intervaloAutoMs,
   } = props;
   const router = useRouter();
@@ -69,7 +72,11 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
   const [userEmpresaId, setUserEmpresaId] = useState<number | null>(
     () => empresaIdUsuario ?? null
   );
-  const [userLocalidadId, setUserLocalidadId] = useState<number | null>(null);
+  const [userLocalidadId, setUserLocalidadId] = useState<number | null>(
+    () => localidadIdUsuario ?? null
+  );
+  const rolNormalizado = String(rol || "").toUpperCase();
+  const esAdministrador = rolNormalizado === "ADMINISTRADOR";
 
   /* ================== RESOLVER SESIÓN ================== */
 
@@ -95,6 +102,12 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
       setUserEmpresaId(empresaIdUsuario);
     }
   }, [empresaIdUsuario]);
+
+  useEffect(() => {
+    if (localidadIdUsuario != null && Number.isFinite(localidadIdUsuario)) {
+      setUserLocalidadId(localidadIdUsuario);
+    }
+  }, [localidadIdUsuario]);
 
   useEffect(() => {
     try {
@@ -146,6 +159,8 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     token,
     apiBase,
     autoRefreshMs: intervaloAutoMs,
+    initialEmpresaId: esAdministrador ? null : userEmpresaId,
+    initialLocalidadId: esAdministrador ? null : userLocalidadId,
   });
 
   const [movimientoSeleccionado, setMovimientoSeleccionado] =
@@ -164,17 +179,21 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
   const puedeVerTodasEmpresas = puedeElegirLocalidad;
 
   useEffect(() => {
-    if (puedeElegirLocalidad) return;
+    if (esAdministrador) return;
 
     setFiltros((prev) => ({
       ...prev,
+      empresaId:
+        userEmpresaId != null
+          ? userEmpresaId
+          : prev.empresaId ?? undefined,
       localidadId:
         userLocalidadId != null
           ? userLocalidadId
           : prev.localidadId ?? undefined,
       pagina: 1,
     }));
-  }, [puedeElegirLocalidad, userLocalidadId, setFiltros]);
+  }, [esAdministrador, userEmpresaId, userLocalidadId, setFiltros]);
 
   const listaEmpresas = useMemo(() => {
     if (puedeVerTodasEmpresas) return empresas;
@@ -308,10 +327,12 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     setFiltros((prev) => ({
       ...prev,
       pagina: 1,
-      empresaId: undefined,
-      localidadId: puedeElegirLocalidad
+      empresaId: esAdministrador
         ? undefined
-        : prev.localidadId ?? undefined,
+        : userEmpresaId ?? prev.empresaId ?? undefined,
+      localidadId: esAdministrador
+        ? undefined
+        : userLocalidadId ?? prev.localidadId ?? undefined,
       desde: undefined,
       hasta: undefined,
       estado: undefined,
@@ -319,7 +340,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
       locomotiveNumber: undefined,
       fechaCampo: "solicitud",
     }));
-  }, [setFiltros, puedeElegirLocalidad]);
+  }, [setFiltros, esAdministrador, userEmpresaId, userLocalidadId]);
 
   const handlePagina = useCallback(
     (pagina: number) => {
@@ -473,19 +494,20 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
         </section>
 
         {/* Card: Tabla */}
-        <section
-          className="
-            flex-1 
-            rounded-xl sm:rounded-2xl 
-            border border-slate-100 dark:border-slate-800/60 
-            bg-white dark:bg-slate-950/80 
-            px-1 py-1.5 sm:px-3 sm:py-3 lg:px-4 lg:py-4 
-            flex flex-col
-            overflow-hidden
-            shadow-sm
-          "
-        >
-          {filas.length === 0 && !cargando ? (
+        <GuidedTarget id="client-movements-list" className="flex min-h-0 flex-1 flex-col">
+          <section
+            className="
+              flex-1
+              rounded-xl sm:rounded-2xl
+              border border-slate-100 dark:border-slate-800/60
+              bg-white dark:bg-slate-950/80
+              px-1 py-1.5 sm:px-3 sm:py-3 lg:px-4 lg:py-4
+              flex flex-col
+              overflow-hidden
+              shadow-sm
+            "
+          >
+            {filas.length === 0 && !cargando ? (
             <div className="flex-1 flex flex-col items-center justify-center py-10 sm:py-16 gap-4">
               <div className="rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 p-6">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300 dark:text-slate-600">
@@ -502,7 +524,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
                 </p>
               </div>
             </div>
-          ) : (
+            ) : (
             <div className="relative flex-1 min-h-0">
               <Tabla
                 filas={filas}
@@ -525,8 +547,9 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
                 onEditar={handleEditar}
               />
             </div>
-          )}
-        </section>
+            )}
+          </section>
+        </GuidedTarget>
       </div>
     </section>
   );

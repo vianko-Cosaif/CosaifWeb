@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 
 export type RealtimeMovementEventType =
+  | "movimiento.creado"
   | "movimiento.estado"
   | "movimiento.incidente"
   | "incidente.estado"
