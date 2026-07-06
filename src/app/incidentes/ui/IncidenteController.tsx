@@ -15,20 +15,17 @@ import type { IncidenteRow, Meta, Role } from "./types";
 import {
   AlertTriangle,
   BriefcaseBusiness,
-  MapPin,
   RefreshCw,
-  Search,
   Clock,
-  SlidersHorizontal,
   X,
   Loader2,
   CheckCircle,
   AlertCircle,
   Filter,
-  ChevronDown,
-  ChevronUp
 } from "lucide-react";
 import { fetchJSON } from "@/lib/api";
+import { SearchInput } from "@/app/Components/ui";
+import { IncidentCatalogSelect, IncidentStatCard } from "@/features/incidentes";
 
 /** Incidentes son locality-aware: Torreon usa ms_torreon y el resto Cosaif normal. */
 const INCIDENTES = "/api/incidentes";
@@ -387,7 +384,7 @@ export default function IncidenteController() {
             loading: false,
           });
         }
-      } catch (error: any) {
+      } catch {
         setCatalogues((p) => ({ ...p, loading: false }));
         showNotification("error", "Error al cargar catálogos");
       }
@@ -732,24 +729,16 @@ export default function IncidenteController() {
 
             {/* Search & Actions */}
             <div className="flex flex-1 items-center justify-end gap-3 w-full xl:w-auto">
-              <div className="relative w-full max-w-md group">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-emerald-500" />
-                <input
-                  ref={searchRef}
-                  value={filters.searchQuery}
-                  onChange={(e) => handleFilterChange("searchQuery", e.target.value)}
-                  placeholder="Buscar por ID, empresa, via..."
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-10 pr-4 text-sm outline-none transition-all focus:border-emerald-500 focus:bg-white focus:ring-1 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800/50 dark:focus:bg-slate-900 dark:text-slate-100"
-                />
-                {filters.searchQuery && (
-                  <button
-                    onClick={() => handleFilterChange("searchQuery", "")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
+              <SearchInput
+                ref={searchRef}
+                value={filters.searchQuery}
+                onChange={(value) => handleFilterChange("searchQuery", value)}
+                onClear={() => handleFilterChange("searchQuery", "")}
+                placeholder="Buscar por ID, empresa, via..."
+                label="Buscar incidentes"
+                className="w-full max-w-md"
+                inputClassName="h-10 bg-slate-50/50 font-medium focus:border-emerald-500 focus:bg-white focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800/50 dark:focus:bg-slate-900"
+              />
 
               {/* Mobile Filter Toggle */}
               <button
@@ -766,15 +755,17 @@ export default function IncidenteController() {
               <div className="hidden xl:flex items-center gap-2">
                 {!isLimitedClientView && (
                   <>
-                    <SelectEnterprise
+                    <IncidentCatalogSelect
                       value={filters.empresaId}
                       onChange={(v: number | null) => handleFilterChange("empresaId", v)}
                       options={catalogues.empresas}
+                      placeholder="Todas las Empresas"
                     />
-                    <SelectLocality
+                    <IncidentCatalogSelect
                       value={filters.localidadId}
                       onChange={(v: number | null) => handleFilterChange("localidadId", v)}
                       options={catalogues.localidades}
+                      placeholder="Todas las Localidades"
                     />
                   </>
                 )}
@@ -795,16 +786,18 @@ export default function IncidenteController() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2">
               {!isLimitedClientView && (
                 <>
-                  <SelectEnterprise
+                  <IncidentCatalogSelect
                     value={filters.empresaId}
                     onChange={(v: number | null) => handleFilterChange("empresaId", v)}
                     options={catalogues.empresas}
+                    placeholder="Todas las Empresas"
                     fullWidth
                   />
-                  <SelectLocality
+                  <IncidentCatalogSelect
                     value={filters.localidadId}
                     onChange={(v: number | null) => handleFilterChange("localidadId", v)}
                     options={catalogues.localidades}
+                    placeholder="Todas las Localidades"
                     fullWidth
                   />
                 </>
@@ -832,25 +825,25 @@ export default function IncidenteController() {
         {/* STATS CARDS - Placed ABOVE table */}
         {!incidentData.error && incidentData.data.length > 0 && (
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <StatCard
+            <IncidentStatCard
               label="Total Incidentes"
               value={incidentData.data.length}
               icon={AlertTriangle}
               color="slate"
             />
-            <StatCard
+            <IncidentStatCard
               label="Activos"
               value={totalActivos}
               icon={Clock}
               color="emerald"
             />
-            <StatCard
+            <IncidentStatCard
               label="Resueltos"
               value={totalResueltos}
               icon={CheckCircle}
               color="blue"
             />
-            <StatCard
+            <IncidentStatCard
               label="Empresas"
               value={totalEmpresas}
               icon={BriefcaseBusiness}
@@ -918,74 +911,6 @@ export default function IncidenteController() {
           onSkip={() => handleIncidentAction("skip")}
         />
       )}
-    </div>
-  );
-}
-
-/* === SUBCOMPONENTS (Clean & Isolated) === */
-
-function StatCard({ label, value, icon: Icon, color }: { label: string, value: number, icon: any, color: "slate" | "emerald" | "blue" | "indigo" }) {
-  const styles = {
-    slate: "from-slate-500 to-slate-700 shadow-slate-500/20",
-    emerald: "from-emerald-500 to-emerald-700 shadow-emerald-500/20",
-    blue: "from-blue-500 to-blue-700 shadow-blue-500/20",
-    indigo: "from-indigo-500 to-indigo-700 shadow-indigo-500/20",
-  };
-
-  return (
-    <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 group">
-      <div className={`absolute top-0 right-0 p-3 opacity-10 transition-transform group-hover:scale-110`}>
-        <Icon className="h-24 w-24" />
-      </div>
-
-      <div className="relative z-10 flex items-start justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1 opacity-80">{label}</p>
-          <p className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">{value}</p>
-        </div>
-        <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${styles[color]} text-white shadow-lg`}>
-          <Icon className="h-6 w-6" />
-        </div>
-      </div>
-
-      {/* Glass shine effect */}
-      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-    </div>
-  );
-}
-
-function SelectEnterprise({ value, onChange, options, fullWidth }: any) {
-  return (
-    <div className={`relative ${fullWidth ? "w-full" : "w-48"}`}>
-      <select
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
-        className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3 pr-8 text-sm font-medium text-slate-700 shadow-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-      >
-        <option value="">Todas las Empresas</option>
-        {options.map((o: any) => (
-          <option key={o.id} value={o.id}>{o.nombre}</option>
-        ))}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-    </div>
-  );
-}
-
-function SelectLocality({ value, onChange, options, fullWidth }: any) {
-  return (
-    <div className={`relative ${fullWidth ? "w-full" : "w-48"}`}>
-      <select
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
-        className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3 pr-8 text-sm font-medium text-slate-700 shadow-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-      >
-        <option value="">Todas las Localidades</option>
-        {options.map((o: any) => (
-          <option key={o.id} value={o.id}>{o.nombre}</option>
-        ))}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
     </div>
   );
 }

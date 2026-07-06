@@ -3,6 +3,7 @@ import {
   useRealtimeMovimientos,
   type RealtimeMovementEvent,
 } from "@/app/hooks/useRealtimeMovimientos";
+import type { AppRole } from "@/lib/accessControl";
 
 /* ================== CONFIGURACIÓN ================== */
 const DEFAULT_API_BASE =
@@ -82,11 +83,7 @@ function normalizeFechaHasta(input: string): string {
 }
 
 /* ================== TIPOS ================== */
-export type Rol =
-  | "ADMINISTRADOR"
-  | "COORDINADOR"
-  | "SUPERVISOR"
-  | "CLIENTE";
+export type Rol = AppRole;
 
 export type Ambito = "actuales" | "pasados";
 export type FechaCampo = "solicitud" | "inicio" | "fin" | "creacion";
@@ -338,8 +335,7 @@ function normalizarNombre(value: unknown): string {
 
 function normalizarNombreUsuario(
   directo: unknown,
-  usuario: UsuarioDTO | null | undefined,
-  _fallbackId?: number | null
+  usuario: UsuarioDTO | null | undefined
 ): string {
   const nombreDirecto = typeof directo === "string" ? directo.trim() : "";
   if (nombreDirecto) return nombreDirecto;
@@ -406,18 +402,17 @@ function mapearDTO(dto: MovementDTO): Movement {
     estado: dto.estado ?? "DESCONOCIDO",
 
     clienteId: dto.clienteId ?? 0,
-    clienteNombre: normalizarNombreUsuario(dto.clienteNombre, dto.cliente, dto.clienteId),
+    clienteNombre: normalizarNombreUsuario(dto.clienteNombre, dto.cliente),
     supervisorId: dto.supervisorId ?? null,
-    supervisorNombre: normalizarNombreUsuario(dto.supervisorNombre, dto.supervisor, dto.supervisorId),
+    supervisorNombre: normalizarNombreUsuario(dto.supervisorNombre, dto.supervisor),
     coordinadorId: dto.coordinadorId ?? null,
-    coordinadorNombre: normalizarNombreUsuario(dto.coordinadorNombre, dto.coordinador, dto.coordinadorId),
+    coordinadorNombre: normalizarNombreUsuario(dto.coordinadorNombre, dto.coordinador),
     operadorId: dto.operadorId ?? null,
-    operadorNombre: normalizarNombreUsuario(dto.operadorNombre, dto.operador, dto.operadorId),
+    operadorNombre: normalizarNombreUsuario(dto.operadorNombre, dto.operador),
     maquinistaId: dto.maquinistaId ?? null,
     maquinistaNombre: normalizarNombreUsuario(
       dto.maquinistaNombre,
-      dto.maquinista ?? dto.operador,
-      dto.maquinistaId ?? dto.operadorId
+      dto.maquinista ?? dto.operador
     ),
     empresaId: dto.empresaId ?? 0,
 

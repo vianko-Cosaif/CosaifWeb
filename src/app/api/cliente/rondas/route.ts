@@ -33,9 +33,27 @@ type RondaOut = {
 };
 
 type TornoServiceRecord = {
+  id?: number | string | null;
   servicioId?: number | string | null;
   rondaServicioId?: number | string | null;
   movimientoId?: number | string | null;
+  ruedaSolicitudId?: number | string | null;
+  localidadId?: number | string | null;
+  numeroLocomotora?: number | string | null;
+  locomotiveNumber?: number | string | null;
+  locomotora?: number | string | null;
+  movimiento?: MovimientoRecord | null;
+  servicio?: {
+    id?: number | string | null;
+    movimientoId?: number | string | null;
+    ruedaSolicitudId?: number | string | null;
+  } | null;
+  rondaServicio?: {
+    id?: number | string | null;
+    servicioId?: number | string | null;
+    movimientoId?: number | string | null;
+    ruedaSolicitudId?: number | string | null;
+  } | null;
   status?: string | null;
   historialStatus?: string | null;
   inicio?: string | null;
@@ -140,6 +158,14 @@ function asRecord(input: unknown): UnknownRecord {
 function asNumber(input: unknown): number | null {
   const value = Number(input);
   return Number.isFinite(value) ? value : null;
+}
+
+function firstPositiveNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    const parsed = asNumber(value);
+    if (parsed && parsed > 0) return parsed;
+  }
+  return null;
 }
 
 function asDateString(input: unknown): string | null {
@@ -573,7 +599,9 @@ export async function GET(req: NextRequest) {
 
     if (entity === "torneados") {
       const statusParam = concluido ? "CONCLUIDO,CANCELADO" : "SOLICITADO,EN_PROCESO,DETENIDO";
-      const r = await fetch(`${base}/torno/rondas-servicio/historial?status=${encodeURIComponent(statusParam)}`, {
+      const qs = new URLSearchParams({ status: statusParam, localidadId });
+      if (empresaId && !canSeeAllEmpresas(role)) qs.set("empresaId", String(empresaId));
+      const r = await fetch(`${base}/torno/rondas-servicio/historial?${qs.toString()}`, {
         cache: "no-store",
         headers,
       });
@@ -581,50 +609,79 @@ export async function GET(req: NextRequest) {
 
       const records = extractArray(await readTextAsJsonSafe(r)) as TornoServiceRecord[];
       const out = await Promise.all(records.map(async (record, index): Promise<RondaOut | null> => {
+        const movimientoRecord = asRecord(record.movimiento);
+        const servicioRecord = asRecord(record.servicio);
+        const rondaServicioRecord = asRecord(record.rondaServicio);
         const status = String(record.historialStatus ?? record.status ?? "SOLICITADO").toUpperCase();
-        const movimientoId = Number(record.movimientoId);
-        const servicioId = Number(record.servicioId ?? record.rondaServicioId ?? index + 1);
-        if (!Number.isFinite(movimientoId) || !Number.isFinite(servicioId)) return null;
+        const movimientoId = firstPositiveNumber(
+          record.movimientoId,
+          movimientoRecord.id,
+          servicioRecord.movimientoId,
+          servicioRecord.ruedaSolicitudId,
+          rondaServicioRecord.movimientoId,
+          rondaServicioRecord.ruedaSolicitudId,
+          record.ruedaSolicitudId,
+        );
+        const servicioId = firstPositiveNumber(
+          record.servicioId,
+          record.rondaServicioId,
+          record.id,
+          servicioRecord.id,
+          rondaServicioRecord.id,
+          rondaServicioRecord.servicioId,
+          index + 1,
+        );
+        if (!servicioId) return null;
 
         let empresa: RondaOut["empresa"] = null;
-        let localidadMovimientoId: number | null = null;
+        let localidadMovimientoId = firstPositiveNumber(
+          record.localidadId,
+          movimientoRecord.localidadId,
+          asRecord(movimientoRecord.localidad).id,
+        );
         let movimiento: RondaOut["movimiento"] = {
-          id: movimientoId,
+          id: movimientoId ?? undefined,
           torno: true,
           estado: status,
-          fechaSolicitud: record.creadoEn ?? null,
+          locomotiveNumber: record.numeroLocomotora ?? record.locomotiveNumber ?? record.locomotora ?? null,
+          locomotora: record.locomotora == null ? null : String(record.locomotora),
+          fechaSolicitud:
+            record.creadoEn ??
+            (typeof movimientoRecord.fechaSolicitud === "string" ? movimientoRecord.fechaSolicitud : null),
           fechaInicio: record.inicio ?? null,
           fechaFin: record.fin ?? null,
         };
 
-        try {
-          const rr = await fetch(`${base}/movimientos/${encodeURIComponent(String(movimientoId))}/edicion`, {
-            cache: "no-store",
-            headers,
-          });
-          if (rr.ok) {
-            const detail = (await readTextAsJsonSafe(rr)) as MovimientoDetailRecord;
-            const mv = detail?.movimiento ?? detail;
-            localidadMovimientoId = Number(mv?.localidad?.id ?? mv?.localidadId ?? NaN) || null;
-            empresa = mv?.empresa ? { id: Number(mv.empresa.id ?? 0), nombre: String(mv.empresa.nombre ?? "—") } : null;
-            movimiento = {
-              id: mv?.id ?? movimientoId,
-              viaOrigen: mv?.viaOrigen ?? null,
-              viaDestino: mv?.viaDestino ?? null,
-              lavado: Boolean(mv?.lavado ?? mv?.Lavado),
-              torno: true,
-              estado: status,
-              prioridad: mv?.prioridad ?? null,
-              locomotiveNumber: mv?.locomotiveNumber ?? mv?.locomotora ?? null,
-              locomotora: mv?.locomotora ?? null,
-              fechaSolicitud: mv?.fechaSolicitud ?? record.creadoEn ?? null,
-              fechaInicio: record.inicio ?? mv?.fechaInicio ?? null,
-              fechaFin: record.fin ?? mv?.fechaFin ?? null,
-              instrucciones: mv?.instrucciones ?? null,
-            };
+        if (movimientoId) {
+          try {
+            const rr = await fetch(`${base}/movimientos/${encodeURIComponent(String(movimientoId))}/edicion`, {
+              cache: "no-store",
+              headers,
+            });
+            if (rr.ok) {
+              const detail = (await readTextAsJsonSafe(rr)) as MovimientoDetailRecord;
+              const mv = detail?.movimiento ?? detail;
+              localidadMovimientoId = firstPositiveNumber(mv?.localidad?.id, mv?.localidadId) ?? localidadMovimientoId;
+              empresa = mv?.empresa ? { id: Number(mv.empresa.id ?? 0), nombre: String(mv.empresa.nombre ?? "—") } : null;
+              movimiento = {
+                id: mv?.id ?? movimientoId,
+                viaOrigen: mv?.viaOrigen ?? null,
+                viaDestino: mv?.viaDestino ?? null,
+                lavado: Boolean(mv?.lavado ?? mv?.Lavado),
+                torno: true,
+                estado: status,
+                prioridad: mv?.prioridad ?? null,
+                locomotiveNumber: mv?.locomotiveNumber ?? mv?.locomotora ?? null,
+                locomotora: mv?.locomotora ?? null,
+                fechaSolicitud: mv?.fechaSolicitud ?? record.creadoEn ?? null,
+                fechaInicio: record.inicio ?? mv?.fechaInicio ?? null,
+                fechaFin: record.fin ?? mv?.fechaFin ?? null,
+                instrucciones: mv?.instrucciones ?? null,
+              };
+            }
+          } catch {
+            // Si el detalle falla, conservamos el registro de Torno con la informacion disponible.
           }
-        } catch {
-          // Si el detalle falla, el registro se conserva solo si no hay filtros verificables.
         }
 
         if (localidadMovimientoId && Number(localidadId) !== localidadMovimientoId) return null;
@@ -637,6 +694,7 @@ export async function GET(req: NextRequest) {
           movimiento,
           movimientoId,
           createdAt: record.creadoEn ?? record.inicio ?? null,
+          source: "torno",
         };
       }));
 

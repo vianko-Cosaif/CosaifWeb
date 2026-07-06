@@ -8,6 +8,7 @@ import {
 } from "@/lib/firebase";
 import { getNotificationRuntimePolicy } from "@/lib/notificationRuntime";
 import { isClienteAreaRole, isTorreonLocalidadId } from "@/lib/torreonLocalidad";
+import { getRoleCapabilities } from "@/lib/accessControl";
 
 const DEST: Record<string, string> = {
   CLIENTE: "/cliente",
@@ -229,7 +230,11 @@ export default function LoginForm() {
       } catch {}
 
       // 5) Redirección por rol, sin query ?loc
-      const destBase = isClienteAreaRole(role) && isTorreonLocalidadId(localidadId)
+      const capabilities = getRoleCapabilities(role);
+      const shouldEnterTorreon =
+        role === "ARRASTRE_TORREON" ||
+        (role === "CLIENTE" && !capabilities.canSwitchLocalidad && isTorreonLocalidadId(localidadId));
+      const destBase = isClienteAreaRole(role) && shouldEnterTorreon
         ? "/cliente/torreon"
         : DEST[role] || "/cliente";
       console.log("Ingresamos ✅", {

@@ -1,7 +1,7 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @next/next/no-img-element, @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useId } from "react";
 import { createPortal } from "react-dom";
 import {
   ImageIcon,

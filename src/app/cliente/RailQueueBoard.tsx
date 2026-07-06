@@ -6,124 +6,26 @@ import { motion, AnimatePresence } from "framer-motion";
 import { S } from "./RailQueueBoardCliente.styles";
 import QueueSegmentedFilter, { type QueueSegmentedFilterOption } from "./components/QueueSegmentedFilter";
 import TornoMeasuresViewerModal from "../movimientos/torno/TornoMeasuresViewerModal";
-import { parseTornoMedicionFromApi } from "../movimientos/torno/tornoMeasureParser";
-import { DEFAULT_TORNO_MEDICION_STATE, type TornoMedicionState } from "../movimientos/crear/tornoMedicion.types";
 import { useRealtimeBoardRefresh } from "../hooks/useRealtimeBoardRefresh";
+import { useTornoMeasuresModal } from "@/features/torno-measures";
+import {
+  API_XAPI_BASE,
+  codeFrom,
+  fetchJson,
+  fmtLoco as formatLoco,
+  formatQueueDate as fmtDate,
+  movementIdFrom,
+  useLocalStorageBoolean,
+  useToasts,
+  useVisibleInterval,
+  type QueueEntityKind,
+  type QueueStatusKind,
+  type Ronda,
+  type RondaInfo,
+} from "@/features/rail-queue";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/xapi";
-
-/* ═══════════ TYPES ═══════════ */
-type Ronda = {
-  id: number;
-  rondaNumero: number;
-  orden: number;
-  concluido: boolean;
-  empresa?: { id: number; nombre: string } | null;
-  movimiento?: {
-    id?: number;
-    viaOrigen?: { nombre?: string | null } | null;
-    viaDestino?: { nombre?: string | null } | null;
-    lavado?: boolean;
-    torno?: boolean;
-    estado?: string | null;
-    prioridad?: "BAJA" | "ALTA" | null;
-    locomotiveNumber?: number | string | null;
-    locomotora?: string | null;
-    fechaSolicitud?: string | null;
-    fechaInicio?: string | null;
-    fechaFin?: string | null;
-    instrucciones?: string | null;
-  } | null;
-  movimientoId?: number | null;
-  createdAt?: string | null;
-};
-
-type RondaInfo = {
-  empresa: { id: number; nombre: string };
-  movimiento: {
-    id?: number;
-    viaOrigen?: { nombre?: string | null } | null;
-    viaDestino?: { nombre?: string | null } | null;
-    lavado: boolean;
-    torno: boolean;
-    estado?: string;
-    prioridad?: "BAJA" | "ALTA";
-    locomotiveNumber?: number | string;
-    locomotora?: string | null;
-    fechaSolicitud?: string | null;
-    fechaInicio?: string | null;
-    fechaFin?: string | null;
-    instrucciones?: string | null;
-  };
-  movimientoId?: number;
-};
-
-type ToastKind = "move" | "new" | "done" | "warning";
-type Toast = { id: number; text: string; kind: ToastKind };
-type QueueEntityKind = "movimientos" | "torneados";
-type QueueStatusKind = "pendientes" | "terminados";
-
-type MeasuresModalState = {
-  open: boolean;
-  loading: boolean;
-  error: string | null;
-  tornoMedicion: TornoMedicionState;
-  locomotiveLabel?: string;
-  companyName?: string;
-};
-
-/* ═══════════ UTILS ═══════════ */
-const codeFrom = (inf?: RondaInfo, fallbackId?: number) =>
-  String(inf?.movimientoId ?? inf?.movimiento?.id ?? fallbackId ?? "—");
-
-const fmtLoco = (v: unknown) => {
-  if (v == null) return "—";
-  const s = String(v).replace(/\D+/g, "");
-  return s ? s.padStart(4, "0") : "—";
-};
-
-function fmtDate(iso?: string | null) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat("es-MX", {
-    hour: "2-digit", minute: "2-digit", day: "numeric", month: "short",
-    hour12: true, timeZone: "America/Mexico_City",
-  }).format(d);
-}
-
-async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const r = await fetch(url, { cache: "no-store", credentials: "include", mode: "same-origin", signal });
-  if (!r.ok) throw new Error(`${r.status}`);
-  return (await r.json()) as T;
-}
-
-function useVisibleInterval(fn: () => void, delay: number | null, deps: readonly unknown[] = []) {
-  useEffect(() => {
-    if (!delay) return;
-    const id = window.setInterval(() => { if (document.visibilityState === "visible") fn(); }, delay);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [delay, ...deps]);
-}
-
-function useLocalStorageBoolean(key: string, initial = false) {
-  const [v, setV] = useState<boolean>(initial);
-  useEffect(() => { if (typeof window !== "undefined") { const item = window.localStorage.getItem(key); if (item !== null) setV(item === "1"); } }, [key]);
-  useEffect(() => { if (typeof window !== "undefined") window.localStorage.setItem(key, v ? "1" : "0"); }, [key, v]);
-  return [v, setV] as const;
-}
-
-function useToasts() {
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const push = (text: string, kind: ToastKind) => {
-    const id = Date.now() + Math.random();
-    setToasts(t => [...t, { id, text, kind }]);
-    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 5000);
-  };
-  const dismiss = (id: number) => setToasts(t => t.filter(x => x.id !== id));
-  return { toasts, push, dismiss };
-}
+const API_BASE = API_XAPI_BASE;
+const fmtLoco = (value: unknown) => formatLoco(value, "—");
 
 /* ═══════════ SVG ICONS ═══════════ */
 // All monochrome, 16px default, currentColor
@@ -192,12 +94,8 @@ export default function RailQueueBoard({
 
   const bellRef = useRef<HTMLAudioElement | null>(null);
   const { toasts, push: pushToast, dismiss } = useToasts();
-  const [measuresModal, setMeasuresModal] = useState<MeasuresModalState>({
-    open: false,
-    loading: false,
-    error: null,
-    tornoMedicion: DEFAULT_TORNO_MEDICION_STATE,
-  });
+  const { measuresModal, openMeasuresModal, closeMeasuresModal } =
+    useTornoMeasuresModal(API_BASE);
   const prevIdsRef = useRef<number[]>([]);
   const lastCurrentId = useRef<number | null>(null);
   const firstLoad = useRef(true);
@@ -268,48 +166,6 @@ export default function RailQueueBoard({
     if (soundOn && curId && lastCurrentId.current && curId !== lastCurrentId.current) bellRef.current?.play().catch(() => { });
     lastCurrentId.current = curId;
   }, [items, soundOn]);
-
-  const closeMeasuresModal = () => {
-    setMeasuresModal((prev) => ({ ...prev, open: false, error: null }));
-  };
-
-  const openMeasuresModal = async (args: {
-    movementId?: number | null;
-    locomotiveLabel?: string;
-    companyName?: string;
-  }) => {
-    const movementId = Number(args.movementId);
-    if (!Number.isFinite(movementId) || movementId <= 0) return;
-
-    setMeasuresModal({
-      open: true,
-      loading: true,
-      error: null,
-      tornoMedicion: DEFAULT_TORNO_MEDICION_STATE,
-      locomotiveLabel: args.locomotiveLabel,
-      companyName: args.companyName,
-    });
-
-    try {
-      const response = await fetch(`${API_BASE}/movimientos/${movementId}/edicion`, {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-      });
-      if (!response.ok) throw new Error(`No se pudo cargar medidas (${response.status}).`);
-      const payload = await response.json();
-      setMeasuresModal((prev) => ({
-        ...prev,
-        loading: false,
-        tornoMedicion: parseTornoMedicionFromApi(payload),
-        locomotiveLabel: String(payload?.movimiento?.locomotiveNumber ?? args.locomotiveLabel ?? ""),
-        companyName: payload?.movimiento?.empresa?.nombre ?? args.companyName,
-      }));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "No se pudieron cargar las medidas.";
-      setMeasuresModal((prev) => ({ ...prev, loading: false, error: message }));
-    }
-  };
 
   const entityItems = items;
   const entityOptions = useMemo<QueueSegmentedFilterOption<QueueEntityKind>[]>(
@@ -541,6 +397,8 @@ function HeroCard({
   const loco = fmtLoco(info?.movimiento?.locomotora || info?.movimiento?.locomotiveNumber);
   const orig = info?.movimiento?.viaOrigen?.nombre || "—";
   const dest = info?.movimiento?.viaDestino?.nombre || "—";
+  const movementId = movementIdFrom(item, info);
+  const canViewMeasures = Boolean(info?.movimiento?.torno && movementId);
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className={S.Card.root}>
@@ -620,7 +478,19 @@ function HeroCard({
             <span className="flex items-center gap-1"><Ic.Calendar /> Creado</span>
             <span className="font-semibold tabular-nums">{fmtDate(item.createdAt)}</span>
           </div>
-          {null}
+          {canViewMeasures && (
+            <button
+              type="button"
+              onClick={() => onViewMeasures({
+                movementId,
+                locomotiveLabel: loco,
+                companyName: info?.empresa?.nombre,
+              })}
+              className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200 dark:hover:bg-emerald-900/40"
+            >
+              Ver mediciones
+            </button>
+          )}
         </div>
       </div>
     </motion.div>
@@ -633,7 +503,7 @@ function QueueCard({
   info,
   prev,
   idx,
-  onViewMeasures: _onViewMeasures,
+  onViewMeasures,
   showRoundDivider = true,
 }: {
   item: Ronda;
@@ -646,6 +516,8 @@ function QueueCard({
   const hi = info?.movimiento?.prioridad === "ALTA";
   const newRound = idx === 0 || item.rondaNumero !== prev?.rondaNumero;
   const loco = fmtLoco(info?.movimiento?.locomotora || info?.movimiento?.locomotiveNumber);
+  const movementId = movementIdFrom(item, info);
+  const canViewMeasures = Boolean(info?.movimiento?.torno && movementId);
 
   return (
     <Fragment>
@@ -706,9 +578,20 @@ function QueueCard({
           </div>
           <span className={S.List.date}>{fmtDate(item.createdAt)}</span>
         </div>
-        {null}
+        {canViewMeasures && (
+          <button
+            type="button"
+            onClick={() => onViewMeasures({
+              movementId,
+              locomotiveLabel: loco,
+              companyName: info?.empresa?.nombre,
+            })}
+            className="mt-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            Ver mediciones
+          </button>
+        )}
       </motion.div>
     </Fragment>
   );
 }
-

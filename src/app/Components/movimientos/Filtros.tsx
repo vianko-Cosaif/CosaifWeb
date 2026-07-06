@@ -37,6 +37,7 @@ export interface FiltrosProps {
   onLimpiarFiltros: () => void;
 
   deshabilitado?: boolean;
+  mostrarFiltrosTiempo?: boolean;
 }
 
 export default function Filtros({
@@ -54,6 +55,7 @@ export default function Filtros({
   onCambiarTamPagina,
   onLimpiarFiltros,
   deshabilitado = false,
+  mostrarFiltrosTiempo = true,
 }: FiltrosProps) {
   const [abierto, setAbierto] = useState(true);
   const ESTADOS = [
@@ -167,14 +169,14 @@ export default function Filtros({
           : () => onCambiarLocalidadId(null),
       });
     }
-    if (filtros.desde) {
+    if (mostrarFiltrosTiempo && filtros.desde) {
       chips.push({
         key: "desde",
         label: `Desde: ${filtros.desde}`,
         onRemove: () => onCambiarRangoFechas(null, filtros.hasta ?? null),
       });
     }
-    if (filtros.hasta) {
+    if (mostrarFiltrosTiempo && filtros.hasta) {
       chips.push({
         key: "hasta",
         label: `Hasta: ${filtros.hasta}`,
@@ -202,7 +204,7 @@ export default function Filtros({
         onRemove: () => onCambiarLocomotiveNumber(null),
       });
     }
-    if ((filtros.desde || filtros.hasta) && filtros.fechaCampo) {
+    if (mostrarFiltrosTiempo && (filtros.desde || filtros.hasta) && filtros.fechaCampo) {
       chips.push({
         key: "fechaCampo",
         label: `Fecha: ${filtros.fechaCampo}`,
@@ -222,6 +224,7 @@ export default function Filtros({
     onCambiarLocomotiveNumber,
     onCambiarFechaCampo,
     puedeElegirLocalidad,
+    mostrarFiltrosTiempo,
   ]);
 
   const cantidadActivos = activeFilters.length;
@@ -328,9 +331,6 @@ export default function Filtros({
                   {listaLocalidades.map((loc) => (
                     <option key={loc.id} value={loc.id}>
                       {loc.nombre}
-                      {"estado" in loc && (loc as any).estado
-                        ? ` (${(loc as any).estado})`
-                        : ""}
                     </option>
                   ))}
                 </select>
@@ -400,65 +400,69 @@ export default function Filtros({
                 />
               </div>
 
-              {/* Fecha campo */}
-              <div className="min-w-0 xl:col-span-2">
-                <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                  Fecha campo
-                </label>
-                <select
-                  className={selectClass}
-                  disabled={deshabilitado}
-                  value={filtros.fechaCampo ?? ""}
-                  onChange={handleFechaCampoChange}
-                >
-                  <option value="solicitud">Solicitud</option>
-                  <option value="inicio">Inicio</option>
-                  <option value="fin">Fin</option>
-                  <option value="creacion">Creación</option>
-                </select>
-              </div>
+              {mostrarFiltrosTiempo ? (
+                <>
+                  {/* Fecha campo */}
+                  <div className="min-w-0 xl:col-span-2">
+                    <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                      Fecha campo
+                    </label>
+                    <select
+                      className={selectClass}
+                      disabled={deshabilitado}
+                      value={filtros.fechaCampo ?? ""}
+                      onChange={handleFechaCampoChange}
+                    >
+                      <option value="solicitud">Solicitud</option>
+                      <option value="inicio">Inicio</option>
+                      <option value="fin">Fin</option>
+                      <option value="creacion">Creación</option>
+                    </select>
+                  </div>
 
-              {/* Desde */}
-              <div className="min-w-0 xl:col-span-3">
-                <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                  Desde (fecha/hora)
-                </label>
-                <div className="relative">
-                  <input
-                    type="datetime-local"
-                    className={inputClass}
-                    disabled={deshabilitado}
-                    value={toInputDateTime(filtros.desde ?? null)}
-                    onChange={handleDesdeChange}
-                  />
-                  <Calendar
-                    size={15}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none text-slate-400 dark:text-slate-500"
-                    aria-hidden
-                  />
-                </div>
-              </div>
+                  {/* Desde */}
+                  <div className="min-w-0 xl:col-span-3">
+                    <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                      Desde (fecha/hora)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="datetime-local"
+                        className={inputClass}
+                        disabled={deshabilitado}
+                        value={toInputDateTime(filtros.desde ?? null)}
+                        onChange={handleDesdeChange}
+                      />
+                      <Calendar
+                        size={15}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none text-slate-400 dark:text-slate-500"
+                        aria-hidden
+                      />
+                    </div>
+                  </div>
 
-              {/* Hasta */}
-              <div className="min-w-0 xl:col-span-3">
-                <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                  Hasta (fecha/hora)
-                </label>
-                <div className="relative">
-                  <input
-                    type="datetime-local"
-                    className={inputClass}
-                    disabled={deshabilitado}
-                    value={toInputDateTime(filtros.hasta ?? null)}
-                    onChange={handleHastaChange}
-                  />
-                  <Calendar
-                    size={15}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none text-slate-400 dark:text-slate-500"
-                    aria-hidden
-                  />
-                </div>
-              </div>
+                  {/* Hasta */}
+                  <div className="min-w-0 xl:col-span-3">
+                    <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                      Hasta (fecha/hora)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="datetime-local"
+                        className={inputClass}
+                        disabled={deshabilitado}
+                        value={toInputDateTime(filtros.hasta ?? null)}
+                        onChange={handleHastaChange}
+                      />
+                      <Calendar
+                        size={15}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none text-slate-400 dark:text-slate-500"
+                        aria-hidden
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : null}
 
               {/* Tamaño de página */}
               <div className="min-w-0 xl:col-span-2">
@@ -479,6 +483,7 @@ export default function Filtros({
                 </select>
               </div>
 
+              {mostrarFiltrosTiempo ? (
               <div className="min-w-0 col-span-1 sm:col-span-2 xl:col-span-12">
                 <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
                   <span className="inline-flex items-center px-2 text-[11px] font-black uppercase tracking-wide text-slate-400">
@@ -526,6 +531,7 @@ export default function Filtros({
                   </button>
                 </div>
               </div>
+              ) : null}
 
               {/* Acciones */}
               <div className="min-w-0 col-span-1 sm:col-span-2 xl:col-span-12 flex gap-2 justify-stretch xl:justify-end pt-1">

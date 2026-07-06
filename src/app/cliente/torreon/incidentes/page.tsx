@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { canViewTorreonArrastreRole, isClienteAreaRole, isTorreonLocalidadId } from "@/lib/torreonLocalidad";
+import { canViewTorreonArrastreRole, getPrimaryTorreonLocalidadId, isClienteAreaRole, isTorreonLocalidadId } from "@/lib/torreonLocalidad";
+import { getRoleCapabilities } from "@/lib/accessControl";
 import TorreonClientePanel from "../TorreonClientePanel";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,11 @@ export default async function Page() {
   if (!token) redirect("/login?loc=cliente");
 
   const role = cookieStore.get(process.env.ROLE_COOKIE_NAME ?? "role")?.value?.toUpperCase() ?? "";
-  const localidadId = toInt(cookieStore.get("locId")?.value) ?? toInt(cookieStore.get("localidadId")?.value);
+  const cookieLocalidadId = toInt(cookieStore.get("locId")?.value) ?? toInt(cookieStore.get("localidadId")?.value);
+  const capabilities = getRoleCapabilities(role);
+  const localidadId = capabilities.canSwitchLocalidad && !isTorreonLocalidadId(cookieLocalidadId)
+    ? getPrimaryTorreonLocalidadId()
+    : cookieLocalidadId;
   const empresaId = toInt(cookieStore.get("empresaId")?.value) ?? toInt(cookieStore.get("empId")?.value);
 
   if (!isClienteAreaRole(role)) {

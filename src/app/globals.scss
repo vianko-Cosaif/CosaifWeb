@@ -271,20 +271,20 @@
 
   .cosaif-terminal-table .ant-table{
     overflow:hidden;
-    border:1px solid rgba(16,185,129,.28);
+    border:1px solid #e2e8f0;
     border-radius:.5rem;
-    background:#020617;
-    color:#e2e8f0;
+    background:#fff;
+    color:#0f172a;
   }
   .cosaif-terminal-table .ant-table-container,
   .cosaif-terminal-table .ant-table-content,
   .cosaif-terminal-table .ant-table-tbody > tr > td,
   .cosaif-terminal-table .ant-table-thead > tr > th{
-    background:#020617 !important;
+    background:#fff !important;
   }
   .cosaif-terminal-table .ant-table-thead > tr > th{
-    border-bottom:1px solid rgba(16,185,129,.35) !important;
-    color:#86efac !important;
+    border-bottom:1px solid #e2e8f0 !important;
+    color:#334155 !important;
     font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
     font-size:.7rem;
     font-weight:900;
@@ -292,39 +292,85 @@
     text-transform:uppercase;
   }
   .cosaif-terminal-table .ant-table-tbody > tr > td{
-    border-bottom:1px solid rgba(51,65,85,.75) !important;
-    color:#e2e8f0;
+    border-bottom:1px solid #e2e8f0 !important;
+    color:#0f172a;
     font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
     font-size:.8rem;
     vertical-align:middle;
   }
   .cosaif-terminal-table .ant-table-tbody > tr:hover > td{
-    background:#0f172a !important;
+    background:#f8fafc !important;
   }
   .cosaif-terminal-table .ant-table-tbody > tr.terminal-row-current > td{
-    background:linear-gradient(90deg, rgba(6,78,59,.55), rgba(2,6,23,.98)) !important;
-    box-shadow:inset 3px 0 0 #34d399;
+    background:linear-gradient(90deg, rgba(236,253,245,.95), rgba(255,255,255,1)) !important;
+    box-shadow:inset 3px 0 0 #10b981;
   }
   .cosaif-terminal-table .ant-table-expanded-row > td{
-    background:#020617 !important;
+    background:#fff !important;
   }
   .cosaif-terminal-table .ant-pagination,
   .cosaif-terminal-table .ant-pagination-item a,
   .cosaif-terminal-table .ant-pagination-prev,
   .cosaif-terminal-table .ant-pagination-next,
   .cosaif-terminal-table .ant-empty-description{
-    color:#94a3b8 !important;
+    color:#64748b !important;
   }
   .cosaif-terminal-table .ant-pagination-item{
-    border-color:rgba(16,185,129,.35);
-    background:#020617;
+    border-color:#cbd5e1;
+    background:#fff;
   }
   .cosaif-terminal-table .ant-pagination-item-active{
-    border-color:#34d399;
+    border-color:#059669;
   }
   .cosaif-terminal-table .ant-spin-text{
-    color:#86efac !important;
+    color:#059669 !important;
     font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  }
+  .dark .cosaif-terminal-table .ant-table{
+    border-color:rgba(148,163,184,.28);
+    background:#0f172a;
+    color:#e5e7eb;
+  }
+  .dark .cosaif-terminal-table .ant-table-container,
+  .dark .cosaif-terminal-table .ant-table-content,
+  .dark .cosaif-terminal-table .ant-table-tbody > tr > td,
+  .dark .cosaif-terminal-table .ant-table-thead > tr > th{
+    background:#0f172a !important;
+  }
+  .dark .cosaif-terminal-table .ant-table-thead > tr > th{
+    border-bottom-color:rgba(148,163,184,.28) !important;
+    color:#a7f3d0 !important;
+  }
+  .dark .cosaif-terminal-table .ant-table-tbody > tr > td{
+    border-bottom-color:rgba(51,65,85,.85) !important;
+    color:#e5e7eb;
+  }
+  .dark .cosaif-terminal-table .ant-table-tbody > tr:hover > td{
+    background:#1e293b !important;
+  }
+  .dark .cosaif-terminal-table .ant-table-tbody > tr.terminal-row-current > td{
+    background:linear-gradient(90deg, rgba(6,78,59,.5), rgba(15,23,42,.98)) !important;
+    box-shadow:inset 3px 0 0 #34d399;
+  }
+  .dark .cosaif-terminal-table .ant-table-expanded-row > td{
+    background:#0f172a !important;
+  }
+  .dark .cosaif-terminal-table .ant-pagination,
+  .dark .cosaif-terminal-table .ant-pagination-item a,
+  .dark .cosaif-terminal-table .ant-pagination-prev,
+  .dark .cosaif-terminal-table .ant-pagination-next,
+  .dark .cosaif-terminal-table .ant-empty-description{
+    color:#94a3b8 !important;
+  }
+  .dark .cosaif-terminal-table .ant-pagination-item{
+    border-color:rgba(16,185,129,.35);
+    background:#0f172a;
+  }
+  .dark .cosaif-terminal-table .ant-pagination-item-active{
+    border-color:#34d399;
+  }
+  .dark .cosaif-terminal-table .ant-spin-text{
+    color:#86efac !important;
   }
 }
 

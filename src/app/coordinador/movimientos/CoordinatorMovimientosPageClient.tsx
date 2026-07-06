@@ -285,7 +285,7 @@ export default function CoordinatorMovimientosPageClient({
             )}
           </TorreonMovimientoLayout>
         ) : (
-          <div className="mx-auto w-full max-w-5xl">
+          <div className="mx-auto w-full max-w-screen-2xl">
             <MovimientosPanel
               key={activeLocalidadId}
               apiBase={apiBase}

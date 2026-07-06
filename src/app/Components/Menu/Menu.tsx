@@ -24,6 +24,8 @@ import type { LucideIcon } from "lucide-react";
 import ThemeToggle from "@/app/Components/ui/ThemeToggle";
 import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import { ClientMovementGuideButton } from "@/app/Components/GuidedManualAtom/ClientMovementGuide";
+import { buildNavigationForRole, isNavigationItemActive, type AppNavigationItem } from "@/lib/appNavigation";
+import { getRoleCapabilities, normalizeAppRole, type NavModuleId } from "@/lib/accessControl";
 
 /* ==========================================================================
    INTERFACES & TYPES
@@ -42,11 +44,11 @@ interface UserSession {
 }
 
 type NavigationItem = {
-  id: string;
+  id: NavModuleId;
   label: string;
   href: string;
+  description: string;
   icon: LucideIcon;
-  hide?: boolean;
 };
 
 // PREMIUM COLOR CONFIGURATION
@@ -104,6 +106,17 @@ const ROLE_CONFIG: Record<
     ring: "ring-amber-500/20",
     hoverBg: "hover:bg-amber-50 dark:hover:bg-amber-900/20",
   },
+};
+
+const NAV_ICONS: Record<NavModuleId, LucideIcon> = {
+  dashboard: LayoutDashboard,
+  movimientos: Train,
+  torreon_arrastres: Boxes,
+  torno: Wrench,
+  configuracion: Settings,
+  usuarios: Users,
+  incidentes: TriangleAlert,
+  reporteria: BarChart3,
 };
 
 function cn(...classes: (string | undefined | null | false)[]) {
@@ -166,49 +179,23 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
     };
   }, [mobileOpen]);
 
+  const appRole = useMemo(() => normalizeAppRole(String(session?.rol || "")) ?? "CLIENTE", [session]);
+  const capabilities = useMemo(() => getRoleCapabilities(appRole), [appRole]);
   const normRol = useMemo<Rol>(() => {
-    const r = String(session?.rol || "").toUpperCase();
-    if (["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON"].includes(r)) return "CLIENTE";
-    if (r.includes("ADMIN")) return "ADMINISTRADOR";
-    if (r.includes("COORD")) return "COORDINADOR";
-    if (r.includes("SUP")) return "SUPERVISOR";
+    if (capabilities.area === "administrador") return "ADMINISTRADOR";
+    if (capabilities.area === "coordinador") return "COORDINADOR";
+    if (capabilities.area === "supervisor") return "SUPERVISOR";
     return "CLIENTE";
-  }, [session]);
-
-  const isArrastreTorreon = useMemo(() => String(session?.rol || "").toUpperCase() === "ARRASTRE_TORREON", [session]);
-  const base = useMemo(() => `/${normRol.toLowerCase()}`, [normRol]);
+  }, [capabilities.area]);
   const roleConfig = ROLE_CONFIG[normRol] || ROLE_CONFIG.CLIENTE;
 
   const navigation = useMemo<NavigationItem[]>(() => {
-    if (isArrastreTorreon) {
-      return [
-        { id: "dash", label: "Dashboard", href: "/cliente/torreon", icon: LayoutDashboard },
-        { id: "movs", label: "Movimientos", href: "/cliente/torreon/movimientos", icon: Boxes },
-        { id: "inc", label: "Incidentes", href: "/cliente/torreon/incidentes", icon: TriangleAlert },
-      ];
-    }
-
-    return [
-      { id: "dash", label: "Dashboard", href: base, icon: LayoutDashboard },
-      { id: "movs", label: "Movimientos", href: `${base}/movimientos`, icon: Train },
-      { id: "torno", label: normRol === "CLIENTE" ? "Historial Torno" : "Torno", href: `${base}/torno`, icon: Wrench },
-      {
-        id: "users",
-        label: "Gestión Usuarios",
-        href: `${base}/usuarios`,
-        hide: ["CLIENTE", "SUPERVISOR"].includes(normRol),
-        icon: Users,
-      },
-      { id: "inc", label: "Incidentes", href: `${base}/incidentes`, icon: TriangleAlert },
-      {
-        id: "reporteria",
-        label: "Reportería",
-        href: `${base}/reporteria`,
-        hide: !["ADMINISTRADOR", "COORDINADOR"].includes(normRol),
-        icon: BarChart3,
-      },
-    ].filter((item) => !item.hide);
-  }, [normRol, base, isArrastreTorreon]);
+    return buildNavigationForRole(appRole).map((item: AppNavigationItem) => ({
+      ...item,
+      label: item.id === "torno" && capabilities.isClientLike ? "Historial Torno" : item.label,
+      icon: NAV_ICONS[item.id],
+    }));
+  }, [appRole, capabilities.isClientLike]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -264,7 +251,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
       </button>
     );
 
-    if (normRol === "CLIENTE" && item.id === "movs") {
+    if (capabilities.isClientLike && item.id === "movimientos") {
       return (
         <GuidedTarget id="client-nav-movements" className="w-full">
           {button}
@@ -371,7 +358,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span className={cn("inline-block h-1.5 w-1.5 rounded-full bg-gradient-to-r", roleConfig.gradient)} />
                   <p className={cn("truncate text-[10px] font-semibold uppercase tracking-wider", roleConfig.text)}>
-                    {roleConfig.label}
+                    {capabilities.label}
                   </p>
                 </div>
               </div>
@@ -392,10 +379,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
           </div>
 
           {navigation.map((item) => {
-            const torreonClientDashboard = !isArrastreTorreon && item.id === "dash" && item.href === base && pathname === "/cliente/torreon";
-            const active = item.id === "dash"
-              ? pathname === item.href || torreonClientDashboard
-              : pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const active = isNavigationItemActive(pathname, item);
             return <NavItem key={item.id} item={item} isActive={active} />;
           })}
         </nav>
@@ -410,7 +394,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
               </span>
             )}
             <div className="flex items-center gap-2">
-              {normRol === "CLIENTE" && (
+              {capabilities.isClientLike && (
                 <ClientMovementGuideButton
                   compact={!(isOpen || mobileOpen)}
                   className={cn(

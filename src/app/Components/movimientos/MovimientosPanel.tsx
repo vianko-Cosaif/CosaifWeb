@@ -8,11 +8,15 @@ import React, {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
+import { Flag } from "lucide-react";
 import Nav from "./Nav";
 import Filtros from "./Filtros";
 import Tabla from "./Tabla";
-import { useMovimientos, Rol, type Movement } from "./useMovimientos";
+import { useMovimientos, type FechaCampo, type Rol, type Movement } from "./useMovimientos";
 import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
+import { DataEmptyState, KpiCard, ModuleHeader } from "@/app/Components/ui";
+import { canViewMovementDuration } from "@/features/movimientos/table";
+import { getRoleCapabilities } from "@/lib/accessControl";
 
 /* ================== HELPERS SESIÓN ================== */
 
@@ -67,6 +71,12 @@ function formatPanelDuration(minutes?: number | null) {
   const hours = Math.floor(safe / 60);
   const rest = safe % 60;
   return rest ? `${hours} h ${rest} min` : `${hours} h`;
+}
+
+const FECHA_CAMPOS_MOVIMIENTO = ["solicitud", "inicio", "fin", "creacion"] as const satisfies readonly FechaCampo[];
+
+function isFechaCampoMovimiento(value: string | null): value is FechaCampo {
+  return FECHA_CAMPOS_MOVIMIENTO.includes(value as FechaCampo);
 }
 
 function buildExecutionSummary(rows: Movement[]) {
@@ -131,7 +141,8 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     () => localidadIdUsuario ?? null
   );
   const rolNormalizado = String(rol || "").toUpperCase();
-  const esAdministrador = rolNormalizado === "ADMINISTRADOR";
+  const roleCapabilities = useMemo(() => getRoleCapabilities(rolNormalizado), [rolNormalizado]);
+  const puedeVerDuracionMovimiento = canViewMovementDuration(rolNormalizado);
 
   /* ================== RESOLVER SESIÓN ================== */
 
@@ -214,42 +225,31 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     token,
     apiBase,
     autoRefreshMs: intervaloAutoMs,
-    initialEmpresaId: esAdministrador ? null : userEmpresaId,
-    initialLocalidadId: esAdministrador ? null : userLocalidadId,
+    initialEmpresaId: roleCapabilities.canViewAllCompanies ? null : userEmpresaId,
+    initialLocalidadId: roleCapabilities.canSwitchLocalidad ? null : userLocalidadId,
   });
-
-  const [movimientoSeleccionado, setMovimientoSeleccionado] =
-    useState<number | null>(null);
 
   /* ================== PERMISOS POR ROL ================== */
 
-  const puedeElegirLocalidadPorRol = useMemo(
-    () =>
-      ["ADMINISTRADOR", "COORDINADOR"].includes(
-        String(rol || "").toUpperCase()
-      ),
-    [rol]
-  );
-
-  const puedeElegirLocalidad = puedeElegirLocalidadPorRol && !bloquearLocalidad;
-  const puedeVerTodasEmpresas = puedeElegirLocalidadPorRol;
+  const puedeElegirLocalidad = roleCapabilities.canSwitchLocalidad && !bloquearLocalidad;
+  const puedeVerTodasEmpresas = roleCapabilities.canViewAllCompanies;
 
   useEffect(() => {
-    if (esAdministrador) return;
+    if (roleCapabilities.canViewAllCompanies && roleCapabilities.canSwitchLocalidad) return;
 
     setFiltros((prev) => ({
       ...prev,
       empresaId:
-        userEmpresaId != null
+        !roleCapabilities.canViewAllCompanies && userEmpresaId != null
           ? userEmpresaId
           : prev.empresaId ?? undefined,
       localidadId:
-        userLocalidadId != null
+        !roleCapabilities.canSwitchLocalidad && userLocalidadId != null
           ? userLocalidadId
           : prev.localidadId ?? undefined,
       pagina: 1,
     }));
-  }, [esAdministrador, userEmpresaId, userLocalidadId, setFiltros]);
+  }, [roleCapabilities.canSwitchLocalidad, roleCapabilities.canViewAllCompanies, userEmpresaId, userLocalidadId, setFiltros]);
 
   const listaEmpresas = useMemo(() => {
     if (puedeVerTodasEmpresas) return empresas;
@@ -380,7 +380,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
       setFiltros((prev) => ({
         ...prev,
         pagina: 1,
-        fechaCampo: (value as any) ?? undefined,
+        fechaCampo: isFechaCampoMovimiento(value) ? value : undefined,
       }));
     },
     [setFiltros]
@@ -401,10 +401,10 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     setFiltros((prev) => ({
       ...prev,
       pagina: 1,
-      empresaId: esAdministrador
+      empresaId: roleCapabilities.canViewAllCompanies
         ? undefined
         : userEmpresaId ?? prev.empresaId ?? undefined,
-      localidadId: esAdministrador
+      localidadId: roleCapabilities.canSwitchLocalidad
         ? undefined
         : userLocalidadId ?? prev.localidadId ?? undefined,
       desde: undefined,
@@ -414,7 +414,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
       locomotiveNumber: undefined,
       fechaCampo: "solicitud",
     }));
-  }, [setFiltros, esAdministrador, userEmpresaId, userLocalidadId]);
+  }, [setFiltros, roleCapabilities.canSwitchLocalidad, roleCapabilities.canViewAllCompanies, userEmpresaId, userLocalidadId]);
 
   const handlePagina = useCallback(
     (pagina: number) => {
@@ -440,7 +440,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     [router, rol]
   );
 
-  const handleToggleAuto = useCallback((_activo: boolean) => {
+  const handleToggleAuto = useCallback(() => {
     // El auto-refresh ya lo maneja useMovimientos en "actuales"
   }, []);
 
@@ -465,45 +465,19 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
       "
     >
       <div className="flex flex-col gap-3 sm:gap-5 px-2 py-3 sm:px-5 sm:py-6 lg:px-7 lg:py-8 min-w-0">
-        {/* Header con gradiente */}
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between min-w-0">
-          <div className="flex items-center gap-3">
-            {/* Icon container */}
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/30">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-                <line x1="4" x2="4" y1="22" y2="15" />
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-base sm:text-2xl font-bold tracking-tight bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
-                Movimientos
-              </h1>
-              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                Gestión ferroviaria
-                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
-                  {tab}
-                </span>
-                {cargando && (
-                  <span className="inline-flex items-center gap-1">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-emerald-600 dark:text-emerald-400 text-[10px]">
-                      sincronizando
-                    </span>
-                  </span>
-                )}
-              </p>
-            </div>
-          </div>
-
-          {/* Stats mini */}
-          <div className="flex items-center gap-2">
+        <ModuleHeader
+          icon={Flag}
+          title="Movimientos"
+          subtitle="Gestión ferroviaria"
+          badge={tab}
+          loading={cargando}
+          actions={
             <div className="flex items-center gap-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 px-3 py-1.5 text-xs">
               <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">{total}</span>
               <span className="text-slate-500 dark:text-slate-400">registro{total === 1 ? "" : "s"}</span>
             </div>
-          </div>
-        </header>
+          }
+        />
 
         {/* Gradient separator */}
         <div className="h-px bg-gradient-to-r from-transparent via-emerald-300/40 dark:via-emerald-600/30 to-transparent" />
@@ -570,7 +544,9 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
             <ResumenChip label="Total filtrado" value={`${total}${totalEstimado ? "+" : ""}`} />
             <ResumenChip label="Primer inicio visible" value={formatPanelDate(resumenEjecucion.firstStart)} />
             <ResumenChip label="Último fin visible" value={formatPanelDate(resumenEjecucion.lastEnd)} />
-            <ResumenChip label="Resolución promedio" value={formatPanelDuration(resumenEjecucion.avg)} />
+            {puedeVerDuracionMovimiento ? (
+              <ResumenChip label="Resolución promedio" value={formatPanelDuration(resumenEjecucion.avg)} />
+            ) : null}
             <ResumenChip label="Orden actual" value={ordenActual} />
           </div>
         </section>
@@ -590,22 +566,12 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
             "
           >
             {filas.length === 0 && !cargando ? (
-            <div className="flex-1 flex flex-col items-center justify-center py-10 sm:py-16 gap-4">
-              <div className="rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 p-6">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300 dark:text-slate-600">
-                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-                  <line x1="4" x2="4" y1="22" y2="15" />
-                </svg>
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                  {emptyText}
-                </p>
-                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                  Ajusta los filtros o cambia de pestaña
-                </p>
-              </div>
-            </div>
+            <DataEmptyState
+              icon={Flag}
+              title={emptyText}
+              description="Ajusta los filtros o cambia de pestaña"
+              className="min-h-[320px] border-0 bg-transparent"
+            />
             ) : (
             <div className="relative flex-1 min-h-0">
               <Tabla
@@ -640,9 +606,6 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
 
 function ResumenChip({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="mt-1 truncate text-sm font-black text-slate-900 dark:text-slate-100">{value}</p>
-    </div>
+    <KpiCard label={label} value={value} compact />
   );
 }

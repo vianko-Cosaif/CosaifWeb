@@ -7,25 +7,16 @@ import React,
   useCallback,
   useEffect,
   memo,
-  Fragment,
 } from "react";
 import {
-  ArrowUp,
-  ArrowDown,
   ChevronDown,
   Loader2,
   TrainFront,
   MapPin,
-  Building2,
-  CalendarClock,
-  Hash,
   Info,
-  Activity,
-  CheckCircle2,
   User,
   Flag,
   Settings,
-  Tags,
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
@@ -38,8 +29,17 @@ import type { SorterResult } from "antd/es/table/interface";
 import styles from "./Tabla.module.scss";
 import type { Movement, CampoOrden, DireccionOrden, Rol } from "./useMovimientos";
 import TornoMeasuresViewerModal from "../../movimientos/torno/TornoMeasuresViewerModal";
-import { parseTornoMedicionFromApi } from "../../movimientos/torno/tornoMeasureParser";
-import { DEFAULT_TORNO_MEDICION_STATE, type TornoMedicionState } from "../../movimientos/crear/tornoMedicion.types";
+import { useTornoMeasuresModal } from "@/features/torno-measures";
+import {
+  BadgeEstado,
+  BadgeTipoMovimiento,
+  BooleanChip,
+  canViewMovementDuration,
+  formatTipoMovimientoLabel,
+  formatoDuracionMovimiento,
+  formatoFecha,
+  isClientLikeRole,
+} from "@/features/movimientos/table";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/xapi";
 
@@ -59,51 +59,6 @@ interface TablaProps {
   rol?: Rol;
 }
 
-type MeasuresModalState = {
-  open: boolean;
-  loading: boolean;
-  error: string | null;
-  tornoMedicion: TornoMedicionState;
-  locomotiveLabel?: string;
-  companyName?: string;
-};
-
-/* ================== CONSTANTES UI ================== */
-
-const BADGE_ESTADO: Record<string, { bg: string; dot: string; text: string }> = {
-  SOLICITADO: {
-    bg: "bg-sky-50 border-sky-200 dark:bg-sky-900/20 dark:border-sky-800",
-    dot: "bg-sky-500",
-    text: "text-sky-700 dark:text-sky-400",
-  },
-  EN_PROCESO: {
-    bg: "bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800",
-    dot: "bg-amber-500 animate-pulse",
-    text: "text-amber-700 dark:text-amber-400",
-  },
-  CONCLUIDO: {
-    bg: "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800",
-    dot: "bg-emerald-500",
-    text: "text-emerald-700 dark:text-emerald-400",
-  },
-  CANCELADO: {
-    bg: "bg-rose-50 border-rose-200 dark:bg-rose-900/20 dark:border-rose-800",
-    dot: "bg-rose-500",
-    text: "text-rose-700 dark:text-rose-400",
-  },
-  DETENIDO: {
-    bg: "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800",
-    dot: "bg-red-500",
-    text: "text-red-700 dark:text-red-400",
-  },
-};
-
-const DEFAULT_BADGE = {
-  bg: "bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700",
-  dot: "bg-slate-400",
-  text: "text-slate-600 dark:text-slate-400",
-};
-
 /* ================== COMPONENTE PRINCIPAL ================== */
 
 function TablaInner({
@@ -120,7 +75,8 @@ function TablaInner({
   onEditar,
   rol,
 }: TablaProps) {
-  const clienteSoloIds = String(rol || "").toUpperCase() === "CLIENTE";
+  const clienteSoloIds = isClientLikeRole(rol);
+  const puedeVerDuracion = canViewMovementDuration(rol);
   const NO_EDIT_STATES = useMemo(
     () => new Set(["DETENIDO", "EN_PROCESO", "CONCLUIDO"]),
     []
@@ -134,15 +90,10 @@ function TablaInner({
   );
   const showEditColumn = Boolean(onEditar) && filas.some((m) => puedeEditarMovimiento(m.estado));
   const showMeasuresColumn = false;
-  const tableColumnSpan = 10 + (showEditColumn ? 1 : 0) + (showMeasuresColumn ? 1 : 0);
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
   const [isDarkTheme, setIsDarkTheme] = useState(false);
-  const [measuresModal, setMeasuresModal] = useState<MeasuresModalState>({
-    open: false,
-    loading: false,
-    error: null,
-    tornoMedicion: DEFAULT_TORNO_MEDICION_STATE,
-  });
+  const { measuresModal, openMeasuresModal, closeMeasuresModal } =
+    useTornoMeasuresModal(API_BASE);
 
   const totalPaginas = useMemo(
     () => Math.max(1, Math.ceil(total / tamPagina)),
@@ -184,46 +135,15 @@ function TablaInner({
     if (pagina < totalPaginas) onPagina(pagina + 1);
   }, [pagina, totalPaginas, onPagina]);
 
-  const closeMeasuresModal = useCallback(() => {
-    setMeasuresModal((prev) => ({ ...prev, open: false, error: null }));
-  }, []);
-
-  const handleViewMeasures = useCallback(async (movement: Movement) => {
-    const movementId = Number(movement.id);
-    if (!Number.isFinite(movementId) || movementId <= 0) return;
-
-    setMeasuresModal({
-      open: true,
-      loading: true,
-      error: null,
-      tornoMedicion: DEFAULT_TORNO_MEDICION_STATE,
-      locomotiveLabel: String(movement.locomotora ?? ""),
-      companyName: movement.empresaNombre,
-    });
-
-    try {
-      const response = await fetch(`${API_BASE}/movimientos/${movementId}/edicion`, {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        throw new Error(`No se pudo cargar medidas (${response.status}).`);
-      }
-      const payload = await response.json();
-      const parsed = parseTornoMedicionFromApi(payload);
-      setMeasuresModal((prev) => ({
-        ...prev,
-        loading: false,
-        tornoMedicion: parsed,
-        locomotiveLabel: String(payload?.movimiento?.locomotiveNumber ?? movement.locomotora ?? ""),
-        companyName: payload?.movimiento?.empresa?.nombre ?? movement.empresaNombre,
-      }));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "No se pudieron cargar las medidas.";
-      setMeasuresModal((prev) => ({ ...prev, loading: false, error: message }));
-    }
-  }, []);
+  const handleViewMeasures = useCallback(
+    (movement: Movement) =>
+      openMeasuresModal({
+        movementId: movement.id,
+        locomotiveLabel: String(movement.locomotora ?? ""),
+        companyName: movement.empresaNombre,
+      }),
+    [openMeasuresModal]
+  );
 
   /* Page pills */
   const pageNumbers = useMemo(() => {
@@ -390,40 +310,43 @@ function TablaInner({
           <span className="font-bold text-sky-700 dark:text-sky-300">{value || "—"}</span>
         ),
       },
-      {
-        title: "Solicitud",
-        dataIndex: "fechaSolicitud",
-        key: "solicitud",
-        width: 150,
-        sorter: true,
-        sortOrder: getSortOrder("solicitud"),
-        render: (value: Movement["fechaSolicitud"]) => (
-          <span className="font-mono text-xs text-slate-600 dark:text-slate-300">{formatoFecha(value)}</span>
-        ),
-      },
-      {
-        title: "Inicio",
-        dataIndex: "fechaInicio",
-        key: "inicio",
-        width: 150,
-        sorter: true,
-        sortOrder: getSortOrder("inicio"),
-        render: (value: Movement["fechaInicio"]) => (
-          <span className="font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-300">{formatoFecha(value)}</span>
-        ),
-      },
-      {
-        title: "Fin",
-        dataIndex: "fechaFin",
-        key: "fin",
-        width: 150,
-        sorter: true,
-        sortOrder: getSortOrder("fin"),
-        render: (value: Movement["fechaFin"]) => (
-          <span className="font-mono text-xs text-slate-600 dark:text-slate-300">{formatoFecha(value)}</span>
-        ),
-      },
-      {
+    ];
+
+    base.push({
+      title: "Solicitud",
+      dataIndex: "fechaSolicitud",
+      key: "solicitud",
+      width: 150,
+      sorter: true,
+      sortOrder: getSortOrder("solicitud"),
+      render: (value: Movement["fechaSolicitud"]) => (
+        <span className="font-mono text-xs text-slate-600 dark:text-slate-300">{formatoFecha(value)}</span>
+      ),
+    });
+    base.push({
+      title: "Inicio",
+      dataIndex: "fechaInicio",
+      key: "inicio",
+      width: 150,
+      sorter: true,
+      sortOrder: getSortOrder("inicio"),
+      render: (value: Movement["fechaInicio"]) => (
+        <span className="font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-300">{formatoFecha(value)}</span>
+      ),
+    });
+    base.push({
+      title: "Fin",
+      dataIndex: "fechaFin",
+      key: "fin",
+      width: 150,
+      sorter: true,
+      sortOrder: getSortOrder("fin"),
+      render: (value: Movement["fechaFin"]) => (
+        <span className="font-mono text-xs text-slate-600 dark:text-slate-300">{formatoFecha(value)}</span>
+      ),
+    });
+    if (puedeVerDuracion) {
+      base.push({
         title: "Resolución",
         key: "resolucion",
         width: 140,
@@ -433,8 +356,10 @@ function TablaInner({
             {formatoDuracionMovimiento(movement.fechaInicio, movement.fechaFin)}
           </span>
         ),
-      },
-      {
+      });
+    }
+
+    base.push({
         title: "Estado",
         dataIndex: "estado",
         key: "estado",
@@ -443,8 +368,7 @@ function TablaInner({
         sorter: true,
         sortOrder: getSortOrder("estado"),
         render: (value: Movement["estado"]) => <BadgeEstado estado={value} />,
-      },
-    ];
+    });
 
     if (showEditColumn) {
       base.push({
@@ -474,7 +398,7 @@ function TablaInner({
     }
 
     return base;
-  }, [clienteSoloIds, getSortOrder, onEditar, puedeEditarMovimiento, showEditColumn, startIndex]);
+  }, [clienteSoloIds, getSortOrder, onEditar, puedeEditarMovimiento, puedeVerDuracion, showEditColumn, startIndex]);
 
   const handleAntTableChange = useCallback(
     (
@@ -542,6 +466,7 @@ function TablaInner({
                 showMeasures={showMeasuresColumn}
                 onViewMeasures={handleViewMeasures}
                 clienteSoloIds={clienteSoloIds}
+                canViewDuration={puedeVerDuracion}
               />
             ))
           )}
@@ -602,6 +527,7 @@ function TablaInner({
                     fechaFinFmt={formatoFecha(movement.fechaFin)}
                     isPriorityHigh={movement.prioridad === "ALTA"}
                     clienteSoloIds={clienteSoloIds}
+                    canViewDuration={puedeVerDuracion}
                   />
                 ),
               }}
@@ -726,7 +652,7 @@ function TablaInner({
 
 export default memo(TablaInner);
 
-/* ================== FILA (MEMOIZADA) ================== */
+/* ================== TARJETA MOVIL ================== */
 
 interface MovimientoRowProps {
   movement: Movement;
@@ -737,217 +663,9 @@ interface MovimientoRowProps {
   canEdit?: boolean;
   showMeasures?: boolean;
   onViewMeasures?: (movement: Movement) => void;
-  tableColumnSpan?: number;
   clienteSoloIds?: boolean;
+  canViewDuration?: boolean;
 }
-
-const MovimientoRow = memo(function MovimientoRow({
-  movement,
-  isOpen,
-  onToggle,
-  onEditar,
-  showEdit = false,
-  canEdit = true,
-  showMeasures = false,
-  onViewMeasures,
-  tableColumnSpan = 10,
-  clienteSoloIds = false,
-}: MovimientoRowProps) {
-  const handleRowClick = useCallback(() => {
-    onToggle(movement.id);
-  }, [onToggle, movement.id]);
-
-  const handleEditClick = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
-      event.stopPropagation();
-      if (onEditar && canEdit) onEditar(movement.id);
-    },
-    [onEditar, movement.id, canEdit]
-  );
-
-  const handleMeasuresClick = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
-      event.stopPropagation();
-      if (onViewMeasures) onViewMeasures(movement);
-    },
-    [onViewMeasures, movement]
-  );
-
-  const fechaSolicitudFmt = useMemo(
-    () => formatoFecha(movement.fechaSolicitud),
-    [movement.fechaSolicitud]
-  );
-  const fechaInicioFmt = useMemo(
-    () => formatoFecha(movement.fechaInicio),
-    [movement.fechaInicio]
-  );
-  const fechaFinFmt = useMemo(
-    () => formatoFecha(movement.fechaFin),
-    [movement.fechaFin]
-  );
-
-  const isPriorityHigh = movement.prioridad === "ALTA";
-
-  return (
-    <Fragment>
-      {/* FILA PRINCIPAL */}
-      <tr
-        onClick={handleRowClick}
-        className={`group cursor-pointer border-l-[3px] transition-all duration-200 ${isOpen
-          ? `border-l-emerald-500 ${styles.rowExpanded}`
-          : isPriorityHigh
-            ? `border-l-rose-400 dark:border-l-rose-500 ${styles.rowBase}`
-            : `border-l-transparent ${styles.rowBase}`
-          }`}
-      >
-        {/* Chevron - Hidden on mobile, shown on sm+ */}
-        <td className="hidden sm:table-cell px-2 py-3 text-center align-middle sm:px-4 sm:py-4">
-          <div className="flex items-center justify-center">
-            <ChevronDown
-              size={16}
-              className={`${styles.chevron} ${isOpen ? styles.chevronExpanded : ""
-                }`}
-            />
-          </div>
-        </td>
-
-        <td className="hidden sm:table-cell px-2 py-3 align-middle font-mono text-xs text-slate-400 sm:px-4 sm:py-4 sm:text-xs">
-          <span className="rounded-md bg-slate-50 dark:bg-slate-800/60 px-1.5 py-0.5">
-            #{movement.id}
-          </span>
-        </td>
-
-        {/* Locomotora */}
-        {/* Locomotora - With embedded chevron on mobile */}
-        <td className="px-3 py-4 align-middle sm:px-4 sm:py-4">
-          <div className="flex items-center gap-3">
-            {/* Mobile Chevron */}
-            <div className="sm:hidden text-slate-400">
-              <ChevronDown size={18} className={`transition-transform duration-200 ${isOpen ? "rotate-180 text-emerald-500" : ""}`} />
-            </div>
-
-            <div
-              className={`flex h-10 w-10 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${isOpen
-                ? "bg-gradient-to-br from-emerald-100 to-emerald-50 text-emerald-600 dark:from-emerald-500/20 dark:to-emerald-500/10 dark:text-emerald-400 shadow-sm"
-                : "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 group-hover:bg-emerald-50 group-hover:text-emerald-500 dark:group-hover:bg-emerald-900/20 dark:group-hover:text-emerald-400"
-                }`}
-            >
-              <TrainFront size={18} strokeWidth={2} />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-sm font-bold text-slate-900 dark:text-slate-100 sm:text-base tabular-nums">
-                {movement.locomotora}
-              </span>
-              <div className="flex items-center gap-2">
-                <span className="sm:hidden font-mono text-[10px] text-slate-400 bg-slate-100 dark:bg-slate-800 px-1 rounded">#{movement.id}</span>
-                {isPriorityHigh && (
-                  <span className="text-[9px] font-bold text-rose-500 dark:text-rose-400 uppercase tracking-wider">
-                    Alta
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </td>
-
-        {/* Tipo de movimiento */}
-        <td className="px-2 py-3 text-center align-middle sm:px-4 sm:py-4">
-          <BadgeTipoMovimiento tipo={movement.tipoMovimiento} />
-        </td>
-
-        {/* Localidad */}
-        <td className="hidden px-2 py-3 align-middle md:table-cell sm:px-4 sm:py-4">
-          <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-            <MapPin size={13} className="shrink-0 text-slate-300 dark:text-slate-600" />
-            <span className="block max-w-[120px] truncate text-[11px] font-medium md:max-w-[160px] lg:max-w-[220px] sm:text-xs">
-              {movement.localidadNombre || "—"}
-            </span>
-          </div>
-        </td>
-
-        {/* Empresa */}
-        <td className="hidden px-2 py-3 align-middle md:table-cell sm:px-4 sm:py-4">
-          <div className="max-w-[120px] truncate text-[11px] font-medium text-slate-600 dark:text-slate-300 sm:max-w-[180px] lg:max-w-[220px] sm:text-xs">
-            {movement.empresaNombre}
-          </div>
-        </td>
-
-        {/* Fechas */}
-        <td className="hidden px-2 py-3 align-middle font-mono text-[11px] text-slate-500 sm:px-4 sm:py-4 sm:text-xs lg:table-cell">
-          {fechaSolicitudFmt}
-        </td>
-        <td className="hidden px-2 py-3 align-middle font-mono text-[11px] font-medium text-emerald-600 dark:text-emerald-500 sm:px-4 sm:py-4 sm:text-xs xl:table-cell">
-          {fechaInicioFmt}
-        </td>
-        <td className="hidden px-2 py-3 align-middle font-mono text-[11px] text-slate-500 sm:px-4 sm:py-4 sm:text-xs xl:table-cell">
-          {fechaFinFmt}
-        </td>
-
-        <td className="px-2 py-3 text-center align-middle sm:px-4 sm:py-4">
-          <BadgeEstado estado={movement.estado} />
-        </td>
-
-        {showEdit && (
-          <td className="px-2 py-3 text-center align-middle sm:px-4 sm:py-4">
-            {canEdit ? (
-              <button
-                type="button"
-                onClick={handleEditClick}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-xs font-semibold text-emerald-700 transition-all duration-200 hover:bg-emerald-100 hover:border-emerald-300 hover:shadow-sm active:scale-95 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
-                title="Editar movimiento"
-              >
-                <Edit3 size={13} />
-                <span className="hidden sm:inline">Editar</span>
-              </button>
-            ) : (
-              <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500">
-                No editable
-              </span>
-            )}
-          </td>
-        )}
-        {showMeasures && (
-          <td className="px-2 py-3 text-center align-middle sm:px-4 sm:py-4">
-            {movement.torno ? (
-              <button
-                type="button"
-                onClick={handleMeasuresClick}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-2 text-xs font-semibold text-sky-700 transition-all duration-200 hover:bg-sky-100 hover:border-sky-300 hover:shadow-sm active:scale-95 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-300 dark:hover:bg-sky-900/50"
-                title="Ver medidas de torno"
-              >
-                <Info size={13} />
-                <span className="hidden sm:inline">Medidas</span>
-              </button>
-            ) : (
-              <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500">
-                N/A
-              </span>
-            )}
-          </td>
-        )}
-      </tr>
-
-      {/* DETALLE */}
-      <tr className="m-0 border-0 p-0">
-        <td colSpan={tableColumnSpan} className="m-0 border-0 p-0">
-          <div
-            className={`${styles.expandedContentContainer} ${isOpen ? styles.show : ""
-              }`}
-          >
-            <ExpandedDetailsContent
-              movement={movement}
-              fechaSolicitudFmt={fechaSolicitudFmt}
-              fechaInicioFmt={fechaInicioFmt}
-              fechaFinFmt={fechaFinFmt}
-              isPriorityHigh={isPriorityHigh}
-              clienteSoloIds={clienteSoloIds}
-            />
-          </div>
-        </td>
-      </tr>
-    </Fragment>
-  );
-});
 
 const MobileCard = memo(function MobileCard({
   movement,
@@ -959,6 +677,7 @@ const MobileCard = memo(function MobileCard({
   showMeasures = false,
   onViewMeasures,
   clienteSoloIds = false,
+  canViewDuration = true,
 }: MovimientoRowProps) {
   const fechaSolicitudFmt = useMemo(
     () => formatoFecha(movement.fechaSolicitud),
@@ -1092,6 +811,12 @@ const MobileCard = memo(function MobileCard({
               {fechaInicioFmt}
             </div>
           </div>
+          <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-2.5 py-2">
+            <div className="text-[10px] uppercase tracking-wider text-slate-400">Fin</div>
+            <div className="text-xs font-semibold text-slate-700 dark:text-slate-200 tabular-nums">
+              {fechaFinFmt}
+            </div>
+          </div>
         </div>
 
         <div className="mt-3 flex items-center justify-between">
@@ -1147,6 +872,7 @@ const MobileCard = memo(function MobileCard({
           fechaFinFmt={fechaFinFmt}
           isPriorityHigh={isPriorityHigh}
           clienteSoloIds={clienteSoloIds}
+          canViewDuration={canViewDuration}
         />
       </div>
     </div>
@@ -1160,6 +886,7 @@ function ExpandedDetailsContent({
   fechaFinFmt,
   isPriorityHigh,
   clienteSoloIds,
+  canViewDuration,
 }: {
   movement: Movement;
   fechaSolicitudFmt: string;
@@ -1167,6 +894,7 @@ function ExpandedDetailsContent({
   fechaFinFmt: string;
   isPriorityHigh: boolean;
   clienteSoloIds: boolean;
+  canViewDuration: boolean;
 }) {
   return (
     <div
@@ -1206,10 +934,12 @@ function ExpandedDetailsContent({
               value={fechaFinFmt}
               className="xl:hidden"
             />
-            <InfoBlock
-              label="Resolución"
-              value={formatoDuracionMovimiento(movement.fechaInicio, movement.fechaFin)}
-            />
+            {canViewDuration ? (
+              <InfoBlock
+                label="Resolución"
+                value={formatoDuracionMovimiento(movement.fechaInicio, movement.fechaFin)}
+              />
+            ) : null}
           </div>
         </div>
 
@@ -1321,132 +1051,6 @@ function ExpandedDetailsContent({
   );
 }
 
-/* ================== UI COMPONENTS ================== */
-
-interface HeaderCellProps {
-  label: string;
-  icon: React.ElementType;
-  onSort: (c: CampoOrden, d: DireccionOrden) => void;
-  sortKey: CampoOrden;
-  currentSort: CampoOrden;
-  dir: DireccionOrden;
-  align?: "left" | "center" | "right";
-  className?: string;
-}
-
-const HeaderCell = memo(function HeaderCell({
-  label,
-  icon: Icon,
-  onSort,
-  sortKey,
-  currentSort,
-  dir,
-  align = "left",
-  className = "",
-}: HeaderCellProps) {
-  const active = sortKey === currentSort;
-
-  const handleClick = useCallback(() => {
-    const nextDir: DireccionOrden =
-      active && dir === "asc" ? "desc" : "asc";
-    onSort(sortKey, nextDir);
-  }, [active, dir, onSort, sortKey]);
-
-  return (
-    <th
-      className={`cursor-pointer select-none px-2 py-3 text-[10px] transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/50 sm:px-4 sm:py-4 sm:text-[11px] ${className}`}
-      onClick={handleClick}
-    >
-      <div
-        className={`flex items-center gap-1.5 ${align === "center" ? "justify-center" : ""
-          } ${active
-            ? "text-emerald-600 dark:text-emerald-400"
-            : "text-slate-500 dark:text-slate-400"
-          }`}
-      >
-        <Icon size={13} className={active ? "opacity-100" : "opacity-60"} />
-        <span>{label}</span>
-        <div className="flex flex-col -space-y-0.5">
-          <ArrowUp
-            size={8}
-            className={`transition-opacity ${active && dir === "asc" ? "opacity-100" : "opacity-25"}`}
-          />
-          <ArrowDown
-            size={8}
-            className={`transition-opacity ${active && dir === "desc" ? "opacity-100" : "opacity-25"}`}
-          />
-        </div>
-      </div>
-    </th>
-  );
-});
-
-function BadgeEstado({ estado }: { estado: string }) {
-  const badge = BADGE_ESTADO[estado] ?? DEFAULT_BADGE;
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide shadow-sm ${badge.bg} ${badge.text}`}
-    >
-      <span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} />
-      {estado}
-    </span>
-  );
-}
-
-function normalizeTipoMovimiento(tipo: string | null | undefined): string {
-  return String(tipo ?? "")
-    .trim()
-    .toUpperCase()
-    .replace(/[\s-]+/g, "_");
-}
-
-function formatGenericTipoMovimiento(tipo: string): string {
-  return tipo
-    .trim()
-    .replace(/_/g, " ")
-    .toLowerCase()
-    .replace(/^\w/, (match) => match.toUpperCase());
-}
-
-function formatTipoMovimientoLabel(tipo: string | null | undefined): string {
-  const raw = String(tipo ?? "").trim();
-  const key = normalizeTipoMovimiento(raw);
-
-  if (!raw || key === "N/A" || key === "NA") return "—";
-  if (key === "MD_TRABAJANDO" || key === "MD_TRABAJNDO") return "MD trabajando";
-  if (key === "REMOLCADA" || key === "REMOLCADO") return "Remolcada";
-  return formatGenericTipoMovimiento(raw);
-}
-
-function BadgeTipoMovimiento({
-  tipo,
-  compact = false,
-}: {
-  tipo: string | null | undefined;
-  compact?: boolean;
-}) {
-  const key = normalizeTipoMovimiento(tipo);
-  const label = formatTipoMovimientoLabel(tipo);
-  const tone =
-    key === "MD_TRABAJANDO" || key === "MD_TRABAJNDO"
-      ? "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-900/25 dark:text-indigo-300"
-      : key === "REMOLCADA" || key === "REMOLCADO"
-        ? "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-800 dark:bg-cyan-900/25 dark:text-cyan-300"
-        : "border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400";
-
-  return (
-    <span
-      className={`inline-flex max-w-full items-center rounded-lg border font-bold uppercase tracking-wide shadow-sm ${tone} ${
-        compact ? "px-2 py-0.5 text-[9px]" : "px-2.5 py-1.5 text-[10px]"
-      }`}
-      title={label === "—" ? "Tipo no disponible" : label}
-    >
-      <span className="truncate">{label}</span>
-    </span>
-  );
-}
-
 const SECTION_COLORS: Record<string, string> = {
   emerald: "border-l-emerald-400 dark:border-l-emerald-500",
   blue: "border-l-sky-400 dark:border-l-sky-500",
@@ -1500,28 +1104,6 @@ function InfoBlock({ label, value, className }: InfoBlockProps) {
   );
 }
 
-function BooleanChip({
-  label,
-  type,
-}: {
-  label: string;
-  type: "success" | "danger";
-}) {
-  const baseClass =
-    type === "success"
-      ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800"
-      : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/20 dark:text-rose-400 dark:border-rose-800";
-  const Icon = type === "success" ? CheckCircle2 : AlertTriangle;
-
-  return (
-    <span
-      className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-bold ${baseClass}`}
-    >
-      <Icon size={11} /> {label}
-    </span>
-  );
-}
-
 interface MiniBadgeProps {
   label: string;
   icon: React.ElementType;
@@ -1533,27 +1115,3 @@ function MiniBadge({ label, icon: Icon }: MiniBadgeProps) {
     </span>
   );
 }
-
-const formatoFecha = (iso: string | null): string => {
-  if (!iso) return "—";
-  const timestamp = Date.parse(iso);
-  if (Number.isNaN(timestamp)) return iso;
-  return new Date(timestamp).toLocaleString("es-MX", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-};
-
-const formatoDuracionMovimiento = (inicio?: string | null, fin?: string | null): string => {
-  if (!inicio || !fin) return "—";
-  const start = Date.parse(inicio);
-  const end = Date.parse(fin);
-  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return "—";
-  const minutes = Math.round((end - start) / 60000);
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest ? `${hours} h ${rest} min` : `${hours} h`;
-};

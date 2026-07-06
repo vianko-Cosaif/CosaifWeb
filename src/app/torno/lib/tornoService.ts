@@ -2,6 +2,7 @@
 import { fetchJSON } from "@/lib/api";
 import type {
   TornoFilters,
+  TornoFinalMeasuresPayload,
   TornoHistoryItem,
   TornoHistoryTab,
   TornoImageRef,
@@ -16,13 +17,18 @@ import type {
   TornoPagination,
   TornoReopenPayload,
   TornoResolvePayload,
+  TornoServiceStartPayload,
   TornoServiceStatus,
+  TornoWheelSide,
+  TornoWheelStatus,
+  TornoWheelWork,
+  TornoWorkSummary,
 } from "./types";
 
 const API_BASE = "/bff";
 const DEFAULT_PAGE_SIZE = 25;
-const ACTIVE_STATUSES = new Set(["SOLICITADO", "EN_PROCESO"]);
-const DONE_STATUSES = new Set(["CONCLUIDO", "DETENIDO", "CANCELADO"]);
+const ACTIVE_STATUSES = new Set(["SOLICITADO", "EN_PROCESO", "DETENIDO"]);
+const DONE_STATUSES = new Set(["CONCLUIDO", "CANCELADO"]);
 const MEASURE_POSITIONS: TornoMeasurePosition[] = [
   "L1",
   "R1",
@@ -139,6 +145,10 @@ function normalizeStatus(value: any): TornoServiceStatus {
   return upper(value || "SIN_ESTADO") as TornoServiceStatus;
 }
 
+function normalizeWheelStatus(value: any): TornoWheelStatus {
+  return upper(value || "PENDIENTE") as TornoWheelStatus;
+}
+
 function isMovementLikeRecord(input: any) {
   return (
     input?.movimiento === input ||
@@ -241,6 +251,48 @@ function normalizeImages(input: any): TornoImageRef[] {
     .filter(Boolean) as TornoImageRef[];
 }
 
+function normalizeWheelSide(input: any): TornoWheelSide {
+  const side = upper(input);
+  return side === "R" ? "R" : "L";
+}
+
+function normalizeWheelWork(input: any): TornoWheelWork {
+  return {
+    id: input.id ?? `${input.lado ?? input.side ?? "L"}-${input.posicion ?? input.position ?? 0}`,
+    side: normalizeWheelSide(input.lado ?? input.side),
+    position: Number(input.posicion ?? input.position ?? input.eje ?? 0) || 0,
+    status: normalizeWheelStatus(input.estado ?? input.status),
+    startAt: normalizeDate(input.fechaInicio ?? input.startAt),
+    endAt: normalizeDate(input.fechaFin ?? input.endAt),
+    durationSeconds: input.duracionSegundos == null ? null : Number(input.duracionSegundos),
+    original: input,
+  };
+}
+
+function normalizeWorkSummary(input: any): TornoWorkSummary | null {
+  const source = input?.torno ?? input?.tornoG ?? input;
+  if (!source) return null;
+  const rawWheels = source.detalleRuedas ?? source.wheels ?? source.ruedas ?? [];
+  const wheels = Array.isArray(rawWheels)
+    ? rawWheels
+        .map(normalizeWheelWork)
+        .filter((wheel) => wheel.position >= 1 && wheel.position <= 6)
+        .sort((a, b) => a.position - b.position || a.side.localeCompare(b.side))
+    : [];
+
+  return {
+    id: source.id,
+    status: source.estado ?? source.status,
+    totalWheels: Number(source.cantidadRuedas ?? source.totalWheels ?? wheels.length) || wheels.length,
+    completedWheels:
+      Number(source.ruedasTerminadas ?? source.completedWheels) ||
+      wheels.filter((wheel) => upper(wheel.status) === "TERMINADO").length,
+    startAt: normalizeDate(source.fechaInicio ?? source.startAt),
+    endAt: normalizeDate(source.fechaFin ?? source.endAt),
+    wheels,
+  };
+}
+
 function normalizeChildIncident(input: any, parentId?: string | number): TornoIncidentChild {
   const resolved = input.resuelto === true || isResolvedStatus(input.estado ?? input.status ?? input.estatus);
   return {
@@ -324,23 +376,43 @@ function isResolvedStatus(value: any) {
 function normalizeHistoryItem(input: any): TornoHistoryItem {
   const status = normalizeStatus(getTornoServiceStatus(input));
   const incidentSource = input.incidentesPadre ?? input.incidentes ?? input.incidents ?? [];
+  const original = input?.original && typeof input.original === "object" ? input.original : input;
+  const movimiento = input.movimiento ?? input.ruedaSolicitud?.movimiento ?? input.ruedaSolicitud?.movimientoOriginal;
+  const work = normalizeWorkSummary(input);
 
   return {
     id: input.rondaServicioId ?? input.servicioId ?? input.id ?? input.tornoId ?? input.servicioTornoId,
     servicioId: input.servicioId,
-    rondaServicioId: input.rondaServicioId,
+    rondaServicioId: input.rondaServicioId ?? input.id,
+    ruedaSolicitudId: input.ruedaSolicitudId ?? input.ruedaSolicitud?.id ?? null,
+    movimientoId: input.movimientoId ?? movimiento?.id ?? movimiento?.movimientoId ?? null,
+    localidadId: input.localidadId ?? movimiento?.localidadId ?? movimiento?.localidad?.id ?? null,
+    empresaId: input.empresaId ?? movimiento?.empresaId ?? movimiento?.empresa?.id ?? null,
     status,
+    storedStatus: normalizeStatus(input.statusAlmacenado ?? input.storedStatus ?? status),
     locomotive: input.numeroLocomotora ?? input.locomotiveNumber ?? input.locomotora,
     numeroLocomotora: input.numeroLocomotora ?? input.locomotiveNumber ?? input.locomotora,
     service: input.servicio ?? input.service ?? "Torno",
-    startAt: normalizeDate(input.inicio ?? input.fechaInicio ?? input.torno?.fechaInicio),
-    endAt: normalizeDate(input.fin ?? input.fechaFin ?? input.torno?.fechaFin),
+    companyName: asText(input.empresaNombre ?? input.companyName ?? input.empresa ?? movimiento?.empresa, ""),
+    localityName: asText(input.localidadNombre ?? input.localityName ?? input.localidad ?? movimiento?.localidad, ""),
+    originName: asText(input.origenNombre ?? input.originName ?? input.origen ?? movimiento?.viaOrigen, ""),
+    destinationName: asText(input.destinoNombre ?? input.destinationName ?? input.destino ?? movimiento?.viaDestino, ""),
+    priority: input.prioridad ?? movimiento?.prioridad ?? null,
+    rondaNumber: input.rondaNumero ?? input.ronda?.numero ?? input.rondaId ?? null,
+    orderNumber: input.orden ?? input.numeroOrden ?? movimiento?.orden ?? null,
+    startAt: normalizeDate(input.inicio ?? input.fechaInicio ?? input.torno?.fechaInicio ?? input.tornoG?.fechaInicio),
+    endAt: normalizeDate(input.fin ?? input.fechaFin ?? input.torno?.fechaFin ?? input.tornoG?.fechaFin),
     date: normalizeDate(input.creadoEn ?? input.fecha ?? input.fechaSolicitud ?? input.createdAt),
-    operator: asText(input.tornero ?? input.operador ?? input.usuario ?? input.user ?? input.torneroId, ""),
+    updatedAt: normalizeDate(input.actualizadoEn ?? input.updatedAt),
+    operator: asText(input.tornero ?? input.operador ?? input.usuario ?? input.user ?? input.torneroNombre ?? input.torneroId, ""),
+    operatorId: input.torneroId ?? input.operadorId ?? null,
     measuresRequested: normalizeMeasures(input.medidasSolicitadas ?? input.medidasInicio ?? input.medidasIniciales),
     measuresFinal: normalizeMeasures(input.medidasFinales ?? input.medidasFin),
+    work,
+    activeIncidents: Number(input.incidentesActivos ?? 0) || 0,
+    hasIncident: Boolean(input.tieneIncidente ?? (Array.isArray(incidentSource) && incidentSource.length > 0)),
     incidents: Array.isArray(incidentSource) ? groupIncidents(incidentSource) : [],
-    original: input,
+    original,
   };
 }
 
@@ -412,7 +484,7 @@ export async function listTornoHistory(
 ): Promise<TornoListResult<TornoHistoryItem>> {
   const page = filters.page ?? 1;
   const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
-  const status = tab === "activos" ? "SOLICITADO,EN_PROCESO" : "CONCLUIDO,DETENIDO,CANCELADO";
+  const status = tab === "activos" ? "SOLICITADO,EN_PROCESO,DETENIDO" : "CONCLUIDO,CANCELADO";
   const query = buildQuery({ ...filters, status, page, pageSize });
   const raw = await firstJson<any>([`${API_BASE}/torno/rondas-servicio/historial?${query}`]);
   const rows = unwrapArray(raw);
@@ -430,7 +502,28 @@ export async function getTornoHistoryDetail(id: string | number): Promise<TornoH
   ]);
   const first = Array.isArray(raw) ? raw[0] : unwrapArray(raw)[0] ?? raw;
   if (!first) throw new Error("Servicio Torno no encontrado");
-  const detail = normalizeHistoryItem(first);
+  let detail = normalizeHistoryItem(first);
+  try {
+    const serviceId = detail.rondaServicioId ?? detail.id;
+    const rawDetail = await firstJson<any>([
+      `${API_BASE}/torno/rondas-servicio/${encodeURIComponent(String(serviceId))}`,
+    ]);
+    const serviceDetail = normalizeHistoryItem(rawDetail);
+    detail = {
+      ...serviceDetail,
+      ...detail,
+      ruedaSolicitudId: serviceDetail.ruedaSolicitudId ?? detail.ruedaSolicitudId,
+      measuresRequested: Object.keys(detail.measuresRequested ?? {}).length
+        ? detail.measuresRequested
+        : serviceDetail.measuresRequested,
+      measuresFinal: Object.keys(detail.measuresFinal ?? {}).length
+        ? detail.measuresFinal
+        : serviceDetail.measuresFinal,
+      work: serviceDetail.work ?? detail.work,
+    };
+  } catch {
+    // Historial puede operar sin detalle crudo, salvo cierre con medidas finales.
+  }
   try {
     const incidentResult = await listTornoIncidents({
       rondaServicioId: detail.rondaServicioId ?? id,
@@ -444,6 +537,92 @@ export async function getTornoHistoryDetail(id: string | number): Promise<TornoH
     detail.incidents = detail.incidents ?? [];
   }
   return detail;
+}
+
+export async function startTornoService(
+  rondaServicioId: string | number,
+  payload: TornoServiceStartPayload,
+) {
+  return firstMutation([
+    {
+      url: `${API_BASE}/torno/rondas-servicio/${rondaServicioId}/iniciar`,
+      init: jsonInit("POST", payload),
+    },
+  ]);
+}
+
+export async function startTornoAxis(
+  rondaServicioId: string | number,
+  position: number,
+  payload: { lados?: TornoWheelSide[]; fechaInicio?: string } = {},
+) {
+  return firstMutation([
+    {
+      url: `${API_BASE}/torno/rondas-servicio/${rondaServicioId}/ejes/${position}/iniciar`,
+      init: jsonInit("POST", payload),
+    },
+  ]);
+}
+
+export async function finishTornoAxis(
+  rondaServicioId: string | number,
+  position: number,
+  payload: { lados?: TornoWheelSide[]; fechaFin?: string } = {},
+) {
+  return firstMutation([
+    {
+      url: `${API_BASE}/torno/rondas-servicio/${rondaServicioId}/ejes/${position}/finalizar`,
+      init: jsonInit("POST", payload),
+    },
+  ]);
+}
+
+function measuresBody(payload: TornoFinalMeasuresPayload) {
+  const body: Record<string, unknown> = {
+    ruedaSolicitudId: Number(payload.ruedaSolicitudId),
+    torneroId: Number(payload.torneroId),
+  };
+  for (const position of MEASURE_POSITIONS) {
+    const key = position.toLowerCase();
+    body[key] = payload.measures[position] ?? "";
+  }
+  return body;
+}
+
+export async function upsertTornoFinalMeasures(payload: TornoFinalMeasuresPayload) {
+  return firstMutation([
+    {
+      url: `${API_BASE}/torno/ruedas-finales`,
+      init: jsonInit("POST", measuresBody(payload)),
+    },
+  ]);
+}
+
+export async function concludeTornoService(
+  rondaServicioId: string | number,
+  payload: { ruedasFinalId?: string | number; fin?: string } = {},
+) {
+  return firstMutation([
+    {
+      url: `${API_BASE}/torno/rondas-servicio/${rondaServicioId}/concluir`,
+      init: jsonInit("POST", {
+        ruedasFinalId: payload.ruedasFinalId == null ? undefined : Number(payload.ruedasFinalId),
+        fin: payload.fin,
+      }),
+    },
+  ]);
+}
+
+export async function cancelTornoService(
+  rondaServicioId: string | number,
+  payload: { fin?: string } = {},
+) {
+  return firstMutation([
+    {
+      url: `${API_BASE}/torno/rondas-servicio/${rondaServicioId}/cancelar-externo`,
+      init: jsonInit("POST", payload),
+    },
+  ]);
 }
 
 export async function listTornoIncidents(filters: TornoFilters = {}) {

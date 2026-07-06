@@ -1,23 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-// home por rol
-const HOME: Record<string, string> = {
-  CLIENTE: "/cliente",
-  CLIENTE_ADMIN: "/cliente",
-  CLIENTE_COOR: "/cliente",
-  ARRASTRE_TORREON: "/cliente/torreon",
-  SUPERVISOR: "/supervisor",
-  MAQUINISTA: "/maquinista",
-  OPERADOR: "/operador",
-  ADMINISTRADOR: "/admin",
-  COORDINADOR: "/coordinador",
-};
-// reglas por ruta
-const RULES: [RegExp, string[]][] = [
-  [/^\/cliente(\/|$)/i, ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON"]],
-  [/^\/supervisor(\/|$)/i, ["SUPERVISOR"]],
-  [/^\/administrador(\/|$)/i, ["ADMINISTRADOR"]],
-  [/^\/coordinador(\/|$)/i, ["COORDINADOR"]],
-];
+import { type NextRequest, NextResponse } from "next/server";
+import { evaluateRoute } from "@/lib/routePolicy";
 
 export function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
@@ -32,43 +14,19 @@ export function middleware(req: NextRequest) {
     pathname === "/sw.js"
   ) return NextResponse.next();
 
-  // requiere sesión
   const token = req.cookies.get("token")?.value;
-  const role  = req.cookies.get("role")?.value?.toUpperCase() || "";
-  if (!token) {
-    const url = new URL("/login", req.url);
-    url.searchParams.set("next", pathname + search);
-    return NextResponse.redirect(url);
+  const role = req.cookies.get("role")?.value?.toUpperCase() || "";
+  const evaluation = evaluateRoute({
+    pathname,
+    search,
+    isAuthenticated: Boolean(token),
+    role,
+  });
+
+  if (!evaluation.allow && evaluation.redirectTo) {
+    return NextResponse.redirect(new URL(evaluation.redirectTo, req.url));
   }
 
-  // autorización por rol
-  for (const [re, roles] of RULES) {
-    if (re.test(pathname) && !roles.includes(role)) {
-      const url = new URL(HOME[role] ?? "/login", req.url);
-      return NextResponse.redirect(url);
-    }
-  }
-
-  if (role === "ARRASTRE_TORREON" && pathname.startsWith("/cliente") && !pathname.startsWith("/cliente/torreon")) {
-    const url = new URL("/cliente/torreon", req.url);
-    return NextResponse.redirect(url);
-  }
-
-  if (pathname === "/") {
-    const url = new URL(HOME[role] ?? "/cliente", req.url);
-    return NextResponse.redirect(url);
-
-  }if(pathname === "/"){
-    const url = new URL (HOME [role] ?? "/supervisor", req.url);
-    return NextResponse.redirect (url);
-  }if(pathname === "/"){
-    const url = new URL (HOME [role] ?? "/administrador", req.url);
-    return NextResponse.redirect (url);
-
-  } if (pathname === "/") { 
-    const url = new  URL  (HOME [role] ?? "/coordinador", req.url);
-    return NextResponse.redirect (url);
-  } 
   return NextResponse.next();
 }
 
