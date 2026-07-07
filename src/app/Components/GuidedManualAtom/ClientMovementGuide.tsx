@@ -9,12 +9,13 @@ import {
 import {
   CLIENT_MOVEMENT_GUIDE,
   CLIENT_MOVEMENT_GUIDE_ID,
+  CLIENT_MOVEMENT_MOBILE_GUIDE,
 } from "./ClientMovementGuide.config";
 
 export function ClientMovementGuideProvider({ children }: { children: ReactNode }) {
   return (
     <GuidedManualProvider
-      manuals={[CLIENT_MOVEMENT_GUIDE]}
+      manuals={[CLIENT_MOVEMENT_GUIDE, CLIENT_MOVEMENT_MOBILE_GUIDE]}
       defaultManualId={CLIENT_MOVEMENT_GUIDE_ID}
       transition={{
         waitForTarget: true,
