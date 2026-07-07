@@ -133,7 +133,7 @@ function MeasurePickerModal(props: {
   };
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/50 p-3 sm:items-center">
+    <div className="fixed inset-0 z-[100010] flex items-end justify-center bg-black/50 p-3 sm:items-center">
       <div className="w-full max-w-md overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
         <div className="border-b border-slate-200 bg-emerald-50 px-5 py-4 dark:border-zinc-800 dark:bg-emerald-950/30">
           <div className="flex items-start gap-3">
@@ -501,7 +501,7 @@ export default function MobileGuidedTornoMeasuresStep({
       </div>
 
       {wheelModalOpen && selectedPosition ? (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50 p-3 sm:items-center">
+        <div className="fixed inset-0 z-[100010] flex items-end justify-center bg-black/50 p-3 sm:items-center">
           <div className="flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
             <div className="flex items-start gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
               <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-lg font-black text-white">
