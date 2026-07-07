@@ -192,6 +192,10 @@ function buildCreateMovementTornoGuideSteps(roleBase: string): GuidedManualStep[
       title: "Selecciona el numero de ruedas",
       description: "Indica cuantas ruedas se mediran. La tabla se ajustara automaticamente al total seleccionado.",
       mode: "wizard",
+      when: {
+        type: "target",
+        targetId: "torno-wheel-count",
+      },
     },
     {
       id: "torno-movement-type",
@@ -199,13 +203,21 @@ function buildCreateMovementTornoGuideSteps(roleBase: string): GuidedManualStep[
       title: "Define el tipo de movimiento",
       description: "Marca Trabajando o Remolcada. Si eliges Remolcada, completa tambien la direccion de empuje.",
       mode: "wizard",
+      when: {
+        type: "target",
+        targetId: "torno-wheel-count",
+      },
     },
     {
       id: "torno-measures-table",
       targetId: "torno-measures-table",
       title: "Captura las medidas",
-      description: "Registra las medidas de cada rueda usando entero, numerador y denominador. Completa las posiciones requeridas antes de guardar.",
+      description: "Registra las medidas de cada rueda usando entero, numerador and denominador. Completa las posiciones requeridas antes de guardar.",
       mode: "wizard",
+      when: {
+        type: "target",
+        targetId: "torno-wheel-count",
+      },
     },
     {
       id: "torno-save-measures",
@@ -213,6 +225,26 @@ function buildCreateMovementTornoGuideSteps(roleBase: string): GuidedManualStep[
       title: "Guarda las mediciones",
       description: "Pulsa Guardar y Continuar para conservar las medidas y pasar a la confirmacion.",
       mode: "wizard",
+      when: {
+        type: "target",
+        targetId: "torno-wheel-count",
+      },
+      actionOnNext: {
+        type: "click",
+        selector: "[data-guide-id='create-movement-next-step'] button",
+        delayMs: 250,
+      },
+    },
+    {
+      id: "torno-fill-details",
+      targetId: "create-movement-step-2-standard",
+      title: "Completa los detalles",
+      description: "Como seleccionaste Para via, en este paso debes completar los detalles operativos standard.",
+      mode: "wizard",
+      when: {
+        type: "target",
+        targetId: "create-movement-step-2-standard",
+      },
       actionOnNext: {
         type: "click",
         selector: "[data-guide-id='create-movement-next-step'] button",

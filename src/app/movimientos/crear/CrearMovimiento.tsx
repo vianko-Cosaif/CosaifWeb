@@ -5,6 +5,7 @@ import { useMounted } from "@/app/hooks/useMounted";
 import {
   GuidedTarget,
   useGuidedManualApi,
+  useGuidedManual,
   type GuidedManualStep,
 } from "@/app/Components/GuidedManualAtom";
 import { getInitialTheme, applyTheme, onThemeChange } from "@/lib/theme";
@@ -50,9 +51,16 @@ function TornoMeasurementGuideButton({ steps }: { steps: GuidedManualStep[] }) {
  */
 export default function CrearMovimiento() {
   const mounted = useMounted();
+  const guidedManual = useGuidedManual();
   const [guidedMode, setGuidedMode] = useState(false);
   const [guidedStepOnePage, setGuidedStepOnePage] = useState(0);
   const [guidedTornoMeasuresPage, setGuidedTornoMeasuresPage] = useState(0);
+
+  useEffect(() => {
+    if (guidedManual?.isOpen) {
+      setGuidedMode(false);
+    }
+  }, [guidedManual?.isOpen]);
 
   /** Sincroniza tema visual con preferencia actual y cambios entre pestañas. */
   useEffect(() => {
