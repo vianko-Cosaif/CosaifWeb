@@ -134,9 +134,6 @@ export default function LoginForm() {
       return;
     }
 
-    const fcmToken = await requireNotificationToken();
-    if (!fcmToken) return;
-
     setLoading(true);
     const trace = Math.random().toString(36).slice(2);
 
