@@ -58,6 +58,15 @@ export default function Filtros({
   mostrarFiltrosTiempo = true,
 }: FiltrosProps) {
   const [abierto, setAbierto] = useState(true);
+  const [mostrarAvanzados, setMostrarAvanzados] = useState(() => {
+    return Boolean(
+      filtros.prioridad ||
+      filtros.desde ||
+      filtros.hasta ||
+      (filtros.tamPagina && filtros.tamPagina !== 25)
+    );
+  });
+
   const ESTADOS = [
     "SOLICITADO",
     "EN_PROCESO",
@@ -336,6 +345,21 @@ export default function Filtros({
                 </select>
               </div>
 
+              {/* Locomotora exacta */}
+              <div className="min-w-0 xl:col-span-2">
+                <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                  Locomotora
+                </label>
+                <input
+                  type="text"
+                  className={inputPlain}
+                  disabled={deshabilitado}
+                  value={filtros.locomotiveNumber ?? ""}
+                  onChange={handleLocoNumberChange}
+                  placeholder="Exacto"
+                />
+              </div>
+
               {/* Estado (multi) */}
               <div className="min-w-0 xl:col-span-4">
                 <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
@@ -368,176 +392,177 @@ export default function Filtros({
                 </div>
               </div>
 
-              {/* Prioridad */}
-              <div className="min-w-0 xl:col-span-2">
-                <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                  Prioridad
-                </label>
-                <select
-                  className={selectClass}
-                  disabled={deshabilitado}
-                  value={filtros.prioridad ?? ""}
-                  onChange={handlePrioridadChange}
-                >
-                  <option value="">Todas</option>
-                  <option value="ALTA">ALTA</option>
-                  <option value="BAJA">BAJA</option>
-                </select>
-              </div>
-
-              {/* Locomotora exacta */}
-              <div className="min-w-0 xl:col-span-2">
-                <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                  Locomotora
-                </label>
-                <input
-                  type="text"
-                  className={inputPlain}
-                  disabled={deshabilitado}
-                  value={filtros.locomotiveNumber ?? ""}
-                  onChange={handleLocoNumberChange}
-                  placeholder="Exacto"
-                />
-              </div>
-
-              {mostrarFiltrosTiempo ? (
-                <>
-                  {/* Fecha campo */}
-                  <div className="min-w-0 xl:col-span-2">
-                    <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                      Fecha campo
-                    </label>
-                    <select
-                      className={selectClass}
-                      disabled={deshabilitado}
-                      value={filtros.fechaCampo ?? ""}
-                      onChange={handleFechaCampoChange}
-                    >
-                      <option value="solicitud">Solicitud</option>
-                      <option value="inicio">Inicio</option>
-                      <option value="fin">Fin</option>
-                      <option value="creacion">Creación</option>
-                    </select>
-                  </div>
-
-                  {/* Desde */}
-                  <div className="min-w-0 xl:col-span-3">
-                    <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                      Desde (fecha/hora)
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="datetime-local"
-                        className={inputClass}
+              {/* Filtros avanzados */}
+              {mostrarAvanzados && (
+                <div className="col-span-1 sm:col-span-2 xl:col-span-12 border-t border-slate-200/60 dark:border-slate-800/80 pt-4 mt-1">
+                  <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-12 items-end">
+                    {/* Prioridad */}
+                    <div className="min-w-0 xl:col-span-2">
+                      <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                        Prioridad
+                      </label>
+                      <select
+                        className={selectClass}
                         disabled={deshabilitado}
-                        value={toInputDateTime(filtros.desde ?? null)}
-                        onChange={handleDesdeChange}
-                      />
-                      <Calendar
-                        size={15}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none text-slate-400 dark:text-slate-500"
-                        aria-hidden
-                      />
+                        value={filtros.prioridad ?? ""}
+                        onChange={handlePrioridadChange}
+                      >
+                        <option value="">Todas</option>
+                        <option value="ALTA">ALTA</option>
+                        <option value="BAJA">BAJA</option>
+                      </select>
                     </div>
-                  </div>
 
-                  {/* Hasta */}
-                  <div className="min-w-0 xl:col-span-3">
-                    <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                      Hasta (fecha/hora)
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="datetime-local"
-                        className={inputClass}
+                    {mostrarFiltrosTiempo ? (
+                      <>
+                        {/* Fecha campo */}
+                        <div className="min-w-0 xl:col-span-2">
+                          <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                            Fecha campo
+                          </label>
+                          <select
+                            className={selectClass}
+                            disabled={deshabilitado}
+                            value={filtros.fechaCampo ?? ""}
+                            onChange={handleFechaCampoChange}
+                          >
+                            <option value="solicitud">Solicitud</option>
+                            <option value="inicio">Inicio</option>
+                            <option value="fin">Fin</option>
+                            <option value="creacion">Creación</option>
+                          </select>
+                        </div>
+
+                        {/* Desde */}
+                        <div className="min-w-0 xl:col-span-3">
+                          <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                            Desde (fecha/hora)
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="datetime-local"
+                              className={inputClass}
+                              disabled={deshabilitado}
+                              value={toInputDateTime(filtros.desde ?? null)}
+                              onChange={handleDesdeChange}
+                            />
+                            <Calendar
+                              size={15}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none text-slate-400 dark:text-slate-500"
+                              aria-hidden
+                            />
+                          </div>
+                        </div>
+
+                        {/* Hasta */}
+                        <div className="min-w-0 xl:col-span-3">
+                          <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                            Hasta (fecha/hora)
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="datetime-local"
+                              className={inputClass}
+                              disabled={deshabilitado}
+                              value={toInputDateTime(filtros.hasta ?? null)}
+                              onChange={handleHastaChange}
+                            />
+                            <Calendar
+                              size={15}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none text-slate-400 dark:text-slate-500"
+                              aria-hidden
+                            />
+                          </div>
+                        </div>
+                      </>
+                    ) : null}
+
+                    {/* Tamaño de página */}
+                    <div className="min-w-0 xl:col-span-2">
+                      <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                        Por página
+                      </label>
+                      <select
+                        className={selectClass}
                         disabled={deshabilitado}
-                        value={toInputDateTime(filtros.hasta ?? null)}
-                        onChange={handleHastaChange}
-                      />
-                      <Calendar
-                        size={15}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none text-slate-400 dark:text-slate-500"
-                        aria-hidden
-                      />
+                        value={filtros.tamPagina}
+                        onChange={handleTamPaginaChange}
+                      >
+                        {[10, 25, 50, 100].map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
                     </div>
+
+                    {mostrarFiltrosTiempo ? (
+                      <div className="min-w-0 col-span-1 sm:col-span-2 xl:col-span-12 mt-1">
+                        <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+                          <span className="inline-flex items-center px-2 text-[11px] font-black uppercase tracking-wide text-slate-400">
+                            Atajos de tiempo
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => applyTodayPreset("inicio")}
+                            disabled={deshabilitado}
+                            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
+                          >
+                            Inicio hoy
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => applyTodayPreset("fin")}
+                            disabled={deshabilitado}
+                            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
+                          >
+                            Cierres hoy
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => applyLastHoursPreset(1)}
+                            disabled={deshabilitado}
+                            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
+                          >
+                            Última hora
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => applyLastHoursPreset(24 * 7)}
+                            disabled={deshabilitado}
+                            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
+                          >
+                            Últimos 7 días
+                          </button>
+                          <button
+                            type="button"
+                            onClick={clearDateRange}
+                            disabled={deshabilitado}
+                            className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-bold text-rose-600 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-800 dark:text-rose-300"
+                          >
+                            Limpiar fechas
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
-                </>
-              ) : null}
-
-              {/* Tamaño de página */}
-              <div className="min-w-0 xl:col-span-2">
-                <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                  Por página
-                </label>
-                <select
-                  className={selectClass}
-                  disabled={deshabilitado}
-                  value={filtros.tamPagina}
-                  onChange={handleTamPaginaChange}
-                >
-                  {[10, 25, 50, 100].map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {mostrarFiltrosTiempo ? (
-              <div className="min-w-0 col-span-1 sm:col-span-2 xl:col-span-12">
-                <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
-                  <span className="inline-flex items-center px-2 text-[11px] font-black uppercase tracking-wide text-slate-400">
-                    Atajos de tiempo
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => applyTodayPreset("inicio")}
-                    disabled={deshabilitado}
-                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
-                  >
-                    Inicio hoy
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => applyTodayPreset("fin")}
-                    disabled={deshabilitado}
-                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
-                  >
-                    Cierres hoy
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => applyLastHoursPreset(1)}
-                    disabled={deshabilitado}
-                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
-                  >
-                    Última hora
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => applyLastHoursPreset(24 * 7)}
-                    disabled={deshabilitado}
-                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
-                  >
-                    Últimos 7 días
-                  </button>
-                  <button
-                    type="button"
-                    onClick={clearDateRange}
-                    disabled={deshabilitado}
-                    className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-bold text-rose-600 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-800 dark:text-rose-300"
-                  >
-                    Limpiar fechas
-                  </button>
                 </div>
-              </div>
-              ) : null}
+              )}
 
               {/* Acciones */}
-              <div className="min-w-0 col-span-1 sm:col-span-2 xl:col-span-12 flex gap-2 justify-stretch xl:justify-end pt-1">
+              <div className="min-w-0 col-span-1 sm:col-span-2 xl:col-span-12 flex flex-col sm:flex-row gap-2 justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-800/60">
                 <button
                   type="button"
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 w-full sm:w-auto text-xs font-medium text-slate-600 dark:text-slate-300 hover:border-rose-300 hover:text-rose-600 dark:hover:border-rose-500 dark:hover:text-rose-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 active:scale-[0.97]"
+                  onClick={() => setMostrarAvanzados((prev) => !prev)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 w-full sm:w-auto text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-all duration-150 active:scale-[0.97]"
+                >
+                  <SlidersHorizontal size={14} className="text-slate-400" />
+                  {mostrarAvanzados ? "Ocultar filtros avanzados" : "Mostrar filtros avanzados"}
+                </button>
+
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 w-full sm:w-auto text-xs font-bold text-slate-600 dark:text-slate-300 hover:border-rose-300 hover:text-rose-600 dark:hover:border-rose-500 dark:hover:text-rose-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 active:scale-[0.97]"
                   onClick={onLimpiarFiltros}
                   disabled={deshabilitado}
                 >
