@@ -203,6 +203,11 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
       description: "Selecciona la empresa y localidad para este movimiento.",
       targetId: "create-movement-step-1",
       mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: '[data-guide-action="create-movement-next"]',
+        delayMs: 250,
+      },
     },
     {
       id: "mobile-step-one-service",
@@ -210,6 +215,11 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
       description: "Elige el servicio (por ejemplo, Torno) y define las opciones operativas.",
       targetId: "create-movement-torno-service",
       mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: '[data-guide-action="create-movement-next"]',
+        delayMs: 250,
+      },
     },
     {
       id: "mobile-step-one-locomotive",
@@ -217,6 +227,11 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
       description: "Escribe el numero exacto de la locomotora.",
       targetId: "create-movement-locomotive",
       mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: '[data-guide-action="create-movement-next"]',
+        delayMs: 250,
+      },
     },
     {
       id: "mobile-step-one-route",
@@ -224,6 +239,11 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
       description: "Indica la via y seccion de origen para este movimiento.",
       targetId: "create-movement-route",
       mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: '[data-guide-action="create-movement-next"]',
+        delayMs: 250,
+      },
     },
     {
       id: "mobile-step-two-torno",
