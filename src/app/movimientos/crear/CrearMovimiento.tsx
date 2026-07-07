@@ -121,8 +121,6 @@ export default function CrearMovimiento() {
     clearOutbox,
   } = useCrearMovimientoController();
 
-  if (!mounted) return null;
-
   const useTornoMedicionStep = hasTornoPdfStep;
   const stepNames = useTornoMedicionStep
     ? (["Datos", "Medicion", "Confirmar", "PDF"] as const)
@@ -178,6 +176,8 @@ export default function CrearMovimiento() {
     if (step === 3) return "Revisa la solicitud antes de crear el movimiento.";
     return "Genera el PDF o vuelve a editar las mediciones del torno.";
   }, [step, useTornoMedicionStep]);
+
+  if (!mounted) return null;
 
   return (
       <div className={Movimiento.clsx(
