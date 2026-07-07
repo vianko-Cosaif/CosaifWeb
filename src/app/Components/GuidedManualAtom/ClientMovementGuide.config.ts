@@ -171,22 +171,24 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
       id: "mobile-open-movements",
       title: "Abre Movimientos",
       description: "Selecciona Movimientos en el menu lateral para consultar y crear solicitudes.",
-      targetId: "client-nav-movements",
+      targetId: "sidebar-menu-movimientos",
       mode: "wizard",
       actionOnNext: {
-        type: "click",
-        selector: '[data-guide-id="client-nav-movements"] button',
+        type: "event",
+        eventName: "guide:navigate-role-movements",
+        delayMs: 350,
       },
     },
     {
       id: "mobile-new-movement",
       title: "Crea un movimiento",
       description: "Pulsa Nuevo para iniciar el registro de una solicitud.",
-      targetId: "client-new-movement",
+      targetId: "movimientos-new-button",
       mode: "wizard",
       actionOnNext: {
-        type: "click",
-        selector: '[data-guide-id="client-new-movement"] button',
+        type: "event",
+        eventName: "guide:navigate-create-movement",
+        delayMs: 350,
       },
     },
     {
@@ -221,10 +223,6 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
       description: "Elige el servicio (por ejemplo, Torno) y define las opciones operativas.",
       targetId: "create-movement-torno-service",
       mode: "wizard",
-      when: {
-        type: "target",
-        targetId: "create-movement-torno-service",
-      },
     },
     {
       id: "mobile-step-one-go-to-locomotive",
@@ -242,7 +240,7 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
       id: "mobile-step-one-locomotive",
       title: "Locomotora",
       description: "Escribe el numero exacto de la locomotora.",
-      targetId: "create-movement-step-1",
+      targetId: "create-movement-locomotive",
       mode: "wizard",
     },
     {
@@ -261,7 +259,7 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
       id: "mobile-step-one-route",
       title: "Vias y Secciones",
       description: "Indica la via y seccion de origen para este movimiento.",
-      targetId: "create-movement-step-1",
+      targetId: "create-movement-route",
       mode: "wizard",
     },
     {
