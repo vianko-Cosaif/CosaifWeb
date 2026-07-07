@@ -273,6 +273,11 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
       description: "Elige la cantidad de ruedas que vas a medir (ej. 8).",
       targetId: "torno-wheel-count",
       mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: '[data-guide-action="create-movement-next"]',
+        delayMs: 250,
+      },
       when: {
         type: "target",
         targetId: "torno-wheel-count",
