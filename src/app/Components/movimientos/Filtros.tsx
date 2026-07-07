@@ -66,6 +66,7 @@ export default function Filtros({
       (filtros.tamPagina && filtros.tamPagina !== 25)
     );
   });
+  const [showEstadoDropdown, setShowEstadoDropdown] = useState(false);
 
   const ESTADOS = [
     "SOLICITADO",
@@ -361,26 +362,61 @@ export default function Filtros({
               </div>
 
               {/* Estado */}
-              <div className="min-w-0 xl:col-span-3">
+              <div className="min-w-0 xl:col-span-3 relative">
                 <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
                   Estado
                 </label>
-                <select
-                  className={selectClass}
+                <button
+                  type="button"
                   disabled={deshabilitado}
-                  value={filtros.estado ?? ""}
-                  onChange={(e) => onCambiarEstado(e.target.value === "" ? null : e.target.value)}
+                  onClick={() => setShowEstadoDropdown((prev) => !prev)}
+                  className="w-full flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5 min-h-[44px] text-left text-[16px] sm:text-sm text-slate-800 dark:text-slate-100 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-400 dark:focus:ring-emerald-500/30 dark:focus:border-emerald-500 transition-all duration-200"
                 >
-                  <option value="">Todos</option>
-                  {filtros.estado && filtros.estado.includes(",") && (
-                    <option value={filtros.estado}>Múltiples ({filtros.estado.split(",").length})</option>
-                  )}
-                  {ESTADOS.map((estado) => (
-                    <option key={estado} value={estado}>
-                      {estado.replace("_", " ")}
-                    </option>
-                  ))}
-                </select>
+                  <span className="truncate">
+                    {filtros.estado
+                      ? filtros.estado
+                          .split(",")
+                          .map((est) => est.replace("_", " "))
+                          .join(", ")
+                      : "Todos"}
+                  </span>
+                  <ChevronDown size={16} className="text-slate-400 shrink-0 ml-2" />
+                </button>
+
+                {showEstadoDropdown && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowEstadoDropdown(false)}
+                      className="fixed inset-0 z-40 cursor-default focus:outline-none"
+                    />
+                    <div className="absolute left-0 right-0 mt-1 z-50 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 p-2 shadow-lg max-h-60 overflow-y-auto">
+                      <div className="flex flex-col gap-1">
+                        {ESTADOS.map((estado) => {
+                          const active = (filtros.estado ?? "")
+                            .split(",")
+                            .map((s) => s.trim())
+                            .filter(Boolean)
+                            .includes(estado);
+                          return (
+                            <label
+                              key={estado}
+                              className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-900 cursor-pointer select-none text-[13px] text-slate-700 dark:text-slate-300 font-semibold"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={active}
+                                onChange={() => handleEstadoToggle(estado)}
+                                className="rounded text-emerald-600 focus:ring-emerald-500/30 h-4 w-4 border-slate-300 dark:border-slate-700 dark:bg-slate-900"
+                              />
+                              <span>{estado.replace("_", " ")}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Filtros avanzados */}
