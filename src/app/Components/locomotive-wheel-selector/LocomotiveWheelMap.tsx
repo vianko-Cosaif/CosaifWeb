@@ -356,28 +356,37 @@ function SideLocomotiveBody({
 
 function SideLocomotiveBodyReferenceSvg({
   viewMode,
+  orientation,
   theme,
+  rotateForPortrait,
 }: Pick<LocomotiveMapProps, 'wheelCount' | 'viewMode'> & OrientationProps & {
   theme: ReturnType<typeof resolveTheme>;
+  rotateForPortrait?: boolean;
 }) {
   const sideLabel = viewMode === 'left' ? 'COSTADO IZQUIERDO' : 'COSTADO DERECHO';
+  const canvasWidth = orientation === 'horizontal' ? VIEWBOX_HEIGHT : VIEWBOX_WIDTH;
   const locoFill = theme.colors.text;
   const cutFill = theme.colors.background;
   const cutStroke = theme.colors.background;
   const sideScale = 0.51;
-  const sideTranslateX = -82;
+  const sideTranslateX = orientation === 'horizontal' ? 90 : -82;
   const sideTranslateY = 59;
   const sideTransform = viewMode === 'right'
-    ? `translate(420 0) scale(-1 1) translate(${sideTranslateX} ${sideTranslateY}) scale(${sideScale})`
+    ? `translate(${canvasWidth} 0) scale(-1 1) translate(${sideTranslateX} ${sideTranslateY}) scale(${sideScale})`
     : `translate(${sideTranslateX} ${sideTranslateY}) scale(${sideScale})`;
+
+  const portraitRotation = viewMode === 'right'
+    ? 'translate(210 380) rotate(-90) translate(-210 -212)'
+    : 'translate(210 380) rotate(90) translate(-210 -212)';
 
   return (
     <>
-      <text x="210" y="84" textAnchor="middle" fontSize="12" fontWeight="900" fill={theme.colors.text} className="select-none">
+      <text x={canvasWidth / 2} y="84" textAnchor="middle" fontSize="12" fontWeight="900" fill={theme.colors.text} className="select-none">
         {sideLabel}
       </text>
 
-      <g transform={sideTransform}>
+      <g transform={rotateForPortrait ? portraitRotation : undefined}>
+        <g transform={sideTransform}>
         <g>
           <path d="M20 228 H42 V178 C42 170 48 165 54 165 C60 165 66 170 66 178 V228 H75 V236 H8 V228 Z" fill={locoFill} />
           <path d="M1082 228 H1091 V178 C1091 170 1097 165 1103 165 C1109 165 1115 170 1115 178 V228 H1137 V236 H1072 V228 Z" fill={locoFill} />
@@ -469,7 +478,8 @@ function SideLocomotiveBodyReferenceSvg({
           <line x1="790" y1="266" x2="1052" y2="266" stroke={cutStroke} strokeWidth="3" strokeLinecap="square" />
         </g>
       </g>
-    </>
+    </g>
+  </>
   );
 }
 
@@ -553,14 +563,16 @@ function WheelNode({
   onWheelSelect,
   theme,
   viewMode,
-  orientation,
+  rotateCoordinates,
+  sidePortraitMode,
 }: {
   wheel: WheelPoint;
   disabled?: boolean;
   onWheelSelect?: LocomotiveMapProps['onWheelSelect'];
   theme: ReturnType<typeof resolveTheme>;
   viewMode: LocomotiveMapProps['viewMode'];
-  orientation: 'vertical' | 'horizontal';
+  rotateCoordinates: boolean;
+  sidePortraitMode?: boolean;
 }) {
   const stroke = getStatusStroke(theme, wheel.visualStatus);
   const fill = getStatusFill(theme, wheel.visualStatus);
@@ -574,13 +586,13 @@ function WheelNode({
   const axleLabelOffset = compactSideWheel ? 54 : 59;
 
   const getCircleProps = (cx: number, cy: number, r: number) => {
-    return orientation === 'horizontal'
+    return rotateCoordinates
       ? { cx: cy, cy: cx, r }
       : { cx, cy, r };
   };
 
   const getTextProps = (x: number, y: number) => {
-    return orientation === 'horizontal'
+    return rotateCoordinates
       ? { x: y, y: x }
       : { x, y };
   };
@@ -624,12 +636,25 @@ function WheelNode({
           OK
         </text>
       ) : null}
-      <text {...getTextProps(wheel.x, wheel.y + sideLabelOffset)} textAnchor="middle" fontSize="10" fontWeight="800" fill={theme.colors.text}>
-        {wheel.side === 'left' ? 'IZQ' : 'DER'}
-      </text>
-      <text {...getTextProps(wheel.x, wheel.y + axleLabelOffset)} textAnchor="middle" fontSize="10" fill={theme.colors.textMuted}>
-        {`Eje ${wheel.axleIndex}`}
-      </text>
+      {sidePortraitMode ? (
+        <>
+          <text x={wheel.x + 38} y={wheel.y - 4} textAnchor="start" fontSize="10" fontWeight="800" fill={theme.colors.text} className="select-none">
+            {wheel.side === 'left' ? 'IZQ' : 'DER'}
+          </text>
+          <text x={wheel.x + 38} y={wheel.y + 10} textAnchor="start" fontSize="10" fill={theme.colors.textMuted} className="select-none">
+            {`Eje ${wheel.axleIndex}`}
+          </text>
+        </>
+      ) : (
+        <>
+          <text {...getTextProps(wheel.x, wheel.y + sideLabelOffset)} textAnchor="middle" fontSize="10" fontWeight="800" fill={theme.colors.text} className="select-none">
+            {wheel.side === 'left' ? 'IZQ' : 'DER'}
+          </text>
+          <text {...getTextProps(wheel.x, wheel.y + axleLabelOffset)} textAnchor="middle" fontSize="10" fill={theme.colors.textMuted} className="select-none">
+            {`Eje ${wheel.axleIndex}`}
+          </text>
+        </>
+      )}
       <circle
         {...getCircleProps(wheel.x, wheel.y, hitRadius)}
         fill="transparent"
@@ -671,9 +696,31 @@ export function LocomotiveWheelMap({
         },
       };
   const labels = resolveLabels(customLabels);
-  const wheelPoints = getWheelPoints(wheelCount, viewMode, selectedWheelId, wheels);
-  const visibleWheels = wheelPoints.filter(wheel => wheel.visible);
+  
+  const sidePortraitMode = viewMode !== 'top' && orientation === 'vertical';
+  const transformSidePortraitWheel = (wheel: WheelPoint): WheelPoint => {
+    if (!sidePortraitMode) return wheel;
+
+    const baseCenterX = 210;
+    const baseCenterY = 212;
+    const portraitCenterX = 210;
+    const portraitCenterY = 380;
+    const dx = wheel.x - baseCenterX;
+    const dy = wheel.y - baseCenterY;
+    const clockwise = viewMode === 'left';
+
+    return {
+      ...wheel,
+      x: clockwise ? portraitCenterX - dy : portraitCenterX + dy,
+      y: clockwise ? portraitCenterY + dx : portraitCenterY - dx,
+    };
+  };
+
   const renderOrientation = viewMode === 'top' ? orientation : 'vertical';
+  const wheelPoints = getWheelPoints(wheelCount, viewMode, selectedWheelId, wheels, renderOrientation);
+  const renderedWheelPoints = wheelPoints.map(transformSidePortraitWheel);
+  const visibleWheels = renderedWheelPoints.filter(wheel => wheel.visible);
+  const rotateWheelCoordinates = viewMode === 'top' && renderOrientation === 'horizontal';
 
   const widthVal = renderOrientation === 'horizontal' ? VIEWBOX_HEIGHT : VIEWBOX_WIDTH;
   const heightVal = renderOrientation === 'horizontal' ? VIEWBOX_WIDTH : VIEWBOX_HEIGHT;
@@ -736,10 +783,16 @@ export function LocomotiveWheelMap({
       {viewMode === 'top' ? (
         <TopLocomotiveBody wheelCount={wheelCount} viewMode={viewMode} orientation={renderOrientation} />
       ) : (
-        <SideLocomotiveBodyReferenceSvg wheelCount={wheelCount} viewMode={viewMode} orientation={renderOrientation} theme={theme} />
+        <SideLocomotiveBodyReferenceSvg
+          wheelCount={wheelCount}
+          viewMode={viewMode}
+          orientation={renderOrientation}
+          theme={theme}
+          rotateForPortrait={sidePortraitMode}
+        />
       )}
 
-      <AxleGuides wheelPoints={wheelPoints} viewMode={viewMode} orientation={renderOrientation} />
+      <AxleGuides wheelPoints={renderedWheelPoints} viewMode={viewMode} orientation={renderOrientation} />
 
       {visibleWheels.map(wheel => (
         <WheelNode
@@ -749,7 +802,8 @@ export function LocomotiveWheelMap({
           onWheelSelect={onWheelSelect}
           theme={theme}
           viewMode={viewMode}
-          orientation={renderOrientation}
+          rotateCoordinates={rotateWheelCoordinates}
+          sidePortraitMode={sidePortraitMode}
         />
       ))}
 

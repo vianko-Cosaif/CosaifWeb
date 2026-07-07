@@ -48,6 +48,7 @@ type StepTwoTornoProps = {
   ) => void;
   companyName?: string;
   hideTypeSelector?: boolean;
+  variant?: "classic" | "mobile";
 };
 
 type TornoCopyCell = {
@@ -302,7 +303,9 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
     updateTornoMedicion,
     companyName,
     hideTypeSelector = false,
+    variant = "classic",
   } = props;
+  const isMobileVariant = variant === "mobile";
 
   const profile = useMemo(() => resolveTornoProfile(companyName), [companyName]);
   const profileMeta = TORNO_PROFILE_META[profile];
@@ -334,9 +337,32 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
   const [mobileAccordionPosition, setMobileAccordionPosition] = useState<TornoWheelPosition | null>(null);
 
   // Estados para la vista interactiva (Visual)
-  const [entryMode, setEntryMode] = useState<"table" | "visual">("table");
+  const [entryMode, setEntryMode] = useState<"table" | "visual">(
+    isMobileVariant ? "visual" : "table"
+  );
   const [selectedVisualPosition, setSelectedVisualPosition] = useState<TornoWheelPosition>("L1");
   const [visualViewMode, setVisualViewMode] = useState<"top" | "left" | "right">("top");
+
+  const [screenOrientation, setScreenOrientation] = useState<"horizontal" | "vertical">("vertical");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const updateOrientation = () => {
+      setScreenOrientation(window.innerWidth > window.innerHeight ? "horizontal" : "vertical");
+    };
+
+    updateOrientation();
+    window.addEventListener("resize", updateOrientation);
+    window.addEventListener("orientationchange", updateOrientation);
+    return () => {
+      window.removeEventListener("resize", updateOrientation);
+      window.removeEventListener("orientationchange", updateOrientation);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isMobileVariant) setEntryMode("visual");
+  }, [isMobileVariant]);
 
   function positionToWheelId(pos: TornoWheelPosition): string {
     const side = pos.startsWith("L") ? "L" : "R";
@@ -927,7 +953,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                       selectedWheelId={selectedVisualPosition ? positionToWheelId(selectedVisualPosition) : undefined}
                       wheels={wheelOverrides}
                       disabled={false}
-                      orientation="horizontal"
+                      orientation={screenOrientation}
                       onWheelSelect={(wheel) => {
                         const nextPos = wheelIdToPosition(wheel.id);
                         if (nextPos) setSelectedVisualPosition(nextPos);
