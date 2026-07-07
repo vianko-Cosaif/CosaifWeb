@@ -14,6 +14,10 @@ import StepTwo from "./components/StepTwo";
 import StepTwoTorno from "./components/StepTwoTorno";
 import StepThree from "./components/StepThree";
 import StepFourTorno from "./components/StepFourTorno";
+import MobileGuidedTornoMeasuresStep, {
+  getGuidedTornoMeasuresPageCount,
+  getGuidedTornoMeasuresPageTitle,
+} from "./components/MobileGuidedTornoMeasuresStep";
 import { Badge, RoleBadge } from "./components/ui";
 import { useCrearMovimientoController } from "./useCrearMovimientoController";
 
@@ -47,6 +51,8 @@ function TornoMeasurementGuideButton({ steps }: { steps: GuidedManualStep[] }) {
 export default function CrearMovimiento() {
   const mounted = useMounted();
   const [guidedMode, setGuidedMode] = useState(false);
+  const [guidedStepOnePage, setGuidedStepOnePage] = useState(0);
+  const [guidedTornoMeasuresPage, setGuidedTornoMeasuresPage] = useState(0);
 
   /** Sincroniza tema visual con preferencia actual y cambios entre pestañas. */
   useEffect(() => {
@@ -122,12 +128,35 @@ export default function CrearMovimiento() {
   } = useCrearMovimientoController();
 
   const useTornoMedicionStep = hasTornoPdfStep;
+  useEffect(() => {
+    if (!guidedMode || step !== 1) setGuidedStepOnePage(0);
+  }, [guidedMode, step]);
+
+  useEffect(() => {
+    if (!guidedMode || step !== 2 || !useTornoMedicionStep) setGuidedTornoMeasuresPage(0);
+  }, [guidedMode, step, useTornoMedicionStep]);
+
   const stepNames = useTornoMedicionStep
     ? (["Datos", "Medicion", "Confirmar", "PDF"] as const)
     : (["Datos", "Detalles", "Confirmar"] as const);
   const currentStepIndex = Math.max(0, Math.min(step - 1, stepNames.length - 1));
-  const guidedProgress = Math.round(((currentStepIndex + 1) / stepNames.length) * 100);
-  const stepTransitionKey = `${step}:${useTornoMedicionStep ? "torno" : "movimiento"}`;
+  const guidedTornoPageCount = getGuidedTornoMeasuresPageCount();
+  const guidedTotalUnits = guidedMode ? (useTornoMedicionStep ? 8 : 6) : stepNames.length;
+  const guidedCurrentUnit = guidedMode
+    ? step === 1
+      ? guidedStepOnePage + 1
+      : step === 2 && useTornoMedicionStep
+        ? 4 + guidedTornoMeasuresPage + 1
+        : step === 2
+          ? 5
+          : step === 3
+            ? (useTornoMedicionStep ? 7 : 6)
+            : 8
+    : currentStepIndex + 1;
+  const guidedProgress = Math.round((guidedCurrentUnit / guidedTotalUnits) * 100);
+  const stepTransitionKey = guidedMode
+    ? `${step}:${guidedStepOnePage}:${guidedTornoMeasuresPage}:${useTornoMedicionStep ? "torno" : "movimiento"}`
+    : `${step}:${useTornoMedicionStep ? "torno" : "movimiento"}`;
   const title = useTornoMedicionStep && step === 2 ? "Medicion de Ruedas" : "Nuevo Movimiento";
   const pageTitle = useTornoMedicionStep && step === 4 ? "Resumen de Medidas" : title;
   const nextLabel =
@@ -141,6 +170,22 @@ export default function CrearMovimiento() {
     empresas.find((empresa) => empresa.id === form.empresaId)?.nombre ||
     userCompanyName ||
     "";
+  const guidedStepOneSections = ["context", "service", "locomotive", "route"] as const;
+  const guidedStepOneTitles = ["Empresa y localidad", "Servicio", "Locomotora", "Via y seccion"];
+  const guidedStepOneSection = guidedStepOneSections[guidedStepOnePage] ?? "context";
+  const guidedStepTitle = guidedMode
+    ? step === 1
+      ? guidedStepOneTitles[guidedStepOnePage] ?? "Configuracion"
+      : step === 2 && useTornoMedicionStep
+        ? getGuidedTornoMeasuresPageTitle(guidedTornoMeasuresPage, tornoMedicion.wheelCount)
+        : stepNames[currentStepIndex]
+    : stepNames[currentStepIndex];
+  const hasAnyTornoMeasure = useMemo(
+    () => Object.values(tornoMedicion.rows).some((row) =>
+      Object.values(row ?? {}).some((value) => Boolean(value?.whole || value?.num || value?.den))
+    ),
+    [tornoMedicion.rows]
+  );
   const tornoGuideSteps: GuidedManualStep[] = useTornoMedicionStep
     ? [
         {
@@ -176,6 +221,84 @@ export default function CrearMovimiento() {
     if (step === 3) return "Revisa la solicitud antes de crear el movimiento.";
     return "Genera el PDF o vuelve a editar las mediciones del torno.";
   }, [step, useTornoMedicionStep]);
+  const contentMaxWidth = guidedMode
+    ? "max-w-[680px]"
+    : useTornoMedicionStep
+      ? "max-w-7xl"
+      : "max-w-4xl";
+  const validateGuidedMiniStep = () => {
+    if (!guidedMode) return true;
+    if (step === 1 && guidedStepOnePage === 0) {
+      if (!Number(form.empresaId)) {
+        window.alert("Selecciona la empresa antes de continuar.");
+        return false;
+      }
+      if (!Number(form.selectedLocalityId)) {
+        window.alert("Selecciona la localidad antes de continuar.");
+        return false;
+      }
+    }
+    if (step === 1 && guidedStepOnePage === 1 && form.service === "Torno" && form.agendado) {
+      const scheduledAt = new Date(form.fechaProgramada || "");
+      if (Number.isNaN(scheduledAt.getTime()) || scheduledAt <= new Date()) {
+        window.alert("Selecciona una fecha y hora valida para agendar el torno.");
+        return false;
+      }
+    }
+    if (step === 1 && guidedStepOnePage === 2 && !Number(form.locomotiveNumber)) {
+      window.alert("Captura el numero de locomotora antes de continuar.");
+      return false;
+    }
+    if (step === 2 && useTornoMedicionStep && guidedTornoMeasuresPage >= guidedTornoPageCount - 1 && !hasAnyTornoMeasure) {
+      window.alert("Captura al menos una medida de torno antes de revisar la solicitud.");
+      return false;
+    }
+    return true;
+  };
+  const guidedGoNext = () => {
+    if (!guidedMode) {
+      goNext();
+      return;
+    }
+    if (!validateGuidedMiniStep()) return;
+    if (step === 1 && guidedStepOnePage < guidedStepOneSections.length - 1) {
+      setGuidedStepOnePage((page) => page + 1);
+      return;
+    }
+    if (step === 2 && useTornoMedicionStep && guidedTornoMeasuresPage < guidedTornoPageCount - 1) {
+      setGuidedTornoMeasuresPage((page) => page + 1);
+      return;
+    }
+    goNext();
+  };
+  const guidedGoPrev = () => {
+    if (!guidedMode) {
+      goPrev();
+      return;
+    }
+    if (step === 1 && guidedStepOnePage > 0) {
+      setGuidedStepOnePage((page) => page - 1);
+      return;
+    }
+    if (step === 2 && useTornoMedicionStep && guidedTornoMeasuresPage > 0) {
+      setGuidedTornoMeasuresPage((page) => page - 1);
+      return;
+    }
+    goPrev();
+  };
+  const showPreviousButton = guidedMode
+    ? step > 1 || guidedStepOnePage > 0 || (step === 2 && useTornoMedicionStep && guidedTornoMeasuresPage > 0)
+    : step > 1;
+  const showNextButton = guidedMode
+    ? step < 3 || (step === 2 && useTornoMedicionStep && guidedTornoMeasuresPage < guidedTornoPageCount - 1)
+    : step < 3;
+  const guidedNextLabel = guidedMode
+    ? step === 1 && guidedStepOnePage < guidedStepOneSections.length - 1
+      ? "Continuar"
+      : step === 2 && useTornoMedicionStep && guidedTornoMeasuresPage < guidedTornoPageCount - 1
+        ? "Siguiente grupo"
+        : nextLabel
+    : nextLabel;
 
   if (!mounted) return null;
 
@@ -214,7 +337,7 @@ export default function CrearMovimiento() {
       <div
         data-guide-movement-variant={useTornoMedicionStep ? "torno" : "standard"}
         data-guide-movement-step={step}
-        className={Movimiento.clsx("relative z-10 mx-auto", useTornoMedicionStep ? "max-w-7xl" : "max-w-4xl")}
+        className={Movimiento.clsx("relative z-10 mx-auto", contentMaxWidth)}
       >
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -242,7 +365,7 @@ export default function CrearMovimiento() {
                 : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
             )}
           >
-            {guidedMode ? "Flujo clasico" : "Flujo guiado"}
+            {guidedMode ? "Vista clasica" : "Flujo mobile"}
           </button>
           <button onClick={goSalir} className="ml-auto rounded-xl border border-rose-200 dark:border-rose-800 px-3 py-1.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all active:scale-95" title="Volver a mis movimientos">
             Salir
@@ -325,7 +448,7 @@ export default function CrearMovimiento() {
                   Flujo guiado
                 </div>
                 <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950 dark:text-white">
-                  {stepNames[currentStepIndex]}
+                  {guidedStepTitle}
                 </h2>
                 <p className="mt-1 max-w-2xl text-sm font-medium text-slate-500 dark:text-zinc-400">
                   {guidedStepDescription}
@@ -387,6 +510,7 @@ export default function CrearMovimiento() {
                 scheduledTornoLoading={scheduledTornoLoading}
                 onRefreshScheduledTorno={refreshScheduledTornoMovements}
                 onActivateScheduledTorno={activateScheduledTornoMovement}
+                visualSection={guidedMode ? guidedStepOneSection : undefined}
               />
             </GuidedTarget>
           )}
@@ -397,15 +521,27 @@ export default function CrearMovimiento() {
           )}
           {step === 2 && useTornoMedicionStep && (
             <GuidedTarget id="create-movement-step-2-torno">
-              <StepTwoTorno
-                form={form}
-                setForm={setForm}
-                errors={errors}
-                tornoMedicion={tornoMedicion}
-                setTornoWheelCount={setTornoWheelCount}
-                updateTornoMedicion={updateTornoMedicion}
-                companyName={selectedCompanyName}
-              />
+              {guidedMode ? (
+                <MobileGuidedTornoMeasuresStep
+                  form={form}
+                  setForm={setForm}
+                  tornoMedicion={tornoMedicion}
+                  setTornoWheelCount={setTornoWheelCount}
+                  updateTornoMedicion={updateTornoMedicion}
+                  companyName={selectedCompanyName}
+                  visualPage={guidedTornoMeasuresPage}
+                />
+              ) : (
+                <StepTwoTorno
+                  form={form}
+                  setForm={setForm}
+                  errors={errors}
+                  tornoMedicion={tornoMedicion}
+                  setTornoWheelCount={setTornoWheelCount}
+                  updateTornoMedicion={updateTornoMedicion}
+                  companyName={selectedCompanyName}
+                />
+              )}
             </GuidedTarget>
           )}
           {step === 3 && (
@@ -450,9 +586,9 @@ export default function CrearMovimiento() {
             {clearLabel}
           </button>
 
-          {step > 1 && !(useTornoMedicionStep && step === 4) && (
+          {showPreviousButton && !(useTornoMedicionStep && step === 4) && (
             <button
-              onClick={goPrev}
+              onClick={guidedGoPrev}
               data-guide-action="create-movement-prev"
               className="rounded-xl border border-amber-300 dark:border-amber-700 px-4 py-2.5 text-sm font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all active:scale-[0.97]"
             >
@@ -460,14 +596,14 @@ export default function CrearMovimiento() {
             </button>
           )}
 
-          {step < 3 && (
+          {showNextButton && (
             <GuidedTarget id="create-movement-next-step" className="inline-flex">
               <button
-                onClick={goNext}
+                onClick={guidedGoNext}
                 data-guide-action="create-movement-next"
                 className="rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:from-emerald-600 hover:to-emerald-700 transition-all active:scale-[0.97]"
               >
-                {nextLabel}
+                {guidedNextLabel}
               </button>
             </GuidedTarget>
           )}

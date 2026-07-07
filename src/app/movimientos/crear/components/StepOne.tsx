@@ -49,6 +49,7 @@ type StepOneProps = {
   scheduledTornoLoading?: boolean;
   onRefreshScheduledTorno?: () => Promise<void> | void;
   onActivateScheduledTorno: (movement: ScheduledTornoMovement) => Promise<void> | void;
+  visualSection?: "context" | "service" | "locomotive" | "route";
 };
 
 const toDatetimeLocalValue = (value?: string) => {
@@ -79,6 +80,7 @@ export default function StepOne(props: StepOneProps) {
     tapToggle, sectionsByVia, secLoading, ensureSections, fromSection, toSection,
     setFromSection, setToSection, viaName, companyName, scheduledTornoMovements = [],
     scheduledTornoLoading = false, onRefreshScheduledTorno, onActivateScheduledTorno,
+    visualSection,
   } = props;
 
   const [altaOpen, setAltaOpen] = useState(false);
@@ -277,39 +279,45 @@ export default function StepOne(props: StepOneProps) {
   const empresaLabel =
     empresas.find((e) => e.id === form.empresaId)?.nombre ||
     userCompanyName || (Number.isFinite(Number(form.empresaId)) ? `ID ${form.empresaId}` : "");
+  const showSection = (section: NonNullable<StepOneProps["visualSection"]>) =>
+    !visualSection || visualSection === section;
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      {canManageAll ? (
-        <Select
-          label="Empresa"
-          value={form.empresaId ?? ""}
-          onChange={(v) => setForm((p) => ({ ...p, empresaId: v ? Number(v) : null }))}
-          options={empresas.map((e) => ({ label: e.nombre, value: String(e.id) }))}
-          error={errors.empresaId}
-        />
-      ) : (
-        <Field label="Empresa" value={empresaLabel} disabled />
-      )}
+      {showSection("context") ? (
+        <>
+          {canManageAll ? (
+            <Select
+              label="Empresa"
+              value={form.empresaId ?? ""}
+              onChange={(v) => setForm((p) => ({ ...p, empresaId: v ? Number(v) : null }))}
+              options={empresas.map((e) => ({ label: e.nombre, value: String(e.id) }))}
+              error={errors.empresaId}
+            />
+          ) : (
+            <Field label="Empresa" value={empresaLabel} disabled />
+          )}
 
-      {canManageAll ? (
-        <Select
-          label="Localidad"
-          value={form.selectedLocalityId ?? ""}
-          onChange={(v) => setForm((p) => ({ ...p, selectedLocalityId: v ? Number(v) : null, fromTrack: null, toTrack: null }))}
-          options={localidades.map((l) => ({ label: l.nombre, value: String(l.id) }))}
-          error={errors.selectedLocalityId}
-        />
-      ) : (
-        <Field
-          label="Localidad"
-          value={localidades.find((l) => l.id === form.selectedLocalityId)?.nombre || (form.selectedLocalityId ? `ID ${form.selectedLocalityId}` : "")}
-          disabled
-          error={errors.selectedLocalityId}
-        />
-      )}
+          {canManageAll ? (
+            <Select
+              label="Localidad"
+              value={form.selectedLocalityId ?? ""}
+              onChange={(v) => setForm((p) => ({ ...p, selectedLocalityId: v ? Number(v) : null, fromTrack: null, toTrack: null }))}
+              options={localidades.map((l) => ({ label: l.nombre, value: String(l.id) }))}
+              error={errors.selectedLocalityId}
+            />
+          ) : (
+            <Field
+              label="Localidad"
+              value={localidades.find((l) => l.id === form.selectedLocalityId)?.nombre || (form.selectedLocalityId ? `ID ${form.selectedLocalityId}` : "")}
+              disabled
+              error={errors.selectedLocalityId}
+            />
+          )}
+        </>
+      ) : null}
 
-      <div className="sm:col-span-2">
+      {showSection("service") ? <div className="sm:col-span-2">
         <GuidedTarget id="create-movement-torno-service">
         <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Servicio</span>
         <div className="flex flex-wrap gap-2">
@@ -343,9 +351,9 @@ export default function StepOne(props: StepOneProps) {
           {form.service ? <span className="self-center text-xs text-slate-500 dark:text-slate-400">Doble clic para desmarcar</span> : null}
         </div>
         </GuidedTarget>
-      </div>
+      </div> : null}
 
-      {form.service === "Torno" ? (
+      {showSection("service") && form.service === "Torno" ? (
         <GuidedTarget id="create-movement-torno-schedule" className="sm:col-span-2">
           <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/50">
             <label className="flex items-center gap-2">
@@ -390,7 +398,7 @@ export default function StepOne(props: StepOneProps) {
         </GuidedTarget>
       ) : null}
 
-      {form.service && (
+      {showSection("service") && form.service && (
         <div className="sm:col-span-2">
           <GuidedTarget id="create-movement-torno-selection-mode">
           <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Modo de seleccion</span>
@@ -423,7 +431,7 @@ export default function StepOne(props: StepOneProps) {
         </div>
       )}
 
-      <label className="mb-3 mt-1 flex items-center gap-2">
+      {showSection("service") ? <label className="mb-3 mt-1 flex items-center gap-2">
         <input
           type="checkbox"
           className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 dark:border-slate-700"
@@ -433,44 +441,48 @@ export default function StepOne(props: StepOneProps) {
         <span className="text-sm text-slate-700 dark:text-slate-200">
           Prioridad alta
         </span>
-      </label>
-      {form.priority === false && (
+      </label> : null}
+      {showSection("service") && form.priority === false && (
         <div className="text-xs text-slate-500 dark:text-slate-400 -mt-2 mb-2">
           Para activar ALTA se requiere contrasena segun la empresa.
         </div>
       )}
 
-      <Field
-        label="Numero de locomotora"
-        type="text"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        value={form.locomotiveNumber ? String(form.locomotiveNumber) : ""}
-        onChange={(e) => {
-          const value = e.target.value;
-          if (value === "" || /^\d+$/.test(value)) {
-            setForm((p) => ({ ...p, locomotiveNumber: value }));
-          }
-        }}
-        className=""
-        disabled={false}
-        error={errors.locomotiveNumber}
-      />
-      <div className="sm:col-span-2 -mt-2">
-        <ScheduledTornoActivationModal
-          enabled={form.service === "Torno"}
-          locomotiveNumber={form.locomotiveNumber}
-          viaOrigenId={form.fromTrack}
-          localidadId={form.selectedLocalityId}
-          scheduledMovements={scheduledTornoMovements}
-          loading={scheduledTornoLoading}
-          companyName={companyName}
-          onRefresh={onRefreshScheduledTorno}
-          onActivate={onActivateScheduledTorno}
-        />
-      </div>
+      {showSection("locomotive") ? (
+        <>
+          <Field
+            label="Numero de locomotora"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={form.locomotiveNumber ? String(form.locomotiveNumber) : ""}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value === "" || /^\d+$/.test(value)) {
+                setForm((p) => ({ ...p, locomotiveNumber: value }));
+              }
+            }}
+            className=""
+            disabled={false}
+            error={errors.locomotiveNumber}
+          />
+          <div className="sm:col-span-2 -mt-2">
+            <ScheduledTornoActivationModal
+              enabled={form.service === "Torno"}
+              locomotiveNumber={form.locomotiveNumber}
+              viaOrigenId={form.fromTrack}
+              localidadId={form.selectedLocalityId}
+              scheduledMovements={scheduledTornoMovements}
+              loading={scheduledTornoLoading}
+              companyName={companyName}
+              onRefresh={onRefreshScheduledTorno}
+              onActivate={onActivateScheduledTorno}
+            />
+          </div>
+        </>
+      ) : null}
 
-      {(!form.service || selectionMode === "de_via") && (
+      {showSection("route") && (!form.service || selectionMode === "de_via") && (
         <div className="sm:col-span-2">
           <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">De via</span>
           <div className="flex gap-2">
@@ -503,7 +515,7 @@ export default function StepOne(props: StepOneProps) {
         </div>
       )}
 
-      {(!form.service || selectionMode === "para_via") && (
+      {showSection("route") && (!form.service || selectionMode === "para_via") && (
         <div className="sm:col-span-2">
           <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Para via</span>
           <div className="flex gap-2">
@@ -536,7 +548,7 @@ export default function StepOne(props: StepOneProps) {
       )}
 
       {altaOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40">
           <div className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
             <div className="text-base font-semibold text-slate-800 dark:text-slate-100">Confirmar prioridad ALTA</div>
             <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">

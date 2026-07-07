@@ -100,7 +100,7 @@ export default function TornoMeasureCopyPasteDialog<Position extends string, Fie
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-3 sm:items-center">
+    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/45 p-3 sm:items-center">
       <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
         <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-start gap-3">

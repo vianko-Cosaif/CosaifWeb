@@ -69,6 +69,7 @@ export function getWheelPoints(
   viewMode: LocomotiveViewMode,
   selectedWheelId?: string,
   wheels: WheelOverride[] = [],
+  orientation: 'vertical' | 'horizontal' = 'vertical',
 ): WheelPoint[] {
   const normalized = normalizeWheels(wheelCount, wheels);
   const metrics = getDiagramMetrics(viewMode);
@@ -91,10 +92,11 @@ export function getWheelPoints(
 
     const axleCount = Math.max(1, wheelCount / 2);
     const sideSvgScale = 0.51;
-    const sideSvgTranslateX = -82;
+    const sideSvgTranslateX = orientation === 'horizontal' ? 90 : -82;
+    const sideCanvasWidth = orientation === 'horizontal' ? 760 : 420;
     const sideWheelXFromReference = (sourceX: number) => {
       const x = sideSvgTranslateX + sourceX * sideSvgScale;
-      return viewMode === 'right' ? 420 - x : x;
+      return viewMode === 'right' ? sideCanvasWidth - x : x;
     };
     const sideWheelXByAxleCount: Record<number, number[]> = {
       2: [sideWheelXFromReference(240), sideWheelXFromReference(930)],
