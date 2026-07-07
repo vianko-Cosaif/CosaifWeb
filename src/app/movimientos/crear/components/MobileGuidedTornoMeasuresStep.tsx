@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import { Movimiento } from "../../Movimiento";
 import type { MovementFormData } from "../../movimientos.shared";
@@ -132,7 +133,7 @@ function MeasurePickerModal(props: {
     onChange(normalizeTornoMeasureValue({ ...draft, [part]: value }));
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[100010] flex items-end justify-center bg-black/50 p-3 sm:items-center">
       <div className="w-full max-w-md overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
         <div className="border-b border-slate-200 bg-emerald-50 px-5 py-4 dark:border-zinc-800 dark:bg-emerald-950/30">
@@ -197,7 +198,8 @@ function MeasurePickerModal(props: {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -500,7 +502,7 @@ export default function MobileGuidedTornoMeasuresStep({
         </p>
       </div>
 
-      {wheelModalOpen && selectedPosition ? (
+      {wheelModalOpen && selectedPosition ? createPortal(
         <div className="fixed inset-0 z-[100010] flex items-end justify-center bg-black/50 p-3 sm:items-center">
           <div className="flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
             <div className="flex items-start gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
@@ -595,7 +597,8 @@ export default function MobileGuidedTornoMeasuresStep({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       ) : null}
 
       <MeasurePickerModal
