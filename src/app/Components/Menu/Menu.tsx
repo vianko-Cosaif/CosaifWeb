@@ -25,7 +25,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { GuidedTarget, useGuidedManualApi } from "@/app/Components/GuidedManualAtom";
 import ThemeToggle from "@/app/Components/ui/ThemeToggle";
-import { CLIENT_MOVEMENT_GUIDE_ID } from "@/app/Components/GuidedManualAtom/ClientMovementGuide.config";
+import { CLIENT_MOVEMENT_GUIDE_ID, CLIENT_MOVEMENT_MOBILE_GUIDE_ID } from "@/app/Components/GuidedManualAtom/ClientMovementGuide.config";
 import { ClientMovementGuideButton } from "@/app/Components/GuidedManualAtom/ClientMovementGuide";
 import { buildNavigationForRole, isNavigationItemActive, type AppNavigationItem } from "@/lib/appNavigation";
 import { getRoleCapabilities, normalizeAppRole, type NavModuleId } from "@/lib/accessControl";
@@ -54,7 +54,7 @@ type NavigationItem = {
   icon: LucideIcon;
 };
 
-type HelpGuideAction = "client-create-movement" | "legacy-create-movement" | "legacy-create-movement-torno";
+type HelpGuideAction = "client-create-movement" | "client-create-movement-mobile" | "legacy-create-movement" | "legacy-create-movement-torno";
 
 type HelpSuggestion = {
   id: string;
@@ -66,6 +66,14 @@ type HelpSuggestion = {
 };
 
 const HELP_GUIDE_CATALOG: HelpSuggestion[] = [
+  {
+    id: "client-create-movement-mobile",
+    label: "Crear movimiento paso a paso (Mobile / Paginado)",
+    description: "Guía interactiva optimizada para el flujo mobile/paginado paso a paso.",
+    keywords: ["movimiento", "crear", "nuevo", "mobile", "paginado", "guia", "wizard"],
+    roles: ["CLIENTE"],
+    action: "client-create-movement-mobile",
+  },
   {
     id: "client-guide-button-flow",
     label: "Wizard del boton Guia",
@@ -285,6 +293,12 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
     (suggestion: HelpSuggestion) => {
       if (suggestion.action === "client-create-movement" && guidedManualApi) {
         guidedManualApi.startManual(CLIENT_MOVEMENT_GUIDE_ID);
+        closeHelpAssistant();
+        return;
+      }
+
+      if (suggestion.action === "client-create-movement-mobile" && guidedManualApi) {
+        guidedManualApi.startManual(CLIENT_MOVEMENT_MOBILE_GUIDE_ID);
         closeHelpAssistant();
         return;
       }

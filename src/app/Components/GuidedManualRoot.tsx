@@ -8,7 +8,7 @@ import {
   type GuidedManualAction,
   type GuidedManualStep,
 } from "@/app/Components/GuidedManualAtom";
-import { CLIENT_MOVEMENT_GUIDE } from "@/app/Components/GuidedManualAtom/ClientMovementGuide.config";
+import { CLIENT_MOVEMENT_GUIDE, CLIENT_MOVEMENT_MOBILE_GUIDE } from "@/app/Components/GuidedManualAtom/ClientMovementGuide.config";
 
 const START_CREATE_MOVEMENT_GUIDE_EVENT = "cosaif:start-create-movement-guide";
 const START_CREATE_MOVEMENT_TORNO_GUIDE_EVENT = "cosaif:start-create-movement-torno-guide";
@@ -366,7 +366,7 @@ export default function GuidedManualRoot({ children }: { children: React.ReactNo
   );
 
   return (
-    <GuidedManualProvider steps={[]} manuals={[CLIENT_MOVEMENT_GUIDE]} actionRunner={actionRunner}>
+    <GuidedManualProvider steps={[]} manuals={[CLIENT_MOVEMENT_GUIDE, CLIENT_MOVEMENT_MOBILE_GUIDE]} actionRunner={actionRunner}>
       <GuidedManualEventBridge />
       {children}
     </GuidedManualProvider>

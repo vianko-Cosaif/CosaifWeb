@@ -159,3 +159,189 @@ export const CLIENT_MOVEMENT_GUIDE = defineGuidedManual({
     },
   ],
 });
+
+export const CLIENT_MOVEMENT_MOBILE_GUIDE_ID = "client-create-movement-mobile";
+
+export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
+  id: CLIENT_MOVEMENT_MOBILE_GUIDE_ID,
+  title: "Crear un movimiento (Flujo mobile)",
+  disableAppElements: ['[data-guide-action="create-movement-next"]'],
+  steps: [
+    {
+      id: "mobile-open-movements",
+      title: "Abre Movimientos",
+      description: "Selecciona Movimientos en el menu lateral para consultar y crear solicitudes.",
+      targetId: "client-nav-movements",
+      mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: '[data-guide-id="client-nav-movements"] button',
+      },
+    },
+    {
+      id: "mobile-new-movement",
+      title: "Crea un movimiento",
+      description: "Pulsa Nuevo para iniciar el registro de una solicitud.",
+      targetId: "client-new-movement",
+      mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: '[data-guide-id="client-new-movement"] button',
+      },
+    },
+    {
+      id: "mobile-understand-mobile-wizard",
+      targetId: "create-movement-stepper",
+      title: "Flujo guiado tipo Mobile",
+      description: "En este modo, el formulario esta dividido en pequeñas pantallas consecutivas para mayor comodidad en dispositivos moviles.",
+      mode: "guide",
+    },
+    {
+      id: "mobile-step-one-company",
+      title: "Empresa y Localidad",
+      description: "Selecciona la empresa y localidad para este movimiento en esta primera pantalla.",
+      targetId: "create-movement-step-1",
+      mode: "wizard",
+    },
+    {
+      id: "mobile-step-one-go-to-service",
+      title: "Avanza al servicio",
+      description: "Haz clic en Continuar para seleccionar el tipo de servicio.",
+      targetId: "create-movement-next-step",
+      mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: "[data-guide-id='create-movement-next-step'] button",
+        delayMs: 250,
+      },
+    },
+    {
+      id: "mobile-step-one-service",
+      title: "Selecciona el Servicio",
+      description: "Elige el servicio (por ejemplo, Torno) y define las opciones operativas.",
+      targetId: "create-movement-torno-service",
+      mode: "wizard",
+      when: {
+        type: "target",
+        targetId: "create-movement-torno-service",
+      },
+    },
+    {
+      id: "mobile-step-one-go-to-locomotive",
+      title: "Avanza a la locomotora",
+      description: "Haz clic en Continuar para ingresar la locomotora.",
+      targetId: "create-movement-next-step",
+      mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: "[data-guide-id='create-movement-next-step'] button",
+        delayMs: 250,
+      },
+    },
+    {
+      id: "mobile-step-one-locomotive",
+      title: "Locomotora",
+      description: "Escribe el numero exacto de la locomotora.",
+      targetId: "create-movement-step-1",
+      mode: "wizard",
+    },
+    {
+      id: "mobile-step-one-go-to-route",
+      title: "Avanza a la ruta",
+      description: "Haz clic en Continuar para seleccionar las vias.",
+      targetId: "create-movement-next-step",
+      mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: "[data-guide-id='create-movement-next-step'] button",
+        delayMs: 250,
+      },
+    },
+    {
+      id: "mobile-step-one-route",
+      title: "Vias y Secciones",
+      description: "Indica la via y seccion de origen para este movimiento.",
+      targetId: "create-movement-step-1",
+      mode: "wizard",
+    },
+    {
+      id: "mobile-step-one-finish",
+      title: "Finalizar paso 1",
+      description: "Haz clic en Siguiente para avanzar al paso 2 de detalles o mediciones.",
+      targetId: "create-movement-next-step",
+      mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: "[data-guide-id='create-movement-next-step'] button",
+        delayMs: 250,
+      },
+    },
+    {
+      id: "mobile-step-two-torno",
+      title: "Mediciones de Torno",
+      description: "En este modo movil, captura las medidas de ruedas desplazandote por los grupos de ejes de forma paginada.",
+      targetId: "create-movement-step-2-torno",
+      mode: "wizard",
+      when: {
+        type: "target",
+        targetId: "create-movement-step-2-torno",
+      },
+    },
+    {
+      id: "mobile-step-two-standard",
+      title: "Detalles del movimiento",
+      description: "Completa los detalles operativos estandar para este movimiento.",
+      targetId: "create-movement-step-2-standard",
+      mode: "wizard",
+      when: {
+        type: "target",
+        targetId: "create-movement-step-2-standard",
+      },
+    },
+    {
+      id: "mobile-step-two-finish",
+      title: "Avanza a la confirmación",
+      description: "Haz clic en Siguiente para revisar el resumen.",
+      targetId: "create-movement-next-step",
+      mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: "[data-guide-id='create-movement-next-step'] button",
+        delayMs: 250,
+      },
+    },
+    {
+      id: "mobile-step-three-summary",
+      title: "Revisa el resumen",
+      description: "Verifica que todos los datos sean correctos antes de enviar.",
+      targetId: "create-movement-step3-summary",
+      mode: "guide",
+      when: {
+        type: "target",
+        targetId: "create-movement-step3-summary",
+      },
+    },
+    {
+      id: "mobile-step-three-comments",
+      title: "Comentarios",
+      description: "Escribe observaciones si es necesario.",
+      targetId: "create-movement-step3-comments",
+      mode: "wizard",
+      when: {
+        type: "target",
+        targetId: "create-movement-step3-comments",
+      },
+    },
+    {
+      id: "mobile-submit-movement",
+      title: "Confirma el movimiento",
+      description: "Pulsa el boton de enviar para finalizar el registro.",
+      targetId: "create-movement-submit",
+      mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: '[data-guide-action="create-movement-submit"]',
+      },
+    },
+  ],
+});

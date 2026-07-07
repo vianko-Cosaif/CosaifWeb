@@ -58,9 +58,10 @@ export default function CrearMovimiento() {
 
   useEffect(() => {
     if (guidedManual?.isOpen) {
-      setGuidedMode(false);
+      const isMobileGuide = guidedManual.currentStep?.id?.startsWith("mobile-");
+      setGuidedMode(!!isMobileGuide);
     }
-  }, [guidedManual?.isOpen]);
+  }, [guidedManual?.isOpen, guidedManual?.currentStep?.id]);
 
   /** Sincroniza tema visual con preferencia actual y cambios entre pestañas. */
   useEffect(() => {
