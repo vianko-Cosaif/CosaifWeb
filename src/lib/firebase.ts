@@ -6,6 +6,7 @@ import {
   onMessage,
 } from "firebase/messaging";
 import type { Messaging, MessagePayload } from "firebase/messaging";
+import { getNotificationRuntimePolicy } from "@/lib/notificationRuntime";
 
 const FIREBASE_MESSAGING_SW_URL = "/firebase-messaging-sw.js";
 const FIREBASE_MESSAGING_SW_SCOPE = "/firebase-cloud-messaging-push-scope/";
@@ -28,8 +29,8 @@ const requiredFirebaseValues = [
   firebaseConfig.appId,
 ];
 
-let firebaseAppInstance: FirebaseApp | null = null;
-let messagingSupportPromise: Promise<boolean> | null = null;
+let firebaseAppInstance: FirebaseApp | undefined;
+let messagingSupportPromise: Promise<boolean> | undefined;
 
 function hasValue(value: string | undefined) {
   return Boolean(value && !value.startsWith("TU_"));
@@ -37,22 +38,22 @@ function hasValue(value: string | undefined) {
 
 function toPositiveInt(value: unknown) {
   const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : null;
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : undefined;
 }
 
 function readClientCookie(name: string) {
-  if (typeof document === "undefined") return null;
+  if (typeof document === "undefined") return undefined;
   const item = document.cookie
     .split(";")
     .map((part) => part.trim())
     .find((part) => part.startsWith(`${name}=`));
-  return item ? decodeURIComponent(item.slice(name.length + 1)) : null;
+  return item ? decodeURIComponent(item.slice(name.length + 1)) : undefined;
 }
 
-export function getActiveFirebaseLocalidadId(explicit?: number | string | null) {
+export function getActiveFirebaseLocalidadId(explicit?: number | string) {
   const explicitId = toPositiveInt(explicit);
   if (explicitId) return explicitId;
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined") return undefined;
 
   return (
     toPositiveInt(readClientCookie("locId")) ??
@@ -66,10 +67,10 @@ export function isFirebaseConfigured() {
   return requiredFirebaseValues.every(hasValue);
 }
 
-export function getFirebaseApp(): FirebaseApp | null {
+export function getFirebaseApp(): FirebaseApp | undefined {
   if (!isFirebaseConfigured()) {
     console.warn("Firebase no tiene configuracion completa.");
-    return null;
+    return undefined;
   }
 
   if (firebaseAppInstance) return firebaseAppInstance;
@@ -94,60 +95,68 @@ async function supportsFirebaseMessaging() {
 }
 
 async function getFirebaseMessagingServiceWorker() {
-  if (typeof window === "undefined") return null;
-  if (!("serviceWorker" in navigator)) return null;
+  if (typeof window === "undefined") return undefined;
+  if (!("serviceWorker" in navigator)) return undefined;
+  const policy = getNotificationRuntimePolicy();
+  const serviceWorkerUrl = `${FIREBASE_MESSAGING_SW_URL}?runtime=${encodeURIComponent(policy.runtimeEnv)}&appEnv=${encodeURIComponent(policy.appEnv)}`;
 
   const existingRegistration = await navigator.serviceWorker.getRegistration(
     FIREBASE_MESSAGING_SW_SCOPE
   );
 
-  if (existingRegistration) return existingRegistration;
+  if (existingRegistration) {
+    void existingRegistration.update().catch(() => undefined);
+    return existingRegistration;
+  }
 
-  return navigator.serviceWorker.register(FIREBASE_MESSAGING_SW_URL, {
+  return navigator.serviceWorker.register(serviceWorkerUrl, {
     scope: FIREBASE_MESSAGING_SW_SCOPE,
   });
 }
 
-export async function getFirebaseMessaging(): Promise<Messaging | null> {
+export async function getFirebaseMessaging(): Promise<Messaging | undefined> {
   const app = getFirebaseApp();
-  if (!app) return null;
+  if (!app) return undefined;
 
   const supported = await supportsFirebaseMessaging();
 
   if (!supported) {
     console.warn("Firebase Messaging no es compatible con este navegador.");
-    return null;
+    return undefined;
   }
 
   return getMessaging(app);
 }
 
-export async function requestFirebaseNotificationToken(): Promise<string | null> {
-  if (typeof window === "undefined") return null;
-  if (!("Notification" in window)) return null;
+export async function requestFirebaseNotificationToken(options: { requestPermission?: boolean } = {}): Promise<string | undefined> {
+  if (typeof window === "undefined") return undefined;
+  if (!("Notification" in window)) return undefined;
+  const policy = getNotificationRuntimePolicy();
+  if (!policy.enabled) return undefined;
 
   let permission = Notification.permission;
 
   if (permission === "default") {
+    if (options.requestPermission === false) return undefined;
     permission = await Notification.requestPermission();
   }
 
   if (permission !== "granted") {
     console.warn("Permiso de notificaciones denegado.");
-    return null;
+    return undefined;
   }
 
   const messaging = await getFirebaseMessaging();
 
-  if (!messaging) return null;
+  if (!messaging) return undefined;
 
   const serviceWorkerRegistration = await getFirebaseMessagingServiceWorker();
-  if (!serviceWorkerRegistration) return null;
+  if (!serviceWorkerRegistration) return undefined;
 
   const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
   if (!hasValue(vapidKey)) {
     console.warn("Falta NEXT_PUBLIC_FIREBASE_VAPID_KEY.");
-    return null;
+    return undefined;
   }
 
   const token = await getToken(messaging, {
@@ -161,17 +170,29 @@ export async function requestFirebaseNotificationToken(): Promise<string | null>
 export async function registerFirebaseNotificationToken(
   token: string,
   accessToken?: string,
-  localidadId?: number | string | null
+  localidadId?: number | string
 ) {
   if (typeof window === "undefined") return;
   if (!token.trim()) return;
+  const policy = getNotificationRuntimePolicy();
+  if (!policy.enabled) return;
 
   const activeLocalidadId = getActiveFirebaseLocalidadId(localidadId);
-  const body: { token: string; accessToken?: string; localidadId?: number } = { token };
+  const body: {
+    token: string;
+    accessToken?: string;
+    localidadId?: number;
+    runtimeEnv: string;
+    appEnv: string;
+  } = {
+    token,
+    runtimeEnv: policy.runtimeEnv,
+    appEnv: policy.appEnv,
+  };
   if (accessToken) body.accessToken = accessToken;
   if (activeLocalidadId) body.localidadId = activeLocalidadId;
 
-  const response = await fetch(accessToken ? "/api/fcm/register" : "/xapi/fcm", {
+  const response = await fetch("/api/fcm/register", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -184,7 +205,7 @@ export async function registerFirebaseNotificationToken(
   }
 }
 
-export async function syncFirebaseNotificationLocalidad(localidadId?: number | string | null) {
+export async function syncFirebaseNotificationLocalidad(localidadId?: number | string) {
   if (typeof window === "undefined") return;
   if (!("Notification" in window) || Notification.permission !== "granted") return;
 

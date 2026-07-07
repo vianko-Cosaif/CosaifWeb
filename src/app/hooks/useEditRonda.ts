@@ -20,6 +20,7 @@ export interface Ronda {
   rondaNumero: number;
   orden: number;
   concluido: boolean;
+  source?: 'cosaif' | 'torreon' | 'torno' | string;
   empresa?: { id: number; nombre: string } | null;
   movimientoId?: number | null;
   createdAt?: string | null;
@@ -239,16 +240,17 @@ function infoFromRonda(ronda: Ronda): InfoExtra {
    ======================= */
 
 /** Swap de movimientos entre dos rondas (ruta oficial del backend) */
-export async function apiSwapMovimientos(rondaAId: number | string, rondaBId: number | string) {
-  return postClienteRondas({ action: 'swap', rondaAId, rondaBId });
+export async function apiSwapMovimientos(rondaAId: number | string, rondaBId: number | string, localidadId?: number | string) {
+  return postClienteRondas({ action: 'swap', rondaAId, rondaBId, localidadId });
 }
 
 /** Cancela un movimiento y lo saca de su ronda (ruta oficial del backend) */
-export async function apiCancelarMovimiento(movimientoId: number, razon?: string) {
+export async function apiCancelarMovimiento(movimientoId: number, razon?: string, localidadId?: number | string) {
   return postClienteRondas({
     action: 'cancel',
     movimientoId,
     razon: razon ?? 'Cancelado por cliente',
+    localidadId,
   });
 }
 

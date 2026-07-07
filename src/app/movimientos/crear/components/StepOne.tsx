@@ -11,6 +11,7 @@ import {
 } from "../../movimientos.shared";
 import { Field, Select, inputBase } from "./ui";
 import ScheduledTornoActivationModal, { type ScheduledTornoMovement } from "./ScheduledTornoActivationModal";
+import { GuidedTarget } from "../../../Components/GuidedManualAtom";
 
 type SelectionMode = "de_via" | "para_via";
 

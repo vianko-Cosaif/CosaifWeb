@@ -16,6 +16,7 @@ import StepThree from "./components/StepThree";
 import StepFourTorno from "./components/StepFourTorno";
 import { Badge, RoleBadge } from "./components/ui";
 import { useCrearMovimientoController } from "./useCrearMovimientoController";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 
 function TornoMeasurementGuideButton({ steps }: { steps: GuidedManualStep[] }) {
   const api = useGuidedManualApi();
@@ -472,7 +473,6 @@ export default function CrearMovimiento() {
           )}
 
           {isTornoMeasurementStep && <TornoMeasurementGuideButton steps={tornoGuideSteps} />}
-
           <button
             onClick={goSalir}
             data-guide-action="create-movement-exit"

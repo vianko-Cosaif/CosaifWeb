@@ -15,26 +15,22 @@ import type { IncidenteRow, Meta, Role } from "./types";
 import {
   AlertTriangle,
   BriefcaseBusiness,
-  MapPin,
   RefreshCw,
-  Search,
   Clock,
-  SlidersHorizontal,
   X,
   Loader2,
   CheckCircle,
   AlertCircle,
   Filter,
-  ChevronDown,
-  ChevronUp
 } from "lucide-react";
 import { fetchJSON } from "@/lib/api";
+import { SearchInput } from "@/app/Components/ui";
+import { IncidentCatalogSelect, IncidentStatCard } from "@/features/incidentes";
 
-/** Base same-origin proxy. Zero CORS. */
-const BASE = "/bff";
-const INCIDENTES = `${BASE}/incidentes`;
-const EMPRESAS = `${BASE}/empresas`;
-const LOCALIDADES = `${BASE}/localidades`;
+/** Incidentes son locality-aware: Torreon usa ms_torreon y el resto Cosaif normal. */
+const INCIDENTES = "/api/incidentes";
+const EMPRESAS = "/bff/empresas";
+const LOCALIDADES = "/bff/localidades";
 
 /** Read token from non-HttpOnly cookie and build Authorization header. */
 function authFromCookie(): HeadersInit {
@@ -83,18 +79,18 @@ function prettyError(object: any): string {
 
 // Cache optimizado con TTL
 class DetailCache {
-  private cache = new Map<number, { data: any; timestamp: number }>();
+  private cache = new Map<string, { data: any; timestamp: number }>();
   private TTL = 5 * 60 * 1000; // 5 minutos
 
-  set(id: number, data: any) {
-    this.cache.set(id, { data, timestamp: Date.now() });
+  set(key: string, data: any) {
+    this.cache.set(key, { data, timestamp: Date.now() });
   }
 
-  get(id: number) {
-    const entry = this.cache.get(id);
+  get(key: string) {
+    const entry = this.cache.get(key);
     if (!entry) return null;
     if (Date.now() - entry.timestamp > this.TTL) {
-      this.cache.delete(id);
+      this.cache.delete(key);
       return null;
     }
     return entry.data;
@@ -107,28 +103,54 @@ class DetailCache {
 
 const detailCache = new DetailCache();
 
+function incidentSourceQuery(incident: any): string {
+  const source = String(incident?._source || incident?.source || incident?._detalle?._source || "").toLowerCase();
+  if (source !== "torreon") return "";
+  const params = new URLSearchParams({ source: "torreon" });
+  const localidadId =
+    incident?.localidadId ??
+    incident?.movimiento?.localidadId ??
+    incident?._detalle?.localidadId ??
+    incident?._detalle?.movimiento?.localidadId;
+  if (localidadId) params.set("localidadId", String(localidadId));
+  return `?${params.toString()}`;
+}
+
+function incidentCacheKey(incident: any) {
+  return `${String(incident?._source || incident?.source || "cosaif").toLowerCase()}:${Number(incident?.id) || incident?.id}`;
+}
+
 async function fetchIncidenteDetailsBulk(
-  ids: number[],
+  incidents: any[],
   maxConcurrency = 6
 ): Promise<Record<number, any>> {
-  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
   const result: Record<number, any> = {};
-  const pendingIds: number[] = [];
+  const uniqueIncidents = Array.from(
+    new Map(
+      incidents
+        .filter((incident) => incident?.id)
+        .map((incident) => [incidentCacheKey(incident), incident])
+    ).values()
+  );
+  const pending: any[] = [];
 
-  for (const id of uniqueIds) {
-    const cached = detailCache.get(id);
-    if (cached) result[id] = cached;
-    else pendingIds.push(id);
+  for (const incident of uniqueIncidents) {
+    const key = incidentCacheKey(incident);
+    const cached = detailCache.get(key);
+    if (cached) result[Number(incident.id)] = cached;
+    else pending.push(incident);
   }
 
-  for (let i = 0; i < pendingIds.length; i += maxConcurrency) {
-    const chunk = pendingIds.slice(i, i + maxConcurrency);
+  for (let i = 0; i < pending.length; i += maxConcurrency) {
+    const chunk = pending.slice(i, i + maxConcurrency);
     await Promise.all(
-      chunk.map(async (id) => {
+      chunk.map(async (incident) => {
+        const id = Number(incident.id);
+        const key = incidentCacheKey(incident);
         try {
-          const response = await withCreds<any>(`${INCIDENTES}/${id}`);
+          const response = await withCreds<any>(`${INCIDENTES}/${encodeURIComponent(String(incident.id))}${incidentSourceQuery(incident)}`);
           const data = (response as any)?.data ?? response;
-          detailCache.set(id, data);
+          detailCache.set(key, data);
           result[id] = data;
           return { id, data };
         } catch {
@@ -362,7 +384,7 @@ export default function IncidenteController() {
             loading: false,
           });
         }
-      } catch (error: any) {
+      } catch {
         setCatalogues((p) => ({ ...p, loading: false }));
         showNotification("error", "Error al cargar catálogos");
       }
@@ -410,11 +432,7 @@ export default function IncidenteController() {
           );
         }
 
-        const incidentIds = response.data
-          .map((x: any) => Number(x.id))
-          .filter(Boolean);
-
-        const detailsMap = await fetchIncidenteDetailsBulk(incidentIds);
+        const detailsMap = await fetchIncidenteDetailsBulk(response.data);
 
         const statusDisplayMap: Record<string, string> = {
           ABIERTO: "Activo",
@@ -441,7 +459,7 @@ export default function IncidenteController() {
               destino:
                 movement?.viaDestino?.nombre ??
                 incident?.movimiento?.viaDestino?.nombre,
-              descripcion: details.descripcion ?? incident.descripcion,
+              descripcion: details.descripcion ?? details.motivo ?? incident.descripcion ?? incident.motivo,
               fecha: incident.fechaInicio
                 ? formatDate(incident.fechaInicio)
                 : "—",
@@ -567,7 +585,7 @@ export default function IncidenteController() {
         setModalKey((k) => k + 1);
 
         if (action === "resolve") {
-          await withCreds(`${INCIDENTES}/${uiState.selectedIncident.id}`, {
+          await withCreds(`${INCIDENTES}/${uiState.selectedIncident.id}${incidentSourceQuery(uiState.selectedIncident)}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -578,7 +596,7 @@ export default function IncidenteController() {
           showNotification("success", "Incidente resuelto correctamente");
         } else {
           await withCreds(
-            `${INCIDENTES}/${uiState.selectedIncident.id}/cerrar`,
+            `${INCIDENTES}/${uiState.selectedIncident.id}/cerrar${incidentSourceQuery(uiState.selectedIncident)}`,
             { method: "POST" }
           );
           showNotification("success", "Incidente cerrado");
@@ -711,24 +729,16 @@ export default function IncidenteController() {
 
             {/* Search & Actions */}
             <div className="flex flex-1 items-center justify-end gap-3 w-full xl:w-auto">
-              <div className="relative w-full max-w-md group">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-emerald-500" />
-                <input
-                  ref={searchRef}
-                  value={filters.searchQuery}
-                  onChange={(e) => handleFilterChange("searchQuery", e.target.value)}
-                  placeholder="Buscar por ID, empresa, via..."
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-10 pr-4 text-sm outline-none transition-all focus:border-emerald-500 focus:bg-white focus:ring-1 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800/50 dark:focus:bg-slate-900 dark:text-slate-100"
-                />
-                {filters.searchQuery && (
-                  <button
-                    onClick={() => handleFilterChange("searchQuery", "")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
+              <SearchInput
+                ref={searchRef}
+                value={filters.searchQuery}
+                onChange={(value) => handleFilterChange("searchQuery", value)}
+                onClear={() => handleFilterChange("searchQuery", "")}
+                placeholder="Buscar por ID, empresa, via..."
+                label="Buscar incidentes"
+                className="w-full max-w-md"
+                inputClassName="h-10 bg-slate-50/50 font-medium focus:border-emerald-500 focus:bg-white focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800/50 dark:focus:bg-slate-900"
+              />
 
               {/* Mobile Filter Toggle */}
               <button
@@ -745,15 +755,17 @@ export default function IncidenteController() {
               <div className="hidden xl:flex items-center gap-2">
                 {!isLimitedClientView && (
                   <>
-                    <SelectEnterprise
+                    <IncidentCatalogSelect
                       value={filters.empresaId}
                       onChange={(v: number | null) => handleFilterChange("empresaId", v)}
                       options={catalogues.empresas}
+                      placeholder="Todas las Empresas"
                     />
-                    <SelectLocality
+                    <IncidentCatalogSelect
                       value={filters.localidadId}
                       onChange={(v: number | null) => handleFilterChange("localidadId", v)}
                       options={catalogues.localidades}
+                      placeholder="Todas las Localidades"
                     />
                   </>
                 )}
@@ -774,16 +786,18 @@ export default function IncidenteController() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2">
               {!isLimitedClientView && (
                 <>
-                  <SelectEnterprise
+                  <IncidentCatalogSelect
                     value={filters.empresaId}
                     onChange={(v: number | null) => handleFilterChange("empresaId", v)}
                     options={catalogues.empresas}
+                    placeholder="Todas las Empresas"
                     fullWidth
                   />
-                  <SelectLocality
+                  <IncidentCatalogSelect
                     value={filters.localidadId}
                     onChange={(v: number | null) => handleFilterChange("localidadId", v)}
                     options={catalogues.localidades}
+                    placeholder="Todas las Localidades"
                     fullWidth
                   />
                 </>
@@ -811,25 +825,25 @@ export default function IncidenteController() {
         {/* STATS CARDS - Placed ABOVE table */}
         {!incidentData.error && incidentData.data.length > 0 && (
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <StatCard
+            <IncidentStatCard
               label="Total Incidentes"
               value={incidentData.data.length}
               icon={AlertTriangle}
               color="slate"
             />
-            <StatCard
+            <IncidentStatCard
               label="Activos"
               value={totalActivos}
               icon={Clock}
               color="emerald"
             />
-            <StatCard
+            <IncidentStatCard
               label="Resueltos"
               value={totalResueltos}
               icon={CheckCircle}
               color="blue"
             />
-            <StatCard
+            <IncidentStatCard
               label="Empresas"
               value={totalEmpresas}
               icon={BriefcaseBusiness}
@@ -897,74 +911,6 @@ export default function IncidenteController() {
           onSkip={() => handleIncidentAction("skip")}
         />
       )}
-    </div>
-  );
-}
-
-/* === SUBCOMPONENTS (Clean & Isolated) === */
-
-function StatCard({ label, value, icon: Icon, color }: { label: string, value: number, icon: any, color: "slate" | "emerald" | "blue" | "indigo" }) {
-  const styles = {
-    slate: "from-slate-500 to-slate-700 shadow-slate-500/20",
-    emerald: "from-emerald-500 to-emerald-700 shadow-emerald-500/20",
-    blue: "from-blue-500 to-blue-700 shadow-blue-500/20",
-    indigo: "from-indigo-500 to-indigo-700 shadow-indigo-500/20",
-  };
-
-  return (
-    <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 group">
-      <div className={`absolute top-0 right-0 p-3 opacity-10 transition-transform group-hover:scale-110`}>
-        <Icon className="h-24 w-24" />
-      </div>
-
-      <div className="relative z-10 flex items-start justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1 opacity-80">{label}</p>
-          <p className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">{value}</p>
-        </div>
-        <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${styles[color]} text-white shadow-lg`}>
-          <Icon className="h-6 w-6" />
-        </div>
-      </div>
-
-      {/* Glass shine effect */}
-      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-    </div>
-  );
-}
-
-function SelectEnterprise({ value, onChange, options, fullWidth }: any) {
-  return (
-    <div className={`relative ${fullWidth ? "w-full" : "w-48"}`}>
-      <select
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
-        className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3 pr-8 text-sm font-medium text-slate-700 shadow-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-      >
-        <option value="">Todas las Empresas</option>
-        {options.map((o: any) => (
-          <option key={o.id} value={o.id}>{o.nombre}</option>
-        ))}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-    </div>
-  );
-}
-
-function SelectLocality({ value, onChange, options, fullWidth }: any) {
-  return (
-    <div className={`relative ${fullWidth ? "w-full" : "w-48"}`}>
-      <select
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
-        className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3 pr-8 text-sm font-medium text-slate-700 shadow-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-      >
-        <option value="">Todas las Localidades</option>
-        {options.map((o: any) => (
-          <option key={o.id} value={o.id}>{o.nombre}</option>
-        ))}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
     </div>
   );
 }

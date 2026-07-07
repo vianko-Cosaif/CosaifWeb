@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import ClientPageWrapper from "./ClientPageWrapper";
+import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
+import { getRoleCapabilities, normalizeAppRole } from "@/lib/accessControl";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<SP>
 
   const localidadId = toInt(qLoc) ?? toInt(c.get("locId")?.value) ?? null;
   const empresaId  = toInt(c.get("empresaId")?.value) ?? null;
+  const role = normalizeAppRole(c.get(process.env.ROLE_COOKIE_NAME ?? "role")?.value) ?? "CLIENTE";
+  const capabilities = getRoleCapabilities(role);
+  const effectiveLocalidadId = capabilities.canSwitchLocalidad ? toInt(qLoc) : localidadId;
+
+  if (!capabilities.canSwitchLocalidad && isTorreonLocalidadId(localidadId)) {
+    redirect("/cliente/torreon");
+  }
 
   return (
     <section className="w-full">
@@ -26,7 +35,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<SP>
           <div className="h-32 rounded-2xl border-2 border-slate-200 bg-white animate-pulse shadow-sm" />
         }
       >
-        <ClientPageWrapper localidadId={localidadId} empresaId={empresaId} />
+        <ClientPageWrapper localidadId={effectiveLocalidadId} empresaId={empresaId} role={role} />
       </Suspense>
     </section>
   );

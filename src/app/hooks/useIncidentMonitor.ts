@@ -6,7 +6,7 @@ import { useVisibleInterval } from "./useVisibleInterval";
 import { useAuthErrorHandler } from "./useAuthErrorHandler";
 
 const DEFAULT_API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL || "/bff";
+  process.env.NEXT_PUBLIC_INCIDENT_API_BASE || "/api";
 
 export type IncidenteEmergente = {
   id: number;
@@ -25,6 +25,7 @@ export type IncidenteEmergente = {
   movimiento?: {
     empresa?: { nombre?: string };
     locomotiveNumber?: string;
+    localidadId?: number | string;
     viaOrigen?: { nombre?: string };
     viaDestino?: { nombre?: string };
   };
@@ -104,7 +105,7 @@ export function useIncidentMonitor({
     const movement = incident.movimiento || {};
     return {
       id: incident.id,
-      descripcion: incident.descripcion || "Sin descripción",
+      descripcion: incident.descripcion || incident.motivo || "Sin descripción",
       estado: incident.estado || "ABIERTO",
       fechaInicio: incident.fechaInicio || new Date().toISOString(),
       empresa: movement?.empresa?.nombre || incident?.empresa,

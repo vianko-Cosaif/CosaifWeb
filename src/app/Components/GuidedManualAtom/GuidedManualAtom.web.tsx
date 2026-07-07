@@ -32,7 +32,9 @@ type GuidedManualStateContextValue = {
   totalSteps: number;
   targetsVersion: number;
   isTransitioning: boolean;
+
   globalDisableAppElements: string[];
+
 };
 
 type GuidedManualApiContextValue = {
@@ -45,9 +47,11 @@ type GuidedManualApiContextValue = {
   registerTarget: (id: string, node: HTMLElement | null) => void;
   unregisterTarget: (id: string) => void;
   getTarget: (id: string) => HTMLElement | null;
+
   checkAutoAdvance: () => boolean;
   isStepApplicable: (step?: GuidedManualStep | null) => boolean;
   isStepReady: (step?: GuidedManualStep | null) => boolean;
+
 };
 
 const GuidedManualStateContext = createContext<GuidedManualStateContextValue | null>(null);
@@ -91,7 +95,9 @@ const defaultGuidedManualTracking: Required<GuidedManualTrackingOptions> = {
   resize: true,
   transitions: true,
   autoScrollWhenHidden: true,
-  mutationDebounceMs: 0,
+
+  mutationDebounceMs: 40,
+
 };
 
 const defaultGuidedManualTransition: Required<GuidedManualTransitionOptions> = {
@@ -195,6 +201,7 @@ export const GuidedManualProvider = ({
   transition,
 }: GuidedManualProviderProps) => {
   const manualRegistry = useMemo(() => createGuidedManualRegistry(manuals), [manuals]);
+
   const activeManual = useMemo(() => {
     if (steps.length) return null;
     return defaultManualId
@@ -209,6 +216,7 @@ export const GuidedManualProvider = ({
 
   const globalDisableAppElements = activeManual?.disableAppElements ?? [];
 
+
   const [manualSteps, setManualSteps] = useState<GuidedManualStep[]>(configuredDefaultSteps);
   const defaultStepsRef = useRef<GuidedManualStep[]>(configuredDefaultSteps);
   const [isCustomSteps, setIsCustomSteps] = useState(false);
@@ -218,7 +226,9 @@ export const GuidedManualProvider = ({
   const targetsRef = useRef<Map<string, HTMLElement>>(new Map());
   const [targetsVersion, setTargetsVersion] = useState(0);
   const transitionRequestRef = useRef(0);
+
   const autoAdvanceTimerRef = useRef<number | null>(null);
+
   const resolvedTransition = useMemo(
     () => ({ ...defaultGuidedManualTransition, ...(transition || {}) }),
     [transition]
@@ -236,6 +246,7 @@ export const GuidedManualProvider = ({
       }
       if (action.type === 'click' && action.selector) {
         const node = document.querySelector(action.selector) as HTMLElement | null;
+
         if (node) {
           const originalPointerEvents = node.style.getPropertyValue('pointer-events');
           const originalPriority = node.style.getPropertyPriority('pointer-events');
@@ -249,6 +260,7 @@ export const GuidedManualProvider = ({
             node.style.removeProperty('pointer-events');
           }
         }
+
       }
     };
     if (delayMs > 0) {
@@ -296,6 +308,7 @@ export const GuidedManualProvider = ({
     [evaluateCondition]
   );
 
+
   const isStepReady = useCallback((step?: GuidedManualStep | null) => {
     if (!step) return false;
     if (!evaluateCondition(step.when)) return false;
@@ -340,6 +353,7 @@ export const GuidedManualProvider = ({
     }
     return false;
   }, [isOpen, isTransitioning, manualSteps, currentIndex, isStepReady]);
+
 
   const applicableIndexes = useMemo(
     () => {
@@ -474,6 +488,8 @@ export const GuidedManualProvider = ({
 
 
 
+
+
   const next = useCallback(
     async () => {
       if (isTransitioning) return;
@@ -481,10 +497,12 @@ export const GuidedManualProvider = ({
 
       const requestId = ++transitionRequestRef.current;
       setIsTransitioning(true);
+
       if (autoAdvanceTimerRef.current !== null) {
         window.clearTimeout(autoAdvanceTimerRef.current);
         autoAdvanceTimerRef.current = null;
       }
+
       const legacyDelayMs = runAction(currentStep?.actionOnNext);
       if (legacyDelayMs > 0 && typeof window !== 'undefined') {
         await new Promise((resolve) => window.setTimeout(resolve, legacyDelayMs));
@@ -512,12 +530,14 @@ export const GuidedManualProvider = ({
   );
   const prev = useCallback(async () => {
     if (isTransitioning) return;
+
     const requestId = ++transitionRequestRef.current;
     setIsTransitioning(true);
     if (autoAdvanceTimerRef.current !== null) {
       window.clearTimeout(autoAdvanceTimerRef.current);
       autoAdvanceTimerRef.current = null;
     }
+
     const legacyDelayMs = runAction(manualSteps[currentIndex]?.actionOnPrevious);
     if (legacyDelayMs > 0 && typeof window !== 'undefined') {
       await new Promise((resolve) => window.setTimeout(resolve, legacyDelayMs));
@@ -528,6 +548,7 @@ export const GuidedManualProvider = ({
       });
     }
 
+
     const previousIndex = [...manualSteps]
       .map((step, index) => ({ step, index }))
       .reverse()
@@ -537,6 +558,7 @@ export const GuidedManualProvider = ({
       if (requestId === transitionRequestRef.current) setIsTransitioning(false);
       return;
     }
+
 
     const ready = await waitForStepTarget(manualSteps[previousIndex], requestId);
     if (requestId !== transitionRequestRef.current) return;
@@ -594,9 +616,11 @@ export const GuidedManualProvider = ({
       totalSteps: visibleTotalSteps,
       targetsVersion,
       isTransitioning,
+
       globalDisableAppElements,
     }),
     [manualSteps, isOpen, currentStep, visibleTotalSteps, targetsVersion, isTransitioning, visibleStepIndex, globalDisableAppElements]
+
   );
 
   const apiValue = useMemo(
@@ -610,11 +634,13 @@ export const GuidedManualProvider = ({
       registerTarget,
       unregisterTarget,
       getTarget,
+
       checkAutoAdvance,
       isStepApplicable,
       isStepReady,
     }),
     [start, startManual, startWithSteps, close, next, prev, registerTarget, unregisterTarget, getTarget, checkAutoAdvance, isStepApplicable, isStepReady]
+
   );
 
   const configValue = useMemo(
@@ -665,6 +691,8 @@ export const useGuidedManualApi = () => {
 export const useGuidedManual = () => {
   const state = useContext(GuidedManualStateContext);
   const api = useContext(GuidedManualApiContext);
+
+
 
   if (!state || !api) return null;
   return { ...state, ...api };
@@ -791,6 +819,7 @@ const scrollElementAtPoint = (x: number, y: number, deltaX: number, deltaY: numb
 
 type GuidedManualContext = NonNullable<ReturnType<typeof useGuidedManual>>;
 
+
 const GuidedManualSpinner = () => (
   <svg
     viewBox="0 0 24 24"
@@ -815,6 +844,7 @@ const GuidedManualSpinner = () => (
   </svg>
 );
 
+
 const GuidedManualOverlay = () => {
   const context = useGuidedManual();
 
@@ -838,18 +868,22 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
     getTarget,
     targetsVersion,
     isTransitioning,
+
     checkAutoAdvance,
     isStepApplicable,
     isStepReady,
     globalDisableAppElements,
   } = context;
   const manualSteps = context.steps;
+
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const [targetNode, setTargetNode] = useState<HTMLElement | null>(null);
   const [panelSize, setPanelSize] = useState({ width: 320, height: 160 });
   const [panelOffset, setPanelOffset] = useState({ x: 0, y: 0 });
+
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [confirmCountdown, setConfirmCountdown] = useState(0);
+
   const [isDraggingPanel, setIsDraggingPanel] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const targetNodeRef = useRef<HTMLElement | null>(null);
@@ -857,7 +891,9 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
   const updateFrameRef = useRef<number | null>(null);
   const mutationTimerRef = useRef<number | null>(null);
   const pendingScrollRef = useRef(false);
+
   const lostTimerRef = useRef<number | null>(null);
+
   const dragRef = useRef({ pointerId: -1, startX: 0, startY: 0, originX: 0, originY: 0 });
   const touchScrollRef = useRef({ x: 0, y: 0 });
   const Button = slots.Button;
@@ -944,6 +980,7 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
 
       const node = resolveStepTargetNode(currentStep, getTarget);
       if (!node) {
+
         if (targetNodeRef.current !== null) {
           targetNodeRef.current = null;
           setTargetNode(null);
@@ -974,6 +1011,7 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
         window.clearTimeout(lostTimerRef.current);
         lostTimerRef.current = null;
       }
+
 
       const rect = node.getBoundingClientRect();
       const isOutsideViewport =
@@ -1057,7 +1095,9 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
   useEffect(() => {
     if (!isOpen) return;
     resolveTargetRect(true);
+
   }, [isOpen, currentStep?.id, targetsVersion, resolveTargetRect]);
+
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1158,6 +1198,7 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
     resolveTargetRect(true);
   }, [isOpen, targetsVersion, resolveTargetRect]);
 
+
   useEffect(() => {
     setShowConfirmation(false);
     setConfirmCountdown(0);
@@ -1169,6 +1210,7 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
       return () => window.clearTimeout(timer);
     }
   }, [showConfirmation, confirmCountdown]);
+
 
   useLayoutEffect(() => {
     if (!panelRef.current || !isOpen) return;
@@ -1189,7 +1231,9 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
     left: windowWidth / 2 - panelSize.width / 2,
   };
 
+
   if (targetRect && !showConfirmation) {
+
     const spaceBelow = windowHeight - targetRect.bottom - margin;
     const spaceAbove = targetRect.top - margin;
     const placeBelow = spaceBelow >= panelSize.height || spaceBelow >= spaceAbove;
@@ -1217,8 +1261,10 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
     ),
     zIndex: GUIDE_Z_INDEX + 4,
     pointerEvents: 'auto',
+
     transition: isDraggingPanel ? 'none' : `${s.panel.transition}, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.4s ease-out`,
     transform: showConfirmation ? 'scale(1.08)' : 'scale(1)',
+
   };
 
   const highlightStyle = targetRect
@@ -1242,6 +1288,7 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
   const isLast = currentIndex >= totalSteps - 1;
   const showFinish = !isLast;
   const progressPercent = totalSteps > 0 ? ((currentIndex + 1) / totalSteps) * 100 : 0;
+
 
   const handleNextOrFinish = () => {
     if (currentStep.confirmation && !showConfirmation) {
@@ -1288,6 +1335,7 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
   const customTitleSize = showConfirmation ? currentStep.confirmation?.customTitleSize : currentStep.customTitleSize;
   const customDescColor = showConfirmation ? currentStep.confirmation?.customDescriptionColor : currentStep.customDescriptionColor;
   const customDescSize = showConfirmation ? currentStep.confirmation?.customDescriptionSize : currentStep.customDescriptionSize;
+
 
   const overlayStyle = targetRect
     ? {
@@ -1346,6 +1394,7 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
 
   return (
     <div data-guided-manual-overlay="true" style={overlayStyle}>
+
       {globalDisableAppElements && globalDisableAppElements.length > 0 && (
         <style>
           {`
@@ -1370,6 +1419,7 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
           `}
         </style>
       )}
+
       {wizardBlockers}
       {targetRect && <div style={getGuidedManualAtomWebJsx0Style(s, highlightStyle)} />}
       <div
@@ -1380,9 +1430,11 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
           background: tone.panelBg,
           borderColor: tone.panelBorder,
           color: tone.textMain,
+
           boxShadow: showConfirmation
             ? `0 0 0 14px rgba(248, 113, 113, 0.15), ${s.panel.boxShadow}, 0 0 0 2px rgba(248, 113, 113, 0.8)`
             : `${s.panel.boxShadow}, 0 0 0 1px ${tone.panelBorder}`,
+
         })}
       >
         <div
@@ -1414,6 +1466,7 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
             Wizard paso a paso
           </div>
         ) : null}
+
         {displayIcon && (
           <div style={{ fontSize: showConfirmation ? 48 : 32, marginBottom: showConfirmation ? 16 : 12, lineHeight: 1, textAlign: showConfirmation ? 'center' : 'left' }}>
             {displayIcon}
@@ -1421,12 +1474,14 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
         )}
         <h3 style={{ ...s.title, color: customTitleColor || tone.textMain, fontSize: customTitleSize || s.title.fontSize, textAlign: showConfirmation ? 'center' : 'left' }}>{displayTitle}</h3>
         <p style={{ ...s.description, color: customDescColor || tone.textMuted, fontSize: customDescSize || s.description.fontSize, textAlign: showConfirmation ? 'center' : 'left' }}>{displayDescription}</p>
+
         <div
           aria-label={`Progreso ${Math.round(progressPercent)}%`}
           role="progressbar"
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.round(progressPercent)}
+
           style={{ ...s.progressTrack, borderColor: tone.panelBorder, display: showConfirmation ? 'none' : 'block' }}
         >
           <div style={{ ...s.progressFill, width: `${progressPercent}%`, background: tone.accent }} />
@@ -1497,6 +1552,7 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
                 />
               </>
             )}
+
           </div>
         </div>
       </div>

@@ -3,9 +3,9 @@
    Supports both light and dark mode via Tailwind dark: prefix
    ──────────────────────────────────────────────── */
 
-const TR = "transition-all duration-150 ease-out";
+import type { ToastKind } from "@/features/rail-queue";
 
-export type ToastKind = "move" | "new" | "done" | "warning" | "error" | "info";
+const TR = "transition-all duration-150 ease-out";
 
 export const S = {
   /* ── LAYOUT ─────────────────────────────── */
@@ -131,7 +131,7 @@ export const S = {
     wrap: "fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none",
     item: (kind: ToastKind) => {
       const m: Record<string, string> = {
-        move: "bg-emerald-600", done: "bg-emerald-600",
+        move: "bg-emerald-600", done: "bg-emerald-600", ok: "bg-emerald-600",
         new: "bg-slate-700", info: "bg-slate-700",
         warning: "bg-amber-600", error: "bg-red-600",
       };

@@ -13,7 +13,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Maximize2, Minimize2, GripHorizontal, Activity, AlertTriangle } from "lucide-react";
 
 const DEFAULT_API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL || "/bff";
+  process.env.NEXT_PUBLIC_INCIDENT_API_BASE || "/api";
 
 /* ========== Helpers cookies/auth ========== */
 const getCookie = (name: string) => {
@@ -25,6 +25,19 @@ const getCookie = (name: string) => {
 const getAuthHeaders = (): HeadersInit => {
   const token = getCookie("token");
   return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+const incidentSourceQuery = (incident: IncidenteEmergente): string => {
+  const original = (incident as any)?._original ?? {};
+  const source = String(original?._source || (incident as any)?._source || "").toLowerCase();
+  if (source !== "torreon") return "";
+  const params = new URLSearchParams({ source: "torreon" });
+  const localidadId =
+    original?.localidadId ??
+    original?.movimiento?.localidadId ??
+    (incident as any)?.movimiento?.localidadId;
+  if (localidadId) params.set("localidadId", String(localidadId));
+  return `?${params.toString()}`;
 };
 
 /** empresaId tolerante a typos comunes en cookie */
@@ -353,7 +366,7 @@ export default function IncidentMonitor({
   const handleResolve = useCallback(
     async (incident: IncidenteEmergente, comments?: string) => {
       try {
-        const response = await handleFetchRequest(`${apiBase}/incidentes/${incident.id}/resuelto`, {
+        const response = await handleFetchRequest(`${apiBase}/incidentes/${incident.id}/resuelto${incidentSourceQuery(incident)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json", ...getAuthHeaders() },
           credentials: "include",
@@ -375,7 +388,7 @@ export default function IncidentMonitor({
   const handleSkip = useCallback(
     async (incident: IncidenteEmergente) => {
       try {
-        const response = await handleFetchRequest(`${apiBase}/incidentes/${incident.id}/cerrar`, {
+        const response = await handleFetchRequest(`${apiBase}/incidentes/${incident.id}/cerrar${incidentSourceQuery(incident)}`, {
           method: "POST",
           headers: { ...getAuthHeaders() },
           credentials: "include",

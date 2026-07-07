@@ -5,7 +5,7 @@ import { getClientCookie, getEmpresaIdClient, getLocIdClient, getRoleClient } fr
 import IncidentMonitor from "./IncidentMonitor";
 
 const DEFAULT_API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL || "/bff";
+  process.env.NEXT_PUBLIC_INCIDENT_API_BASE || "/api";
 
 type ScopeMode = "auto" | "cliente" | "localidad" | "admin";
 

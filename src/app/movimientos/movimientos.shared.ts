@@ -32,6 +32,9 @@ export const BASE_BY_ROLE: Record<string, string> = {
   COORDINADOR: "/coordinador",
   SUPERVISOR: "/supervisor",
   CLIENTE: "/cliente",
+  CLIENTE_ADMIN: "/cliente",
+  CLIENTE_COOR: "/cliente",
+  ARRASTRE_TORREON: "/cliente/torreon",
 };
 
 /** * 3. TIPOS E INTERFACES

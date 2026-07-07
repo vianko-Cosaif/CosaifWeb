@@ -12,7 +12,7 @@ export default async function Page() {
   if (!token) redirect("/login?loc=admin");
 
   return (
-    <section className="mx-auto w-full max-w-7xl p-4 sm:p-6">
+    <section className="mx-auto w-full max-w-screen-2xl p-4 sm:p-6">
       <MovimientosPanel
         apiBase={MOVIMIENTOS_API_BASE}
         rol="ADMINISTRADOR"

@@ -20,11 +20,15 @@ import {
   Wrench,
   CircleHelp,
   Search,
+  Boxes,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { GuidedTarget, useGuidedManualApi } from "@/app/Components/GuidedManualAtom";
 import ThemeToggle from "@/app/Components/ui/ThemeToggle";
 import { CLIENT_MOVEMENT_GUIDE_ID } from "@/app/Components/GuidedManualAtom/ClientMovementGuide.config";
+import { ClientMovementGuideButton } from "@/app/Components/GuidedManualAtom/ClientMovementGuide";
+import { buildNavigationForRole, isNavigationItemActive, type AppNavigationItem } from "@/lib/appNavigation";
+import { getRoleCapabilities, normalizeAppRole, type NavModuleId } from "@/lib/accessControl";
 
 /* ==========================================================================
    INTERFACES & TYPES
@@ -43,11 +47,11 @@ interface UserSession {
 }
 
 type NavigationItem = {
-  id: string;
+  id: NavModuleId;
   label: string;
   href: string;
+  description: string;
   icon: LucideIcon;
-  hide?: boolean;
 };
 
 type HelpGuideAction = "client-create-movement" | "legacy-create-movement" | "legacy-create-movement-torno";
@@ -151,6 +155,17 @@ const ROLE_CONFIG: Record<
   },
 };
 
+const NAV_ICONS: Record<NavModuleId, LucideIcon> = {
+  dashboard: LayoutDashboard,
+  movimientos: Train,
+  torreon_arrastres: Boxes,
+  torno: Wrench,
+  configuracion: Settings,
+  usuarios: Users,
+  incidentes: TriangleAlert,
+  reporteria: BarChart3,
+};
+
 function cn(...classes: (string | undefined | null | false)[]) {
   return classes.filter(Boolean).join(" ");
 }
@@ -237,15 +252,14 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
     setHelpOpen(false);
   }, [pathname, isOpen, mobileOpen]);
 
+  const appRole = useMemo(() => normalizeAppRole(String(session?.rol || "")) ?? "CLIENTE", [session]);
+  const capabilities = useMemo(() => getRoleCapabilities(appRole), [appRole]);
   const normRol = useMemo<Rol>(() => {
-    const r = String(session?.rol || "").toUpperCase();
-    if (r.includes("ADMIN")) return "ADMINISTRADOR";
-    if (r.includes("COORD")) return "COORDINADOR";
-    if (r.includes("SUP")) return "SUPERVISOR";
+    if (capabilities.area === "administrador") return "ADMINISTRADOR";
+    if (capabilities.area === "coordinador") return "COORDINADOR";
+    if (capabilities.area === "supervisor") return "SUPERVISOR";
     return "CLIENTE";
-  }, [session]);
-
-  const base = useMemo(() => `/${normRol.toLowerCase()}`, [normRol]);
+  }, [capabilities.area]);
   const roleConfig = ROLE_CONFIG[normRol] || ROLE_CONFIG.CLIENTE;
   const showExpandedSidebar = isOpen || mobileOpen;
   const normalizedHelpQuery = helpQuery.trim().toLowerCase();
@@ -288,27 +302,12 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
   );
 
   const navigation = useMemo<NavigationItem[]>(() => {
-    return [
-      { id: "dash", label: "Dashboard", href: base, icon: LayoutDashboard },
-      { id: "movs", label: "Movimientos", href: `${base}/movimientos`, icon: Train },
-      { id: "torno", label: normRol === "CLIENTE" ? "Historial Torno" : "Torno", href: `${base}/torno`, icon: Wrench },
-      {
-        id: "users",
-        label: "Gestión Usuarios",
-        href: `${base}/usuarios`,
-        hide: ["CLIENTE", "SUPERVISOR"].includes(normRol),
-        icon: Users,
-      },
-      { id: "inc", label: "Incidentes", href: `${base}/incidentes`, icon: TriangleAlert },
-      {
-        id: "reporteria",
-        label: "Reportería",
-        href: `${base}/reporteria`,
-        hide: !["ADMINISTRADOR", "COORDINADOR"].includes(normRol),
-        icon: BarChart3,
-      },
-    ].filter((item) => !item.hide);
-  }, [normRol, base]);
+    return buildNavigationForRole(appRole).map((item: AppNavigationItem) => ({
+      ...item,
+      label: item.id === "torno" && capabilities.isClientLike ? "Historial Torno" : item.label,
+      icon: NAV_ICONS[item.id],
+    }));
+  }, [appRole, capabilities.isClientLike]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -364,7 +363,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
       </button>
     );
 
-    if (normRol === "CLIENTE" && item.id === "movs") {
+    if (capabilities.isClientLike && item.id === "movimientos") {
       return (
         <GuidedTarget id="client-nav-movements" className="w-full">
           {button}
@@ -474,7 +473,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span className={cn("inline-block h-1.5 w-1.5 rounded-full bg-gradient-to-r", roleConfig.gradient)} />
                   <p className={cn("truncate text-[10px] font-semibold uppercase tracking-wider", roleConfig.text)}>
-                    {roleConfig.label}
+                    {capabilities.label}
                   </p>
                 </div>
               </div>
@@ -495,10 +494,10 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
           </div>
 
           {navigation.map((item) => {
-            const active = pathname === item.href || (item.href !== base && pathname.startsWith(item.href));
+            const active = isNavigationItemActive(pathname, item);
             const navItem = <NavItem key={item.id} item={item} isActive={active} />;
 
-            if (item.id === "movs") {
+            if (item.id === "movimientos") {
               return (
                 <GuidedTarget key={item.id} id="sidebar-menu-movimientos" className="w-full">
                   {navItem}
@@ -606,6 +605,15 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
               </span>
             )}
             <div className="flex items-center gap-2">
+              {capabilities.isClientLike && (
+                <ClientMovementGuideButton
+                  compact={!(isOpen || mobileOpen)}
+                  className={cn(
+                    "inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50",
+                    !(isOpen || mobileOpen) && "w-9 px-0"
+                  )}
+                />
+              )}
               <ThemeToggle
                 size="sm"
                 withLabel={isOpen || mobileOpen}

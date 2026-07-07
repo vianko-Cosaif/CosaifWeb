@@ -7,216 +7,31 @@ import dynamic from "next/dynamic";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { S } from "./RailQueueBoard.styles";
 import TornoMeasuresViewerModal from "../movimientos/torno/TornoMeasuresViewerModal";
-import { parseTornoMedicionFromApi } from "../movimientos/torno/tornoMeasureParser";
-import { DEFAULT_TORNO_MEDICION_STATE, type TornoMedicionState } from "../movimientos/crear/tornoMedicion.types";
 import { useRealtimeBoardRefresh } from "../hooks/useRealtimeBoardRefresh";
-/* ===== Tipos ===== */
-type Ronda = {
-  id: number;
-  rondaNumero: number;
-  orden: number;
-  concluido: boolean;
-  empresa?: { id: number; nombre: string } | null;
-  movimiento?: {
-    id?: number;
-    viaOrigen?: { nombre?: string | null } | null;
-    viaDestino?: { nombre?: string | null } | null;
-    lavado?: boolean;
-    torno?: boolean;
-    estado?: string | null;
-    prioridad?: "BAJA" | "ALTA" | null;
-    locomotiveNumber?: number | string | null;
-    locomotora?: string | null;
+import { useTornoMeasuresModal } from "@/features/torno-measures";
+import {
+  API_XAPI_BASE,
+  fetchJson,
+  fmtLoco,
+  formatDateTimeMX,
+  isAbortError,
+  railQueueListFormatter,
+  TerminalQueueTable,
+  timeAgo,
+  useLocalStorageBoolean,
+  useOnline,
+  useRelativeClock,
+  useToasts,
+  useVisibleInterval,
+  type Ronda,
+  type RondaInfo,
+} from "@/features/rail-queue";
 
-    fechaSolicitud?: string | null;
-    fechaInicio?: string | null;
-    fechaFin?: string | null;
-    instrucciones?: string | null;
-  } | null;
-  movimientoId?: number | null;
-  createdAt?: string | null;
-};
+const API_BASE = API_XAPI_BASE;
+const fmtList = railQueueListFormatter;
 
-type RondaInfo = {
-  empresa: { id: number; nombre: string };
-  movimiento: {
-    id?: number;
-    viaOrigen?: { nombre?: string | null } | null;
-    viaDestino?: { nombre?: string | null } | null;
-    lavado: boolean;
-    torno: boolean;
-    estado?: string;
-    prioridad?: "BAJA" | "ALTA";
-    locomotiveNumber?: number | string;
-    locomotora?: string | null;
-
-    fechaSolicitud?: string | null;
-    fechaInicio?: string | null;
-    fechaFin?: string | null;
-    instrucciones?: string | null;
-  };
-  movimientoId?: number;
-};
-
-type ToastKind = "move" | "new" | "done" | "warning";
-type Toast = { id: number; text: string; kind: ToastKind };
-type MeasuresModalState = {
-  open: boolean;
-  loading: boolean;
-  error: string | null;
-  tornoMedicion: TornoMedicionState;
-  locomotiveLabel?: string;
-  companyName?: string;
-};
-
-/* ===== Utils ===== */
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/xapi";
-const fmtList = new Intl.ListFormat("es", {
-  style: "short",
-  type: "conjunction",
-});
-
-const fmtLoco = (v: unknown) => {
-  if (v == null) return "N/D";
-  const s = String(v).replace(/\D+/g, "");
-  if (!s) return "N/D";
-  return s.padStart(4, "0").slice(0, 16);
-};
-
-async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const r = await fetch(url, {
-    cache: "no-store",
-    credentials: "include",
-    mode: "same-origin",
-    signal,
-  });
-  if (!r.ok) {
-    const txt = await r.text().catch(() => "");
-    throw new Error(`${r.status} ${r.statusText} :: ${txt.slice(0, 200)}`);
-  }
-  return (await r.json()) as T;
-}
-
-function isAbortError(err: unknown): boolean {
-  if (!err) return false;
-  if (typeof DOMException !== "undefined" && err instanceof DOMException) {
-    return err.name === "AbortError";
-  }
-  if (err instanceof Error) {
-    const msg = String(err.message || "").toLowerCase();
-    return (
-      err.name === "AbortError" ||
-      msg.includes("signal is aborted") ||
-      msg.includes("aborted without reason")
-    );
-  }
-  if (typeof err === "object" && "name" in err) {
-    return (err as { name?: string }).name === "AbortError";
-  }
-  return false;
-}
-
-function useVisibleInterval(
-  fn: () => void,
-  delay: number | null,
-  deps: React.DependencyList = []
-) {
-  useEffect(() => {
-    if (!delay) return;
-    const id = window.setInterval(() => {
-      if (document.visibilityState === "visible") fn();
-    }, delay);
-    const onVis = () => {
-      if (document.visibilityState === "visible") fn();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", onVis);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [delay, ...deps]);
-}
-
-function useToasts() {
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const timers = useRef<number[]>([]);
-  useEffect(
-    () => () => {
-      timers.current.forEach(clearTimeout);
-      timers.current = [];
-    },
-    []
-  );
-  const push = (text: string, kind: ToastKind) => {
-    const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, text, kind }]);
-    const tid = window.setTimeout(
-      () => setToasts((t) => t.filter((x) => x.id !== id)),
-      5000
-    );
-    timers.current.push(tid);
-  };
-  const dismiss = (id: number) => setToasts((t) => t.filter((x) => x.id !== id));
-  return { toasts, push, dismiss, setToasts };
-}
-
-function useLocalStorageBoolean(key: string, initial = false) {
-  const [v, setV] = useState<boolean>(() => {
-    if (typeof window === "undefined") return initial;
-    const raw = window.localStorage.getItem(key);
-    return raw === null ? initial : raw === "1";
-  });
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(key, v ? "1" : "0");
-    } catch {}
-  }, [key, v]);
-  return [v, setV] as const;
-}
-
-function useOnline() {
-  const [online, setOnline] = useState<boolean>(
-    typeof navigator === "undefined" ? true : navigator.onLine
-  );
-  useEffect(() => {
-    const on = () => setOnline(true);
-    const off = () => setOnline(false);
-    window.addEventListener("online", on);
-    window.addEventListener("offline", off);
-    return () => {
-      window.removeEventListener("online", on);
-      window.removeEventListener("offline", off);
-    };
-  }, []);
-  return online;
-}
-
-function useRelativeClock(periodMs = 30_000) {
-  const [, force] = useState(0);
-  useVisibleInterval(() => force((x) => x + 1), periodMs, [periodMs]);
-}
-
-function timeAgo(ts?: number | null) {
-  if (!ts) return "—";
-  const s = Math.max(1, Math.floor((Date.now() - ts) / 1000));
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  return `${h}h`;
-}
-
-// Fecha/hora siempre en horario de México.
-function formatDateTimeMX(iso?: string | null) {
-  if (!iso) return "Sin fecha";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "Sin fecha";
-  return new Intl.DateTimeFormat("es-MX", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "America/Mexico_City",
-  }).format(d);
+function formatBoardDateTime(iso?: string | null) {
+  return formatDateTimeMX(iso, { fallback: "Sin fecha", dateStyle: "short" });
 }
 
 /* ===== Carga dinámica del editor ===== */
@@ -262,12 +77,8 @@ export default function RailQueueBoardPage({
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const [openEditor, setOpenEditor] = useState(false);
-  const [measuresModal, setMeasuresModal] = useState<MeasuresModalState>({
-    open: false,
-    loading: false,
-    error: null,
-    tornoMedicion: DEFAULT_TORNO_MEDICION_STATE,
-  });
+  const { measuresModal, openMeasuresModal, closeMeasuresModal } =
+    useTornoMeasuresModal(API_BASE);
 
   async function load(showRefreshing = false) {
     const mySeq = ++reqSeq.current;
@@ -431,48 +242,6 @@ export default function RailQueueBoardPage({
     lastCurrentId.current = curId;
   }, [items, soundOn]);
 
-  const closeMeasuresModal = () => {
-    setMeasuresModal((prev) => ({ ...prev, open: false, error: null }));
-  };
-
-  const openMeasuresModal = async (args: {
-    movementId?: number | null;
-    locomotiveLabel?: string;
-    companyName?: string;
-  }) => {
-    const movementId = Number(args.movementId);
-    if (!Number.isFinite(movementId) || movementId <= 0) return;
-
-    setMeasuresModal({
-      open: true,
-      loading: true,
-      error: null,
-      tornoMedicion: DEFAULT_TORNO_MEDICION_STATE,
-      locomotiveLabel: args.locomotiveLabel,
-      companyName: args.companyName,
-    });
-
-    try {
-      const response = await fetch(`${API_BASE}/movimientos/${movementId}/edicion`, {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-      });
-      if (!response.ok) throw new Error(`No se pudo cargar medidas (${response.status}).`);
-      const payload = await response.json();
-      setMeasuresModal((prev) => ({
-        ...prev,
-        loading: false,
-        tornoMedicion: parseTornoMedicionFromApi(payload),
-        locomotiveLabel: String(payload?.movimiento?.locomotiveNumber ?? args.locomotiveLabel ?? ""),
-        companyName: payload?.movimiento?.empresa?.nombre ?? args.companyName,
-      }));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "No se pudieron cargar las medidas.";
-      setMeasuresModal((prev) => ({ ...prev, loading: false, error: message }));
-    }
-  };
-
   const current = items[0];
   const curInfo = current ? info[current.id] : undefined;
   const next = useMemo(() => items.slice(1, nextCount + 1), [items, nextCount]);
@@ -489,7 +258,7 @@ export default function RailQueueBoardPage({
   const desdeLbl = viaO || serviceOrigin;
   const hasAny = !!(desdeLbl || viaD || hasService);
 
-  const creadoText = formatDateTimeMX(
+  const creadoText = formatBoardDateTime(
     current?.createdAt ??
       curMov?.fechaSolicitud ??
       curMov?.fechaInicio ??
@@ -791,7 +560,7 @@ export default function RailQueueBoardPage({
                     const mv = inf?.movimiento;
                     const loco = fmtLoco(mv?.locomotiveNumber ?? mv?.locomotora); // ✅ por tarjeta
 
-                    const creadoNext = formatDateTimeMX(
+                    const creadoNext = formatBoardDateTime(
                       n.createdAt ?? mv?.fechaSolicitud ?? mv?.fechaInicio ?? mv?.fechaFin ?? null
                     );
 
@@ -898,6 +667,23 @@ export default function RailQueueBoardPage({
             </div>
           </aside>
         </div>
+      </section>
+
+      <section className="mx-auto w-full max-w-screen-2xl px-3 pb-6 sm:px-4 md:px-6 lg:px-8">
+        <TerminalQueueTable
+          items={items}
+          info={info}
+          loading={loading}
+          onViewMeasures={(ronda) => {
+            const inf = info[ronda.id];
+            const mv = inf?.movimiento ?? ronda.movimiento ?? null;
+            openMeasuresModal({
+              movementId: inf?.movimientoId ?? mv?.id ?? ronda.movimientoId,
+              locomotiveLabel: fmtLoco(mv?.locomotiveNumber ?? mv?.locomotora),
+              companyName: inf?.empresa?.nombre ?? ronda.empresa?.nombre ?? "—",
+            });
+          }}
+        />
       </section>
 
       <audio ref={bellRef} preload="auto" aria-hidden="true">
@@ -1054,4 +840,3 @@ function DateBox({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-

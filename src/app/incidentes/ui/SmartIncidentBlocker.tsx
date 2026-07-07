@@ -1,7 +1,7 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @next/next/no-img-element, @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useId } from "react";
 import { createPortal } from "react-dom";
 import {
   ImageIcon,
@@ -26,6 +26,9 @@ interface Incident {
   descripcion?: string;
   estado?: "ABIERTO" | "RESUELTO" | "CERRADO";
   fechaInicio?: string | number;
+  localidadId?: string | number;
+  _source?: string;
+  _detalle?: any;
   imagen1?: string;
   imagen2?: string;
   imagen3?: string;
@@ -33,6 +36,7 @@ interface Incident {
   imagenes?: string[];
   movimiento?: {
     empresa?: { nombre?: string };
+    localidadId?: string | number;
     locomotiveNumber?: string;
   };
 }
@@ -47,7 +51,7 @@ interface Props {
 
 /* === CONSTANTS === */
 const PROXY = "/bff";
-const INCIDENTES = `${PROXY}/incidentes`;
+const INCIDENTES = "/api/incidentes";
 const WINDOW_DURATION_MS = 10 * 60 * 1000;
 
 const URGENCY = {
@@ -82,6 +86,24 @@ function viaProxy(u: string) {
     }
   }
   return `${PROXY}/${u.replace(/^\/+/, "")}`;
+}
+function sourceQuery(incident?: Incident | null) {
+  const source = String(incident?._source || incident?._detalle?._source || "").toLowerCase();
+  if (source !== "torreon") return "";
+  const params = new URLSearchParams({ source: "torreon" });
+  const localidadId = incident?.localidadId || incident?._detalle?.localidadId || incident?.movimiento?.localidadId;
+  if (localidadId) params.set("localidadId", String(localidadId));
+  return `?${params.toString()}`;
+}
+function normalizeImageUrl(raw: string, incident?: Incident | null) {
+  if (!raw) return "";
+  if (raw.startsWith("/api/torreon/imagenes/")) return raw;
+  const source = String(incident?._source || incident?._detalle?._source || "").toLowerCase();
+  if (source === "torreon" && !/^https?:\/\//i.test(raw) && !raw.startsWith("data:")) {
+    const cleaned = raw.replace(/^\/+/, "").replace(/^uploads\/incidentes\/+/i, "").replace(/^incidentes\/+/i, "");
+    return `/api/torreon/imagenes/${cleaned.split("/").map(encodeURIComponent).join("/")}`;
+  }
+  return /^https?:\/\//i.test(raw) ? viaProxy(raw) : viaProxy(`/incidentes/imagen/${encodeURIComponent(raw)}`);
 }
 function getCookie(name: string): string {
   if (typeof document === "undefined") return "";
@@ -355,7 +377,7 @@ export default function SmartIncidentBlocker({
       try {
         const id = (incident?.incidenteId ?? incident?.id) as string | number | undefined;
         if (!id) throw new Error("Incidente sin ID válido");
-        const r = await fetch(`${INCIDENTES}/${id}`, {
+        const r = await fetch(`${INCIDENTES}/${id}${sourceQuery(incident)}`, {
           headers: authHeaders(),
           credentials: "include",
           cache: "no-store",
@@ -388,7 +410,7 @@ export default function SmartIncidentBlocker({
     let list: string[] = [];
     if (Array.isArray(x.imagenes) && x.imagenes.length) list = x.imagenes;
     else list = [x.imagen1, x.imagen2, x.imagen3, x.imagen4].filter(Boolean) as string[];
-    return list.map((p) => (/^https?:\/\//i.test(p) ? viaProxy(p) : viaProxy(`/incidentes/imagen/${encodeURIComponent(p)}`)));
+    return list.map((p) => normalizeImageUrl(p, x));
   }, [fetched, incident]);
 
   const startMs = useMemo(
@@ -405,7 +427,7 @@ export default function SmartIncidentBlocker({
     if (!resolution.trim()) return alert("Describe la resolución.");
     try {
       const id = (fetched?.id ?? incident?.id) as string | number;
-      const r = await fetch(`${INCIDENTES}/${id}/resuelto`, {
+      const r = await fetch(`${INCIDENTES}/${id}/resuelto${sourceQuery(fetched || incident)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
         credentials: "include",
@@ -422,7 +444,7 @@ export default function SmartIncidentBlocker({
   const doSkip = useCallback(async () => {
     try {
       const id = (fetched?.id ?? incident?.id) as string | number;
-      const r = await fetch(`${INCIDENTES}/${id}/cerrar`, {
+      const r = await fetch(`${INCIDENTES}/${id}/cerrar${sourceQuery(fetched || incident)}`, {
         method: "POST",
         headers: { ...authHeaders() },
         credentials: "include",
