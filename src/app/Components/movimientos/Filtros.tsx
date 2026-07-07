@@ -303,7 +303,7 @@ export default function Filtros({
         className={`grid transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${abierto ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0"
           }`}
       >
-        <div className="overflow-hidden">
+        <div className={abierto ? "overflow-visible" : "overflow-hidden"}>
           <div className="rounded-xl border border-slate-100 dark:border-slate-800/60 bg-slate-50/40 dark:bg-slate-900/30 p-3 sm:p-4">
             <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-12 items-end">
               {/* Empresa */}
@@ -388,9 +388,9 @@ export default function Filtros({
                     <button
                       type="button"
                       onClick={() => setShowEstadoDropdown(false)}
-                      className="fixed inset-0 z-40 cursor-default focus:outline-none"
+                      className="fixed inset-0 z-[60] cursor-default focus:outline-none"
                     />
-                    <div className="absolute left-0 right-0 mt-1 z-50 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 p-2 shadow-lg max-h-60 overflow-y-auto">
+                    <div className="absolute left-0 right-0 mt-1 z-[70] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 p-2 shadow-lg max-h-60 overflow-y-auto">
                       <div className="flex flex-col gap-1">
                         {ESTADOS.map((estado) => {
                           const active = (filtros.estado ?? "")
