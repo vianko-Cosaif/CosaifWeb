@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useMounted } from "@/app/hooks/useMounted";
 import {
   GuidedTarget,
@@ -45,6 +45,7 @@ function TornoMeasurementGuideButton({ steps }: { steps: GuidedManualStep[] }) {
  */
 export default function CrearMovimiento() {
   const mounted = useMounted();
+  const [guidedMode, setGuidedMode] = useState(false);
 
   /** Sincroniza tema visual con preferencia actual y cambios entre pestañas. */
   useEffect(() => {
@@ -125,6 +126,9 @@ export default function CrearMovimiento() {
   const stepNames = useTornoMedicionStep
     ? (["Datos", "Medicion", "Confirmar", "PDF"] as const)
     : (["Datos", "Detalles", "Confirmar"] as const);
+  const currentStepIndex = Math.max(0, Math.min(step - 1, stepNames.length - 1));
+  const guidedProgress = Math.round(((currentStepIndex + 1) / stepNames.length) * 100);
+  const stepTransitionKey = `${step}:${useTornoMedicionStep ? "torno" : "movimiento"}`;
   const title = useTornoMedicionStep && step === 2 ? "Medicion de Ruedas" : "Nuevo Movimiento";
   const pageTitle = useTornoMedicionStep && step === 4 ? "Resumen de Medidas" : title;
   const nextLabel =
@@ -166,13 +170,39 @@ export default function CrearMovimiento() {
         },
       ]
     : [];
+  const guidedStepDescription = useMemo(() => {
+    if (step === 1) return "Completa los datos operativos, servicio, locomotora y vias necesarias.";
+    if (step === 2 && useTornoMedicionStep) return "Registra medidas de torno con el formato configurado para la empresa.";
+    if (step === 2) return "Define el tipo de movimiento y su orientacion operativa.";
+    if (step === 3) return "Revisa la solicitud antes de crear el movimiento.";
+    return "Genera el PDF o vuelve a editar las mediciones del torno.";
+  }, [step, useTornoMedicionStep]);
 
   return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white dark:from-zinc-950 dark:to-zinc-900 text-slate-900 dark:text-white transition-colors duration-200 p-4 md:p-6 lg:p-8">
+      <div className={Movimiento.clsx(
+        "min-h-screen text-slate-900 dark:text-white transition-colors duration-200 p-4 md:p-6 lg:p-8",
+        guidedMode
+          ? "bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_34%),linear-gradient(135deg,#f8fafc,#ffffff)] dark:bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.12),transparent_34%),linear-gradient(135deg,#09090b,#18181b)]"
+          : "bg-gradient-to-br from-slate-50 to-white dark:from-zinc-950 dark:to-zinc-900"
+      )}>
       <style jsx global>{`
         @media (max-width: 640px) {
           select, select option { font-size: 16px !important; line-height: 1.45 !important; }
           select { min-height: 48px !important; }
+        }
+        @keyframes createMovementGuidedStepIn {
+          from { opacity: 0; transform: translate3d(18px, 0, 0); }
+          to { opacity: 1; transform: translate3d(0, 0, 0); }
+        }
+        .create-movement-guided-step {
+          animation: createMovementGuidedStepIn 190ms cubic-bezier(.2,.8,.2,1);
+          will-change: transform, opacity;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .create-movement-guided-step {
+            animation: none !important;
+            will-change: auto;
+          }
         }
       `}</style>
 
@@ -201,6 +231,18 @@ export default function CrearMovimiento() {
             </>
           )}
           {banner && <span className="text-xs text-slate-600 dark:text-zinc-300">{banner}</span>}
+          <button
+            type="button"
+            onClick={() => setGuidedMode((current) => !current)}
+            className={Movimiento.clsx(
+              "rounded-xl border px-3 py-1.5 text-sm font-semibold transition-all active:scale-[0.97]",
+              guidedMode
+                ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            )}
+          >
+            {guidedMode ? "Flujo clasico" : "Flujo guiado"}
+          </button>
           <button onClick={goSalir} className="ml-auto rounded-xl border border-rose-200 dark:border-rose-800 px-3 py-1.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all active:scale-95" title="Volver a mis movimientos">
             Salir
           </button>
@@ -230,7 +272,10 @@ export default function CrearMovimiento() {
 
         {/* Stepper declarativo (sin estado local extra). */}
         <GuidedTarget id="create-movement-stepper">
-        <div className="mt-5 flex items-center justify-center gap-0" aria-label="Progreso">
+        <div className={Movimiento.clsx(
+          "mt-5 flex items-center justify-center gap-0",
+          guidedMode && "rounded-3xl border border-emerald-100 bg-white/80 p-4 shadow-sm shadow-emerald-100/60 backdrop-blur dark:border-emerald-900/40 dark:bg-zinc-950/70 dark:shadow-none"
+        )} aria-label="Progreso">
           {stepNames.map((stepName, i) => {
             const s = i + 1;
             return (
@@ -271,9 +316,45 @@ export default function CrearMovimiento() {
         </div>
         </GuidedTarget>
 
+        {guidedMode && (
+          <div className="mt-5 overflow-hidden rounded-[28px] border border-emerald-100 bg-white/90 p-5 shadow-xl shadow-emerald-100/40 backdrop-blur dark:border-emerald-900/40 dark:bg-zinc-950/80 dark:shadow-none">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.22em] text-emerald-600 dark:text-emerald-300">
+                  Flujo guiado
+                </div>
+                <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950 dark:text-white">
+                  {stepNames[currentStepIndex]}
+                </h2>
+                <p className="mt-1 max-w-2xl text-sm font-medium text-slate-500 dark:text-zinc-400">
+                  {guidedStepDescription}
+                </p>
+              </div>
+              <div className="min-w-[150px] rounded-2xl bg-emerald-50 p-4 text-center dark:bg-emerald-950/30">
+                <div className="text-3xl font-black text-emerald-700 dark:text-emerald-300">{guidedProgress}%</div>
+                <div className="text-xs font-bold uppercase tracking-wide text-emerald-700/70 dark:text-emerald-300/70">
+                  completado
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 h-2 overflow-hidden rounded-full bg-emerald-100 dark:bg-emerald-950">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-[width] duration-300 ease-out"
+                style={{ width: `${guidedProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Contenido de steps (1,2,3) desacoplado en componentes especializados. */}
         <GuidedTarget id="create-movement-step-content">
-        <div className="mt-6 rounded-2xl border border-slate-200/80 dark:border-zinc-800/60 bg-white/95 dark:bg-zinc-950/90 backdrop-blur-sm p-5 sm:p-6 shadow-xl shadow-slate-200/30 dark:shadow-zinc-900/30">
+        <div className={Movimiento.clsx(
+          "mt-6 border backdrop-blur-sm p-5 sm:p-6 transition-colors",
+          guidedMode
+            ? "rounded-[28px] border-emerald-100 bg-white/95 shadow-2xl shadow-emerald-100/50 dark:border-emerald-900/40 dark:bg-zinc-950/90 dark:shadow-none"
+            : "rounded-2xl border-slate-200/80 dark:border-zinc-800/60 bg-white/95 dark:bg-zinc-950/90 shadow-xl shadow-slate-200/30 dark:shadow-zinc-900/30"
+        )}>
+          <div key={stepTransitionKey} className={guidedMode ? "create-movement-guided-step" : undefined}>
           {step === 1 && (
             <GuidedTarget id="create-movement-step-1">
               <StepOne
@@ -355,6 +436,7 @@ export default function CrearMovimiento() {
               />
             </GuidedTarget>
           )}
+          </div>
         </div>
         </GuidedTarget>
 
