@@ -83,21 +83,6 @@ const HELP_GUIDE_CATALOG: HelpSuggestion[] = [
     action: "client-create-movement",
   },
   {
-    id: "client-create-movement",
-    label: "Crear movimiento paso a paso",
-    description: "Wizard interactivo para cliente: abre Movimientos, Nuevo y guia la captura hasta confirmar.",
-    keywords: ["movimiento", "crear", "nuevo", "cliente", "solicitud", "wizard", "guia"],
-    roles: ["CLIENTE"],
-    action: "client-create-movement",
-  },
-  {
-    id: "create-movement-guide",
-    label: "Como crear un movimiento",
-    description: "Guia general compatible con los flujos anteriores para crear movimientos.",
-    keywords: ["movimiento", "crear", "nuevo", "general", "captura", "guia"],
-    action: "legacy-create-movement",
-  },
-  {
     id: "create-movement-torno",
     label: "Como crear un movimiento con torno",
     description: "Asistente para el flujo con mediciones de ruedas, PDF y cierre del movimiento.",
