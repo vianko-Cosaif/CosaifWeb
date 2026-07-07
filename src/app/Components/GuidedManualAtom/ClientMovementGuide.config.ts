@@ -286,9 +286,14 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
     {
       id: "mobile-torno-wheel-map",
       title: "Captura de medidas",
-      description: "Toca una de las ruedas en la locomotora para abrir el capturador e ingresar sus medidas.",
+      description: "Toca una de las ruedas en la locomotora para abrir el capturador e ingresar sus medidas. Cuando termines, pulsa siguiente para avanzar a la confirmacion.",
       targetId: "create-movement-step-2-torno",
       mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: '[data-guide-action="create-movement-next"]',
+        delayMs: 250,
+      },
       when: {
         type: "target",
         targetId: "create-movement-step-2-torno",
@@ -300,6 +305,11 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
       description: "Completa los detalles operativos estandar para este movimiento.",
       targetId: "create-movement-step-2-standard",
       mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: '[data-guide-action="create-movement-next"]',
+        delayMs: 250,
+      },
       when: {
         type: "target",
         targetId: "create-movement-step-2-standard",
@@ -333,6 +343,32 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
       description: "Pulsa el boton de enviar para finalizar el registro.",
       targetId: "create-movement-submit",
       mode: "wizard",
+      actionOnNext: {
+        type: "click",
+        selector: '[data-guide-action="create-movement-submit"]',
+      },
+    },
+    {
+      id: "mobile-step-four-pdf",
+      title: "PDF y cierre",
+      description: "El movimiento fue creado. Puedes generar el PDF de medidas o finalizar la guia y regresar al listado.",
+      targetId: "create-movement-step-4",
+      mode: "wizard",
+      when: {
+        type: "target",
+        targetId: "create-movement-step-4",
+      },
+      actionOnNext: {
+        type: "click",
+        selector: '[data-guide-action="create-movement-exit"]',
+      },
+    },
+    {
+      id: "mobile-movement-created",
+      title: "Movimiento registrado",
+      description: "El listado se actualiza y aqui debe aparecer el movimiento que acabas de crear.",
+      targetId: "client-movements-list",
+      mode: "guide",
     },
   ],
 });
