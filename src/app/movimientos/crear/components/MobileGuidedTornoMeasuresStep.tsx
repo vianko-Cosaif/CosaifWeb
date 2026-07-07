@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import { Movimiento } from "../../Movimiento";
 import type { MovementFormData } from "../../movimientos.shared";
 import {
@@ -340,29 +341,31 @@ export default function MobileGuidedTornoMeasuresStep({
           <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-zinc-400">{profileMeta.description}</p>
         </div>
 
-        <div className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-          <div className="text-sm font-black text-slate-950 dark:text-white">Tipo de movimiento</div>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            {(["MD_TRABAJANDO", "REMOLCADA"] as const).map((type) => {
-              const selected = form.movementType === type;
-              return (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => selectMovementType(type)}
-                  className={Movimiento.clsx(
-                    "min-h-14 rounded-2xl border px-4 text-sm font-black transition-colors",
-                    selected
-                      ? "border-emerald-600 bg-emerald-600 text-white"
-                      : "border-slate-200 bg-slate-50 text-slate-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
-                  )}
-                >
-                  {type === "MD_TRABAJANDO" ? "MD" : "Remolcada"}
-                </button>
-              );
-            })}
+        <GuidedTarget id="torno-movement-type">
+          <div className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+            <div className="text-sm font-black text-slate-950 dark:text-white">Tipo de movimiento</div>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              {(["MD_TRABAJANDO", "REMOLCADA"] as const).map((type) => {
+                const selected = form.movementType === type;
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => selectMovementType(type)}
+                    className={Movimiento.clsx(
+                      "min-h-14 rounded-2xl border px-4 text-sm font-black transition-colors",
+                      selected
+                        ? "border-emerald-600 bg-emerald-600 text-white"
+                        : "border-slate-200 bg-slate-50 text-slate-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+                    )}
+                  >
+                    {type === "MD_TRABAJANDO" ? "MD" : "Remolcada"}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        </GuidedTarget>
 
         {form.movementType === "REMOLCADA" ? (
           <div className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
@@ -390,29 +393,31 @@ export default function MobileGuidedTornoMeasuresStep({
           </div>
         ) : null}
 
-        <div className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-          <div className="text-sm font-black text-slate-950 dark:text-white">Numero de ruedas</div>
-          <div className="mt-3 grid grid-cols-4 gap-2">
-            {TORNO_WHEEL_COUNT_OPTIONS.map((count) => {
-              const selected = tornoMedicion.wheelCount === count;
-              return (
-                <button
-                  key={count}
-                  type="button"
-                  onClick={() => setTornoWheelCount(count)}
-                  className={Movimiento.clsx(
-                    "min-h-14 rounded-2xl border px-2 text-lg font-black transition-colors",
-                    selected
-                      ? "border-emerald-600 bg-emerald-600 text-white"
-                      : "border-slate-200 bg-slate-50 text-slate-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
-                  )}
-                >
-                  {count}
-                </button>
-              );
-            })}
+        <GuidedTarget id="torno-wheel-count">
+          <div className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+            <div className="text-sm font-black text-slate-950 dark:text-white">Numero de ruedas</div>
+            <div className="mt-3 grid grid-cols-4 gap-2">
+              {TORNO_WHEEL_COUNT_OPTIONS.map((count) => {
+                const selected = tornoMedicion.wheelCount === count;
+                return (
+                  <button
+                    key={count}
+                    type="button"
+                    onClick={() => setTornoWheelCount(count)}
+                    className={Movimiento.clsx(
+                      "min-h-14 rounded-2xl border px-2 text-lg font-black transition-colors",
+                      selected
+                        ? "border-emerald-600 bg-emerald-600 text-white"
+                        : "border-slate-200 bg-slate-50 text-slate-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
+                    )}
+                  >
+                    {count}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        </GuidedTarget>
       </div>
     );
   }
