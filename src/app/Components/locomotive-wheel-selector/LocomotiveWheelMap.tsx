@@ -716,7 +716,7 @@ export function LocomotiveWheelMap({
     };
   };
 
-  const renderOrientation = viewMode === 'top' ? orientation : 'vertical';
+  const renderOrientation = orientation;
   const wheelPoints = getWheelPoints(wheelCount, viewMode, selectedWheelId, wheels, renderOrientation);
   const renderedWheelPoints = wheelPoints.map(transformSidePortraitWheel);
   const visibleWheels = renderedWheelPoints.filter(wheel => wheel.visible);
