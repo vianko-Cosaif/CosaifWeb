@@ -165,7 +165,6 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE_ID = "client-create-movement-mobile";
 export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
   id: CLIENT_MOVEMENT_MOBILE_GUIDE_ID,
   title: "Crear un movimiento (Flujo mobile)",
-  disableAppElements: ['[data-guide-action="create-movement-next"]'],
   steps: [
     {
       id: "mobile-open-movements",
@@ -201,21 +200,9 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
     {
       id: "mobile-step-one-company",
       title: "Empresa y Localidad",
-      description: "Selecciona la empresa y localidad para este movimiento en esta primera pantalla.",
+      description: "Selecciona la empresa y localidad para este movimiento.",
       targetId: "create-movement-step-1",
       mode: "wizard",
-    },
-    {
-      id: "mobile-step-one-go-to-service",
-      title: "Avanza al servicio",
-      description: "Haz clic en Continuar para seleccionar el tipo de servicio.",
-      targetId: "create-movement-next-step",
-      mode: "wizard",
-      actionOnNext: {
-        type: "click",
-        selector: "[data-guide-id='create-movement-next-step'] button",
-        delayMs: 250,
-      },
     },
     {
       id: "mobile-step-one-service",
@@ -225,35 +212,11 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
       mode: "wizard",
     },
     {
-      id: "mobile-step-one-go-to-locomotive",
-      title: "Avanza a la locomotora",
-      description: "Haz clic en Continuar para ingresar la locomotora.",
-      targetId: "create-movement-next-step",
-      mode: "wizard",
-      actionOnNext: {
-        type: "click",
-        selector: "[data-guide-id='create-movement-next-step'] button",
-        delayMs: 250,
-      },
-    },
-    {
       id: "mobile-step-one-locomotive",
       title: "Locomotora",
       description: "Escribe el numero exacto de la locomotora.",
       targetId: "create-movement-locomotive",
       mode: "wizard",
-    },
-    {
-      id: "mobile-step-one-go-to-route",
-      title: "Avanza a la ruta",
-      description: "Haz clic en Continuar para seleccionar las vias.",
-      targetId: "create-movement-next-step",
-      mode: "wizard",
-      actionOnNext: {
-        type: "click",
-        selector: "[data-guide-id='create-movement-next-step'] button",
-        delayMs: 250,
-      },
     },
     {
       id: "mobile-step-one-route",
@@ -263,21 +226,42 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
       mode: "wizard",
     },
     {
-      id: "mobile-step-one-finish",
-      title: "Finalizar paso 1",
-      description: "Haz clic en Siguiente para avanzar al paso 2 de detalles o mediciones.",
-      targetId: "create-movement-next-step",
-      mode: "wizard",
-      actionOnNext: {
-        type: "click",
-        selector: "[data-guide-id='create-movement-next-step'] button",
-        delayMs: 250,
+      id: "mobile-step-two-torno",
+      title: "Mediciones de Torno",
+      description: "En este modo movil, registra las medidas de ruedas.",
+      targetId: "create-movement-step-2-torno",
+      mode: "guide",
+      when: {
+        type: "target",
+        targetId: "create-movement-step-2-torno",
       },
     },
     {
-      id: "mobile-step-two-torno",
-      title: "Mediciones de Torno",
-      description: "En este modo movil, captura las medidas de ruedas desplazandote por los grupos de ejes de forma paginada.",
+      id: "mobile-torno-movement-type",
+      title: "Define el tipo de movimiento",
+      description: "Selecciona si la locomotora viene trabajando (MD) o remolcada.",
+      targetId: "torno-movement-type",
+      mode: "wizard",
+      when: {
+        type: "target",
+        targetId: "torno-movement-type",
+      },
+    },
+    {
+      id: "mobile-torno-wheel-count",
+      title: "Selecciona el número de ruedas",
+      description: "Elige la cantidad de ruedas que vas a medir (ej. 8).",
+      targetId: "torno-wheel-count",
+      mode: "wizard",
+      when: {
+        type: "target",
+        targetId: "torno-wheel-count",
+      },
+    },
+    {
+      id: "mobile-torno-wheel-map",
+      title: "Captura de medidas",
+      description: "Toca una de las ruedas en la locomotora para abrir el capturador e ingresar sus medidas.",
       targetId: "create-movement-step-2-torno",
       mode: "wizard",
       when: {
@@ -294,18 +278,6 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
       when: {
         type: "target",
         targetId: "create-movement-step-2-standard",
-      },
-    },
-    {
-      id: "mobile-step-two-finish",
-      title: "Avanza a la confirmación",
-      description: "Haz clic en Siguiente para revisar el resumen.",
-      targetId: "create-movement-next-step",
-      mode: "wizard",
-      actionOnNext: {
-        type: "click",
-        selector: "[data-guide-id='create-movement-next-step'] button",
-        delayMs: 250,
       },
     },
     {
@@ -336,10 +308,6 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
       description: "Pulsa el boton de enviar para finalizar el registro.",
       targetId: "create-movement-submit",
       mode: "wizard",
-      actionOnNext: {
-        type: "click",
-        selector: '[data-guide-action="create-movement-submit"]',
-      },
     },
   ],
 });
