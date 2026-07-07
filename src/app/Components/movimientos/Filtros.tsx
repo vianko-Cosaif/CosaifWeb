@@ -346,7 +346,7 @@ export default function Filtros({
               </div>
 
               {/* Locomotora exacta */}
-              <div className="min-w-0 xl:col-span-2">
+              <div className="min-w-0 xl:col-span-3">
                 <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
                   Locomotora
                 </label>
@@ -360,36 +360,27 @@ export default function Filtros({
                 />
               </div>
 
-              {/* Estado (multi) */}
-              <div className="min-w-0 xl:col-span-4">
+              {/* Estado */}
+              <div className="min-w-0 xl:col-span-3">
                 <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
                   Estado
                 </label>
-                <div className="flex flex-wrap gap-2">
-                  {ESTADOS.map((estado) => {
-                    const active = (filtros.estado ?? "")
-                      .split(",")
-                      .map((s) => s.trim())
-                      .filter(Boolean)
-                      .includes(estado);
-                    return (
-                      <button
-                        key={estado}
-                        type="button"
-                        onClick={() => handleEstadoToggle(estado)}
-                        disabled={deshabilitado}
-                        className={[
-                          "px-3 py-1.5 rounded-lg border text-[11px] font-semibold transition-all",
-                          active
-                            ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
-                            : "border-slate-200 text-slate-500 hover:border-emerald-200 hover:text-emerald-600 dark:border-slate-700 dark:text-slate-300",
-                        ].join(" ")}
-                      >
-                        {estado.replace("_", " ")}
-                      </button>
-                    );
-                  })}
-                </div>
+                <select
+                  className={selectClass}
+                  disabled={deshabilitado}
+                  value={filtros.estado ?? ""}
+                  onChange={(e) => onCambiarEstado(e.target.value === "" ? null : e.target.value)}
+                >
+                  <option value="">Todos</option>
+                  {filtros.estado && filtros.estado.includes(",") && (
+                    <option value={filtros.estado}>Múltiples ({filtros.estado.split(",").length})</option>
+                  )}
+                  {ESTADOS.map((estado) => (
+                    <option key={estado} value={estado}>
+                      {estado.replace("_", " ")}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Filtros avanzados */}
