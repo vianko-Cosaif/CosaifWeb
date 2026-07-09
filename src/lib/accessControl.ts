@@ -85,7 +85,7 @@ const COORDINADOR_CAPABILITIES: RoleCapabilities = {
   area: "coordinador",
   home: "/coordinador",
   label: ROLE_LABELS.COORDINADOR,
-  canViewAllCompanies: false,
+  canViewAllCompanies: true,
   canViewTorno: true,
   navModules: ["dashboard", "movimientos", "torno", "usuarios", "incidentes", "reporteria"],
 };
@@ -129,7 +129,7 @@ const CLIENT_CAPABILITIES: RoleCapabilities = {
   canManageUsers: false,
   canViewReports: true,
   canViewTorno: true,
-  navModules: ["dashboard", "movimientos", "torno", "incidentes", "reporteria"],
+  navModules: ["dashboard", "movimientos", "torno", "reporteria"],
 };
 
 const CLIENT_ADMIN_CAPABILITIES: RoleCapabilities = {

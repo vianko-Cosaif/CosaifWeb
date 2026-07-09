@@ -13,6 +13,7 @@ export type IncidenteMovimientoNatural = TorreonIncidentDetail;
 
 export type MovimientoNatural = {
   id: number | string;
+  empresaId?: number | null;
   empresaNombre?: string | null;
   clienteId?: number | null;
   clienteNombre?: string | null;
@@ -36,9 +37,15 @@ export type MovimientoNatural = {
   fechaInicio?: string | null;
   fechaFin?: string | null;
   instrucciones?: string | null;
+  fotosCount?: number | null;
   fotos?: FotoMovimiento[];
   fotosPorTipo?: Record<string, FotoMovimiento[]>;
   incidentes?: IncidenteMovimientoNatural[];
+};
+
+export type EmpresaOption = {
+  id: number;
+  nombre: string;
 };
 
 export type StatusTab = "activos" | "concluidos" | "todos";

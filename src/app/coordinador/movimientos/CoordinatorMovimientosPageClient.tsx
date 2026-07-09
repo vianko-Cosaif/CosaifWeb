@@ -5,6 +5,7 @@ import { Boxes, TrainFront, type LucideIcon } from "lucide-react";
 import MovimientosPanel from "@/app/Components/movimientos/MovimientosPanel";
 import { getPrimaryTorreonLocalidadId, isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 import TorreonArrastresPanel from "../torreon/TorreonArrastresPanel";
+import TorreonNaturalesPanel from "../torreon/TorreonNaturalesPanel";
 
 type LocalidadOption = {
   id: number;
@@ -265,16 +266,10 @@ export default function CoordinatorMovimientosPageClient({
         {activeIsTorreon ? (
           <TorreonMovimientoLayout value={torreonView} onChange={setTorreonView}>
             {torreonView === "naturales" ? (
-              <MovimientosPanel
+              <TorreonNaturalesPanel
                 key={`naturales-${activeLocalidadId}`}
+                localidadId={activeLocalidadId}
                 apiBase={apiBase}
-                rol="COORDINADOR"
-                token={token}
-                empresaIdUsuario={empresaIdUsuario}
-                localidadIdUsuario={activeLocalidadId}
-                bloquearLocalidad
-                puedeCrear
-                intervaloAutoMs={15000}
               />
             ) : (
               <TorreonArrastresPanel

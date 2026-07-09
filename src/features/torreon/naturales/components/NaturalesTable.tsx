@@ -84,7 +84,7 @@ function NaturalRow({
   onOpenIncident: (incident: SelectedIncident) => void;
 }) {
   const state = normalizeStatus(row.estado);
-  const fotosCount = (row.fotos || []).length;
+  const fotosCount = row.fotosCount ?? (row.fotos || []).length;
   const incidentes = getIncidentList(row);
   const primaryIncident = getPrimaryIncident(row);
 

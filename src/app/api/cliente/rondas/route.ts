@@ -544,42 +544,6 @@ function sortRondaQueue(rows: RondaOut[]) {
   }).map((item, index) => ({ ...item, orden: index + 1 }));
 }
 
-async function fetchCosaifMovimientosAsRondas(params: {
-  base: string;
-  headers: HeadersInit;
-  localidadId: string;
-  concluido: boolean;
-  empresaId?: number | null;
-}) {
-  const qs = new URLSearchParams({
-    localidadId: params.localidadId,
-    page: "1",
-    pageSize: "100",
-    sortBy: params.concluido ? "fin" : "solicitud",
-    sortDir: params.concluido ? "desc" : "asc",
-  });
-
-  if (params.empresaId) qs.set("empresaId", String(params.empresaId));
-  if (params.concluido) {
-    qs.set("estado", "CONCLUIDO,CANCELADO");
-  } else {
-    qs.set("estado", "SOLICITADO,EN_PROCESO,ESPERA,DETENIDO,AGENDADO");
-    qs.set("finalizado", "false");
-  }
-
-  const response = await fetch(`${params.base}/movimientos/buscar?${qs.toString()}`, {
-    method: "GET",
-    headers: params.headers,
-    cache: "no-store",
-  });
-
-  if (!response.ok) return [];
-
-  return normalizeMovimientoCollection(await readTextAsJsonSafe(response))
-    .map((mv, index) => movementToRondaOut(mv, index, params.concluido))
-    .filter((item): item is RondaOut => Boolean(item));
-}
-
 export async function GET(req: NextRequest) {
   try {
     const { searchParams, origin } = new URL(req.url);
@@ -731,7 +695,7 @@ export async function GET(req: NextRequest) {
         const raw = await fetchTorreonMsJson(`/rondas?localidadId=${encodeURIComponent(localidadId)}`);
         out = mapTorreonRondasToOut(raw, concluido, scopedEmpresaId);
       } catch (error) {
-        console.warn("[api/cliente/rondas] rondas Torreon error; se intentara fallback:", error);
+        console.warn("[api/cliente/rondas] rondas Torreon error:", error);
       }
 
       if (!concluido) {
@@ -749,21 +713,6 @@ export async function GET(req: NextRequest) {
         } catch (error) {
           console.warn("[api/cliente/rondas] fallback movimientos Torreon error:", error);
         }
-      }
-
-      if (out.length) return NextResponse.json(out, { status: 200 });
-
-      try {
-        const cosaifFallback = await fetchCosaifMovimientosAsRondas({
-          base,
-          headers,
-          localidadId,
-          concluido,
-          empresaId: scopedEmpresaId,
-        });
-        return NextResponse.json(sortRondaQueue(cosaifFallback), { status: 200 });
-      } catch (error) {
-        console.warn("[api/cliente/rondas] fallback Cosaif para Torreon error:", error);
       }
 
       return NextResponse.json(out, { status: 200 });
@@ -879,8 +828,28 @@ export async function POST(req: NextRequest) {
     const jsonHeaders = { ...headers, "content-type": "application/json" };
 
     if (isTorreonLocalidad(body?.localidadId)) {
+      if (action === "orden") {
+        const id = Number(body?.id ?? body?.rondaMovimientoId);
+        const orden = Number(body?.orden);
+        if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(orden) || orden <= 0) {
+          return NextResponse.json({ message: "Faltan id y orden:number" }, { status: 400 });
+        }
+
+        const payload = {
+          rondaMovimientoId: id,
+          orden,
+          ...(shouldScopeEmpresa && empresaId ? { empresaId } : {}),
+        };
+        const data = await fetchTorreonMsJson("/rondas/movimientos/orden", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        return NextResponse.json(data, { status: 200 });
+      }
+
       return NextResponse.json(
-        { message: "Las rondas de Torreon se consultan desde ms_torreon; mover/cancelar requiere endpoint propio." },
+        { message: "Las rondas de Torreon se consultan desde ms_torreon; esta accion no aplica para Torreon." },
         { status: 409 }
       );
     }

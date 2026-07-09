@@ -40,6 +40,7 @@ import {
   type ArrastreStatus,
   type VagonStatusFilter,
 } from "@/features/torreon/arrastres";
+import { useRealtimeBoardRefresh } from "@/app/hooks/useRealtimeBoardRefresh";
 import TorreonIncidentDetailModal, { type TorreonIncidentDetail } from "./TorreonIncidentDetailModal";
 
 type Props = {
@@ -61,30 +62,107 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [selectedIncident, setSelectedIncident] = useState<{
+    arrastreId: number;
     incident: TorreonIncidentDetail;
     title: string;
     subtitle?: string;
   } | null>(null);
+  const [resolvingIncident, setResolvingIncident] = useState(false);
+  const [priorityBusyId, setPriorityBusyId] = useState<number | null>(null);
+  const [actionMessage, setActionMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
 
   const load = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true);
     else setLoading(true);
     try {
-      const response = await fetch(`/api/cliente/torreon/arrastres?localidadId=${localidadId}`, {
-        cache: "no-store",
-        credentials: "include",
-      });
-      const data = await response.json().catch(() => []);
-      setArrastres(sortArrastres(extractArray<Arrastre>(data)));
+      const buildUrl = (vista: "activos" | "historial", pageSize: number) => {
+        const params = new URLSearchParams({
+          localidadId: String(localidadId),
+          vista,
+          page: "1",
+          pageSize: String(pageSize),
+          includeFotos: "0",
+        });
+        return `/api/cliente/torreon/arrastres?${params.toString()}`;
+      };
+
+      const [activeData, historyData] = await Promise.all([
+        fetch(buildUrl("activos", variant === "dashboard" ? 80 : 160), {
+          cache: "no-store",
+          credentials: "include",
+        }).then((response) => response.json()).catch(() => []),
+        variant === "dashboard"
+          ? Promise.resolve([])
+          : fetch(buildUrl("historial", 160), {
+              cache: "no-store",
+              credentials: "include",
+            }).then((response) => response.json()).catch(() => []),
+      ]);
+
+      setArrastres(sortArrastres([
+        ...extractArray<Arrastre>(activeData),
+        ...extractArray<Arrastre>(historyData),
+      ]));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [localidadId]);
+  }, [localidadId, variant]);
+
+  const refreshArrastreById = useCallback(async (arrastreId: number) => {
+    if (!Number.isFinite(arrastreId) || arrastreId <= 0) {
+      await load(true);
+      return;
+    }
+
+    setRefreshing(true);
+    try {
+      const params = new URLSearchParams({
+        localidadId: String(localidadId),
+        id: String(arrastreId),
+        includeFotos: "0",
+      });
+      const response = await fetch(`/api/cliente/torreon/arrastres?${params.toString()}`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("No se pudo refrescar arrastre");
+      const data = await response.json();
+      const next = (Array.isArray(data) ? data[0] : data) as Arrastre | null;
+      if (!next?.id) {
+        await load(true);
+        return;
+      }
+
+      setArrastres((prev) => {
+        const merged = new Map<number, Arrastre>();
+        for (const item of prev) merged.set(item.id, item);
+        merged.set(next.id, next);
+        return sortArrastres(Array.from(merged.values()));
+      });
+    } catch {
+      await load(true);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load, localidadId]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useRealtimeBoardRefresh({
+    enabled: true,
+    realtimeLocalidadId: localidadId,
+    scopeLocalidadId: localidadId,
+    onRefresh: ({ event }) => {
+      const arrastreId = Number(event.arrastreId || 0);
+      if (String(event.type || "").startsWith("torreon.arrastre") && arrastreId > 0) {
+        return refreshArrastreById(arrastreId);
+      }
+      return load(true);
+    },
+  });
 
   useEffect(() => {
     setPage(1);
@@ -109,6 +187,11 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
       incidentesAbiertos: incidentes.filter((item) => normalizeStatus(item.estado) === "ABIERTO").length,
     };
   }, [metricRows]);
+
+  const hasOpenIncidentInQueue = useMemo(
+    () => arrastres.some((arrastre) => isLiveArrastre(arrastre) && (arrastre.incidentes || []).some((incident) => normalizeStatus(incident.estado) === "ABIERTO")),
+    [arrastres]
+  );
 
   const visible = useMemo(() => {
     const from = desde ? Date.parse(desde) : null;
@@ -168,6 +251,60 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
     setHasta(toLocalDateTimeInput(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59)));
   };
 
+  const resolveSelectedIncident = useCallback(async (solucion: string) => {
+    if (!selectedIncident?.arrastreId || !selectedIncident.incident.id) return;
+    setResolvingIncident(true);
+    try {
+      const response = await fetch("/api/cliente/torreon/arrastres/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: "RESOLVER_INCIDENTE",
+          arrastreId: selectedIncident.arrastreId,
+          incidenteId: selectedIncident.incident.id,
+          solucion,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof data?.error === "string" ? data.error : "No se pudo resolver el incidente");
+      }
+
+      setSelectedIncident(null);
+      await load(true);
+    } finally {
+      setResolvingIncident(false);
+    }
+  }, [load, selectedIncident]);
+
+  const prioritizeArrastre = useCallback(async (arrastre: Arrastre) => {
+    setActionMessage(null);
+    setPriorityBusyId(arrastre.id);
+    try {
+      const response = await fetch("/api/cliente/torreon/arrastres/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: "PRIORIZAR_SOLICITUD",
+          arrastreId: arrastre.id,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof data?.error === "string" ? data.error : "No se pudo subir la solicitud al frente");
+      }
+
+      setActionMessage({ type: "ok", text: "Solicitud subida al frente de la cola operativa." });
+      await load(true);
+    } catch (error) {
+      setActionMessage({ type: "error", text: error instanceof Error ? error.message : "No se pudo subir la solicitud al frente" });
+    } finally {
+      setPriorityBusyId(null);
+    }
+  }, [load]);
+
   return (
     <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white/95 shadow-sm dark:border-slate-800 dark:bg-slate-950/90">
       <div className="border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950 sm:px-5">
@@ -211,6 +348,16 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
             onChange={setScope}
           />
         )}
+
+        {actionMessage ? (
+          <div className={`rounded-xl border px-3 py-2 text-sm font-bold ${
+            actionMessage.type === "ok"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
+              : "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200"
+          }`}>
+            {actionMessage.text}
+          </div>
+        ) : null}
 
         <FilterPanel
           title="Filtros de arrastre"
@@ -319,8 +466,8 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
               </h3>
               <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                 {selectedMode === "history"
-                  ? "Arrastres detenidos, concluidos y cancelados."
-                  : "Arrastres solicitados o en proceso."}
+                  ? "Arrastres concluidos y cancelados."
+                  : "Arrastres solicitados, en proceso o detenidos."}
               </p>
             </div>
             <span className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
@@ -335,7 +482,11 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
               dailyCounters={dailyCounters}
               compact={variant === "dashboard"}
               mode={selectedMode}
+              busyArrastreId={priorityBusyId}
+              canPrioritizeByIncident={hasOpenIncidentInQueue}
+              onPrioritizeArrastre={selectedMode === "active" ? prioritizeArrastre : undefined}
               onIncidentSelect={(incident, arrastre) => setSelectedIncident({
+                arrastreId: arrastre.id,
                 incident,
                 title: `Arrastre ${buildArrastreFolio(arrastre, dailyCounters.get(arrastre.id))}`,
                 subtitle: `Movimiento de arrastre #${arrastre.id}`,
@@ -363,6 +514,8 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
           incident={selectedIncident.incident}
           title={selectedIncident.title}
           subtitle={selectedIncident.subtitle}
+          resolving={resolvingIncident}
+          onResolve={resolveSelectedIncident}
           onClose={() => setSelectedIncident(null)}
         />
       )}

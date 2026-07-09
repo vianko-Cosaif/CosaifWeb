@@ -109,17 +109,23 @@ function mapFotos(input: unknown) {
 }
 
 function mapIncidentes(input: unknown) {
-  return asArray(input).map((incidente) => ({
-    id: asNumber(incidente.id) ?? incidente.id,
-    estado: cleanText(incidente.estado) || "ABIERTO",
-    motivo: cleanText(incidente.motivo),
-    solucion: cleanText(incidente.solucion),
-    fechaInicio: cleanText(incidente.fechaInicio),
-    fechaResolucion: cleanText(incidente.fechaResolucion),
-    viaBloqueadaId: asNumber(incidente.viaBloqueadaId),
-    seccionBloqueadaId: asNumber(incidente.seccionBloqueadaId),
-    fotos: mapFotos(incidente.fotos),
-  }));
+  return asArray(input).map((incidente) => {
+    const fotos = mapFotos(incidente.fotos);
+    return {
+      id: asNumber(incidente.id) ?? incidente.id,
+      estado: cleanText(incidente.estado) || "ABIERTO",
+      motivo: cleanText(incidente.motivo),
+      solucion: cleanText(incidente.solucion),
+      creadoPorId: asNumber(incidente.creadoPorId) ?? incidente.creadoPorId,
+      resueltoPorId: asNumber(incidente.resueltoPorId) ?? incidente.resueltoPorId,
+      fechaInicio: cleanText(incidente.fechaInicio),
+      fechaResolucion: cleanText(incidente.fechaResolucion),
+      viaBloqueadaId: asNumber(incidente.viaBloqueadaId),
+      seccionBloqueadaId: asNumber(incidente.seccionBloqueadaId),
+      fotosCount: asNumber(asRecord(incidente._count).fotos) ?? fotos.length,
+      fotos,
+    };
+  });
 }
 
 function mapMovimiento(input: UnknownRecord) {
@@ -166,6 +172,7 @@ function mapMovimiento(input: UnknownRecord) {
     fechaInicio: cleanText(input.fechaInicio),
     fechaFin: cleanText(input.fechaFin),
     instrucciones: cleanText(input.instrucciones),
+    fotosCount: asNumber(asRecord(input._count).fotos) ?? fotos.length,
     fotos,
     fotosPorTipo: {
       ANTES_MOVIMIENTO: fotos.filter((foto) => foto.tipo === "ANTES_MOVIMIENTO"),
@@ -192,12 +199,33 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Localidad Torreon requerida" }, { status: 400 });
     }
 
+    const detailId = asNumber(searchParams.get("id"));
+    if (detailId) {
+      const raw = await fetchTorreonMsJson(`/movimientos/${detailId}`);
+      const data = mapMovimiento(asRecord(raw));
+      const empresaId = readEmpresaId(cookieStore);
+      if (!canSeeAllEmpresas(session.role) && empresaId && data.empresaId !== empresaId) {
+        return NextResponse.json({ success: false, error: "No autorizado" }, { status: 403 });
+      }
+      if (String(data.localidadId || "") !== String(localidadId)) {
+        return NextResponse.json({ success: false, error: "Movimiento fuera de localidad" }, { status: 403 });
+      }
+      return NextResponse.json({ success: true, data });
+    }
+
     const params = new URLSearchParams({ localidadId });
     const empresaId = readEmpresaId(cookieStore);
+    const requestedEmpresaId = asNumber(searchParams.get("empresaId"));
+    if (canSeeAllEmpresas(session.role) && requestedEmpresaId) params.set("empresaId", String(requestedEmpresaId));
     if (!canSeeAllEmpresas(session.role) && empresaId) params.set("empresaId", String(empresaId));
+    const status = String(searchParams.get("status") || "activos").toLowerCase();
+    if (status === "concluidos") params.set("vista", "historial");
+    if (status === "activos") params.set("vista", "activos");
+    params.set("page", searchParams.get("page") || "1");
+    params.set("pageSize", searchParams.get("pageSize") || "60");
+    params.set("includeFotos", searchParams.get("includeFotos") || "0");
 
     const raw = await fetchTorreonMsJson(`/movimientos?${params.toString()}`);
-    const status = String(searchParams.get("status") || "activos").toLowerCase();
     const query = cleanText(searchParams.get("q"))?.toLowerCase() || "";
     const data = asArray(raw)
       .map(mapMovimiento)

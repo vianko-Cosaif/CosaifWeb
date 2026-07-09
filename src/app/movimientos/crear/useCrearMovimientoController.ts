@@ -298,6 +298,10 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     () => empresas.find((empresa) => empresa.id === form.empresaId)?.nombre || userCompanyName || "",
     [empresas, form.empresaId, userCompanyName]
   );
+  const selectedLocalityName = useMemo(
+    () => localidades.find((localidad) => localidad.id === form.selectedLocalityId)?.nombre || "",
+    [localidades, form.selectedLocalityId]
+  );
 
   const normalizeScheduledTornoList = useCallback((payload: unknown): ScheduledTornoMovement[] => {
     if (Array.isArray(payload)) return payload as ScheduledTornoMovement[];
@@ -575,6 +579,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     viaName,
     tornoMedicion,
     companyName: selectedCompanyName,
+    localityName: selectedLocalityName,
     scheduledActivationId,
     recoveredCancelledTornoId,
     pushOutbox,

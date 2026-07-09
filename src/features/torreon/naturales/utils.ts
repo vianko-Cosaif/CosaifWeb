@@ -108,6 +108,7 @@ export function filterNaturalRows(
   rows: MovimientoNatural[],
   filters: {
     search: string;
+    empresaId: number | null;
     fechaCampo: FechaCampo;
     desde: string;
     hasta: string;
@@ -139,6 +140,10 @@ export function filterNaturalRows(
       ]
         .map((value) => String(value ?? "").toLowerCase())
         .some((value) => value.includes(q));
+    })
+    .filter((row) => {
+      if (!filters.empresaId) return true;
+      return Number(row.empresaId) === Number(filters.empresaId);
     })
     .filter((row) => {
       if (!from && !to) return true;

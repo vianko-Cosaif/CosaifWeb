@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Loader2, Plus, TrainFront } from "lucide-react";
+import { ArrowDown, ArrowUp, Loader2, Plus, TrainFront } from "lucide-react";
 import { Header } from "../components";
 import { fieldClass } from "../utils";
 import type { CargaVagon, VagonDraft } from "../types";
@@ -16,6 +16,7 @@ type Props = {
   onInstruccionesChange: (value: string) => void;
   onUpdateVagon: (tempId: number, patch: Partial<VagonDraft>) => void;
   onRemoveVagon: (tempId: number) => void;
+  onMoveVagon: (tempId: number, direction: "up" | "down") => void;
   onAddVagon: () => void;
   onSubmit: () => void;
 };
@@ -32,6 +33,7 @@ export function CrearView({
   onInstruccionesChange,
   onUpdateVagon,
   onRemoveVagon,
+  onMoveVagon,
   onAddVagon,
   onSubmit,
 }: Props) {
@@ -69,8 +71,11 @@ export function CrearView({
                 vagon={vagon}
                 index={index}
                 disableRemove={draftVagones.length === 1}
+                canMoveUp={index > 0}
+                canMoveDown={index < draftVagones.length - 1}
                 onUpdate={onUpdateVagon}
                 onRemove={onRemoveVagon}
+                onMove={onMoveVagon}
               />
             ))}
           </div>
@@ -99,17 +104,49 @@ function VagonDraftRow({
   vagon,
   index,
   disableRemove,
+  canMoveUp,
+  canMoveDown,
   onUpdate,
   onRemove,
+  onMove,
 }: {
   vagon: VagonDraft;
   index: number;
   disableRemove: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
   onUpdate: (tempId: number, patch: Partial<VagonDraft>) => void;
   onRemove: (tempId: number) => void;
+  onMove: (tempId: number, direction: "up" | "down") => void;
 }) {
   return (
-    <div className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[1fr_150px_120px_120px_auto] lg:items-end">
+    <div className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[88px_1fr_150px_120px_120px_auto] lg:items-end">
+      <div>
+        <label className="mb-1 block text-xs font-semibold text-slate-600">Orden</label>
+        <div className="flex items-center gap-1">
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-black text-slate-800">{index + 1}</span>
+          <div className="flex flex-col gap-1">
+            <button
+              type="button"
+              disabled={!canMoveUp}
+              onClick={() => onMove(vagon.tempId, "up")}
+              className="inline-flex h-[18px] w-8 items-center justify-center rounded border border-slate-300 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Subir vagon"
+            >
+              <ArrowUp className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              disabled={!canMoveDown}
+              onClick={() => onMove(vagon.tempId, "down")}
+              className="inline-flex h-[18px] w-8 items-center justify-center rounded border border-slate-300 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Bajar vagon"
+            >
+              <ArrowDown className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+      </div>
       <div>
         <label className="mb-1 block text-xs font-semibold text-slate-600">Vagon {index + 1}</label>
         <input value={vagon.numeroVagon} onChange={(event) => onUpdate(vagon.tempId, { numeroVagon: event.target.value })} className={fieldClass()} placeholder="Numero" />

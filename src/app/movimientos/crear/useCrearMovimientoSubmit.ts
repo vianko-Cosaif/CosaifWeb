@@ -34,6 +34,14 @@ type CreateMovimientoResponse = {
   } | null;
 };
 
+type TorreonIncidentProbe = {
+  id?: number | string | null;
+  motivo?: string | null;
+  estado?: string | null;
+  viaBloqueadaId?: number | null;
+  seccionBloqueadaId?: number | null;
+};
+
 function toPositiveInt(raw: unknown): number {
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0;
@@ -59,6 +67,74 @@ function getErrorMessage(err: unknown): string {
   return "Error al crear movimiento";
 }
 
+function isTorreonName(value?: string | null) {
+  return String(value || "").trim().toLowerCase() === "torreon";
+}
+
+function asIncidentArray(raw: unknown): TorreonIncidentProbe[] {
+  if (Array.isArray(raw)) return raw as TorreonIncidentProbe[];
+  if (raw && typeof raw === "object") {
+    const record = raw as { data?: unknown; items?: unknown; rows?: unknown };
+    if (Array.isArray(record.data)) return record.data as TorreonIncidentProbe[];
+    if (Array.isArray(record.items)) return record.items as TorreonIncidentProbe[];
+    if (Array.isArray(record.rows)) return record.rows as TorreonIncidentProbe[];
+  }
+  return [];
+}
+
+function incidentMatchesTrack(
+  incident: TorreonIncidentProbe,
+  viaId?: number | null,
+  section?: number | null
+) {
+  if (!viaId) return false;
+  const incidentVia = Number(incident.viaBloqueadaId);
+  const incidentSection = Number(incident.seccionBloqueadaId);
+  if (Number.isFinite(incidentVia) && incidentVia !== Number(viaId)) return false;
+  if (Number.isFinite(incidentSection) && section && incidentSection !== Number(section)) return false;
+  return Number.isFinite(incidentVia) || Number.isFinite(incidentSection);
+}
+
+async function confirmTorreonOpenIncident(args: {
+  localidadId: number;
+  fromTrack?: number | null;
+  toTrack?: number | null;
+  fromSection?: number | null;
+  toSection?: number | null;
+  viaName: (id?: number | null) => string;
+}) {
+  const params = new URLSearchParams({
+    source: "torreon",
+    estado: "ABIERTO",
+    localidadId: String(args.localidadId),
+    page: "1",
+    pageSize: "100",
+  });
+
+  const response = await fetch(`/api/incidentes?${params.toString()}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!response.ok) return true;
+
+  const incidents = asIncidentArray(await response.json());
+  const match = incidents.find((incident) =>
+    incidentMatchesTrack(incident, args.fromTrack, args.fromSection) ||
+    incidentMatchesTrack(incident, args.toTrack, args.toSection)
+  );
+  if (!match) return true;
+
+  const zonas = [
+    args.fromTrack ? `origen ${args.viaName(args.fromTrack)}${args.fromSection ? ` seccion ${args.fromSection}` : ""}` : "",
+    args.toTrack ? `destino ${args.viaName(args.toTrack)}${args.toSection ? ` seccion ${args.toSection}` : ""}` : "",
+  ].filter(Boolean).join(" / ");
+  const motivo = match.motivo ? `\n\nMotivo: ${match.motivo}` : "";
+
+  return window.confirm(
+    `Hay un incidente abierto que bloquea la ruta seleccionada (${zonas}).${motivo}\n\nSi confirmas, el movimiento se crea y queda en espera hasta que se resuelva el incidente.`
+  );
+}
+
 /**
  * Hook de envio final del wizard.
  *
@@ -80,6 +156,7 @@ export function useCrearMovimientoSubmit(args: {
   viaName: (id?: number | null) => string;
   tornoMedicion?: TornoMedicionState;
   companyName?: string;
+  localityName?: string;
   scheduledActivationId?: number | null;
   recoveredCancelledTornoId?: number | null;
   pushOutbox: (payload: unknown) => void;
@@ -97,6 +174,7 @@ export function useCrearMovimientoSubmit(args: {
     viaName,
     tornoMedicion,
     companyName,
+    localityName,
     scheduledActivationId,
     recoveredCancelledTornoId,
     pushOutbox,
@@ -138,6 +216,18 @@ export function useCrearMovimientoSubmit(args: {
     let payloadForOffline: unknown = null;
 
     try {
+      if (isTorreonName(localityName)) {
+        const confirmed = await confirmTorreonOpenIncident({
+          localidadId,
+          fromTrack,
+          toTrack,
+          fromSection,
+          toSection,
+          viaName,
+        });
+        if (!confirmed) return;
+      }
+
       const {
         payload,
         viaParaAsignar,
@@ -230,6 +320,7 @@ export function useCrearMovimientoSubmit(args: {
     viaName,
     tornoMedicion,
     companyName,
+    localityName,
     scheduledActivationId,
     recoveredCancelledTornoId,
     pushOutbox,

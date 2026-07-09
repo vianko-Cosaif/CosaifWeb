@@ -28,7 +28,8 @@ import {
   Ronda,
   InfoExtra,
   apiSwapMovimientos,
-  apiCancelarMovimiento
+  apiCancelarMovimiento,
+  apiOrdenMovimiento
 } from '@/app/hooks/useEditRonda';
 import { onThemeChange } from '@/lib/theme';
 
@@ -104,7 +105,6 @@ function SortableRondaCard({
   onCancelRequest: () => void;
   isCancelling: boolean;
 }) {
-  const isTorreon = ronda.source === 'torreon';
   const {
     attributes,
     listeners,
@@ -112,7 +112,7 @@ function SortableRondaCard({
     transform,
     transition,
     isDragging
-  } = useSortable({ id: ronda.id, disabled: isTorreon });
+  } = useSortable({ id: ronda.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -129,7 +129,7 @@ function SortableRondaCard({
         onSwapRequest={onSwapRequest}
         onCancelRequest={onCancelRequest}
         isCancelling={isCancelling}
-        dragHandleProps={isTorreon ? undefined : { ...attributes, ...listeners }}
+        dragHandleProps={{ ...attributes, ...listeners }}
       />
     </div>
   );
@@ -424,6 +424,10 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
 
   /* ===== Actions ===== */
   const handleSwapRequest = useCallback((ronda: Ronda) => {
+    if (ronda.source === 'torreon') {
+      alert('Para Torreon arrastra el movimiento a su nueva posicion.');
+      return;
+    }
     // if (hasRealChanges) { alert('Guarda los cambios antes de continuar.'); return; } // Allow swap? No, complex state.
     setSwapModal({ visible: true, base: ronda });
   }, []);
@@ -489,8 +493,41 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
 
     const activeItem = todasLasRondas.find((r) => r.id === activeId);
     const overItem = todasLasRondas.find((r) => r.id === overId);
+    if (!activeItem || !overItem) return;
+
     if (activeItem?.source === 'torreon' || overItem?.source === 'torreon') {
-      alert('Las rondas de Torreon estan en solo lectura por ahora.');
+      if (activeItem.source !== 'torreon' || overItem.source !== 'torreon' || activeItem.rondaNumero !== overItem.rondaNumero) {
+        alert('Torreon solo permite reordenar dentro de su misma ronda.');
+        return;
+      }
+
+      const currentList = [...(groupedByRonda[activeItem.rondaNumero] || [])]
+        .sort((a, b) => a.orden - b.orden || a.id - b.id);
+      const oldIndex = currentList.findIndex((item) => item.id === activeId);
+      const newIndex = currentList.findIndex((item) => item.id === overId);
+      if (oldIndex < 0 || newIndex < 0) return;
+
+      try {
+        await apiOrdenMovimiento(activeId, newIndex + 1, localidadId);
+
+        const nextList = [...currentList];
+        const [moved] = nextList.splice(oldIndex, 1);
+        nextList.splice(newIndex, 0, moved);
+        const normalized = nextList.map((item, index) => ({ ...item, orden: index + 1 }));
+
+        setGroupedByRonda((prev) => ({
+          ...prev,
+          [activeItem.rondaNumero]: normalized,
+        }));
+        setList((prev) => {
+          const byId = new Map(normalized.map((item) => [item.id, item]));
+          return prev.map((item) => byId.get(item.id) ?? item);
+        });
+        showToast('Orden actualizado');
+      } catch (e: unknown) {
+        console.error(e);
+        alert('Error al reordenar: ' + errorMessage(e, 'Error desconocido'));
+      }
       return;
     }
 
@@ -598,7 +635,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
             <div>
               <h2 className={`text-lg font-bold leading-tight ${THEME.text}`}>Editor de Rondas</h2>
               <p className={`text-xs ${THEME.textMuted}`}>
-                <span className="font-semibold text-blue-600 dark:text-blue-400">Arrastra desde los 6 puntos (⋮⋮)</span> para intercambiar lugares.
+                <span className="font-semibold text-blue-600 dark:text-blue-400">Arrastra desde los 6 puntos (⋮⋮)</span> para ajustar la cola.
               </p>
             </div>
           </div>

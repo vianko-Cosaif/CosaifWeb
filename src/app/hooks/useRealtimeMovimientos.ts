@@ -7,6 +7,15 @@ export type RealtimeMovementEventType =
   | "movimiento.estado"
   | "movimiento.incidente"
   | "incidente.estado"
+  | "torreon.movimiento.creado"
+  | "torreon.movimiento.estado"
+  | "torreon.movimiento.incidente"
+  | "torreon.incidente.estado"
+  | "torreon.arrastre.creado"
+  | "torreon.arrastre.estado"
+  | "torreon.arrastre.vagon"
+  | "torreon.arrastre.incidente"
+  | "torreon.arrastre.orden"
   | "realtime.ready"
   | "realtime.resume"
   | "realtime.pong";
@@ -14,10 +23,17 @@ export type RealtimeMovementEventType =
 export type RealtimeMovementEvent = {
   type?: RealtimeMovementEventType;
   eventId?: string;
+  source?: "cosaif" | "torreon" | string;
+  entity?: "movimiento" | "arrastre" | "vagon" | "incidente" | string;
+  entityId?: number | string | null;
   movimientoId?: number | null;
+  arrastreId?: number | null;
+  vagonId?: number | null;
   empresaId?: number | null;
   localidadId?: number | null;
   clienteId?: number | null;
+  folio?: string | null;
+  accion?: string | null;
   estado?: string | null;
   estadoAnterior?: string | null;
   incidenteGlobal?: boolean | null;
@@ -52,6 +68,8 @@ const DEFAULT_REALTIME_WS_CONFIG_URL =
   process.env.NEXT_PUBLIC_REALTIME_WS_CONFIG_URL || "/api/realtime/ws-config";
 
 const subscribers = new Set<Subscriber>();
+const recentEvents = new Map<string, number>();
+const RECENT_EVENT_TTL_MS = 1_200;
 
 const streamState: StreamState = {
   abortController: null,
@@ -101,9 +119,52 @@ function scopedUrl(url: string, localidadId?: number | null): string {
 }
 
 function notifySubscribers(event: RealtimeMovementEvent) {
+  if (shouldSuppressEvent(event)) return;
+
   for (const subscriber of subscribers) {
     subscriber(event);
   }
+}
+
+function eventKey(event: RealtimeMovementEvent) {
+  if (event.eventId) return `id:${event.eventId}`;
+  return [
+    event.type,
+    event.source,
+    event.entity,
+    event.entityId,
+    event.empresaId,
+    event.localidadId,
+    event.clienteId,
+    event.movimientoId,
+    event.arrastreId,
+    event.vagonId,
+    event.incidenteId,
+    event.accion,
+    event.estado,
+    event.estadoAnterior,
+  ].map((part) => String(part ?? "-")).join("|");
+}
+
+function shouldSuppressEvent(event: RealtimeMovementEvent) {
+  const type = String(event.type ?? "");
+  if (type === "realtime.ready" || type === "realtime.resume" || type === "realtime.pong") {
+    return false;
+  }
+
+  const now = Date.now();
+  if (recentEvents.size > 400) {
+    for (const [key, expiresAt] of recentEvents) {
+      if (expiresAt <= now) recentEvents.delete(key);
+    }
+  }
+
+  const key = eventKey(event);
+  const expiresAt = recentEvents.get(key);
+  if (expiresAt && expiresAt > now) return true;
+
+  recentEvents.set(key, now + RECENT_EVENT_TTL_MS);
+  return false;
 }
 
 function notifyRealtimeResume(reason: string) {

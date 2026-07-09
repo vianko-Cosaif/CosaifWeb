@@ -1,4 +1,4 @@
-export * from "./ArrastreCard";
+export * from "./ArrastreTerminalTable";
 export * from "./EditVagonModal";
 export * from "./EmptyState";
 export * from "./EstadoBadge";

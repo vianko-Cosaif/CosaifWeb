@@ -17,12 +17,59 @@ import {
 
 type Props = {
   localidadId: number;
+  apiBase?: string;
 };
 
-export default function TorreonNaturalesPanel({ localidadId }: Props) {
-  const naturales = useTorreonNaturales(localidadId);
+export default function TorreonNaturalesPanel({ localidadId, apiBase }: Props) {
+  const naturales = useTorreonNaturales(localidadId, apiBase);
   const [selected, setSelected] = useState<MovimientoNatural | null>(null);
   const [selectedIncident, setSelectedIncident] = useState<SelectedIncident | null>(null);
+
+  async function openFotos(row: MovimientoNatural) {
+    setSelected(row);
+    const currentFotos = row.fotos?.length ?? 0;
+    if ((row.fotosCount ?? 0) <= currentFotos) return;
+
+    const params = new URLSearchParams({
+      localidadId: String(localidadId),
+      id: String(row.id),
+    });
+    const response = await fetch(`/api/coordinador/torreon/movimientos?${params.toString()}`, {
+      cache: "no-store",
+      credentials: "include",
+    }).catch(() => null);
+    const payload = await response?.json().catch(() => null);
+    if (!response?.ok || !payload?.data) return;
+    setSelected((current) => current && String(current.id) === String(row.id) ? payload.data : current);
+  }
+
+  function openIncident(payload: SelectedIncident) {
+    setSelectedIncident(payload);
+    const incidentId = Number(payload.incident.id);
+    const currentFotos = payload.incident.fotos?.length ?? 0;
+    if (!Number.isFinite(incidentId) || (payload.incident.fotosCount ?? 0) <= currentFotos) return;
+
+    const params = new URLSearchParams({
+      source: "torreon",
+      tipo: "NATURAL",
+      localidadId: String(localidadId),
+    });
+    fetch(`/api/incidentes/${incidentId}?${params.toString()}`, {
+      cache: "no-store",
+      credentials: "include",
+    })
+      .then((response) => response.ok ? response.json() : null)
+      .then((responsePayload) => {
+        const detail = responsePayload?.data;
+        if (!detail) return;
+        setSelectedIncident((current) => (
+          current && Number(current.incident.id) === incidentId
+            ? { ...current, incident: { ...current.incident, ...detail } }
+            : current
+        ));
+      })
+      .catch(() => undefined);
+  }
 
   return (
     <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -39,6 +86,9 @@ export default function TorreonNaturalesPanel({ localidadId }: Props) {
           onStatusChange={naturales.setStatus}
           search={naturales.search}
           onSearchChange={naturales.setSearch}
+          empresaId={naturales.empresaId}
+          empresas={naturales.empresas}
+          onEmpresaChange={naturales.setEmpresaId}
           fechaCampo={naturales.fechaCampo}
           onFechaCampoChange={naturales.setFechaCampo}
           desde={naturales.desde}
@@ -68,8 +118,8 @@ export default function TorreonNaturalesPanel({ localidadId }: Props) {
           error={naturales.error}
           page={naturales.safePage}
           pageSize={naturales.pageSize}
-          onOpenFotos={setSelected}
-          onOpenIncident={setSelectedIncident}
+          onOpenFotos={openFotos}
+          onOpenIncident={openIncident}
         />
         <NaturalesPagination
           loading={naturales.loading}

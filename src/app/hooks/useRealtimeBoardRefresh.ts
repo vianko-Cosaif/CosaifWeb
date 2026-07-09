@@ -45,7 +45,10 @@ function eventKey(event: RealtimeMovementEvent) {
     [
       event.type,
       event.movimientoId,
+      event.arrastreId,
+      event.vagonId,
       event.incidenteId,
+      event.accion,
       event.estado,
       event.estadoAnterior,
       event.occurredAt,

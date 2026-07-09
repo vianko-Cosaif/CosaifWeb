@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
-import { canViewTorreonArrastreRole } from "@/lib/torreonLocalidad";
+import { canResolveTorreonIncidentRole, canViewTorreonArrastreRole } from "@/lib/torreonLocalidad";
 import { toTorreonImageProxyUrl } from "@/lib/torreonImageProxy";
 
 export const dynamic = "force-dynamic";
@@ -81,19 +81,25 @@ function mapFotos(input: unknown) {
 }
 
 function mapIncidentes(input: unknown) {
-  return extractArray(input).map((item) => ({
-    ...item,
-    id: asNumber(item.id) ?? item.id,
-    estado: cleanText(item.estado) || "ABIERTO",
-    motivo: cleanText(item.motivo),
-    solucion: cleanText(item.solucion),
-    fechaInicio: cleanText(item.fechaInicio),
-    fechaResolucion: cleanText(item.fechaResolucion),
-    viaBloqueadaId: asNumber(item.viaBloqueadaId),
-    seccionBloqueadaId: asNumber(item.seccionBloqueadaId),
-    vagonId: asNumber(item.vagonId),
-    fotos: mapFotos(item.fotos),
-  }));
+  return extractArray(input).map((item) => {
+    const fotos = mapFotos(item.fotos);
+    return {
+      ...item,
+      id: asNumber(item.id) ?? item.id,
+      estado: cleanText(item.estado) || "ABIERTO",
+      motivo: cleanText(item.motivo),
+      solucion: cleanText(item.solucion),
+      creadoPorId: asNumber(item.creadoPorId) ?? item.creadoPorId,
+      resueltoPorId: asNumber(item.resueltoPorId) ?? item.resueltoPorId,
+      fechaInicio: cleanText(item.fechaInicio),
+      fechaResolucion: cleanText(item.fechaResolucion),
+      viaBloqueadaId: asNumber(item.viaBloqueadaId),
+      seccionBloqueadaId: asNumber(item.seccionBloqueadaId),
+      vagonId: asNumber(item.vagonId),
+      fotosCount: asNumber(asRecord(item._count).fotos) ?? fotos.length,
+      fotos,
+    };
+  });
 }
 
 function mapArrastre(input: ArrastreRecord) {
@@ -102,6 +108,14 @@ function mapArrastre(input: ArrastreRecord) {
     ...record,
     incidentes: mapIncidentes(record.incidentes),
   };
+}
+
+function unwrapDetail(input: unknown): ArrastreRecord {
+  if (Array.isArray(input)) return asRecord(input[0]);
+  const record = asRecord(input);
+  if (record.data && typeof record.data === "object" && !Array.isArray(record.data)) return asRecord(record.data);
+  if (record.item && typeof record.item === "object" && !Array.isArray(record.item)) return asRecord(record.item);
+  return record;
 }
 
 function filterByVista(rows: ArrastreRecord[], vista: string | null) {
@@ -147,10 +161,14 @@ export async function GET(req: NextRequest) {
 
     const estado = searchParams.get("estado");
     const vista = searchParams.get("vista");
+    const id = asNumber(searchParams.get("id"));
+    const page = searchParams.get("page");
+    const pageSize = searchParams.get("pageSize");
+    const includeFotos = searchParams.get("includeFotos");
     const cookieStore = await cookies();
     const role = readRole(cookieStore);
     const empresaId = readEmpresaId(cookieStore);
-    if (!canViewTorreonArrastreRole(role)) {
+    if (!canViewTorreonArrastreRole(role) && !canResolveTorreonIncidentRole(role)) {
       return NextResponse.json([], { status: 200 });
     }
 
@@ -160,8 +178,30 @@ export async function GET(req: NextRequest) {
       return NextResponse.json([], { status: 200 });
     }
 
+    if (id) {
+      const detailQs = new URLSearchParams();
+      if (includeFotos) detailQs.set("includeFotos", includeFotos);
+      const data = await fetchTorreonMsJson(`/arrastres/${id}${detailQs.size ? `?${detailQs.toString()}` : ""}`);
+      const mapped = mapArrastre(unwrapDetail(data)) as ArrastreRecord;
+      const recordLocalidadId = asNumber(mapped.localidadId);
+      const recordEmpresaId = asNumber(mapped.empresaId);
+
+      if (recordLocalidadId && recordLocalidadId !== Number(localidadId)) {
+        return jsonError("No autorizado para este arrastre", 403);
+      }
+      if (scopedEmpresaId && recordEmpresaId && recordEmpresaId !== scopedEmpresaId) {
+        return jsonError("No autorizado para este arrastre", 403);
+      }
+
+      return NextResponse.json(mapped, { status: 200 });
+    }
+
     const qs = new URLSearchParams({ localidadId });
     if (estado) qs.set("estado", estado);
+    if (vista) qs.set("vista", vista);
+    if (page) qs.set("page", page);
+    if (pageSize) qs.set("pageSize", pageSize);
+    if (includeFotos) qs.set("includeFotos", includeFotos);
     if (scopedEmpresaId) qs.set("empresaId", String(scopedEmpresaId));
 
     const data = await fetchTorreonMsJson(`/arrastres?${qs.toString()}`);

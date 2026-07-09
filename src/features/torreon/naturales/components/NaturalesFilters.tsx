@@ -1,12 +1,15 @@
 import { CalendarDays, Search } from "lucide-react";
 import { STATUS_TABS } from "../constants";
-import type { FechaCampo, SortDir, SortKey, StatusTab } from "../types";
+import type { EmpresaOption, FechaCampo, SortDir, SortKey, StatusTab } from "../types";
 
 type Props = {
   status: StatusTab;
   onStatusChange: (status: StatusTab) => void;
   search: string;
   onSearchChange: (search: string) => void;
+  empresaId: number | null;
+  empresas: EmpresaOption[];
+  onEmpresaChange: (empresaId: number | null) => void;
   fechaCampo: FechaCampo;
   onFechaCampoChange: (field: FechaCampo) => void;
   desde: string;
@@ -28,6 +31,9 @@ export function NaturalesFilters({
   onStatusChange,
   search,
   onSearchChange,
+  empresaId,
+  empresas,
+  onEmpresaChange,
   fechaCampo,
   onFechaCampoChange,
   desde,
@@ -72,7 +78,13 @@ export function NaturalesFilters({
         />
       </div>
 
-      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-[160px_1fr_1fr_170px_150px_120px]">
+      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_160px_1fr_1fr_170px_150px_120px]">
+        <SelectControl label="Empresa" value={empresaId ? String(empresaId) : ""} onChange={(value) => onEmpresaChange(value ? Number(value) : null)}>
+          <option value="">Todas</option>
+          {empresas.map((empresa) => (
+            <option key={empresa.id} value={empresa.id}>{empresa.nombre}</option>
+          ))}
+        </SelectControl>
         <SelectControl label="Fecha filtro" value={fechaCampo} onChange={(value) => onFechaCampoChange(value as FechaCampo)}>
           <option value="solicitud">Solicitud</option>
           <option value="inicio">Inicio real</option>

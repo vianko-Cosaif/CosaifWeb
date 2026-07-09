@@ -254,6 +254,11 @@ export async function apiCancelarMovimiento(movimientoId: number, razon?: string
   });
 }
 
+/** Reordena una ronda/movimiento sin intercambiar contenido. Usado por Torreon. */
+export async function apiOrdenMovimiento(rondaId: number | string, orden: number, localidadId?: number | string) {
+  return postClienteRondas({ action: 'orden', id: rondaId, orden, localidadId });
+}
+
 
 /* ==============================
    Hook principal de datos (WEB)

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { normalizeHttpOrigin } from "@/lib/serverOrigin";
 import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
 import { toTorreonImageProxyUrl } from "@/lib/torreonImageProxy";
+import { canResolveTorreonIncidentRole } from "@/lib/torreonLocalidad";
 
 export const dynamic = "force-dynamic";
 
@@ -115,6 +116,21 @@ function formatTorreonVia(movimiento: UnknownRecord, prefix: "Origen" | "Destino
   return via || seccion || null;
 }
 
+function formatTorreonZona(viaId: unknown, seccionId: unknown) {
+  const via = formatTorreonRef(null, "Via", viaId);
+  const seccion = formatTorreonRef(null, "Seccion", seccionId);
+  if (via && seccion) return `${via} / ${seccion}`;
+  return via || seccion || null;
+}
+
+function normalizeTorreonTipo(input: UnknownRecord) {
+  const value = String(input._torreonTipo || input.tipoIncidente || input.tipo || "").toUpperCase();
+  if (value.includes("ARRASTRE")) return "ARRASTRE";
+  if (value.includes("NATURAL")) return "NATURAL";
+  if (input.arrastre || input.arrastreId) return "ARRASTRE";
+  return "NATURAL";
+}
+
 function normalizeTorreonFotos(input: unknown) {
   return asArray(input)
     .map((foto) => {
@@ -134,46 +150,92 @@ function normalizeTorreonFotos(input: unknown) {
 }
 
 function mapTorreonIncidente(input: UnknownRecord) {
+  const tipoIncidente = normalizeTorreonTipo(input);
+  const isArrastre = tipoIncidente === "ARRASTRE";
   const movimiento = asRecord(input.movimiento);
-  const empresaId = asNumber(movimiento.empresaId);
+  const arrastre = asRecord(input.arrastre);
+  const vagon = asRecord(input.vagon);
+  const empresaId = isArrastre ? asNumber(arrastre.empresaId) : asNumber(movimiento.empresaId);
+  const localidadId =
+    asNumber(input.localidadId) ||
+    (isArrastre ? asNumber(arrastre.localidadId) : asNumber(movimiento.localidadId));
+  const arrastreId = asNumber(input.arrastreId) || asNumber(arrastre.id);
+  const vagonId = asNumber(input.vagonId) || asNumber(vagon.id);
+  const viaBloqueadaId = asNumber(input.viaBloqueadaId);
+  const seccionBloqueadaId = asNumber(input.seccionBloqueadaId);
   const fotos = normalizeTorreonFotos(input.fotos);
   const imagenes = fotos.map((foto) => foto.url);
+  const movimientoId = asNumber(movimiento.id);
+  const routeOrigen = isArrastre
+    ? formatTorreonZona(arrastre.viaOrigenId, arrastre.seccionOrigenId)
+    : formatTorreonVia(movimiento, "Origen");
+  const routeDestino = isArrastre
+    ? formatTorreonZona(
+        vagon.viaId ?? arrastre.viaDestinoId ?? viaBloqueadaId,
+        vagon.seccionId ?? arrastre.seccionDestinoId ?? seccionBloqueadaId
+      )
+    : formatTorreonVia(movimiento, "Destino");
 
   return {
     id: asNumber(input.id) ?? input.id,
-    descripcion: cleanText(input.motivo) || "Incidente Torreon",
+    descripcion: cleanText(input.motivo) || (isArrastre ? "Incidente de arrastre Torreon" : "Incidente Torreon"),
     motivo: cleanText(input.motivo),
+    solucion: cleanText(input.solucion),
     estado: cleanText(input.estado) || "ABIERTO",
     fechaInicio: cleanText(input.fechaInicio),
     fechaResolucion: cleanText(input.fechaResolucion),
-    localidadId: asNumber(input.localidadId),
-    viaBloqueadaId: asNumber(input.viaBloqueadaId),
-    seccionBloqueadaId: asNumber(input.seccionBloqueadaId),
+    creadoPorId: asNumber(input.creadoPorId),
+    resueltoPorId: asNumber(input.resueltoPorId),
+    localidadId,
+    viaBloqueadaId,
+    seccionBloqueadaId,
+    arrastreId,
+    vagonId,
+    tipoIncidente,
     imagenes,
     imagen1: imagenes[0],
     imagen2: imagenes[1],
     imagen3: imagenes[2],
     imagen4: imagenes[3],
+    fotosCount: asNumber(asRecord(input._count).fotos) ?? fotos.length,
     fotos,
     usuario: {
       id: asNumber(input.creadoPorId),
       nombre: input.creadoPorId ? `Usuario ${input.creadoPorId}` : "Torreon",
     },
+    resueltoPor: input.resueltoPorId
+      ? {
+          id: asNumber(input.resueltoPorId),
+          nombre: `Usuario ${input.resueltoPorId}`,
+        }
+      : undefined,
     movimiento: {
-      id: asNumber(movimiento.id),
+      id: isArrastre ? arrastreId : movimientoId,
       empresaId,
-      localidadId: asNumber(movimiento.localidadId),
+      localidadId,
       empresa: empresaId
         ? {
             id: empresaId,
-            nombre: cleanText(movimiento.empresaNombreSnapshot) || `Empresa ${empresaId}`,
+            nombre:
+              cleanText(isArrastre ? arrastre.empresaNombreSnapshot : movimiento.empresaNombreSnapshot) ||
+              `Empresa ${empresaId}`,
           }
         : undefined,
-      locomotiveNumber: movimiento.locomotiveNumber ?? null,
-      viaOrigen: { nombre: formatTorreonVia(movimiento, "Origen") },
-      viaDestino: { nombre: formatTorreonVia(movimiento, "Destino") },
+      locomotiveNumber: isArrastre ? `Arrastre #${arrastreId ?? input.id}` : movimiento.locomotiveNumber ?? null,
+      viaOrigen: { nombre: routeOrigen },
+      viaDestino: { nombre: routeDestino },
     },
+    arrastre: isArrastre
+      ? {
+          ...arrastre,
+          id: arrastreId,
+          empresaId,
+          localidadId,
+        }
+      : undefined,
+    vagon: isArrastre ? { ...vagon, id: vagonId } : undefined,
     _source: "torreon",
+    _torreonTipo: tipoIncidente,
   };
 }
 
@@ -192,6 +254,7 @@ function getTorreonSearchParams(req: NextRequest, cookieStore: Awaited<ReturnTyp
 
   params.set("page", incoming.get("page") || "1");
   params.set("pageSize", incoming.get("pageSize") || "20");
+  params.set("includeFotos", incoming.get("includeFotos") || "0");
 
   const requestedEmpresaId = incoming.get("empresaId");
   if (canSeeAllEmpresas(role)) {
@@ -273,12 +336,19 @@ async function listTorreon(req: NextRequest) {
   });
 }
 
-async function getTorreonById(id: string) {
+function getTorreonTipo(req: NextRequest) {
+  const tipo = String(req.nextUrl.searchParams.get("tipo") || req.nextUrl.searchParams.get("tipoIncidente") || "").toUpperCase();
+  return tipo.includes("ARRASTRE") ? "ARRASTRE" : tipo.includes("NATURAL") ? "NATURAL" : "";
+}
+
+async function getTorreonById(req: NextRequest, id: string) {
   const cookieStore = await cookies();
   const session = requireTorreonSession(cookieStore);
   if (!session.ok) return session.response;
 
-  const raw = await fetchTorreonMsJson(`/incidentes/${encodeURIComponent(id)}`);
+  const tipo = getTorreonTipo(req);
+  const query = tipo ? `?tipo=${encodeURIComponent(tipo)}` : "";
+  const raw = await fetchTorreonMsJson(`/incidentes/${encodeURIComponent(id)}${query}`);
   const data = mapTorreonIncidente(asRecord(raw));
   if (!assertTorreonAccess(cookieStore, data)) {
     return NextResponse.json({ success: false, error: "No autorizado" }, { status: 403 });
@@ -290,11 +360,16 @@ async function resolveTorreon(req: NextRequest, id: string) {
   const cookieStore = await cookies();
   const session = requireTorreonSession(cookieStore);
   if (!session.ok) return session.response;
+  if (!canResolveTorreonIncidentRole(session.role)) {
+    return NextResponse.json({ success: false, error: "No autorizado para resolver incidentes" }, { status: 403 });
+  }
 
   const userId = readUserId(cookieStore);
   if (!userId) return NextResponse.json({ success: false, error: "Usuario no identificado" }, { status: 401 });
 
-  const detail = await fetchTorreonMsJson(`/incidentes/${encodeURIComponent(id)}`);
+  const tipo = getTorreonTipo(req);
+  const query = tipo ? `?tipo=${encodeURIComponent(tipo)}` : "";
+  const detail = await fetchTorreonMsJson(`/incidentes/${encodeURIComponent(id)}${query}`);
   const mapped = mapTorreonIncidente(asRecord(detail));
   if (!assertTorreonAccess(cookieStore, mapped)) {
     return NextResponse.json({ success: false, error: "No autorizado" }, { status: 403 });
@@ -307,7 +382,7 @@ async function resolveTorreon(req: NextRequest, id: string) {
     cleanText(body.comments) ||
     "Resuelto desde Cosaif Web";
 
-  const data = await fetchTorreonMsJson(`/incidentes/${encodeURIComponent(id)}/resolver`, {
+  const data = await fetchTorreonMsJson(`/incidentes/${encodeURIComponent(id)}/resolver${query}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ resueltoPorId: userId, solucion }),
@@ -322,7 +397,7 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path?: string[]
 
   if (shouldUseTorreon(req)) {
     if (req.method === "GET" && segments.length === 0) return listTorreon(req);
-    if (req.method === "GET" && id && segments.length === 1) return getTorreonById(id);
+    if (req.method === "GET" && id && segments.length === 1) return getTorreonById(req, id);
     if (id && ["resuelto", "resolver", "cerrar"].includes(String(action || "").toLowerCase())) {
       return resolveTorreon(req, id);
     }

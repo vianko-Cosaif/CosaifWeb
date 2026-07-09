@@ -17,6 +17,7 @@ export type VagonArrastre = {
   orden: number;
   numeroVagon?: string | null;
   carga?: string | null;
+  comentario?: string | null;
   estado?: string | null;
   viaId?: number | null;
   seccionId?: number | null;
@@ -33,11 +34,13 @@ export type VagonArrastre = {
 export type IncidenteArrastre = TorreonIncidentDetail & {
   id: number;
   vagonId?: number | null;
+  fotosCount?: number | null;
 };
 
 export type Arrastre = {
   id: number;
   estado?: string | null;
+  ordenSolicitud?: number | null;
   empresaId?: number | null;
   fechaSolicitud?: string | null;
   fechaInicio?: string | null;

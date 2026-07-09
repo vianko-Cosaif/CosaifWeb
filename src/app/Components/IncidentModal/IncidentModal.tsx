@@ -149,12 +149,12 @@ export default function IncidentModal({
     }
   }, [incident, resolution, onResolve]);
 
-  // Manejar omitir
+  // Manejar cierre operativo sin resolución
   const handleSkip = useCallback(async () => {
     try {
       await onSkip(incident);
     } catch (error) {
-      console.error("Error al omitir incidente:", error);
+      console.error("Error al cerrar incidente sin resolver:", error);
     }
   }, [incident, onSkip]);
 
@@ -204,7 +204,8 @@ export default function IncidentModal({
             <button
               onClick={handleClose}
               className="rounded-md p-1 text-white/90 hover:bg-white/10 transition-colors"
-              aria-label="Cerrar"
+              aria-label="Cerrar ventana sin modificar el incidente"
+              title="Cerrar ventana sin modificar el incidente"
             >
               <X className="h-5 w-5" />
             </button>
@@ -320,6 +321,9 @@ export default function IncidentModal({
               {incident.estado === "ABIERTO" && (
                 <section className="rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-sm">
                   <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-200">Resolución del incidente</h2>
+                  <p className="mb-3 text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
+                    Resolver registra la solución y cambia el incidente a RESUELTO. Cerrar sin resolver no registra solución.
+                  </p>
                   <textarea
                     value={resolution}
                     onChange={(e) => setResolution(e.target.value)}
@@ -386,7 +390,7 @@ export default function IncidentModal({
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-3 font-semibold text-white hover:bg-amber-600"
               >
                 <FastForward className="h-5 w-5" />
-                Omitir
+                Cerrar sin resolver
               </button>
             </>
           ) : tab === 0 ? (
@@ -402,10 +406,10 @@ export default function IncidentModal({
       <ConfirmationModal
         isOpen={isSkipConfirmOpen}
         onClose={() => setIsSkipConfirmOpen(false)}
-        onConfirm={handleSkip} // Llama a la función original de omitir
-        title="¿Estás seguro de omitir?"
+        onConfirm={handleSkip}
+        title="¿Cerrar sin resolver?"
       >
-        <p>Esta acción podría conllevar una reorganización de los movimientos planificados.</p>
+        <p>Se cerrará como cierre operativo sin registrar una solución. Para liberar el bloqueo con solución, usa Resolver incidente.</p>
       </ConfirmationModal>
     </div>
   );

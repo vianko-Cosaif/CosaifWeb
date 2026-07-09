@@ -25,11 +25,14 @@ const ALLOWED_ROLES = new Set([
   "MAQUINISTA_ARRASTRE",
 ]);
 
-function getUploadsRoot() {
-  return path.resolve(
-    process.env.TORREON_UPLOADS_DIR ||
-      path.resolve(process.cwd(), "../BackCosaif2/ms_torreon/uploads/incidentes")
-  );
+function getUploadsRoots() {
+  return [
+    process.env.TORREON_UPLOADS_DIR,
+    path.resolve(process.cwd(), "../BackCosaif2/uploads/incidentes"),
+    path.resolve(process.cwd(), "../BackCosaif2/ms_torreon/uploads/incidentes"),
+  ]
+    .filter((item): item is string => Boolean(item))
+    .map((item) => path.resolve(item));
 }
 
 async function hasSession() {
@@ -62,13 +65,27 @@ export async function GET(
       return NextResponse.json({ error: "Ruta de imagen invalida" }, { status: 400 });
     }
 
-    const root = getUploadsRoot();
-    const target = path.resolve(root, ...cleanSegments);
-    if (target !== root && !target.startsWith(`${root}${path.sep}`)) {
-      return NextResponse.json({ error: "Ruta invalida" }, { status: 400 });
+    let file: Buffer | null = null;
+    let target = "";
+    for (const root of getUploadsRoots()) {
+      const candidate = path.resolve(root, ...cleanSegments);
+      if (candidate !== root && !candidate.startsWith(`${root}${path.sep}`)) {
+        return NextResponse.json({ error: "Ruta invalida" }, { status: 400 });
+      }
+
+      try {
+        file = await fs.readFile(candidate);
+        target = candidate;
+        break;
+      } catch {
+        file = null;
+      }
     }
 
-    const file = await fs.readFile(target);
+    if (!file || !target) {
+      return NextResponse.json({ error: "Imagen no encontrada" }, { status: 404 });
+    }
+
     const body = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer;
     const ext = path.extname(target).toLowerCase();
     return new NextResponse(body, {
