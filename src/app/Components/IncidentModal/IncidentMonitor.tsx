@@ -72,10 +72,75 @@ const eventMatchesScope = (
 };
 
 const realtimeNoticeForEvent = (event: RealtimeMovementEvent) => {
+  const eventType = String(event.type ?? "");
   const estado = String(event.estado ?? "").toUpperCase();
   const movementId = event.movimientoId ? `#${event.movimientoId}` : "movimiento";
+  const arrastreId = event.arrastreId ? `#${event.arrastreId}` : "arrastre";
+  const vagonId = event.vagonId ? ` · Vagón #${event.vagonId}` : "";
   const incidentId = event.incidenteId ? `Incidente #${event.incidenteId}` : "Incidente";
   const loco = event.locomotiveNumber ? ` · Loco ${event.locomotiveNumber}` : "";
+
+  if (eventType.startsWith("torreon.arrastre")) {
+    if (eventType.includes("incidente")) {
+      return {
+        title: event.accion === "resolver_incidente" ? "Incidente de arrastre resuelto" : "Incidente en arrastre",
+        description: `${incidentId} · Arrastre ${arrastreId}${vagonId}`,
+        tone: event.accion === "resolver_incidente" ? "emerald" as const : "rose" as const,
+        icon: "incident" as const,
+      };
+    }
+
+    if (eventType.endsWith(".vagon")) {
+      return {
+        title: event.accion === "finalizar_vagon" ? "Vagón finalizado" : "Vagón iniciado",
+        description: `Arrastre ${arrastreId}${vagonId}`,
+        tone: event.accion === "finalizar_vagon" ? "sky" as const : "emerald" as const,
+        icon: "movement" as const,
+      };
+    }
+
+    if (eventType.endsWith(".orden")) {
+      return {
+        title: "Orden de arrastre actualizada",
+        description: event.arrastreId ? `Arrastre ${arrastreId}` : "La cola fue reorganizada",
+        tone: "sky" as const,
+        icon: "movement" as const,
+      };
+    }
+
+    return {
+      title:
+        estado === "CONCLUIDO" ? "Arrastre concluido" :
+        estado === "CANCELADO" ? "Arrastre cancelado" :
+        eventType.endsWith(".creado") ? "Arrastre solicitado" :
+        "Arrastre actualizado",
+      description: `Arrastre ${arrastreId}`,
+      tone: estado === "CANCELADO" ? "rose" as const : estado === "CONCLUIDO" ? "emerald" as const : "sky" as const,
+      icon: "movement" as const,
+    };
+  }
+
+  if (eventType.startsWith("torreon.movimiento") || eventType === "torreon.incidente.estado") {
+    if (eventType.includes("incidente") || eventType === "torreon.incidente.estado") {
+      return {
+        title: eventType === "torreon.incidente.estado" ? "Incidente Torreón actualizado" : "Incidente en Torreón",
+        description: `${incidentId} en ${movementId}${loco}`,
+        tone: eventType === "torreon.incidente.estado" && (estado === "RESUELTO" || estado === "CERRADO") ? "emerald" as const : "rose" as const,
+        icon: "incident" as const,
+      };
+    }
+
+    return {
+      title:
+        eventType.endsWith(".creado") ? "Movimiento Torreón creado" :
+        estado === "CONCLUIDO" ? "Movimiento Torreón concluido" :
+        estado === "EN_PROCESO" ? "Movimiento Torreón iniciado" :
+        "Movimiento Torreón actualizado",
+      description: `${movementId}${loco}`,
+      tone: estado === "CONCLUIDO" ? "sky" as const : "emerald" as const,
+      icon: "movement" as const,
+    };
+  }
 
   if (event.type === "movimiento.creado") {
     return {
@@ -98,7 +163,7 @@ const realtimeNoticeForEvent = (event: RealtimeMovementEvent) => {
   if (event.type === "incidente.estado") {
     if (estado === "RESUELTO" || estado === "CERRADO") {
       return {
-        title: estado === "RESUELTO" ? "Incidente resuelto" : "Incidente cerrado",
+        title: estado === "RESUELTO" ? "Incidente resuelto" : "Incidente cerrado sin resolución",
         description: `${incidentId} en ${movementId}${loco}`,
         tone: "emerald" as const,
         icon: "incident" as const,
@@ -302,6 +367,29 @@ export default function IncidentMonitor({
 
       if (event.type === "realtime.ready" || event.type === "realtime.resume") {
         scheduleRealtimeIncidentCheck();
+        return;
+      }
+
+      if (String(event.type ?? "").startsWith("torreon.")) {
+        const notice = realtimeNoticeForEvent(event);
+        if (notice) {
+          const id = event.eventId ?? `${event.type}:${event.arrastreId}:${event.movimientoId}:${event.vagonId}:${event.incidenteId}:${event.estado}:${Date.now()}`;
+          setRealtimeNotice({
+            ...notice,
+            id,
+          });
+          if (!browserNoticeIdsRef.current.has(id)) {
+            browserNoticeIdsRef.current.add(id);
+            const type = String(event.type ?? "");
+            showBrowserRealtimeNotification({
+              id,
+              title: notice.title,
+              body: notice.description,
+              url: type.includes("incidente") ? "/incidentes?source=torreon" : "/cliente/torreon/movimientos",
+            });
+          }
+        }
+        if (String(event.type ?? "").includes("incidente")) scheduleRealtimeIncidentCheck();
         return;
       }
 

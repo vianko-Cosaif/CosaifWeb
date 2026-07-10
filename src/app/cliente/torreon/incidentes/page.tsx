@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { canViewTorreonArrastreRole, getPrimaryTorreonLocalidadId, isClienteAreaRole, isTorreonLocalidadId } from "@/lib/torreonLocalidad";
+import { canResolveTorreonIncidentRole, getPrimaryTorreonLocalidadId, isClienteAreaRole, isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 import { getRoleCapabilities } from "@/lib/accessControl";
 import TorreonClientePanel from "../TorreonClientePanel";
 
@@ -32,8 +32,8 @@ export default async function Page() {
     redirect("/cliente");
   }
 
-  if (!canViewTorreonArrastreRole(role)) {
-    redirect("/cliente/incidentes");
+  if (!canResolveTorreonIncidentRole(role)) {
+    redirect("/cliente/movimientos");
   }
 
   return <TorreonClientePanel localidadId={localidadId} empresaId={empresaId} role={role} view="incidentes" />;

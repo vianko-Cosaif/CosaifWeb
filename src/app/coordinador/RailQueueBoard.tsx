@@ -6,7 +6,6 @@ import { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { S } from "./RailQueueBoard.styles";
-import TornoMeasuresViewerModal from "../movimientos/torno/TornoMeasuresViewerModal";
 import { useRealtimeBoardRefresh } from "../hooks/useRealtimeBoardRefresh";
 import { useTornoMeasuresModal } from "@/features/torno-measures";
 import {
@@ -16,16 +15,17 @@ import {
   formatDateTimeMX,
   isAbortError,
   railQueueListFormatter,
-  TerminalQueueTable,
   timeAgo,
+} from "@/features/rail-queue/utils";
+import {
   useLocalStorageBoolean,
   useOnline,
   useRelativeClock,
   useToasts,
   useVisibleInterval,
-  type Ronda,
-  type RondaInfo,
-} from "@/features/rail-queue";
+} from "@/features/rail-queue/hooks";
+import type { Ronda, RondaInfo } from "@/features/rail-queue/types";
+import { peekCachedJson } from "@/lib/clientRequestCache";
 
 const API_BASE = API_XAPI_BASE;
 const fmtList = railQueueListFormatter;
@@ -38,6 +38,14 @@ function formatBoardDateTime(iso?: string | null) {
 const EditRondas = dynamic(() => import("../Components/EditRondas"), {
   ssr: false,
 });
+const TornoMeasuresViewerModal = dynamic(
+  () => import("../movimientos/torno/TornoMeasuresViewerModal"),
+  { ssr: false }
+);
+const TerminalQueueTable = dynamic(
+  () => import("@/features/rail-queue/components/TerminalQueueTable").then((module) => module.TerminalQueueTable),
+  { loading: () => <div className="hidden h-72 animate-pulse rounded-lg bg-[var(--app-surface-muted)] lg:block" /> }
+);
 
 /* ===== Página/Componente ===== */
 export default function RailQueueBoardPage({
@@ -49,6 +57,8 @@ export default function RailQueueBoardPage({
   autoMs?: number;
   nextCount?: number;
 }) {
+  const roundsUrl = `/api/cliente/rondas?localidadId=${localidadId}`;
+  const initialItems = peekCachedJson<Ronda[]>(roundsUrl) ?? [];
   const prefersReduced = useReducedMotion();
   const online = useOnline();
   useRelativeClock();
@@ -56,9 +66,9 @@ export default function RailQueueBoardPage({
   const boardRef = useRef<HTMLDivElement | null>(null);
   const [isFs, setIsFs] = useState(false);
 
-  const [items, setItems] = useState<Ronda[]>([]);
+  const [items, setItems] = useState<Ronda[]>(() => initialItems);
   const [info, setInfo] = useState<Record<number, RondaInfo>>({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(initialItems.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const [polling, setPolling] = useLocalStorageBoolean("rail-queue:polling", true);
 
@@ -90,8 +100,11 @@ export default function RailQueueBoardPage({
     else setLoading(true);
 
     try {
-      const url = `/api/cliente/rondas?localidadId=${localidadId}`;
-      const data = await fetchJson<Ronda[]>(url, ac.signal);
+      const responseData = await fetchJson<Ronda[]>(roundsUrl, ac.signal, {
+        force: showRefreshing,
+        ttlMs: 20_000,
+      });
+      const data = [...responseData];
 
       data.sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden);
 
@@ -135,6 +148,9 @@ export default function RailQueueBoardPage({
           empresa: { id: emp?.id ?? 0, nombre: emp?.nombre ?? "—" },
           movimiento: {
             id: mv?.id,
+            idTecnico: mv?.idTecnico ?? mv?.id,
+            folioLocalidad: mv?.folioLocalidad ?? null,
+            folioLocalidadLabel: mv?.folioLocalidadLabel ?? null,
             viaOrigen: mv?.viaOrigen ?? null,
             viaDestino: mv?.viaDestino ?? null,
             lavado: Boolean(mv?.lavado),
@@ -166,7 +182,7 @@ export default function RailQueueBoardPage({
     }
   }
 
-  useRealtimeBoardRefresh({
+  const realtimeStatus = useRealtimeBoardRefresh({
     enabled: Boolean(localidadId),
     realtimeLocalidadId: localidadId,
     scopeLocalidadId: localidadId,
@@ -214,17 +230,15 @@ export default function RailQueueBoardPage({
   useEffect(() => {
     firstLoad.current = true;
     prevIdsRef.current = [];
-    setInfo({});
-    setItems([]);
-    setLoading(true);
+    if (!items.length) setLoading(true);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localidadId]);
 
   useVisibleInterval(
     () => polling && online && load(),
-    polling ? autoMs || null : null,
-    [autoMs, localidadId, polling, online]
+    polling && realtimeStatus !== "connected" ? Math.min(autoMs, 30_000) : null,
+    [autoMs, localidadId, polling, online, realtimeStatus]
   );
 
   useEffect(() => {
@@ -686,20 +700,22 @@ export default function RailQueueBoardPage({
         />
       </section>
 
-      <audio ref={bellRef} preload="auto" aria-hidden="true">
+      <audio ref={bellRef} preload="none" aria-hidden="true">
         <source src="/sounds/notification.mp3" type="audio/mp3" />
       </audio>
 
-      <TornoMeasuresViewerModal
-        open={measuresModal.open && !measuresModal.loading && !measuresModal.error}
-        onClose={closeMeasuresModal}
-        tornoMedicion={measuresModal.tornoMedicion}
-        locomotiveLabel={measuresModal.locomotiveLabel}
-        companyName={measuresModal.companyName}
-      />
+      {measuresModal.open && !measuresModal.loading && !measuresModal.error ? (
+        <TornoMeasuresViewerModal
+          open
+          onClose={closeMeasuresModal}
+          tornoMedicion={measuresModal.tornoMedicion}
+          locomotiveLabel={measuresModal.locomotiveLabel}
+          companyName={measuresModal.companyName}
+        />
+      ) : null}
       {measuresModal.open && (measuresModal.loading || measuresModal.error) ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/35 p-4">
-          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+          <div className="w-full max-w-md rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-4 shadow-[var(--app-shadow-md)]">
             {measuresModal.loading ? (
               <p className="text-sm text-slate-600 dark:text-slate-300">Cargando medidas de torno...</p>
             ) : (

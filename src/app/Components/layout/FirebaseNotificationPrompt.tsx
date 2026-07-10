@@ -3,11 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Bell, Loader2 } from "lucide-react";
-import {
-  listenFirebaseForegroundMessages,
-  registerFirebaseNotificationToken,
-  requestFirebaseNotificationToken,
-} from "@/lib/firebase";
 import { assertSameOriginUrl, getNotificationRuntimePolicy } from "@/lib/notificationRuntime";
 
 type PromptState =
@@ -43,6 +38,10 @@ export default function FirebaseNotificationPrompt() {
     setState("requesting");
 
     try {
+      const {
+        registerFirebaseNotificationToken,
+        requestFirebaseNotificationToken,
+      } = await import("@/lib/firebase");
       const token = await requestFirebaseNotificationToken();
       const permission = browserPermission();
 
@@ -83,8 +82,8 @@ export default function FirebaseNotificationPrompt() {
 
     if (permission === "granted") {
       safeSet(policy.statusKey, "granted");
-      void enableNotifications();
-      return;
+      const timeoutId = window.setTimeout(() => void enableNotifications(), 1200);
+      return () => window.clearTimeout(timeoutId);
     }
 
     if (permission === "denied") {
@@ -104,41 +103,48 @@ export default function FirebaseNotificationPrompt() {
     let unsubscribe: (() => void) | undefined;
     let mounted = true;
 
-    listenFirebaseForegroundMessages((payload) => {
-      if (browserPermission() !== "granted") return;
+    const timeoutId = window.setTimeout(() => {
+      void import("@/lib/firebase")
+        .then(({ listenFirebaseForegroundMessages }) =>
+          listenFirebaseForegroundMessages((payload) => {
+          if (browserPermission() !== "granted") return;
 
-      const title = payload.notification?.title || payload.data?.title || "Nueva notificacion";
-      const body = payload.notification?.body || payload.data?.body || "";
-      const url = assertSameOriginUrl(payload.data?.url || "/", "/");
-      const tag =
-        payload.data?.tag ||
-        payload.data?.eventId ||
-        payload.data?.movimientoId ||
-        payload.data?.incidenteId ||
-        payload.data?.tipo ||
-        title;
+          const title = payload.notification?.title || payload.data?.title || "Nueva notificacion";
+          const body = payload.notification?.body || payload.data?.body || "";
+          const url = assertSameOriginUrl(payload.data?.url || "/", "/");
+          const tag =
+            payload.data?.tag ||
+            payload.data?.eventId ||
+            payload.data?.movimientoId ||
+            payload.data?.incidenteId ||
+            payload.data?.tipo ||
+            title;
 
-      const options: NotificationOptions & Record<string, unknown> = {
-        body,
-        icon: payload.notification?.icon || "/icons/cosaif-192.png",
-        badge: "/icons/cosaif-192.png",
-        tag,
-        renotify: true,
-        requireInteraction: true,
-        data: { ...payload.data, url },
-      };
-      const notification = new Notification(title, options);
-      notification.onclick = (event) => {
-        event.preventDefault();
-        window.focus();
-        window.location.assign(url);
-      };
-    }).then((nextUnsubscribe) => {
-      if (mounted) unsubscribe = nextUnsubscribe;
-    });
+          const options: NotificationOptions & Record<string, unknown> = {
+            body,
+            icon: payload.notification?.icon || "/icons/cosaif-192.png",
+            badge: "/icons/cosaif-192.png",
+            tag,
+            renotify: true,
+            requireInteraction: true,
+            data: { ...payload.data, url },
+          };
+          const notification = new Notification(title, options);
+          notification.onclick = (event) => {
+            event.preventDefault();
+            window.focus();
+            window.location.assign(url);
+          };
+          })
+        )
+        .then((nextUnsubscribe) => {
+          if (mounted) unsubscribe = nextUnsubscribe;
+        });
+    }, 1200);
 
     return () => {
       mounted = false;
+      window.clearTimeout(timeoutId);
       unsubscribe?.();
     };
   }, [policy.enabled, state]);

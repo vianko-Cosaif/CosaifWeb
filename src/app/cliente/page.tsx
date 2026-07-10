@@ -18,13 +18,15 @@ export default async function Page({ searchParams }: { searchParams: Promise<SP>
   const { loc } = await searchParams;
   const qLoc = Array.isArray(loc) ? loc[0] : loc;
 
-  const localidadId = toInt(qLoc) ?? toInt(c.get("locId")?.value) ?? null;
+  const assignedLocalidadId = toInt(c.get("locId")?.value) ?? null;
   const empresaId  = toInt(c.get("empresaId")?.value) ?? null;
   const role = normalizeAppRole(c.get(process.env.ROLE_COOKIE_NAME ?? "role")?.value) ?? "CLIENTE";
   const capabilities = getRoleCapabilities(role);
-  const effectiveLocalidadId = capabilities.canSwitchLocalidad ? toInt(qLoc) : localidadId;
+  const effectiveLocalidadId = capabilities.canSwitchLocalidad
+    ? toInt(qLoc) ?? assignedLocalidadId
+    : assignedLocalidadId;
 
-  if (!capabilities.canSwitchLocalidad && isTorreonLocalidadId(localidadId)) {
+  if (!capabilities.canSwitchLocalidad && isTorreonLocalidadId(assignedLocalidadId)) {
     redirect("/cliente/torreon");
   }
 

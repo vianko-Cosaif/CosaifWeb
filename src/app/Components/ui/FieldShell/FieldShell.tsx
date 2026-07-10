@@ -14,11 +14,11 @@ export default function FieldShell({ label, icon, children, className }: FieldSh
   return (
     <label className={cn("block min-w-0", className)}>
       {label ? (
-        <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-400 dark:text-slate-500">
+        <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-[var(--app-text-soft)]">
           {label}
         </span>
       ) : null}
-      <span className="flex h-10 min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+      <span className="flex h-10 min-w-0 items-center gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 text-sm text-[var(--app-text-muted)]">
         {icon ? <span className="shrink-0">{icon}</span> : null}
         {children}
       </span>

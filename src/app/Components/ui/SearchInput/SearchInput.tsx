@@ -40,9 +40,8 @@ const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(function Sear
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         className={cn(
-          "h-11 w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold text-slate-800 shadow-sm transition",
-          "focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60",
-          "dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100",
+          "h-11 w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] py-2.5 pl-10 pr-4 text-sm font-semibold text-[var(--app-text)] shadow-sm transition",
+          "placeholder:text-[var(--app-text-soft)] focus:border-[var(--app-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-focus)] disabled:cursor-not-allowed disabled:opacity-60",
           value && onClear ? "pr-10" : "",
           inputClassName
         )}

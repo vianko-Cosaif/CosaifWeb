@@ -83,6 +83,7 @@ export interface CrearMovimientoController {
   /* Sesion y permisos */
   rol: Rol;
   canManageAll: boolean;
+  canChooseLocality: boolean;
   userCompanyName: string;
 
   /* Estado de UI del Step 1 */

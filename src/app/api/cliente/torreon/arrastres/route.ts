@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
-import { canViewTorreonArrastreRole } from "@/lib/torreonLocalidad";
+import { canResolveTorreonIncidentRole, canViewTorreonArrastreRole } from "@/lib/torreonLocalidad";
 import { toTorreonImageProxyUrl } from "@/lib/torreonImageProxy";
 
 export const dynamic = "force-dynamic";
@@ -81,19 +81,25 @@ function mapFotos(input: unknown) {
 }
 
 function mapIncidentes(input: unknown) {
-  return extractArray(input).map((item) => ({
-    ...item,
-    id: asNumber(item.id) ?? item.id,
-    estado: cleanText(item.estado) || "ABIERTO",
-    motivo: cleanText(item.motivo),
-    solucion: cleanText(item.solucion),
-    fechaInicio: cleanText(item.fechaInicio),
-    fechaResolucion: cleanText(item.fechaResolucion),
-    viaBloqueadaId: asNumber(item.viaBloqueadaId),
-    seccionBloqueadaId: asNumber(item.seccionBloqueadaId),
-    vagonId: asNumber(item.vagonId),
-    fotos: mapFotos(item.fotos),
-  }));
+  return extractArray(input).map((item) => {
+    const fotos = mapFotos(item.fotos);
+    return {
+      ...item,
+      id: asNumber(item.id) ?? item.id,
+      estado: cleanText(item.estado) || "ABIERTO",
+      motivo: cleanText(item.motivo),
+      solucion: cleanText(item.solucion),
+      creadoPorId: asNumber(item.creadoPorId) ?? item.creadoPorId,
+      resueltoPorId: asNumber(item.resueltoPorId) ?? item.resueltoPorId,
+      fechaInicio: cleanText(item.fechaInicio),
+      fechaResolucion: cleanText(item.fechaResolucion),
+      viaBloqueadaId: asNumber(item.viaBloqueadaId),
+      seccionBloqueadaId: asNumber(item.seccionBloqueadaId),
+      vagonId: asNumber(item.vagonId),
+      fotosCount: asNumber(asRecord(item._count).fotos) ?? fotos.length,
+      fotos,
+    };
+  });
 }
 
 function mapArrastre(input: ArrastreRecord) {
@@ -102,6 +108,14 @@ function mapArrastre(input: ArrastreRecord) {
     ...record,
     incidentes: mapIncidentes(record.incidentes),
   };
+}
+
+function unwrapDetail(input: unknown): ArrastreRecord {
+  if (Array.isArray(input)) return asRecord(input[0]);
+  const record = asRecord(input);
+  if (record.data && typeof record.data === "object" && !Array.isArray(record.data)) return asRecord(record.data);
+  if (record.item && typeof record.item === "object" && !Array.isArray(record.item)) return asRecord(record.item);
+  return record;
 }
 
 function filterByVista(rows: ArrastreRecord[], vista: string | null) {
@@ -122,6 +136,15 @@ function filterByVista(rows: ArrastreRecord[], vista: string | null) {
 function normalizeVagones(input: unknown) {
   if (!Array.isArray(input)) return [];
 
+  const asText = (...values: unknown[]) => {
+    for (const value of values) {
+      if (value == null) continue;
+      const text = String(value).trim();
+      if (text) return text;
+    }
+    return "";
+  };
+
   return input
     .map((item) => {
       const record = item && typeof item === "object" ? item as Record<string, unknown> : {};
@@ -131,8 +154,10 @@ function normalizeVagones(input: unknown) {
           ? record.numeroVagon.trim()
           : undefined,
         carga: carga === "LLENO" ? "LLENO" : "VACIO",
-        viaId: Number(record.viaId),
-        seccionId: Number(record.seccionId),
+        viaOrigen: asText(record.viaOrigen, record.viaOrigenNombre, record.viaOrigenId),
+        seccionOrigen: asText(record.seccionOrigen, record.seccionOrigenNombre, record.seccionOrigenId),
+        viaDestino: asText(record.viaDestino, record.viaDestinoNombre, record.viaId),
+        seccionDestino: asText(record.seccionDestino, record.seccionDestinoNombre, record.seccionId),
       };
     });
 }
@@ -147,10 +172,14 @@ export async function GET(req: NextRequest) {
 
     const estado = searchParams.get("estado");
     const vista = searchParams.get("vista");
+    const id = asNumber(searchParams.get("id"));
+    const page = searchParams.get("page");
+    const pageSize = searchParams.get("pageSize");
+    const includeFotos = searchParams.get("includeFotos");
     const cookieStore = await cookies();
     const role = readRole(cookieStore);
     const empresaId = readEmpresaId(cookieStore);
-    if (!canViewTorreonArrastreRole(role)) {
+    if (!canViewTorreonArrastreRole(role) && !canResolveTorreonIncidentRole(role)) {
       return NextResponse.json([], { status: 200 });
     }
 
@@ -160,8 +189,30 @@ export async function GET(req: NextRequest) {
       return NextResponse.json([], { status: 200 });
     }
 
+    if (id) {
+      const detailQs = new URLSearchParams();
+      if (includeFotos) detailQs.set("includeFotos", includeFotos);
+      const data = await fetchTorreonMsJson(`/arrastres/${id}${detailQs.size ? `?${detailQs.toString()}` : ""}`);
+      const mapped = mapArrastre(unwrapDetail(data)) as ArrastreRecord;
+      const recordLocalidadId = asNumber(mapped.localidadId);
+      const recordEmpresaId = asNumber(mapped.empresaId);
+
+      if (recordLocalidadId && recordLocalidadId !== Number(localidadId)) {
+        return jsonError("No autorizado para este arrastre", 403);
+      }
+      if (scopedEmpresaId && recordEmpresaId && recordEmpresaId !== scopedEmpresaId) {
+        return jsonError("No autorizado para este arrastre", 403);
+      }
+
+      return NextResponse.json(mapped, { status: 200 });
+    }
+
     const qs = new URLSearchParams({ localidadId });
     if (estado) qs.set("estado", estado);
+    if (vista) qs.set("vista", vista);
+    if (page) qs.set("page", page);
+    if (pageSize) qs.set("pageSize", pageSize);
+    if (includeFotos) qs.set("includeFotos", includeFotos);
     if (scopedEmpresaId) qs.set("empresaId", String(scopedEmpresaId));
 
     const data = await fetchTorreonMsJson(`/arrastres?${qs.toString()}`);
@@ -194,12 +245,21 @@ export async function POST(req: NextRequest) {
     if (!Number.isFinite(localidadId) || !isTorreonLocalidad(localidadId)) {
       return jsonError("Localidad Torreon invalida", 400);
     }
+    const instrucciones = typeof body.instrucciones === "string" ? body.instrucciones.trim() : "";
+    if (instrucciones.length < 3) {
+      return jsonError("Describe el movimiento u operacion del arrastre", 400);
+    }
 
     const vagones = normalizeVagones(body.vagones);
     if (vagones.length < 1) return jsonError("Agrega al menos un vagon", 400);
     if (vagones.length > 8) return jsonError("Maximo 8 vagones por arrastre", 400);
-    if (vagones.some((item) => !Number.isFinite(item.viaId) || item.viaId <= 0 || !Number.isFinite(item.seccionId) || item.seccionId <= 0)) {
-      return jsonError("Cada vagon necesita via y seccion validas", 400);
+    if (vagones.some((item) => (
+      !item.viaOrigen ||
+      !item.seccionOrigen ||
+      !item.viaDestino ||
+      !item.seccionDestino
+    ))) {
+      return jsonError("Cada vagon necesita origen y destino con via/seccion", 400);
     }
 
     const capacidad = vagones.reduce((total, item) => total + (item.carga === "LLENO" ? 2 : 1), 0);
@@ -211,9 +271,7 @@ export async function POST(req: NextRequest) {
       empresaId,
       creadoPorId: userId,
       localidadId,
-      instrucciones: typeof body.instrucciones === "string" && body.instrucciones.trim()
-        ? body.instrucciones.trim()
-        : undefined,
+      instrucciones,
       vagones,
     };
 

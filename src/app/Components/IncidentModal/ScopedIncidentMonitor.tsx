@@ -73,12 +73,9 @@ export default function ScopedIncidentMonitor({
     refreshScope();
     window.addEventListener("storage", onStorage);
     window.addEventListener("cosaif:localidad-change", refreshScope);
-    const interval = window.setInterval(refreshScope, 1500);
-
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("cosaif:localidad-change", refreshScope);
-      window.clearInterval(interval);
     };
   }, [scope]);
 

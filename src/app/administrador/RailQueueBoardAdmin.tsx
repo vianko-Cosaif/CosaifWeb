@@ -164,14 +164,22 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
       if (!firstLoad.current) {
         if (prev.length && nextIds[0] && nextIds[0] !== prev[0]) {
           const curR = data[0];
-          const curCode = String(curR.movimiento?.id ?? curR.movimientoId ?? curR.id);
+          const curCode =
+            curR.movimiento?.folioLocalidadLabel ??
+            (curR.movimiento?.folioLocalidad ? `#${curR.movimiento.folioLocalidad}` : String(curR.movimiento?.id ?? curR.movimientoId ?? curR.id));
           pushToast(`Se movió la orden a ${curCode}`, "move");
         }
         const prevSet = new Set(prev);
         const created = nextIds.filter((id) => !prevSet.has(id));
         const removed = prev.filter((id) => !nextIds.includes(id));
         if (created.length) {
-          const codes = created.map((id) => String(data.find((r) => r.id === id)?.movimiento?.id ?? id));
+          const codes = created.map((id) => {
+            const ronda = data.find((r) => r.id === id);
+            return String(
+              ronda?.movimiento?.folioLocalidadLabel ??
+              (ronda?.movimiento?.folioLocalidad ? `#${ronda.movimiento.folioLocalidad}` : ronda?.movimiento?.id ?? id)
+            );
+          });
           pushToast(`Nueva(s): ${fmtList.format(codes)}`, "new");
         }
         if (removed.length) {
@@ -193,6 +201,9 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
           empresa: { id: emp?.id ?? 0, nombre: emp?.nombre ?? "—" },
           movimiento: {
             id: mv?.id,
+            idTecnico: mv?.idTecnico ?? mv?.id ?? null,
+            folioLocalidad: mv?.folioLocalidad ?? null,
+            folioLocalidadLabel: mv?.folioLocalidadLabel ?? null,
             viaOrigen: mv?.viaOrigen ?? null,
             viaDestino: mv?.viaDestino ?? null,
             lavado: Boolean(mv?.lavado),

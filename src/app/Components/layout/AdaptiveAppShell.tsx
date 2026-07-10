@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import SidebarMenu from "@/app/Components/Menu/Menu";
+import RealtimeActivityCenter from "@/app/Components/layout/RealtimeActivityCenter";
 
 type AdaptiveAppShellProps = {
   children: ReactNode;
@@ -16,11 +17,8 @@ function cn(...classes: Array<string | undefined | false | null>) {
   return classes.filter(Boolean).join(" ");
 }
 
-const defaultBackground =
-  "bg-gradient-to-b from-emerald-50 to-sky-50 dark:from-slate-900 dark:to-slate-950";
-
-const defaultGrid =
-  "bg-[linear-gradient(to_right,rgba(0,0,0,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.05)_1px,transparent_1px)] bg-[size:24px_24px] dark:opacity-[0.07]";
+const defaultBackground = "bg-[var(--app-bg)] text-[var(--app-text)]";
+const defaultGrid = "";
 
 export default function AdaptiveAppShell({
   children,
@@ -31,10 +29,11 @@ export default function AdaptiveAppShell({
   contentClassName,
 }: AdaptiveAppShellProps) {
   return (
-    <div className={cn("relative flex min-h-svh w-full overflow-x-hidden", backgroundClassName)}>
+    <div data-app-shell="true" className={cn("relative flex min-h-svh w-full overflow-x-hidden", backgroundClassName)}>
       <SidebarMenu />
+      <RealtimeActivityCenter />
 
-      <div aria-hidden className={cn("pointer-events-none absolute inset-0 z-0", gridClassName)} />
+      {gridClassName ? <div aria-hidden className={cn("pointer-events-none absolute inset-0 z-0", gridClassName)} /> : null}
 
       <div className="relative z-10 flex min-h-svh min-w-0 flex-1 flex-col overflow-x-hidden">
         {beforeMain}

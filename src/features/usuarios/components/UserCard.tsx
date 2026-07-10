@@ -16,26 +16,26 @@ type UserCardProps = {
 export default function UserCard({ user, index = 0, onEdit, onStatusChange }: UserCardProps) {
   return (
     <article
-      className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:shadow-lg dark:border-slate-800 dark:bg-slate-900"
+      className="group relative overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-[var(--app-shadow-sm)] transition hover:border-[var(--app-border-strong)] hover:shadow-[var(--app-shadow-md)]"
       style={{ animationDelay: `${index * 30}ms` }}
     >
       <div
         className={cn(
           "absolute right-0 top-0 h-1 w-full",
           user.activo
-            ? "bg-gradient-to-r from-emerald-500 to-teal-500"
-            : "bg-gradient-to-r from-slate-300 to-slate-400 dark:from-slate-700 dark:to-slate-600"
+            ? "bg-[var(--app-accent)]"
+            : "bg-[var(--app-border-strong)]"
         )}
       />
-      <div className="p-5">
+      <div className="p-4">
         <div className="mb-4 flex items-start justify-between">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-slate-700 to-slate-950 text-xl font-black text-white shadow-inner">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-800 text-base font-black text-white dark:bg-slate-200 dark:text-slate-900">
               {userInitials(user.nombre)}
             </div>
             <div className="min-w-0">
-              <h3 className="truncate font-black text-slate-950 dark:text-white">{user.nombre}</h3>
-              <div className="mt-0.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400">
+              <h3 className="truncate font-black text-[var(--app-text)]">{user.nombre}</h3>
+              <div className="mt-0.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--app-text-muted)]">
                 <span
                   className={cn(
                     "h-2 w-2 rounded-full",
@@ -51,18 +51,18 @@ export default function UserCard({ user, index = 0, onEdit, onStatusChange }: Us
         <div className="space-y-2.5">
           <div className="flex items-center gap-2 text-sm">
             <Mail className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
-            <span className="truncate text-slate-700 dark:text-slate-300">{user.email}</span>
+            <span className="truncate text-[var(--app-text-muted)]">{user.email}</span>
           </div>
           <div className="flex items-center gap-2 text-sm">
             <Building className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
-            <span className="truncate text-slate-700 dark:text-slate-300">
+            <span className="truncate text-[var(--app-text-muted)]">
               {user.empresa?.nombre || "Sin empresa"}
             </span>
           </div>
           {user.localidad ? (
             <div className="flex items-center gap-2 text-sm">
               <MapPin className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
-              <span className="truncate text-slate-700 dark:text-slate-300">
+              <span className="truncate text-[var(--app-text-muted)]">
                 {user.localidad.nombre}
                 {user.localidad.estado ? `, ${user.localidad.estado}` : ""}
               </span>
@@ -81,7 +81,7 @@ export default function UserCard({ user, index = 0, onEdit, onStatusChange }: Us
           </span>
         </div>
 
-        <div className="mt-4 flex gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+        <div className="mt-4 flex gap-2 border-t border-[var(--app-border)] pt-3">
           <Button
             onClick={() => onEdit(user)}
             variant="secondary"

@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
-  AlertTriangle,
   CalendarDays,
   CheckCircle2,
   Clock3,
@@ -26,7 +25,6 @@ type ReportKey =
   | "turnos"
   | "usuarios"
   | "cumplimiento"
-  | "incidentes"
   | "cronologia";
 
 type PeriodoUi = "dia" | "semana" | "quincena" | "mes" | "bimestre" | "semestre" | "anual";
@@ -94,7 +92,7 @@ const REPORTS: ReportDefinition[] = [
     path: "turnos",
     label: "Reporte por turnos",
     shortLabel: "Turnos",
-    desc: "Turno 1, 2 y 3 con inicios, fines e incidentes.",
+    desc: "Turno 1, 2 y 3 con inicios, fines y actividad.",
     icon: Clock3,
     accent: "#7c3aed",
   },
@@ -112,18 +110,9 @@ const REPORTS: ReportDefinition[] = [
     path: "cumplimiento",
     label: "Cumplimiento",
     shortLabel: "Cumplimiento",
-    desc: "Terminados, pendientes, cancelados e incidentes.",
+    desc: "Terminados, pendientes y cancelados.",
     icon: CheckCircle2,
     accent: "#16a34a",
-  },
-  {
-    key: "incidentes",
-    path: "incidentes",
-    label: "Incidentes",
-    shortLabel: "Incidentes",
-    desc: "Incidentes por locomotora, vía y turno.",
-    icon: AlertTriangle,
-    accent: "#dc2626",
   },
   {
     key: "cronologia",
@@ -370,7 +359,7 @@ export default function ClienteReporteriaClient() {
             </span>
           </div>
           <p className="max-w-3xl text-sm text-slate-500 dark:text-slate-400">
-            Consulta movimientos, vías, turnos, usuarios, cumplimiento, incidentes y cronología por periodo.
+            Consulta movimientos, vías, turnos, usuarios, cumplimiento y cronología por periodo.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:items-end">

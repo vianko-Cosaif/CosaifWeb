@@ -1,7 +1,6 @@
 import {
   getAreaBase,
   getRoleCapabilities,
-  normalizeAppRole,
   type NavModuleId,
 } from "./accessControl";
 
@@ -50,17 +49,16 @@ const MODULE_COPY: Record<NavModuleId, Omit<AppNavigationItem, "id" | "href">> =
 function hrefForModule(role: string | null | undefined, moduleId: NavModuleId) {
   const capabilities = getRoleCapabilities(role);
   const base = getAreaBase(role);
-  const normalizedRole = normalizeAppRole(role);
 
   if (moduleId === "dashboard") return capabilities.home;
   if (moduleId === "torreon_arrastres") return "/cliente/torreon/movimientos";
-  if (moduleId === "incidentes" && normalizedRole === "ARRASTRE_TORREON") {
-    return "/cliente/torreon/incidentes";
-  }
   if (moduleId === "movimientos") return `${base}/movimientos`;
   if (moduleId === "torno") return `${base}/torno`;
   if (moduleId === "configuracion") return `${base}/configuracion`;
   if (moduleId === "usuarios") return `${base}/usuarios`;
+  if (moduleId === "incidentes" && capabilities.area === "cliente" && capabilities.canViewTorreonArrastres) {
+    return "/cliente/torreon/incidentes";
+  }
   if (moduleId === "incidentes") return `${base}/incidentes`;
   if (moduleId === "reporteria") return `${base}/reporteria`;
 

@@ -17,5 +17,5 @@ export const VAGON_STATUS_OPTIONS: Array<{ value: VagonStatusFilter; label: stri
   { value: "CONCLUIDO", label: "Listos" },
 ];
 
-export const OPERATIONAL_STATUSES = new Set(["SOLICITADO", "EN_PROCESO"]);
-export const HISTORY_STATUSES = new Set(["DETENIDO", "CONCLUIDO", "CANCELADO"]);
+export const OPERATIONAL_STATUSES = new Set(["SOLICITADO", "EN_PROCESO", "DETENIDO"]);
+export const HISTORY_STATUSES = new Set(["CONCLUIDO", "CANCELADO"]);

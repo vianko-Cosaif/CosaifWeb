@@ -48,8 +48,15 @@ function readEmpresaId(cookieStore: Awaited<ReturnType<typeof cookies>>) {
   );
 }
 
+function readLocalidadId(cookieStore: Awaited<ReturnType<typeof cookies>>) {
+  return (
+    asNumber(cookieStore.get("locId")?.value) ||
+    asNumber(cookieStore.get("localidadId")?.value)
+  );
+}
+
 function canSeeAllEmpresas(role: string) {
-  return ["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR", "CLIENTE_ADMIN", "CLIENTE_COOR"].includes(role);
+  return ["ADMINISTRADOR", "COORDINADOR"].includes(role);
 }
 
 function requireSession(cookieStore: Awaited<ReturnType<typeof cookies>>) {
@@ -58,7 +65,7 @@ function requireSession(cookieStore: Awaited<ReturnType<typeof cookies>>) {
   if (!token || !ALLOWED_ROLES.has(role)) {
     return { ok: false as const, response: NextResponse.json({ error: "No autorizado" }, { status: 401 }) };
   }
-  return { ok: true as const, role };
+  return { ok: true as const, role, token };
 }
 
 function formatRef(snapshot: unknown, fallbackPrefix: string, id: unknown) {
@@ -109,21 +116,29 @@ function mapFotos(input: unknown) {
 }
 
 function mapIncidentes(input: unknown) {
-  return asArray(input).map((incidente) => ({
-    id: asNumber(incidente.id) ?? incidente.id,
-    estado: cleanText(incidente.estado) || "ABIERTO",
-    motivo: cleanText(incidente.motivo),
-    solucion: cleanText(incidente.solucion),
-    fechaInicio: cleanText(incidente.fechaInicio),
-    fechaResolucion: cleanText(incidente.fechaResolucion),
-    viaBloqueadaId: asNumber(incidente.viaBloqueadaId),
-    seccionBloqueadaId: asNumber(incidente.seccionBloqueadaId),
-    fotos: mapFotos(incidente.fotos),
-  }));
+  return asArray(input).map((incidente) => {
+    const fotos = mapFotos(incidente.fotos);
+    return {
+      id: asNumber(incidente.id) ?? incidente.id,
+      estado: cleanText(incidente.estado) || "ABIERTO",
+      motivo: cleanText(incidente.motivo),
+      solucion: cleanText(incidente.solucion),
+      creadoPorId: asNumber(incidente.creadoPorId) ?? incidente.creadoPorId,
+      resueltoPorId: asNumber(incidente.resueltoPorId) ?? incidente.resueltoPorId,
+      fechaInicio: cleanText(incidente.fechaInicio),
+      fechaResolucion: cleanText(incidente.fechaResolucion),
+      viaBloqueadaId: asNumber(incidente.viaBloqueadaId),
+      seccionBloqueadaId: asNumber(incidente.seccionBloqueadaId),
+      fotosCount: asNumber(asRecord(incidente._count).fotos) ?? fotos.length,
+      fotos,
+    };
+  });
 }
 
 function mapMovimiento(input: UnknownRecord) {
   const empresaId = asNumber(input.empresaId);
+  const id = asNumber(input.id) ?? input.id;
+  const folioLocalidad = asNumber(input.folioLocalidad) || asNumber(input.id);
   const fotos = mapFotos(input.fotos);
   const creadoPorId = firstNumber(input, ["creadoPorId", "usuarioCreacionId", "usuarioId"]);
   const operadorId = firstNumber(input, ["operadorId", "maquinistaId"]);
@@ -139,8 +154,13 @@ function mapMovimiento(input: UnknownRecord) {
     firstCleanText(input, ["iniciadoPorNombre", "iniciadoPorNombreSnapshot", "usuarioInicioNombre"]) ||
     operadorNombre ||
     creadoPorNombre;
+  const rondaAsignada = asArray(input.rondas)[0] || {};
+  const ronda = asRecord(rondaAsignada.ronda);
   return {
-    id: asNumber(input.id) ?? input.id,
+    id,
+    idTecnico: id,
+    folioLocalidad,
+    folioLocalidadLabel: cleanText(input.folioLocalidadLabel) || (folioLocalidad ? `#${folioLocalidad}` : null),
     empresaId,
     empresaNombre: cleanText(input.empresaNombreSnapshot) || (empresaId ? `Empresa ${empresaId}` : "Empresa"),
     localidadId: asNumber(input.localidadId),
@@ -166,6 +186,10 @@ function mapMovimiento(input: UnknownRecord) {
     fechaInicio: cleanText(input.fechaInicio),
     fechaFin: cleanText(input.fechaFin),
     instrucciones: cleanText(input.instrucciones),
+    rondaNumero: asNumber(ronda.numeroRonda),
+    ordenRonda: asNumber(rondaAsignada.orden),
+    estadoRonda: cleanText(rondaAsignada.estado),
+    fotosCount: asNumber(asRecord(input._count).fotos) ?? fotos.length,
     fotos,
     fotosPorTipo: {
       ANTES_MOVIMIENTO: fotos.filter((foto) => foto.tipo === "ANTES_MOVIMIENTO"),
@@ -191,13 +215,38 @@ export async function GET(req: NextRequest) {
     if (!localidadId || !isTorreonLocalidad(localidadId)) {
       return NextResponse.json({ error: "Localidad Torreon requerida" }, { status: 400 });
     }
+    const assignedLocalidadId = readLocalidadId(cookieStore);
+    if (session.role !== "ADMINISTRADOR" && assignedLocalidadId !== asNumber(localidadId)) {
+      return NextResponse.json({ error: "Solo puedes consultar movimientos de tu localidad." }, { status: 403 });
+    }
+
+    const detailId = asNumber(searchParams.get("id"));
+    if (detailId) {
+      const raw = await fetchTorreonMsJson(`/movimientos/${detailId}`);
+      const data = mapMovimiento(asRecord(raw));
+      const empresaId = readEmpresaId(cookieStore);
+      if (!canSeeAllEmpresas(session.role) && empresaId && data.empresaId !== empresaId) {
+        return NextResponse.json({ success: false, error: "No autorizado" }, { status: 403 });
+      }
+      if (String(data.localidadId || "") !== String(localidadId)) {
+        return NextResponse.json({ success: false, error: "Movimiento fuera de localidad" }, { status: 403 });
+      }
+      return NextResponse.json({ success: true, data });
+    }
 
     const params = new URLSearchParams({ localidadId });
     const empresaId = readEmpresaId(cookieStore);
+    const requestedEmpresaId = asNumber(searchParams.get("empresaId"));
+    if (canSeeAllEmpresas(session.role) && requestedEmpresaId) params.set("empresaId", String(requestedEmpresaId));
     if (!canSeeAllEmpresas(session.role) && empresaId) params.set("empresaId", String(empresaId));
+    const status = String(searchParams.get("status") || "activos").toLowerCase();
+    if (status === "concluidos") params.set("vista", "historial");
+    if (status === "activos") params.set("vista", "activos");
+    params.set("page", searchParams.get("page") || "1");
+    params.set("pageSize", searchParams.get("pageSize") || "60");
+    params.set("includeFotos", searchParams.get("includeFotos") || "0");
 
     const raw = await fetchTorreonMsJson(`/movimientos?${params.toString()}`);
-    const status = String(searchParams.get("status") || "activos").toLowerCase();
     const query = cleanText(searchParams.get("q"))?.toLowerCase() || "";
     const data = asArray(raw)
       .map(mapMovimiento)
@@ -210,6 +259,8 @@ export async function GET(req: NextRequest) {
         if (!query) return true;
         return [
           movimiento.id,
+          movimiento.folioLocalidad,
+          movimiento.folioLocalidadLabel,
           movimiento.empresaNombre,
           movimiento.locomotiveNumber,
           movimiento.estado,

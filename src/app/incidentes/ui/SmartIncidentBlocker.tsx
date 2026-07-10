@@ -453,7 +453,7 @@ export default function SmartIncidentBlocker({
       setVisible(false);
       onSkip();
     } catch {
-      alert("No se pudo cerrar el incidente.");
+      alert("No se pudo cerrar el incidente sin resolver.");
     }
   }, [fetched, incident, onSkip]);
 
@@ -519,7 +519,8 @@ export default function SmartIncidentBlocker({
               <button
                 onClick={close}
                 className="rounded-md p-2 text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-white/50"
-                aria-label="Cerrar"
+                aria-label="Cerrar ventana sin modificar el incidente"
+                title="Cerrar ventana sin modificar el incidente"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -654,6 +655,9 @@ export default function SmartIncidentBlocker({
                   {estado === "ABIERTO" && (
                     <section className="rounded-2xl border border-white/60 bg-white/85 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/80">
                       <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-100">Resolución del incidente</h2>
+                      <p className="mb-3 text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
+                        Resolver cambia el incidente a RESUELTO. Cerrar sin resolver lo deja como cierre operativo sin registrar solución.
+                      </p>
                       <textarea
                         value={resolution}
                         onChange={(e) => setResolution(e.target.value)}
@@ -720,17 +724,17 @@ export default function SmartIncidentBlocker({
                     ? "bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700"
                     : "bg-slate-300 cursor-not-allowed dark:bg-slate-700"
                 )}
-              >
-                <CheckCircle2 className="h-5 w-5" />
-                Resolver
-              </button>
-              <button
-                onClick={doSkip}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-3 font-semibold text-white shadow-lg hover:from-amber-500 hover:to-amber-700 transition-all"
-              >
-                <FastForward className="h-5 w-5" />
-                Omitir
-              </button>
+                      >
+                        <CheckCircle2 className="h-5 w-5" />
+                Resolver incidente
+                      </button>
+                      <button
+                        onClick={doSkip}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-3 font-semibold text-white shadow-lg hover:from-amber-500 hover:to-amber-700 transition-all"
+                      >
+                        <FastForward className="h-5 w-5" />
+                Cerrar sin resolver
+                      </button>
             </>
           ) : (
             <button

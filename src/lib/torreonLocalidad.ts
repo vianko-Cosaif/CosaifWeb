@@ -33,7 +33,13 @@ export function getPrimaryTorreonLocalidadId() {
 }
 
 export function normalizeRoleName(role?: string | null) {
-  return String(role || "").trim().toUpperCase();
+  return String(role || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 export function isClienteAreaRole(role?: string | null) {
@@ -45,6 +51,18 @@ export function canViewTorreonArrastreRole(role?: string | null) {
     "ADMINISTRADOR",
     "COORDINADOR",
     "SUPERVISOR",
+    "CLIENTE_ADMIN",
+    "CLIENTE_COOR",
+    "ARRASTRE_TORREON",
+  ].includes(normalizeRoleName(role));
+}
+
+export function canResolveTorreonIncidentRole(role?: string | null) {
+  return [
+    "ADMINISTRADOR",
+    "COORDINADOR",
+    "SUPERVISOR",
+    "CLIENTE",
     "CLIENTE_ADMIN",
     "CLIENTE_COOR",
     "ARRASTRE_TORREON",

@@ -69,3 +69,15 @@ export async function fetchJSON<T>(url: string, init: RequestInit = {}): Promise
 
   return body ?? ({} as T);
 }
+
+export function readCollection<T>(value: unknown, keys: string[] = []): T[] {
+  if (Array.isArray(value)) return value as T[];
+  if (!value || typeof value !== "object") return [];
+
+  const record = value as Record<string, unknown>;
+  for (const key of ["data", ...keys, "items", "results"]) {
+    if (Array.isArray(record[key])) return record[key] as T[];
+  }
+
+  return [];
+}

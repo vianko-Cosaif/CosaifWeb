@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Movimiento } from "../Movimiento";
 import { API_BASE, SECC_BASE, type Empresa, type Localidad, type Seccion, type Via } from "../movimientos.shared";
+import { cachedFetchJson } from "@/lib/clientRequestCache";
 
 /**
  * MODULO: useCrearMovimientoCatalogos
@@ -37,8 +37,8 @@ export function useCrearMovimientoCatalogos(selectedLocalityId?: number | null) 
   /** Carga catalogos de empresas y localidades. */
   const loadCatalogos = useCallback(async () => {
     const [e, l] = await Promise.all([
-      Movimiento.fetchJSON(`${API_BASE}/empresas`).catch(() => []),
-      Movimiento.fetchJSON(`${API_BASE}/localidades`).catch(() => []),
+      cachedFetchJson<unknown>(`${API_BASE}/empresas`, {}, { ttlMs: 5 * 60_000 }).catch(() => []),
+      cachedFetchJson<unknown>(`${API_BASE}/localidades`, {}, { ttlMs: 5 * 60_000 }).catch(() => []),
     ]);
 
     const eList: Empresa[] = Array.isArray(e) ? e : [];
@@ -59,7 +59,11 @@ export function useCrearMovimientoCatalogos(selectedLocalityId?: number | null) 
       }
 
       try {
-        const data = await Movimiento.fetchJSON(`${API_BASE}/vias/localidad/${selectedLocalityId}`);
+        const data = await cachedFetchJson<unknown>(
+          `${API_BASE}/vias/localidad/${selectedLocalityId}`,
+          {},
+          { ttlMs: 5 * 60_000 }
+        );
         const list: Via[] = Array.isArray(data)
           ? data.map((v) => {
             const dto = v as ViaDTO;
@@ -97,7 +101,11 @@ export function useCrearMovimientoCatalogos(selectedLocalityId?: number | null) 
     setSecLoading((s) => ({ ...s, [viaId]: true }));
 
     try {
-      const raw = await Movimiento.fetchJSON(`${SECC_BASE}/via/${viaId}`);
+      const raw = await cachedFetchJson<{ secciones?: Seccion[] } | Seccion[]>(
+        `${SECC_BASE}/via/${viaId}`,
+        {},
+        { ttlMs: 60_000 }
+      );
       const arr: Seccion[] = Array.isArray(raw) ? raw : raw?.secciones ?? [];
       const ordered = arr.slice().sort((a, b) => a.numero - b.numero);
       setSectionsByVia((m) => ({ ...m, [viaId]: ordered }));

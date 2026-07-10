@@ -15,37 +15,37 @@ export default function TornoSummaryCards({ items }: { items: TornoHistoryItem[]
       label: "Solicitados",
       value: countStatus(items, "SOLICITADO"),
       icon: Clock3,
-      className: "text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-200 dark:bg-amber-950/30 dark:border-amber-900",
+      className: "text-amber-700 border-amber-300 dark:text-amber-300 dark:border-amber-800",
     },
     {
       label: "En proceso",
       value: countStatus(items, "EN_PROCESO"),
       icon: Wrench,
-      className: "text-sky-700 bg-sky-50 border-sky-200 dark:text-sky-200 dark:bg-sky-950/30 dark:border-sky-900",
+      className: "text-sky-700 border-sky-300 dark:text-sky-300 dark:border-sky-800",
     },
     {
       label: "Detenidos",
       value: countStatus(items, "DETENIDO"),
       icon: PauseCircle,
-      className: "text-rose-700 bg-rose-50 border-rose-200 dark:text-rose-200 dark:bg-rose-950/30 dark:border-rose-900",
+      className: "text-rose-700 border-rose-300 dark:text-rose-300 dark:border-rose-800",
     },
     {
       label: "Concluidos",
       value: countStatus(items, "CONCLUIDO"),
       icon: CheckCircle2,
-      className: "text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-900",
+      className: "text-emerald-700 border-emerald-300 dark:text-emerald-300 dark:border-emerald-800",
     },
     {
       label: "Ruedas activas",
       value: items.reduce((sum, item) => sum + activeWheels(item), 0),
       icon: TrainFront,
-      className: "text-indigo-700 bg-indigo-50 border-indigo-200 dark:text-indigo-200 dark:bg-indigo-950/30 dark:border-indigo-900",
+      className: "text-indigo-700 border-indigo-300 dark:text-indigo-300 dark:border-indigo-800",
     },
     {
       label: "Incidentes",
       value: items.reduce((sum, item) => sum + (item.activeIncidents ?? 0), 0),
       icon: AlertTriangle,
-      className: "text-orange-700 bg-orange-50 border-orange-200 dark:text-orange-200 dark:bg-orange-950/30 dark:border-orange-900",
+      className: "text-orange-700 border-orange-300 dark:text-orange-300 dark:border-orange-800",
     },
   ];
 
@@ -57,7 +57,7 @@ export default function TornoSummaryCards({ items }: { items: TornoHistoryItem[]
           <div
             key={card.label}
             className={cn(
-              "min-h-24 rounded-lg border bg-white p-3 shadow-sm shadow-slate-200/60 dark:shadow-none",
+              "min-h-24 rounded-lg border bg-[var(--app-surface)] p-3 shadow-[var(--app-shadow-sm)]",
               card.className,
             )}
           >
@@ -67,7 +67,7 @@ export default function TornoSummaryCards({ items }: { items: TornoHistoryItem[]
               </span>
               <Icon className="h-4 w-4 shrink-0" />
             </div>
-            <div className="mt-3 text-3xl font-black leading-none text-slate-950 dark:text-white">
+            <div className="mt-3 text-3xl font-black leading-none text-[var(--app-text)]">
               {card.value}
             </div>
           </div>

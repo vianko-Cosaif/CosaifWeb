@@ -1,8 +1,8 @@
 "use client";
 
-import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { buildDailyCounters, type Arrastre, type VagonArrastre } from "@/features/torreon/arrastres";
+import { buildArrastreFolio, buildDailyCounters, type Arrastre, type IncidenteArrastre, type VagonArrastre } from "@/features/torreon/arrastres";
 import {
   CrearView,
   DashboardView,
@@ -11,21 +11,23 @@ import {
   MovimientosView,
   arrastreMatchesSearch,
   dateKey,
-  emptyIncidentDraft,
   isClosed,
   makeVagonDraft,
   normalizeArray,
   parseErrorMessage,
-  readFilesAsDataUrls,
+  isArrastreEditable,
   statusText,
   type ActionPayload,
   type Ambito,
+  type ClienteArrastreIncidentRow,
   type EditVagonDraft,
-  type IncidentDraft,
   type TorreonPanelView,
   type VagonDraft,
 } from "@/features/torreon/cliente";
+import { useRealtimeBoardRefresh } from "@/app/hooks/useRealtimeBoardRefresh";
+import { isTorreonArrastreEvent, realtimeArrastreSnapshot } from "@/features/torreon/realtime";
 import { canViewTorreonArrastreRole, normalizeRoleName } from "@/lib/torreonLocalidad";
+import TorreonIncidentDetailModal, { type TorreonIncidentDetail } from "@/app/coordinador/torreon/TorreonIncidentDetailModal";
 
 export type { TorreonPanelView } from "@/features/torreon/cliente";
 
@@ -35,6 +37,31 @@ type TorreonClientePanelProps = {
   role: string;
   view?: TorreonPanelView;
 };
+
+function arrastreOrderValue(arrastre: Arrastre) {
+  const value = Number(arrastre.ordenSolicitud);
+  return Number.isFinite(value) && value > 0 ? value : Number.MAX_SAFE_INTEGER;
+}
+
+function arrastreSolicitudTime(arrastre: Arrastre) {
+  return Date.parse(String(arrastre.fechaSolicitud || arrastre.fechaInicio || "")) || 0;
+}
+
+function hasVagonEnProceso(arrastre: Arrastre) {
+  return (arrastre.vagones || []).some((vagon) => statusText(vagon.estado) === "EN_PROCESO");
+}
+
+function canReorderSolicitud(arrastre: Arrastre) {
+  return isArrastreEditable(arrastre.estado) && !hasVagonEnProceso(arrastre);
+}
+
+function hasOpenIncident(arrastre: Arrastre) {
+  return (arrastre.incidentes || []).some((incident) => statusText(incident.estado) === "ABIERTO");
+}
+
+function hasPendingVagon(arrastre: Arrastre) {
+  return (arrastre.vagones || []).some((vagon) => statusText(vagon.estado) === "PENDIENTE");
+}
 
 export default function TorreonClientePanel({ localidadId, role, view = "dashboard" }: TorreonClientePanelProps) {
   const router = useRouter();
@@ -49,45 +76,130 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
   const [instrucciones, setInstrucciones] = useState("");
   const [draftVagones, setDraftVagones] = useState<VagonDraft[]>([makeVagonDraft(1)]);
-  const [incidentDrafts, setIncidentDrafts] = useState<Record<number, IncidentDraft>>({});
   const [ambito, setAmbito] = useState<Ambito>("actuales");
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [editingVagon, setEditingVagon] = useState<EditVagonDraft | null>(null);
+  const [selectedIncident, setSelectedIncident] = useState<{
+    incident: TorreonIncidentDetail;
+    arrastreId: number;
+    title: string;
+    subtitle?: string;
+  } | null>(null);
 
   const load = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true);
     else setLoading(true);
 
     try {
-      const data = canViewArrastres
-        ? await fetch(`/api/cliente/torreon/arrastres?localidadId=${localidadId}`, {
-            cache: "no-store",
-            credentials: "include",
-          }).then((response) => response.json()).catch(() => [])
-        : [];
+      if (!canViewArrastres) {
+        setArrastres([]);
+        return;
+      }
 
-      setArrastres(normalizeArray<Arrastre>(data));
+      const buildUrl = (vista: "activos" | "historial", pageSize: number) => {
+        const params = new URLSearchParams({
+          localidadId: String(localidadId),
+          vista,
+          page: "1",
+          pageSize: String(pageSize),
+          includeFotos: "0",
+        });
+        return `/api/cliente/torreon/arrastres?${params.toString()}`;
+      };
+
+      const [activeData, historyData] = await Promise.all([
+        fetch(buildUrl("activos", 80), { cache: "no-store", credentials: "include" })
+          .then((response) => response.json())
+          .catch(() => []),
+        fetch(buildUrl("historial", 40), { cache: "no-store", credentials: "include" })
+          .then((response) => response.json())
+          .catch(() => []),
+      ]);
+
+      setArrastres([
+        ...normalizeArray<Arrastre>(activeData),
+        ...normalizeArray<Arrastre>(historyData),
+      ]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, [canViewArrastres, localidadId]);
 
+  const refreshArrastreById = useCallback(async (arrastreId: number) => {
+    if (!canViewArrastres || !Number.isFinite(arrastreId) || arrastreId <= 0) {
+      await load(true);
+      return;
+    }
+
+    setRefreshing(true);
+    try {
+      const params = new URLSearchParams({
+        localidadId: String(localidadId),
+        id: String(arrastreId),
+        includeFotos: "0",
+      });
+      const response = await fetch(`/api/cliente/torreon/arrastres?${params.toString()}`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("No se pudo refrescar arrastre");
+
+      const data = await response.json();
+      const next = (Array.isArray(data) ? data[0] : data) as Arrastre | null;
+      if (!next?.id) {
+        await load(true);
+        return;
+      }
+
+      setArrastres((prev) => {
+        const merged = new Map<number, Arrastre>();
+        for (const item of prev) merged.set(item.id, item);
+        merged.set(next.id, next);
+        return Array.from(merged.values());
+      });
+    } catch {
+      await load(true);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [canViewArrastres, load, localidadId]);
+
   useEffect(() => {
     load();
   }, [load]);
 
-  const orderedArrastres = useMemo(() => (
-    [...arrastres].sort((a, b) => {
-      const aTime = Date.parse(String(a.fechaSolicitud || a.fechaInicio || "")) || 0;
-      const bTime = Date.parse(String(b.fechaSolicitud || b.fechaInicio || "")) || 0;
-      return bTime - aTime;
-    })
-  ), [arrastres]);
+  const realtimeStatus = useRealtimeBoardRefresh({
+    enabled: canViewArrastres,
+    realtimeLocalidadId: localidadId,
+    scopeLocalidadId: localidadId,
+    matchesEvent: isTorreonArrastreEvent,
+    onRefresh: ({ event }) => {
+      const snapshot = realtimeArrastreSnapshot(event);
+      if (snapshot) {
+        setArrastres((current) => [snapshot, ...current.filter((item) => item.id !== snapshot.id)]);
+        return;
+      }
+      const arrastreId = Number(event.arrastreId || 0);
+      if (String(event.type || "").startsWith("torreon.arrastre") && arrastreId > 0) {
+        return refreshArrastreById(arrastreId);
+      }
+      return load(true);
+    },
+  });
 
-  const activeArrastres = useMemo(() => orderedArrastres.filter((arrastre) => !isClosed(arrastre.estado)), [orderedArrastres]);
-  const pastArrastres = useMemo(() => orderedArrastres.filter((arrastre) => isClosed(arrastre.estado)), [orderedArrastres]);
+  const activeArrastres = useMemo(() => (
+    arrastres
+      .filter((arrastre) => !isClosed(arrastre.estado))
+      .sort((a, b) => arrastreOrderValue(a) - arrastreOrderValue(b) || arrastreSolicitudTime(a) - arrastreSolicitudTime(b) || a.id - b.id)
+  ), [arrastres]);
+  const pastArrastres = useMemo(() => (
+    arrastres
+      .filter((arrastre) => isClosed(arrastre.estado))
+      .sort((a, b) => arrastreSolicitudTime(b) - arrastreSolicitudTime(a) || b.id - a.id)
+  ), [arrastres]);
+  const orderedArrastres = useMemo(() => [...activeArrastres, ...pastArrastres], [activeArrastres, pastArrastres]);
   const dailyCounters = useMemo(() => buildDailyCounters(orderedArrastres), [orderedArrastres]);
 
   const visibleArrastres = useMemo(() => (
@@ -95,49 +207,16 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
       .filter((arrastre) => !dateFilter || dateKey(arrastre.fechaSolicitud || arrastre.fechaInicio) === dateFilter)
       .filter((arrastre) => arrastreMatchesSearch(arrastre, search))
   ), [activeArrastres, ambito, dateFilter, pastArrastres, search]);
-
-  const incidentRows = useMemo(() => (
-    orderedArrastres
-      .flatMap((arrastre) => (arrastre.incidentes || []).map((incidente) => {
-        const vagon = (arrastre.vagones || []).find((item) => item.id === incidente.vagonId);
-        return {
-          arrastre,
-          incidente,
-          vagon,
-          dailyInfo: dailyCounters.get(arrastre.id),
-        };
+  const hasOpenIncidentInQueue = useMemo(() => activeArrastres.some(hasOpenIncident), [activeArrastres]);
+  const incidentRows = useMemo<ClienteArrastreIncidentRow[]>(() => (
+    arrastres.flatMap((arrastre) => (
+      (arrastre.incidentes || []).map((incident) => ({
+        arrastre,
+        incident,
+        dailyInfo: dailyCounters.get(arrastre.id),
       }))
-      .filter(({ arrastre, incidente, vagon }) => {
-        const incidentDate = incidente.fechaInicio || arrastre.fechaSolicitud || arrastre.fechaInicio;
-        if (dateFilter && dateKey(incidentDate) !== dateFilter) return false;
-
-        const query = search.trim().toLowerCase();
-        if (!query) return true;
-
-        return [
-          arrastre.id,
-          incidente.id,
-          incidente.estado,
-          incidente.motivo,
-          incidente.solucion,
-          vagon?.numeroVagon,
-          vagon?.viaId,
-          vagon?.seccionId,
-          arrastre.instrucciones,
-        ]
-          .filter((item) => item != null)
-          .join(" ")
-          .toLowerCase()
-          .includes(query);
-      })
-  ), [dailyCounters, dateFilter, orderedArrastres, search]);
-
-  const nextVagones = useMemo(() => (
-    activeArrastres.flatMap((arrastre) => (arrastre.vagones || [])
-      .filter((vagon) => statusText(vagon.estado) !== "CONCLUIDO")
-      .map((vagon) => ({ arrastre, vagon })))
-      .slice(0, 10)
-  ), [activeArrastres]);
+    ))
+  ), [arrastres, dailyCounters]);
 
   const stats = useMemo(() => {
     const vagones = arrastres.flatMap((arrastre) => arrastre.vagones || []);
@@ -155,10 +234,6 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
     draftVagones.reduce((total, vagon) => total + (vagon.carga === "LLENO" ? 2 : 1), 0)
   ), [draftVagones]);
 
-  function setIncidentDraft(arrastreId: number, draft: IncidentDraft) {
-    setIncidentDrafts((prev) => ({ ...prev, [arrastreId]: draft }));
-  }
-
   function updateDraftVagon(tempId: number, patch: Partial<VagonDraft>) {
     setDraftVagones((prev) => prev.map((vagon) => vagon.tempId === tempId ? { ...vagon, ...patch } : vagon));
   }
@@ -175,7 +250,50 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
     setDraftVagones((prev) => prev.length === 1 ? prev : prev.filter((vagon) => vagon.tempId !== tempId));
   }
 
+  function moveDraftVagon(tempId: number, direction: "up" | "down") {
+    setDraftVagones((prev) => {
+      const index = prev.findIndex((vagon) => vagon.tempId === tempId);
+      const nextIndex = direction === "up" ? index - 1 : index + 1;
+      if (index < 0 || nextIndex < 0 || nextIndex >= prev.length) return prev;
+
+      const next = [...prev];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
+    });
+  }
+
+  function routePatchFrom(vagon: VagonDraft) {
+    return {
+      viaOrigenId: vagon.viaOrigenId,
+      seccionOrigenId: vagon.seccionOrigenId,
+      viaId: vagon.viaId,
+      seccionId: vagon.seccionId,
+    };
+  }
+
+  function usePreviousRoute(tempId: number) {
+    setDraftVagones((prev) => {
+      const index = prev.findIndex((vagon) => vagon.tempId === tempId);
+      if (index <= 0) return prev;
+      const patch = routePatchFrom(prev[index - 1]);
+      return prev.map((vagon) => vagon.tempId === tempId ? { ...vagon, ...patch } : vagon);
+    });
+  }
+
+  function copyRouteToAll(tempId: number) {
+    setDraftVagones((prev) => {
+      const source = prev.find((vagon) => vagon.tempId === tempId);
+      if (!source) return prev;
+      const patch = routePatchFrom(source);
+      return prev.map((vagon) => vagon.tempId === tempId ? vagon : { ...vagon, ...patch });
+    });
+  }
+
   function openEditVagon(arrastre: Arrastre, vagon: VagonArrastre) {
+    if (!isArrastreEditable(arrastre.estado)) {
+      setMessage({ type: "error", text: `Solo puedes editar arrastres solicitados o detenidos sin vagon en proceso. Estado actual: ${statusText(arrastre.estado)}` });
+      return;
+    }
     if (statusText(vagon.estado) === "EN_PROCESO") {
       setMessage({ type: "error", text: "No se puede editar un vagon en proceso" });
       return;
@@ -186,8 +304,10 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
       vagonId: vagon.id,
       numeroVagon: vagon.numeroVagon || "",
       carga: statusText(vagon.carga) === "LLENO" ? "LLENO" : "VACIO",
-      viaId: String(vagon.viaId),
-      seccionId: String(vagon.seccionId),
+      viaOrigenId: vagon.viaOrigenNombre || (vagon.viaOrigenId ? String(vagon.viaOrigenId) : ""),
+      seccionOrigenId: vagon.seccionOrigenNombre || (vagon.seccionOrigenId ? String(vagon.seccionOrigenId) : ""),
+      viaId: vagon.viaDestinoNombre || (vagon.viaId ? String(vagon.viaId) : ""),
+      seccionId: vagon.seccionDestinoNombre || (vagon.seccionId ? String(vagon.seccionId) : ""),
     });
   }
 
@@ -199,14 +319,21 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
     if (!editingVagon) return;
     setMessage(null);
 
-    const viaId = Number(editingVagon.viaId);
-    const seccionId = Number(editingVagon.seccionId);
-    if (!Number.isFinite(viaId) || viaId <= 0 || !Number.isFinite(seccionId) || seccionId <= 0) {
-      setMessage({ type: "error", text: "Via y seccion deben ser validas" });
+    const viaOrigen = editingVagon.viaOrigenId?.trim() || "";
+    const seccionOrigen = editingVagon.seccionOrigenId?.trim() || "";
+    const viaDestino = editingVagon.viaId.trim();
+    const seccionDestino = editingVagon.seccionId.trim();
+    if (!viaOrigen || !seccionOrigen || !viaDestino || !seccionDestino) {
+      setMessage({ type: "error", text: "Origen y destino deben tener via/seccion" });
       return;
     }
 
     const arrastre = arrastres.find((item) => item.id === editingVagon.arrastreId);
+    if (arrastre && !isArrastreEditable(arrastre.estado)) {
+      setMessage({ type: "error", text: `Solo puedes editar arrastres solicitados o detenidos sin vagon en proceso. Estado actual: ${statusText(arrastre.estado)}` });
+      return;
+    }
+
     const capacidad = arrastre?.vagones?.reduce((total, vagon) => {
       const carga = vagon.id === editingVagon.vagonId ? editingVagon.carga : statusText(vagon.carga);
       return total + (carga === "LLENO" ? 2 : 1);
@@ -230,8 +357,10 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
           vagonId: editingVagon.vagonId,
           numeroVagon: editingVagon.numeroVagon.trim() || undefined,
           carga: editingVagon.carga,
-          viaId,
-          seccionId,
+          viaOrigen,
+          seccionOrigen,
+          viaDestino,
+          seccionDestino,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -250,15 +379,28 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
   async function submitArrastre() {
     setMessage(null);
 
+    const movimiento = instrucciones.trim();
+    if (movimiento.length < 3) {
+      setMessage({ type: "error", text: "Describe el movimiento u operacion del arrastre" });
+      return;
+    }
+
     const vagones = draftVagones.map((vagon) => ({
       numeroVagon: vagon.numeroVagon.trim() || undefined,
       carga: vagon.carga,
-      viaId: Number(vagon.viaId),
-      seccionId: Number(vagon.seccionId),
+      viaOrigen: vagon.viaOrigenId.trim(),
+      seccionOrigen: vagon.seccionOrigenId.trim(),
+      viaDestino: vagon.viaId.trim(),
+      seccionDestino: vagon.seccionId.trim(),
     }));
 
-    if (vagones.some((vagon) => !Number.isFinite(vagon.viaId) || vagon.viaId <= 0 || !Number.isFinite(vagon.seccionId) || vagon.seccionId <= 0)) {
-      setMessage({ type: "error", text: "Cada vagon necesita via y seccion" });
+    if (vagones.some((vagon) => (
+      !vagon.viaOrigen ||
+      !vagon.seccionOrigen ||
+      !vagon.viaDestino ||
+      !vagon.seccionDestino
+    ))) {
+      setMessage({ type: "error", text: "Cada vagon necesita origen y destino con via/seccion" });
       return;
     }
 
@@ -274,7 +416,7 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ localidadId, instrucciones, vagones }),
+        body: JSON.stringify({ localidadId, instrucciones: movimiento, vagones }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(parseErrorMessage(data, "No se pudo crear el arrastre"));
@@ -290,12 +432,82 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
     }
   }
 
-  async function runAction(payload: ActionPayload) {
+  async function reorderVagon(arrastre: Arrastre, vagon: VagonArrastre, direction: "up" | "down") {
+    if (!isArrastreEditable(arrastre.estado)) {
+      setMessage({ type: "error", text: `Solo puedes reordenar arrastres solicitados o detenidos sin vagon en proceso. Estado actual: ${statusText(arrastre.estado)}` });
+      return;
+    }
+
+    const vagones = [...(arrastre.vagones || [])].sort((left, right) => (left.orden ?? 0) - (right.orden ?? 0));
+    const index = vagones.findIndex((item) => item.id === vagon.id);
+    const nextIndex = direction === "up" ? index - 1 : index + 1;
+    if (index < 0 || nextIndex < 0 || nextIndex >= vagones.length) return;
+    if (statusText(vagones[index].estado) === "EN_PROCESO" || statusText(vagones[nextIndex].estado) === "EN_PROCESO") {
+      setMessage({ type: "error", text: "No puedes mover un vagon que esta en proceso ni intercambiarlo con uno en proceso" });
+      return;
+    }
+
+    [vagones[index], vagones[nextIndex]] = [vagones[nextIndex], vagones[index]];
+    await runAction({
+      action: "REORDENAR_VAGONES",
+      arrastreId: arrastre.id,
+      vagonIds: vagones.map((item) => item.id),
+    }, (current) => current.map((item) => item.id === arrastre.id
+      ? { ...item, vagones: vagones.map((vagon, orden) => ({ ...vagon, orden: orden + 1 })) }
+      : item));
+  }
+
+  async function reorderSolicitud(arrastre: Arrastre, direction: "up" | "down") {
+    if (!canReorderSolicitud(arrastre)) {
+      setMessage({ type: "error", text: `Solo puedes reordenar solicitudes solicitadas o detenidas sin vagones en proceso. Estado actual: ${statusText(arrastre.estado)}` });
+      return;
+    }
+
+    const solicitudes = activeArrastres.filter(canReorderSolicitud);
+    const index = solicitudes.findIndex((item) => item.id === arrastre.id);
+    const nextIndex = direction === "up" ? index - 1 : index + 1;
+    if (index < 0 || nextIndex < 0 || nextIndex >= solicitudes.length) return;
+
+    [solicitudes[index], solicitudes[nextIndex]] = [solicitudes[nextIndex], solicitudes[index]];
+    await runAction({
+      action: "REORDENAR_SOLICITUDES",
+      arrastreId: arrastre.id,
+      arrastreIds: solicitudes.map((item) => item.id),
+    }, (current) => current.map((item) => {
+      const index = solicitudes.findIndex((solicitud) => solicitud.id === item.id);
+      return index >= 0 ? { ...item, ordenSolicitud: index + 1 } : item;
+    }));
+  }
+
+  async function prioritizeSolicitud(arrastre: Arrastre) {
+    if (!hasOpenIncidentInQueue) {
+      setMessage({ type: "error", text: "Solo puedes subir una solicitud al frente cuando existe un incidente abierto en la cola." });
+      return;
+    }
+    if (!canReorderSolicitud(arrastre)) {
+      setMessage({ type: "error", text: `Solo puedes subir solicitudes solicitadas o detenidas sin vagones en proceso. Estado actual: ${statusText(arrastre.estado)}` });
+      return;
+    }
+    if (!hasPendingVagon(arrastre)) {
+      setMessage({ type: "error", text: "La solicitud no tiene vagones pendientes disponibles para subir al frente." });
+      return;
+    }
+
+    await runAction({
+      action: "PRIORIZAR_SOLICITUD",
+      arrastreId: arrastre.id,
+    }, (current) => [
+      { ...arrastre, ordenSolicitud: 1 },
+      ...current.filter((item) => item.id !== arrastre.id).map((item, index) => ({ ...item, ordenSolicitud: index + 2 })),
+    ]);
+  }
+
+  async function runAction(payload: ActionPayload, optimistic?: (current: Arrastre[]) => Arrastre[]) {
     setMessage(null);
-    const actionKey = payload.action.includes("INCIDENTE")
-      ? `incidente:${payload.arrastreId}`
-      : `${payload.arrastreId}:${payload.vagonId ?? payload.action}`;
+    const actionKey = `${payload.arrastreId}:${payload.vagonId ?? payload.action}`;
     setBusyAction(actionKey);
+    const previous = arrastres;
+    if (optimistic) setArrastres(optimistic);
 
     try {
       const response = await fetch("/api/cliente/torreon/arrastres/action", {
@@ -307,14 +519,10 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(parseErrorMessage(data, "No se pudo operar el arrastre"));
 
-      setIncidentDrafts((prev) => {
-        const next = { ...prev };
-        delete next[payload.arrastreId];
-        return next;
-      });
       setMessage({ type: "ok", text: "Operacion aplicada" });
       await load(true);
     } catch (error) {
+      if (optimistic) setArrastres(previous);
       setMessage({ type: "error", text: error instanceof Error ? error.message : "No se pudo operar el arrastre" });
     } finally {
       setBusyAction(null);
@@ -328,18 +536,83 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
       action: "CANCELAR",
       arrastreId: arrastre.id,
       motivo: motivo.trim() || undefined,
-    });
+    }, (current) => current.map((item) => item.id === arrastre.id ? { ...item, estado: "CANCELADO" } : item));
   }
 
-  async function handleIncidentFiles(arrastreId: number, event: ChangeEvent<HTMLInputElement>) {
+  function openIncident(incident: IncidenteArrastre, arrastre: Arrastre) {
+    const arrastreId = arrastre.id;
+    const title = `Arrastre ${buildArrastreFolio(arrastre, dailyCounters.get(arrastre.id))}`;
+    const subtitle = `Movimiento de arrastre #${arrastre.id}`;
+    setSelectedIncident({
+      incident,
+      arrastreId,
+      title,
+      subtitle,
+    });
+
+    const incidentId = Number(incident.id);
+    const currentFotos = Array.isArray(incident.fotos) ? incident.fotos.length : 0;
+    const shouldLoadDetail = Number.isFinite(incidentId) && (currentFotos === 0 || (incident.fotosCount ?? 0) > currentFotos);
+    if (!shouldLoadDetail) return;
+
+    const params = new URLSearchParams({
+      source: "torreon",
+      tipo: "ARRASTRE",
+      localidadId: String(localidadId),
+    });
+    fetch(`/api/incidentes/${incidentId}?${params.toString()}`, {
+      cache: "no-store",
+      credentials: "include",
+    })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        const record = payload && typeof payload === "object" && "data" in payload
+          ? (payload as { data?: unknown }).data
+          : payload;
+        if (!record || typeof record !== "object") return;
+        setSelectedIncident((current) => {
+          if (!current || current.arrastreId !== arrastreId || Number(current.incident.id) !== incidentId) return current;
+          return {
+            ...current,
+            incident: {
+              ...current.incident,
+              ...(record as TorreonIncidentDetail),
+            },
+          };
+        });
+      })
+      .catch(() => undefined);
+  }
+
+  async function resolveIncident(arrastreId: number, incidenteId: number, solucion: string) {
+    const actionKey = `resolve:${arrastreId}:${incidenteId}`;
+    setBusyAction(actionKey);
+    setMessage(null);
+
     try {
-      const fotos = await readFilesAsDataUrls(event.target.files);
-      const current = incidentDrafts[arrastreId] || emptyIncidentDraft;
-      setIncidentDraft(arrastreId, { ...current, fotos });
+      const response = await fetch("/api/cliente/torreon/arrastres/action", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "RESOLVER_INCIDENTE",
+          arrastreId,
+          incidenteId,
+          solucion,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(parseErrorMessage(data, "No se pudo resolver el incidente"));
+
+      setSelectedIncident(null);
+      setMessage({ type: "ok", text: "Incidente resuelto y bloqueo liberado" });
+      await load(true);
     } catch (error) {
-      setMessage({ type: "error", text: error instanceof Error ? error.message : "No se pudieron leer las fotos" });
+      const text = error instanceof Error ? error.message : "No se pudo resolver el incidente";
+      setMessage({ type: "error", text });
+      throw error;
     } finally {
-      event.target.value = "";
+      setBusyAction(null);
     }
   }
 
@@ -360,15 +633,18 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
       <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6">
         {view === "dashboard" && (
           <DashboardView
+            realtimeStatus={realtimeStatus}
             feedback={feedback}
             stats={stats}
-            nextVagones={nextVagones}
+            activeArrastres={activeArrastres}
+            dailyCounters={dailyCounters}
             loading={loading}
             refreshing={refreshing}
             onMovimientos={() => router.push("/cliente/torreon/movimientos")}
-            onIncidentes={() => router.push("/cliente/torreon/incidentes")}
             onCrear={() => router.push("/cliente/torreon/crear")}
             onRefresh={() => load(true)}
+            onPrioritizeSolicitud={prioritizeSolicitud}
+            onIncidentSelect={openIncident}
           />
         )}
 
@@ -385,31 +661,18 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
             pastCount={pastArrastres.length}
             busyAction={busyAction}
             dailyCounters={dailyCounters}
-            incidentDrafts={incidentDrafts}
+            canPrioritizeByIncident={hasOpenIncidentInQueue}
             onAmbito={setAmbito}
             onSearch={setSearch}
             onDateFilter={setDateFilter}
             onRefresh={() => load(true)}
             onNuevo={() => router.push("/cliente/torreon/crear")}
-            onDraftChange={setIncidentDraft}
-            onFiles={handleIncidentFiles}
-            onAction={runAction}
             onEditVagon={openEditVagon}
+            onPrioritizeSolicitud={prioritizeSolicitud}
+            onReorderVagon={reorderVagon}
+            onReorderSolicitud={reorderSolicitud}
             onCancel={cancelArrastre}
-          />
-        )}
-
-        {view === "incidentes" && (
-          <IncidentesView
-            feedback={feedback}
-            rows={incidentRows}
-            loading={loading}
-            refreshing={refreshing}
-            search={search}
-            dateFilter={dateFilter}
-            onSearch={setSearch}
-            onDateFilter={setDateFilter}
-            onRefresh={() => load(true)}
+            onIncidentSelect={openIncident}
           />
         )}
 
@@ -426,8 +689,25 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
             onInstruccionesChange={setInstrucciones}
             onUpdateVagon={updateDraftVagon}
             onRemoveVagon={removeDraftVagon}
+            onMoveVagon={moveDraftVagon}
+            onUsePreviousRoute={usePreviousRoute}
+            onCopyRouteToAll={copyRouteToAll}
             onAddVagon={addDraftVagon}
             onSubmit={submitArrastre}
+          />
+        )}
+
+        {view === "incidentes" && (
+          <IncidentesView
+            feedback={feedback}
+            rows={incidentRows}
+            dailyCounters={dailyCounters}
+            loading={loading}
+            refreshing={refreshing}
+            resolvingId={busyAction?.startsWith("resolve:") ? busyAction.replace("resolve:", "") : null}
+            onRefresh={() => load(true)}
+            onIncidentSelect={openIncident}
+            onResolveClick={openIncident}
           />
         )}
 
@@ -440,6 +720,17 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
             onSubmit={submitVagonEdit}
           />
         )}
+
+        {selectedIncident ? (
+          <TorreonIncidentDetailModal
+            incident={selectedIncident.incident}
+            title={selectedIncident.title}
+            subtitle={selectedIncident.subtitle}
+            resolving={busyAction === `resolve:${selectedIncident.arrastreId}:${selectedIncident.incident.id}`}
+            onResolve={(solucion) => resolveIncident(selectedIncident.arrastreId, Number(selectedIncident.incident.id), solucion)}
+            onClose={() => setSelectedIncident(null)}
+          />
+        ) : null}
       </div>
     </section>
   );

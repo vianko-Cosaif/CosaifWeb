@@ -31,28 +31,28 @@ export default function ModuleHeader({
     <header className={cn("flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between", className)}>
       <div className="flex min-w-0 items-center gap-3">
         {Icon || iconNode ? (
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/30">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--app-accent)] text-white shadow-sm">
             {iconNode ?? (Icon ? <Icon className="h-5 w-5" aria-hidden /> : null)}
           </div>
         ) : null}
         <div className="min-w-0">
           {eyebrow ? (
-            <p className="truncate text-xs font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+            <p className="truncate text-xs font-black uppercase tracking-wide text-[var(--app-accent)]">
               {eyebrow}
             </p>
           ) : null}
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h1 className="truncate text-xl font-black tracking-tight text-slate-950 dark:text-white sm:text-2xl">
+            <h1 className="truncate text-xl font-black text-[var(--app-text)] sm:text-2xl">
               {title}
             </h1>
             {badge ? (
-              <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              <span className="inline-flex items-center rounded-full bg-[var(--app-surface-muted)] px-2 py-0.5 text-[10px] font-black text-[var(--app-text-muted)]">
                 {badge}
               </span>
             ) : null}
           </div>
           {subtitle || loading ? (
-            <p className="mt-0.5 flex min-w-0 flex-wrap items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            <p className="mt-0.5 flex min-w-0 flex-wrap items-center gap-2 text-xs font-semibold text-[var(--app-text-muted)]">
               {subtitle ? <span className="truncate">{subtitle}</span> : null}
               {loading ? (
                 <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">

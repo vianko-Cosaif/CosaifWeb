@@ -195,22 +195,14 @@ export type UserMeta = {
   rol?: string | null;
 };
 
-/** CLIENTE bloqueado; ADMINISTRADOR/COORDINADOR libres */
+/** Solo administradores pueden operar sin una localidad forzada. */
 export function getFilterPolicy(user: UserMeta): FilterPolicy {
   const capabilities = getRoleCapabilities(user.rol);
-  if (capabilities.isClientLike) {
-    return {
-      forcedEmpresaId: user.empresaId ?? undefined,
-      forcedLocalidadId: capabilities.canSwitchLocalidad ? undefined : user.localidadId ?? undefined,
-      canEditEmpresa: capabilities.canViewAllCompanies,
-      canEditLocalidad: capabilities.canSwitchLocalidad,
-      canEditDates: true,
-      canSearch: true,
-    };
-  }
   return {
-    canEditEmpresa: true,
-    canEditLocalidad: true,
+    forcedEmpresaId: capabilities.canViewAllCompanies ? undefined : user.empresaId ?? undefined,
+    forcedLocalidadId: capabilities.canSwitchLocalidad ? undefined : user.localidadId ?? undefined,
+    canEditEmpresa: capabilities.canViewAllCompanies,
+    canEditLocalidad: capabilities.canSwitchLocalidad,
     canEditDates: true,
     canSearch: true,
   };

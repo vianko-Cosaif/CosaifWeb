@@ -2,6 +2,9 @@ import type { TornoMedicionState } from "@/app/movimientos/crear/tornoMedicion.t
 
 export type RondaMovement = {
   id?: number;
+  idTecnico?: number | string | null;
+  folioLocalidad?: number | null;
+  folioLocalidadLabel?: string | null;
   viaOrigen?: { nombre?: string | null } | null;
   viaDestino?: { nombre?: string | null } | null;
   lavado?: boolean;

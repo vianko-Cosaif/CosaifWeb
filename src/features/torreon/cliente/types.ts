@@ -3,33 +3,24 @@ export type Ambito = "actuales" | "pasados";
 export type CargaVagon = "VACIO" | "LLENO";
 
 export type ActionPayload = {
-  action: "CREAR_INCIDENTE" | "RESOLVER_INCIDENTE" | "CANCELAR";
+  action: "CANCELAR" | "PRIORIZAR_SOLICITUD" | "REORDENAR_VAGONES" | "REORDENAR_SOLICITUDES" | "RESOLVER_INCIDENTE";
   arrastreId: number;
+  arrastreIds?: number[];
   vagonId?: number;
+  vagonIds?: number[];
   incidenteId?: number;
   motivo?: string;
   solucion?: string;
-  fotos?: Array<{ dataUrl: string; tomadaPorId?: number }>;
 };
 
 export type VagonDraft = {
   tempId: number;
   numeroVagon: string;
   carga: CargaVagon;
+  viaOrigenId: string;
+  seccionOrigenId: string;
   viaId: string;
   seccionId: string;
-};
-
-export type FotoDraft = {
-  name: string;
-  dataUrl: string;
-};
-
-export type IncidentDraft = {
-  motivo: string;
-  vagonId: string;
-  fotos: FotoDraft[];
-  solucion: string;
 };
 
 export type EditVagonDraft = {
@@ -37,6 +28,8 @@ export type EditVagonDraft = {
   vagonId: number;
   numeroVagon: string;
   carga: CargaVagon;
+  viaOrigenId?: string;
+  seccionOrigenId?: string;
   viaId: string;
   seccionId: string;
 };
@@ -50,17 +43,12 @@ export type ClienteArrastreStats = {
   pendientesVagon: number;
 };
 
-export const emptyIncidentDraft: IncidentDraft = {
-  motivo: "",
-  vagonId: "",
-  fotos: [],
-  solucion: "",
-};
-
 export const makeVagonDraft = (tempId: number): VagonDraft => ({
   tempId,
   numeroVagon: "",
   carga: "VACIO",
+  viaOrigenId: "",
+  seccionOrigenId: "",
   viaId: "",
   seccionId: "",
 });

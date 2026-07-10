@@ -1,10 +1,35 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { FechaCampo, MovimientoNatural, SortDir, SortKey, StatusTab } from "./types";
+import type { EmpresaOption, FechaCampo, MovimientoNatural, SortDir, SortKey, StatusTab } from "./types";
 import { filterNaturalRows, getNaturalMetrics, toLocalDateTimeInput } from "./utils";
+import { cachedFetchJson } from "@/lib/clientRequestCache";
 
-export function useTorreonNaturales(localidadId: number) {
+function normalizeBase(base?: string): string {
+  return (base || process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL || "/bff").replace(/\/+$/, "");
+}
+
+function normalizeEmpresas(input: unknown): EmpresaOption[] {
+  const data = Array.isArray(input)
+    ? input
+    : input && typeof input === "object" && Array.isArray((input as { data?: unknown }).data)
+      ? (input as { data: unknown[] }).data
+      : [];
+
+  return data
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as { id?: unknown; nombre?: unknown };
+      const id = Number(record.id);
+      const nombre = typeof record.nombre === "string" ? record.nombre.trim() : "";
+      return Number.isFinite(id) && id > 0 && nombre ? { id, nombre } : null;
+    })
+    .filter((item): item is EmpresaOption => Boolean(item));
+}
+
+export function useTorreonNaturales(localidadId: number, apiBase?: string) {
   const [status, setStatus] = useState<StatusTab>("activos");
   const [search, setSearch] = useState("");
+  const [empresaId, setEmpresaId] = useState<number | null>(null);
+  const [empresas, setEmpresas] = useState<EmpresaOption[]>([]);
   const [rows, setRows] = useState<MovimientoNatural[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -15,21 +40,44 @@ export function useTorreonNaturales(localidadId: number) {
   const [pageSize, setPageSize] = useState(25);
   const [sortKey, setSortKey] = useState<SortKey>("cronologia");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const catalogBase = normalizeBase(apiBase);
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    let alive = true;
+    cachedFetchJson<unknown>(`${catalogBase}/empresas/lite`, {
+      cache: "no-store",
+      credentials: "include",
+    }, { ttlMs: 5 * 60_000 })
+      .then((payload) => {
+        if (alive) setEmpresas(normalizeEmpresas(payload));
+      })
+      .catch(() => {
+        if (alive) setEmpresas([]);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [catalogBase]);
+
+  const load = useCallback(async (force = false) => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams({
         localidadId: String(localidadId),
         status,
+        page: "1",
+        pageSize: "100",
+        includeFotos: "0",
       });
-      const response = await fetch(`/api/coordinador/torreon/movimientos?${params.toString()}`, {
+      if (empresaId) params.set("empresaId", String(empresaId));
+      const url = `/api/coordinador/torreon/movimientos?${params.toString()}`;
+      const payload = await cachedFetchJson<{ success?: boolean; error?: string; data?: MovimientoNatural[] }>(url, {
         credentials: "include",
         cache: "no-store",
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.success === false) {
+      }, { ttlMs: 15_000, force });
+      if (payload?.success === false) {
         throw new Error(payload?.error || "No se pudieron cargar movimientos");
       }
       setRows(Array.isArray(payload?.data) ? payload.data : []);
@@ -39,7 +87,30 @@ export function useTorreonNaturales(localidadId: number) {
     } finally {
       setLoading(false);
     }
-  }, [localidadId, status]);
+  }, [empresaId, localidadId, status]);
+
+  const refreshById = useCallback(async (id: number) => {
+    if (!Number.isFinite(id) || id <= 0) return load(true);
+    try {
+      const params = new URLSearchParams({ localidadId: String(localidadId), id: String(id) });
+      const payload = await cachedFetchJson<{ success?: boolean; data?: MovimientoNatural }>(
+        `/api/coordinador/torreon/movimientos?${params.toString()}`,
+        { credentials: "include", cache: "no-store" },
+        { force: true, ttlMs: 0 },
+      );
+      const next = payload?.data;
+      if (!next?.id) return load(true);
+
+      const closed = ["CONCLUIDO", "CANCELADO"].includes(String(next.estado ?? "").toUpperCase());
+      const belongsToTab = status === "todos" || (status === "concluidos" ? closed : !closed);
+      setRows((current) => {
+        const withoutCurrent = current.filter((row) => Number(row.id) !== Number(next.id));
+        return belongsToTab ? [next, ...withoutCurrent] : withoutCurrent;
+      });
+    } catch {
+      await load(true);
+    }
+  }, [load, localidadId, status]);
 
   useEffect(() => {
     load();
@@ -47,11 +118,11 @@ export function useTorreonNaturales(localidadId: number) {
 
   useEffect(() => {
     setPage(1);
-  }, [status, search, fechaCampo, desde, hasta, pageSize, sortKey, sortDir]);
+  }, [status, search, empresaId, fechaCampo, desde, hasta, pageSize, sortKey, sortDir]);
 
   const filteredRows = useMemo(() => (
-    filterNaturalRows(rows, { search, fechaCampo, desde, hasta, sortKey, sortDir })
-  ), [desde, fechaCampo, hasta, rows, search, sortDir, sortKey]);
+    filterNaturalRows(rows, { search, empresaId, fechaCampo, desde, hasta, sortKey, sortDir })
+  ), [desde, empresaId, fechaCampo, hasta, rows, search, sortDir, sortKey]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -80,6 +151,9 @@ export function useTorreonNaturales(localidadId: number) {
     setStatus,
     search,
     setSearch,
+    empresaId,
+    setEmpresaId,
+    empresas,
     loading,
     error,
     fechaCampo,
@@ -97,6 +171,7 @@ export function useTorreonNaturales(localidadId: number) {
     page,
     setPage,
     load,
+    refreshById,
     filteredRows,
     paginatedRows,
     totalPages,

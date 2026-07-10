@@ -21,6 +21,7 @@ type UserFormProps = {
   empresas: Empresa[];
   localidades: Localidad[];
   roleOptions: Rol[];
+  lockLocalidad?: boolean;
   initial?: UserData;
   onSubmit: (values: UserFormValues) => Promise<void>;
   onCancel: () => void;
@@ -41,6 +42,7 @@ export default function UserForm({
   empresas,
   localidades,
   roleOptions,
+  lockLocalidad = false,
   initial,
   onSubmit,
   onCancel,
@@ -307,6 +309,7 @@ export default function UserForm({
           value={form.localidadId}
           error={!form.localidadId ? errors.localidad : undefined}
           className="h-[46px] rounded-xl"
+          disabled={lockLocalidad}
           onChange={(event) =>
             setForm((current) => ({ ...current, localidadId: event.target.value ? Number(event.target.value) : "" }))
           }

@@ -8,15 +8,21 @@ import React, {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { Flag } from "lucide-react";
 import Nav from "./Nav";
 import Filtros from "./Filtros";
-import Tabla from "./Tabla";
 import { useMovimientos, type FechaCampo, type Rol, type Movement } from "./useMovimientos";
 import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
-import { DataEmptyState, KpiCard, ModuleHeader } from "@/app/Components/ui";
+import DataEmptyState from "@/app/Components/ui/DataEmptyState";
+import KpiCard from "@/app/Components/ui/KpiCard";
+import ModuleHeader from "@/app/Components/ui/ModuleHeader";
 import { canViewMovementDuration } from "@/features/movimientos/table";
 import { getRoleCapabilities } from "@/lib/accessControl";
+
+const Tabla = dynamic(() => import("./Tabla"), {
+  loading: () => <div className="min-h-[320px] animate-pulse rounded-lg bg-[var(--app-surface-muted)]" />,
+});
 
 /* ================== HELPERS SESIÓN ================== */
 
@@ -226,7 +232,12 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     apiBase,
     autoRefreshMs: intervaloAutoMs,
     initialEmpresaId: roleCapabilities.canViewAllCompanies ? null : userEmpresaId,
-    initialLocalidadId: roleCapabilities.canSwitchLocalidad ? null : userLocalidadId,
+    initialLocalidadId:
+      bloquearLocalidad && userLocalidadId != null
+        ? userLocalidadId
+        : roleCapabilities.canSwitchLocalidad
+          ? null
+          : userLocalidadId,
   });
 
   /* ================== PERMISOS POR ROL ================== */
@@ -235,21 +246,25 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
   const puedeVerTodasEmpresas = roleCapabilities.canViewAllCompanies;
 
   useEffect(() => {
-    if (roleCapabilities.canViewAllCompanies && roleCapabilities.canSwitchLocalidad) return;
+    const shouldForceEmpresa = !roleCapabilities.canViewAllCompanies && userEmpresaId != null;
+    const shouldForceLocalidad =
+      userLocalidadId != null && (bloquearLocalidad || !roleCapabilities.canSwitchLocalidad);
+
+    if (!shouldForceEmpresa && !shouldForceLocalidad) return;
 
     setFiltros((prev) => ({
       ...prev,
       empresaId:
-        !roleCapabilities.canViewAllCompanies && userEmpresaId != null
+        shouldForceEmpresa
           ? userEmpresaId
           : prev.empresaId ?? undefined,
       localidadId:
-        !roleCapabilities.canSwitchLocalidad && userLocalidadId != null
+        shouldForceLocalidad
           ? userLocalidadId
           : prev.localidadId ?? undefined,
       pagina: 1,
     }));
-  }, [roleCapabilities.canSwitchLocalidad, roleCapabilities.canViewAllCompanies, userEmpresaId, userLocalidadId, setFiltros]);
+  }, [bloquearLocalidad, roleCapabilities.canSwitchLocalidad, roleCapabilities.canViewAllCompanies, userEmpresaId, userLocalidadId, setFiltros]);
 
   const listaEmpresas = useMemo(() => {
     if (puedeVerTodasEmpresas) return empresas;
@@ -272,7 +287,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
   const resumenEjecucion = useMemo(() => buildExecutionSummary(filas), [filas]);
   const ordenActual = useMemo(() => {
     const labelMap: Record<string, string> = {
-      id: "ID",
+      id: "Folio",
       locomotora: "Locomotora",
       solicitud: "Solicitud",
       inicio: "Inicio real",
@@ -454,13 +469,12 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     <section
       className="
         w-full 
-        rounded-2xl sm:rounded-3xl 
-        border border-slate-200/80 dark:border-slate-800/80 
-        bg-white/95 dark:bg-slate-950/95 
-        text-slate-900 dark:text-slate-100
-        shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50
+        rounded-lg
+        border border-[var(--app-border)]
+        bg-[var(--app-surface)]
+        text-[var(--app-text)]
+        shadow-[var(--app-shadow-sm)]
         overflow-hidden
-        backdrop-blur-sm
         touch-manipulation
       "
     >
@@ -472,23 +486,22 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
           badge={tab}
           loading={cargando}
           actions={
-            <div className="flex items-center gap-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 px-3 py-1.5 text-xs">
+            <div className="flex items-center gap-1.5 rounded-lg bg-[var(--app-surface-muted)] px-3 py-1.5 text-xs">
               <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">{total}</span>
               <span className="text-slate-500 dark:text-slate-400">registro{total === 1 ? "" : "s"}</span>
             </div>
           }
         />
 
-        {/* Gradient separator */}
-        <div className="h-px bg-gradient-to-r from-transparent via-emerald-300/40 dark:via-emerald-600/30 to-transparent" />
+        <div className="h-px bg-[var(--app-border)]" />
 
         {/* Card: Nav + Filtros */}
         <section
           className="
             space-y-3 
-            rounded-xl sm:rounded-2xl 
-            border border-slate-100 dark:border-slate-800/60 
-            bg-gradient-to-b from-slate-50/80 to-white dark:from-slate-900/60 dark:to-slate-950/60
+            rounded-lg
+            border border-[var(--app-border)]
+            bg-[var(--app-surface-subtle)]
             px-2 py-2 sm:px-4 sm:py-4 
             shadow-sm
           "
@@ -556,9 +569,9 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
           <section
             className="
               flex-1
-              rounded-xl sm:rounded-2xl
-              border border-slate-100 dark:border-slate-800/60
-              bg-white dark:bg-slate-950/80
+              rounded-lg
+              border border-[var(--app-border)]
+              bg-[var(--app-surface)]
               px-1 py-1.5 sm:px-3 sm:py-3 lg:px-4 lg:py-4
               flex flex-col
               overflow-hidden

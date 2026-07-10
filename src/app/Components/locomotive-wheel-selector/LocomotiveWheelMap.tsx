@@ -576,12 +576,13 @@ function WheelNode({
   const locked = wheel.status === 'disabled';
   const selected = wheel.visualStatus === 'selected';
   const compactSideWheel = viewMode !== 'top';
+  const detailedWheel = true;
   const hitRadius = compactSideWheel ? 43 : 48;
   const sideLabelOffset = compactSideWheel ? 47 : 48;
   const axleLabelOffset = compactSideWheel ? 65 : 64;
-  const outerWheelRadius = compactSideWheel ? wheel.radius + 11 : wheel.radius + 6;
-  const tireRadius = compactSideWheel ? wheel.radius + 6 : wheel.radius;
-  const innerWheelRadius = compactSideWheel ? Math.max(10, wheel.radius - 4) : 9;
+  const outerWheelRadius = detailedWheel ? wheel.radius + 11 : wheel.radius + 6;
+  const tireRadius = detailedWheel ? wheel.radius + 6 : wheel.radius;
+  const innerWheelRadius = detailedWheel ? Math.max(10, wheel.radius - 4) : 9;
 
   const getCircleProps = (cx: number, cy: number, r: number) => {
     return rotateCoordinates
@@ -615,7 +616,7 @@ function WheelNode({
         'select-none',
       ].filter(Boolean).join(' ')}
     >
-      {compactSideWheel ? (
+      {detailedWheel ? (
         <circle
           {...getCircleProps(wheel.x, wheel.y + 7, outerWheelRadius + 4)}
           fill="#020617"
@@ -624,11 +625,11 @@ function WheelNode({
       ) : null}
       <circle
         {...getCircleProps(wheel.x, wheel.y, outerWheelRadius)}
-        fill={compactSideWheel ? 'var(--loco-map-wheel-rim)' : theme.colors.surface}
-        stroke={compactSideWheel ? 'var(--loco-map-wheel-tire)' : theme.colors.border}
-        strokeWidth={compactSideWheel ? 5 : 2}
+        fill={detailedWheel ? 'var(--loco-map-wheel-rim)' : theme.colors.surface}
+        stroke={detailedWheel ? 'var(--loco-map-wheel-tire)' : theme.colors.border}
+        strokeWidth={detailedWheel ? 5 : 2}
       />
-      {compactSideWheel ? (
+      {detailedWheel ? (
         <circle
           {...getCircleProps(wheel.x, wheel.y, tireRadius)}
           fill="var(--loco-map-wheel-tire)"
@@ -638,7 +639,7 @@ function WheelNode({
       ) : null}
       <circle
         {...getCircleProps(wheel.x, wheel.y, wheel.radius)}
-        fill={compactSideWheel ? theme.colors.surface : fill}
+        fill={detailedWheel ? theme.colors.surface : fill}
         stroke={stroke}
         strokeWidth={selected ? 6 : completed ? 5 : 4}
         strokeDasharray={pending ? '8 6' : undefined}
@@ -646,14 +647,14 @@ function WheelNode({
       <circle
         {...getCircleProps(wheel.x - 5, wheel.y - 6, Math.max(8, wheel.radius - 7))}
         fill={theme.colors.surfaceMuted}
-        opacity={compactSideWheel ? 0.9 : 0}
+        opacity={detailedWheel ? 0.9 : 0}
       />
       <circle
         {...getCircleProps(wheel.x, wheel.y, innerWheelRadius)}
-        fill={compactSideWheel ? theme.colors.textMuted : stroke}
-        stroke={compactSideWheel ? stroke : undefined}
-        strokeWidth={compactSideWheel ? 2 : undefined}
-        opacity={pending && !compactSideWheel ? 0.35 : 1}
+        fill={detailedWheel ? theme.colors.textMuted : stroke}
+        stroke={detailedWheel ? stroke : undefined}
+        strokeWidth={detailedWheel ? 2 : undefined}
+        opacity={pending && !detailedWheel ? 0.35 : 1}
       />
       {locked ? (
         <g transform={`translate(${getPoint(wheel.x, wheel.y).x} ${getPoint(wheel.x, wheel.y).y})`}>
@@ -693,7 +694,7 @@ function WheelNode({
           </g>
         </>
       ) : pending ? (
-        <text {...getTextProps(wheel.x, wheel.y + 5)} textAnchor="middle" fontFamily="sans-serif" fontSize="9" fontWeight="900" fill={compactSideWheel ? theme.colors.text : stroke}>
+        <text {...getTextProps(wheel.x, wheel.y + 5)} textAnchor="middle" fontFamily="sans-serif" fontSize="9" fontWeight="900" fill={detailedWheel ? theme.colors.text : stroke}>
           PEND
         </text>
       ) : null}

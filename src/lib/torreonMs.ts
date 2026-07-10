@@ -2,6 +2,7 @@ import "server-only";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import { cookies } from "next/headers";
 
 const DEFAULT_TORREON_MS_URL = "http://127.0.0.1:3003/api";
 const DEFAULT_TORREON_LOCALIDAD_ID = "2";
@@ -22,6 +23,11 @@ type ServiceCredentials = {
 
 function cleanBaseUrl(value?: string) {
   return (value || DEFAULT_TORREON_MS_URL).replace(/\/+$/, "");
+}
+
+function cleanOptionalBaseUrl(value?: string) {
+  const cleaned = String(value || "").trim().replace(/\/+$/, "");
+  return cleaned || "";
 }
 
 function parseEnvValue(value: string) {
@@ -114,6 +120,57 @@ function bodyToBuffer(body?: BodyInit) {
   throw new Error("El cliente de ms_torreon solo soporta bodies string, URLSearchParams o ArrayBuffer");
 }
 
+async function readRequestToken() {
+  try {
+    const store = await cookies();
+    return store.get(process.env.JWT_COOKIE_NAME || "token")?.value || store.get("token")?.value || "";
+  } catch {
+    return "";
+  }
+}
+
+async function parseJsonResponse<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  let data: unknown = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { message: text };
+    }
+  }
+
+  if (!response.ok) {
+    const record = data && typeof data === "object" ? data as Record<string, unknown> : {};
+    throw new Error(String(record.error || record.message || `ms_torreon respondio ${response.status}`));
+  }
+
+  return data as T;
+}
+
+async function fetchTorreonViaBackProxy<T>(pathWithQuery: string, init: RequestInit, body?: BodyInit) {
+  const method = String(init.method || "GET").toUpperCase();
+  if (method === "GET" || method === "HEAD") return undefined;
+
+  const token = await readRequestToken();
+  const apiOrigin = cleanOptionalBaseUrl(process.env.API_ORIGIN);
+  if (!token || !apiOrigin) return undefined;
+
+  const url = new URL(`${apiOrigin}/torreon/${pathWithQuery.replace(/^\/+/, "")}`);
+  const headers = new Headers(init.headers);
+  headers.set("authorization", `Bearer ${token}`);
+
+  const response = await fetch(url, {
+    ...init,
+    method,
+    headers,
+    body,
+    cache: "no-store",
+  });
+
+  return parseJsonResponse<T>(response);
+}
+
 function sha256Hex(body: Buffer) {
   return crypto.createHash("sha256").update(body).digest("hex");
 }
@@ -159,10 +216,14 @@ export function isTorreonLocalidad(localidadId?: string | number) {
 
 export async function fetchTorreonMsJson<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const method = String(init.method || "GET").toUpperCase();
+  const body = init.body ?? undefined;
+
+  const proxied = await fetchTorreonViaBackProxy<T>(path, init, body);
+  if (proxied !== undefined) return proxied;
+
   const base = cleanBaseUrl(readEnv("TORREON_MS_URL") || process.env.NEXT_PRIVATE_TORREON_MS_URL);
   const url = new URL(`${base}/${path.replace(/^\/+/, "")}`);
   const pathWithQuery = `${url.pathname}${url.search}`;
-  const body = init.body ?? undefined;
   const bodyHash = sha256Hex(bodyToBuffer(body));
   const timestamp = String(Date.now());
   const nonce = crypto.randomUUID();
@@ -183,20 +244,5 @@ export async function fetchTorreonMsJson<T = unknown>(path: string, init: Reques
     cache: "no-store",
   });
 
-  const text = await response.text();
-  let data: unknown = {};
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { message: text };
-    }
-  }
-
-  if (!response.ok) {
-    const record = data && typeof data === "object" ? data as Record<string, unknown> : {};
-    throw new Error(String(record.error || record.message || `ms_torreon respondio ${response.status}`));
-  }
-
-  return data as T;
+  return parseJsonResponse<T>(response);
 }

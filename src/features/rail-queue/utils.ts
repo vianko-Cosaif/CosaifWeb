@@ -1,4 +1,5 @@
 import type { Localidad, Ronda, RondaInfo } from "./types";
+import { cachedFetchJson } from "@/lib/clientRequestCache";
 
 export const API_XAPI_BASE = process.env.NEXT_PUBLIC_API_URL || "/xapi";
 export const API_BFF_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? "/bff").replace(/\/+$/, "");
@@ -9,6 +10,8 @@ export const railQueueListFormatter = new Intl.ListFormat("es", {
 });
 
 export function codeFrom(info?: RondaInfo, fallbackId?: number) {
+  if (info?.movimiento?.folioLocalidadLabel) return info.movimiento.folioLocalidadLabel;
+  if (info?.movimiento?.folioLocalidad) return `#${info.movimiento.folioLocalidad}`;
   return String(info?.movimientoId ?? info?.movimiento?.id ?? fallbackId ?? "—");
 }
 
@@ -63,20 +66,20 @@ export function formatQueueDate(iso?: string | null, fallback = "—") {
   }).format(date);
 }
 
-export async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(url, {
+export async function fetchJson<T>(
+  url: string,
+  signal?: AbortSignal,
+  options?: { force?: boolean; ttlMs?: number }
+): Promise<T> {
+  return cachedFetchJson<T>(url, {
     cache: "no-store",
     credentials: "include",
     mode: "same-origin",
     signal,
+  }, {
+    ttlMs: options?.ttlMs ?? 20_000,
+    force: options?.force,
   });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`${response.status} ${response.statusText} :: ${text.slice(0, 200)}`);
-  }
-
-  return (await response.json()) as T;
 }
 
 export function unwrapArray<T>(response: unknown): T[] {

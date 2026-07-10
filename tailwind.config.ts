@@ -15,7 +15,7 @@ export default {
     extend: {
       colors: { cosaif: { gray:"#4B4D4B", green:"#B3D334", blue:"#39A0E0" } },
       boxShadow: { glow: "0 0 40px rgba(57,160,224,.25)" },
-      borderRadius: { xl: "1rem", "2xl": "1.25rem" },
+      borderRadius: { xl: ".5rem", "2xl": ".5rem", "3xl": ".5rem" },
     },
   },
   plugins: [],

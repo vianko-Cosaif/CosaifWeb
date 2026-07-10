@@ -2,7 +2,7 @@
 import { ImageIcon, X } from "lucide-react";
 import { STAGES } from "../constants";
 import type { MovimientoNatural } from "../types";
-import { formatDate } from "../utils";
+import { formatDate, getMovimientoFolio } from "../utils";
 
 type Props = {
   movimiento: MovimientoNatural;
@@ -12,6 +12,7 @@ type Props = {
 export function FotosModal({ movimiento, onClose }: Props) {
   const fotosPorTipo = movimiento.fotosPorTipo || {};
   const totalFotos = (movimiento.fotos || []).length;
+  const folio = getMovimientoFolio(movimiento);
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/60 p-4 dark:bg-black/75">
@@ -19,7 +20,7 @@ export function FotosModal({ movimiento, onClose }: Props) {
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-4 dark:border-slate-800">
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Evidencias movimiento</p>
-            <h3 className="mt-1 text-xl font-black text-slate-950 dark:text-white">Movimiento #{movimiento.id}</h3>
+            <h3 className="mt-1 text-xl font-black text-slate-950 dark:text-white">Movimiento {folio}</h3>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               Loco {movimiento.locomotiveNumber || "--"} · {movimiento.viaOrigen || "--"} a {movimiento.viaDestino || "--"}
             </p>
@@ -60,7 +61,14 @@ export function FotosModal({ movimiento, onClose }: Props) {
                       <div className="grid gap-3 sm:grid-cols-2">
                         {fotos.map((foto) => (
                           <figure key={`${stage.key}-${foto.id ?? foto.orden}`} className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/40">
-                            <img src={foto.url} alt={`${stage.label} ${foto.orden}`} className="h-64 w-full object-contain bg-slate-950" />
+                            <img
+                              src={foto.url}
+                              alt={`${stage.label} ${foto.orden}`}
+                              loading="lazy"
+                              decoding="async"
+                              fetchPriority="low"
+                              className="h-64 w-full bg-slate-950 object-contain"
+                            />
                             <figcaption className="space-y-1 p-3 text-xs text-slate-500 dark:text-slate-400">
                               <p className="font-bold text-slate-700 dark:text-slate-200">Captura {foto.orden}</p>
                               <p>{formatDate(foto.tomadaAt)}</p>

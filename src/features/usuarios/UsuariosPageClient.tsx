@@ -12,7 +12,7 @@ import {
   SearchInput,
   SelectField,
 } from "@/app/Components/ui";
-import { fetchJSON } from "./api";
+import { fetchJSON, readCollection } from "./api";
 import {
   ADMIN_ROLE_OPTIONS,
   LOCAL_COORDINATOR_ROLE_OPTIONS,
@@ -37,10 +37,14 @@ import { getCookie, isGdlLocalidad } from "./utils";
 
 type UsuariosPageClientProps = {
   apiBase?: string;
+  sessionRole?: string;
+  sessionLocalidadId?: number | null;
 };
 
 export default function UsuariosPageClient({
   apiBase = process.env.NEXT_PUBLIC_API_BASE || "/bff",
+  sessionRole,
+  sessionLocalidadId,
 }: UsuariosPageClientProps) {
   const [usuarios, setUsuarios] = useState<UserData[]>([]);
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
@@ -59,24 +63,34 @@ export default function UsuariosPageClient({
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  const actorRole = getCookie("role").toUpperCase();
-  const actorLocalidadId = Number(getCookie("locId") || Number.NaN);
+  const actorRole = String(sessionRole || getCookie("role")).trim().toUpperCase();
+  const actorLocalidadId = Number(sessionLocalidadId ?? getCookie("locId") ?? Number.NaN);
   const actorLocalidad = localidades.find((localidad) => localidad.id === actorLocalidadId);
   const canManageAdministrators = actorRole === "ADMINISTRADOR";
-  const restrictedLocalCoordinator = actorRole === "COORDINADOR" && !isGdlLocalidad(actorLocalidad?.nombre);
+  const isCoordinator = actorRole === "COORDINADOR";
+  const restrictedCoordinatorRoles = isCoordinator && !isGdlLocalidad(actorLocalidad?.nombre);
 
   const roleOptions = useMemo(() => {
     if (canManageAdministrators) return ADMIN_ROLE_OPTIONS;
-    if (restrictedLocalCoordinator) return LOCAL_COORDINATOR_ROLE_OPTIONS;
+    if (restrictedCoordinatorRoles) return LOCAL_COORDINATOR_ROLE_OPTIONS;
     return USER_ROLE_OPTIONS;
-  }, [canManageAdministrators, restrictedLocalCoordinator]);
+  }, [canManageAdministrators, restrictedCoordinatorRoles]);
 
   const formLocalidades = useMemo(() => {
-    if (restrictedLocalCoordinator && Number.isFinite(actorLocalidadId)) {
+    if (isCoordinator && Number.isFinite(actorLocalidadId)) {
       return localidades.filter((localidad) => localidad.id === actorLocalidadId);
     }
     return localidades;
-  }, [actorLocalidadId, localidades, restrictedLocalCoordinator]);
+  }, [actorLocalidadId, isCoordinator, localidades]);
+
+  const canManageUser = useCallback(
+    (user: UserData) => {
+      if (!isCoordinator) return true;
+      const userLocalidadId = Number(user.localidad?.id ?? user.localidadId);
+      return user.rol !== "ADMINISTRADOR" && userLocalidadId === actorLocalidadId;
+    },
+    [actorLocalidadId, isCoordinator]
+  );
 
   const addToast = useCallback((type: ToastType, message: string) => {
     const id = Math.random().toString(36);
@@ -91,14 +105,29 @@ export default function UsuariosPageClient({
     const controller = new AbortController();
     abortRef.current = controller;
     try {
+      if (isCoordinator && (!Number.isFinite(actorLocalidadId) || actorLocalidadId <= 0)) {
+        throw new Error("Tu sesion no tiene una localidad asignada.");
+      }
+
+      const usuariosUrl = isCoordinator
+        ? `${apiBase}/usuarios?localidadId=${actorLocalidadId}`
+        : `${apiBase}/usuarios`;
       const [list, emps, locs] = await Promise.all([
-        fetchJSON<UserData[]>(`${apiBase}/usuarios`, { signal: controller.signal }),
-        fetchJSON<Empresa[]>(`${apiBase}/empresas`, { signal: controller.signal }).catch(() => [] as Empresa[]),
-        fetchJSON<Localidad[]>(`${apiBase}/localidades`, { signal: controller.signal }).catch(() => [] as Localidad[]),
+        fetchJSON<unknown>(usuariosUrl, { signal: controller.signal }),
+        fetchJSON<unknown>(`${apiBase}/empresas`, { signal: controller.signal }).catch(() => []),
+        fetchJSON<unknown>(`${apiBase}/localidades`, { signal: controller.signal }).catch(() => []),
       ]);
-      setUsuarios(Array.isArray(list) ? list : []);
-      setEmpresas(Array.isArray(emps) ? emps : []);
-      setLocalidades(Array.isArray(locs) ? locs : []);
+      const loadedUsers = readCollection<UserData>(list, ["usuarios"]);
+      setUsuarios(
+        isCoordinator
+          ? loadedUsers.filter((user) => {
+              const userLocalidadId = Number(user.localidad?.id ?? user.localidadId);
+              return user.rol !== "ADMINISTRADOR" && userLocalidadId === actorLocalidadId;
+            })
+          : loadedUsers
+      );
+      setEmpresas(readCollection<Empresa>(emps, ["empresas"]));
+      setLocalidades(readCollection<Localidad>(locs, ["localidades"]));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Error al cargar datos";
       setErr(message);
@@ -107,7 +136,7 @@ export default function UsuariosPageClient({
     } finally {
       setLoading(false);
     }
-  }, [addToast, apiBase]);
+  }, [actorLocalidadId, addToast, apiBase, isCoordinator]);
 
   useEffect(() => {
     load();
@@ -142,6 +171,9 @@ export default function UsuariosPageClient({
 
   async function saveEdit(user: UserData & { password?: string }) {
     try {
+      if (!canManageUser(user)) {
+        throw new Error("Solo puedes editar usuarios de tu localidad.");
+      }
       const nextPassword = String(user.password || "").trim();
       const body: {
         nombre: string;
@@ -157,7 +189,7 @@ export default function UsuariosPageClient({
         email: String(user.email || "").trim(),
         rol: user.rol,
         empresaId: Number(user.empresaId),
-        localidadId: Number(user.localidad?.id ?? user.localidadId),
+        localidadId: isCoordinator ? actorLocalidadId : Number(user.localidad?.id ?? user.localidadId),
       };
       if (nextPassword) body.contrasena = nextPassword;
 
@@ -186,7 +218,7 @@ export default function UsuariosPageClient({
           contrasena: values.password,
           empresaId: Number(values.empresaId),
           rol: values.rol,
-          localidadId: values.localidadId,
+          localidadId: isCoordinator ? actorLocalidadId : values.localidadId,
           activo: true,
         }),
       });
@@ -199,6 +231,9 @@ export default function UsuariosPageClient({
 
   async function changeUserStatus(user: UserData) {
     try {
+      if (!canManageUser(user)) {
+        throw new Error("Solo puedes cambiar usuarios de tu localidad.");
+      }
       const nextActivo = !user.activo;
       await fetchJSON<unknown>(`${apiBase}/usuarios/${user.id}/estado`, {
         method: "PATCH",
@@ -345,8 +380,8 @@ export default function UsuariosPageClient({
                 key={usuario.id}
                 user={usuario}
                 index={index}
-                onEdit={setEditing}
-                onStatusChange={setStatusTarget}
+                onEdit={(user) => canManageUser(user) && setEditing(user)}
+                onStatusChange={(user) => canManageUser(user) && setStatusTarget(user)}
               />
             ))}
           </div>
@@ -360,6 +395,7 @@ export default function UsuariosPageClient({
             empresas={empresas}
             localidades={formLocalidades}
             roleOptions={roleOptions}
+            lockLocalidad={isCoordinator}
             onSubmit={async (values) => {
               await createUser(values);
               setCreating(false);
@@ -377,6 +413,7 @@ export default function UsuariosPageClient({
             empresas={empresas}
             localidades={formLocalidades}
             roleOptions={roleOptions}
+            lockLocalidad={isCoordinator}
             initial={editing}
             onSubmit={async (values) => {
               await saveEdit({ ...editing, ...values, id: editing.id });

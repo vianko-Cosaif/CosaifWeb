@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Loader2, Plus, TrainFront } from "lucide-react";
+import { ArrowDown, ArrowUp, Loader2, Plus, TrainFront } from "lucide-react";
 import { Header } from "../components";
 import { fieldClass } from "../utils";
 import type { CargaVagon, VagonDraft } from "../types";
@@ -16,6 +16,9 @@ type Props = {
   onInstruccionesChange: (value: string) => void;
   onUpdateVagon: (tempId: number, patch: Partial<VagonDraft>) => void;
   onRemoveVagon: (tempId: number) => void;
+  onMoveVagon: (tempId: number, direction: "up" | "down") => void;
+  onUsePreviousRoute: (tempId: number) => void;
+  onCopyRouteToAll: (tempId: number) => void;
   onAddVagon: () => void;
   onSubmit: () => void;
 };
@@ -32,6 +35,9 @@ export function CrearView({
   onInstruccionesChange,
   onUpdateVagon,
   onRemoveVagon,
+  onMoveVagon,
+  onUsePreviousRoute,
+  onCopyRouteToAll,
   onAddVagon,
   onSubmit,
 }: Props) {
@@ -53,12 +59,12 @@ export function CrearView({
       <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid gap-4">
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-600">Instrucciones</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-600">Movimiento / operacion</label>
             <textarea
               value={instrucciones}
               onChange={(event) => onInstruccionesChange(event.target.value)}
               className="min-h-[88px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-              placeholder="Notas del arrastre"
+              placeholder="Ej. mover del origen al destino, instrucciones especiales, maniobra requerida..."
             />
           </div>
 
@@ -69,8 +75,13 @@ export function CrearView({
                 vagon={vagon}
                 index={index}
                 disableRemove={draftVagones.length === 1}
+                canMoveUp={index > 0}
+                canMoveDown={index < draftVagones.length - 1}
                 onUpdate={onUpdateVagon}
                 onRemove={onRemoveVagon}
+                onMove={onMoveVagon}
+                onUsePreviousRoute={onUsePreviousRoute}
+                onCopyRouteToAll={onCopyRouteToAll}
               />
             ))}
           </div>
@@ -99,17 +110,53 @@ function VagonDraftRow({
   vagon,
   index,
   disableRemove,
+  canMoveUp,
+  canMoveDown,
   onUpdate,
   onRemove,
+  onMove,
+  onUsePreviousRoute,
+  onCopyRouteToAll,
 }: {
   vagon: VagonDraft;
   index: number;
   disableRemove: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
   onUpdate: (tempId: number, patch: Partial<VagonDraft>) => void;
   onRemove: (tempId: number) => void;
+  onMove: (tempId: number, direction: "up" | "down") => void;
+  onUsePreviousRoute: (tempId: number) => void;
+  onCopyRouteToAll: (tempId: number) => void;
 }) {
   return (
-    <div className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[1fr_150px_120px_120px_auto] lg:items-end">
+    <div className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[88px_1fr_150px_minmax(220px,1fr)_minmax(220px,1fr)_auto] lg:items-end">
+      <div>
+        <label className="mb-1 block text-xs font-semibold text-slate-600">Orden</label>
+        <div className="flex items-center gap-1">
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-black text-slate-800">{index + 1}</span>
+          <div className="flex flex-col gap-1">
+            <button
+              type="button"
+              disabled={!canMoveUp}
+              onClick={() => onMove(vagon.tempId, "up")}
+              className="inline-flex h-[18px] w-8 items-center justify-center rounded border border-slate-300 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Subir vagon"
+            >
+              <ArrowUp className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              disabled={!canMoveDown}
+              onClick={() => onMove(vagon.tempId, "down")}
+              className="inline-flex h-[18px] w-8 items-center justify-center rounded border border-slate-300 bg-white text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Bajar vagon"
+            >
+              <ArrowDown className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+      </div>
       <div>
         <label className="mb-1 block text-xs font-semibold text-slate-600">Vagon {index + 1}</label>
         <input value={vagon.numeroVagon} onChange={(event) => onUpdate(vagon.tempId, { numeroVagon: event.target.value })} className={fieldClass()} placeholder="Numero" />
@@ -121,8 +168,22 @@ function VagonDraftRow({
           <option value="LLENO">Lleno</option>
         </select>
       </div>
-      <DraftInput label="Via" value={vagon.viaId} onChange={(value) => onUpdate(vagon.tempId, { viaId: value })} />
-      <DraftInput label="Seccion" value={vagon.seccionId} onChange={(value) => onUpdate(vagon.tempId, { seccionId: value })} />
+      <div className="grid gap-2 rounded-md border border-slate-200 bg-white p-2 sm:grid-cols-2">
+        <div className="sm:col-span-2 flex flex-wrap gap-2">
+          <button type="button" disabled={!canMoveUp} onClick={() => onUsePreviousRoute(vagon.tempId)} className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-bold text-slate-600 disabled:cursor-not-allowed disabled:opacity-40">
+            Usar ruta anterior
+          </button>
+          <button type="button" onClick={() => onCopyRouteToAll(vagon.tempId)} className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700">
+            Copiar ruta a todos
+          </button>
+        </div>
+        <DraftInput label="Via origen" value={vagon.viaOrigenId} onChange={(value) => onUpdate(vagon.tempId, { viaOrigenId: value })} />
+        <DraftInput label="Seccion origen" value={vagon.seccionOrigenId} onChange={(value) => onUpdate(vagon.tempId, { seccionOrigenId: value })} />
+      </div>
+      <div className="grid gap-2 rounded-md border border-slate-200 bg-white p-2 sm:grid-cols-2">
+        <DraftInput label="Via destino" value={vagon.viaId} onChange={(value) => onUpdate(vagon.tempId, { viaId: value })} />
+        <DraftInput label="Seccion destino" value={vagon.seccionId} onChange={(value) => onUpdate(vagon.tempId, { seccionId: value })} />
+      </div>
       <button type="button" onClick={() => onRemove(vagon.tempId)} disabled={disableRemove} className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50">
         Quitar
       </button>
@@ -134,7 +195,7 @@ function DraftInput({ label, value, onChange }: { label: string; value: string; 
   return (
     <div>
       <label className="mb-1 block text-xs font-semibold text-slate-600">{label}</label>
-      <input value={value} onChange={(event) => onChange(event.target.value)} className={fieldClass()} inputMode="numeric" placeholder={label} />
+      <input value={value} onChange={(event) => onChange(event.target.value)} className={fieldClass()} placeholder={label} />
     </div>
   );
 }

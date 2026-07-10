@@ -304,7 +304,7 @@ export default function Filtros({
           }`}
       >
         <div className={abierto ? "overflow-visible" : "overflow-hidden"}>
-          <div className="rounded-xl border border-slate-100 dark:border-slate-800/60 bg-slate-50/40 dark:bg-slate-900/30 p-3 sm:p-4">
+          <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-3 sm:p-4">
             <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-12 items-end">
               {/* Empresa */}
               <div className="min-w-0 xl:col-span-3">
