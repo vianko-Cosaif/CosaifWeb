@@ -101,8 +101,8 @@ export default function TornoMeasureCopyPasteDialog<Position extends string, Fie
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[100010] flex items-end justify-center bg-black/45 p-3 sm:items-center">
-      <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
+    <div className="fixed inset-0 z-[100010] flex items-end justify-center overflow-hidden bg-black/45 p-2 sm:items-center sm:p-3">
+      <div className="flex max-h-[calc(100dvh-1rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
         <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
@@ -127,7 +127,7 @@ export default function TornoMeasureCopyPasteDialog<Position extends string, Fie
           </div>
         </div>
 
-        <div className="max-h-[65vh] overflow-y-auto px-3 py-3">
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3 sm:px-3">
           <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100">
             Abre una rueda, marca una o varias propiedades y pega la medida origen en todos los destinos seleccionados.
           </div>
@@ -141,7 +141,7 @@ export default function TornoMeasureCopyPasteDialog<Position extends string, Fie
 
               return (
                 <div key={`copy_${position}`} className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40">
-                  <div className="flex items-center gap-2 px-3 py-2">
+                  <div className="flex min-w-0 flex-col gap-2 px-2 py-2 min-[420px]:flex-row min-[420px]:items-center sm:px-3">
                     <button
                       type="button"
                       onClick={() => toggleAccordion(position)}
@@ -179,7 +179,7 @@ export default function TornoMeasureCopyPasteDialog<Position extends string, Fie
                       type="button"
                       onClick={() => toggleWheelTargets(position)}
                       className={Movimiento.clsx(
-                        "rounded-lg border px-3 py-2 text-xs font-semibold transition-colors",
+                        "w-full rounded-lg border px-3 py-2 text-xs font-semibold transition-colors min-[420px]:w-auto",
                         allSelected
                           ? "border-sky-500 bg-sky-600 text-white"
                           : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
@@ -235,9 +235,9 @@ export default function TornoMeasureCopyPasteDialog<Position extends string, Fie
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-900 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between sm:px-4">
           <span className="text-xs text-slate-600 dark:text-slate-300">{targets.length} destino(s) seleccionado(s)</span>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-2 gap-2 min-[420px]:flex min-[420px]:flex-wrap">
             <button
               type="button"
               onClick={resetAndCancel}

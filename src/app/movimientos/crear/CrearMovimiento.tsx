@@ -231,7 +231,7 @@ export default function CrearMovimiento() {
     return "Genera el PDF o vuelve a editar las mediciones del torno.";
   }, [step, useTornoMedicionStep]);
   const contentMaxWidth = guidedMode
-    ? "max-w-[680px]"
+    ? "max-w-5xl"
     : useTornoMedicionStep
       ? "max-w-7xl"
       : "max-w-4xl";
@@ -313,7 +313,7 @@ export default function CrearMovimiento() {
 
   return (
       <div className={Movimiento.clsx(
-        "min-h-screen text-slate-900 dark:text-white transition-colors duration-200 p-4 md:p-6 lg:p-8",
+        "min-h-screen overflow-x-hidden p-2 text-slate-900 transition-colors duration-200 dark:text-white min-[380px]:p-3 sm:p-4 md:p-6 lg:p-8",
         guidedMode
           ? "bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_34%),linear-gradient(135deg,#f8fafc,#ffffff)] dark:bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.12),transparent_34%),linear-gradient(135deg,#09090b,#18181b)]"
           : "bg-gradient-to-br from-slate-50 to-white dark:from-zinc-950 dark:to-zinc-900"
@@ -346,10 +346,10 @@ export default function CrearMovimiento() {
       <div
         data-guide-movement-variant={useTornoMedicionStep ? "torno" : "standard"}
         data-guide-movement-step={step}
-        className={Movimiento.clsx("relative z-10 mx-auto", contentMaxWidth)}
+        className={Movimiento.clsx("relative z-10 mx-auto w-full min-w-0", contentMaxWidth)}
       >
 
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="mb-4 flex min-w-0 flex-wrap items-center gap-2">
           <Badge tone={online ? "ok" : "error"}>{online ? "En línea" : "Sin conexión"}</Badge>
           <RoleBadge rol={rol} canManageAll={canManageAll} />
           {pendingCount > 0 && (
@@ -381,14 +381,14 @@ export default function CrearMovimiento() {
           </button>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/25">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 5v14M5 12h14" />
             </svg>
           </div>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight bg-gradient-to-r from-slate-900 to-slate-600 dark:from-zinc-100 dark:to-zinc-400 bg-clip-text text-transparent">
+          <div className="min-w-0">
+            <h1 className="break-words text-xl font-bold tracking-tight bg-gradient-to-r from-slate-900 to-slate-600 dark:from-zinc-100 dark:to-zinc-400 bg-clip-text text-transparent sm:text-2xl">
               {pageTitle}
             </h1>
             <p className="text-xs text-slate-500 dark:text-zinc-400">{label}</p>
@@ -406,14 +406,14 @@ export default function CrearMovimiento() {
         {/* Stepper declarativo (sin estado local extra). */}
         <GuidedTarget id="create-movement-stepper">
         <div className={Movimiento.clsx(
-          "mt-5 flex items-center justify-center gap-0",
-          guidedMode && "rounded-3xl border border-emerald-100 bg-white/80 p-4 shadow-sm shadow-emerald-100/60 backdrop-blur dark:border-emerald-900/40 dark:bg-zinc-950/70 dark:shadow-none"
+          "mt-5 flex min-w-0 items-center justify-center gap-0",
+          guidedMode && "rounded-2xl border border-emerald-100 bg-white/80 p-2 shadow-sm shadow-emerald-100/60 backdrop-blur dark:border-emerald-900/40 dark:bg-zinc-950/70 dark:shadow-none min-[380px]:p-3 sm:rounded-3xl sm:p-4"
         )} aria-label="Progreso">
           {stepNames.map((stepName, i) => {
             const s = i + 1;
             return (
             <React.Fragment key={s}>
-              <div className="flex flex-col items-center gap-1">
+              <div className="flex min-w-0 flex-1 basis-0 flex-col items-center gap-1 sm:flex-none">
                 <div
                   className={Movimiento.clsx(
                     "flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold transition-all duration-300",
@@ -427,14 +427,14 @@ export default function CrearMovimiento() {
                   {s < step ? "✓" : s}
                 </div>
                 <span className={Movimiento.clsx(
-                  "text-[10px] font-semibold transition-colors",
+                  "max-w-full truncate text-[9px] font-semibold transition-colors min-[380px]:text-[10px]",
                   s <= step ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-zinc-500"
                 )}>
                   {stepName}
                 </span>
               </div>
               {i < stepNames.length - 1 && (
-                <div className="flex-1 mx-2 mb-4">
+                <div className="mx-1 mb-4 min-w-2 flex-1 sm:mx-2">
                   <div className="h-0.5 rounded-full bg-slate-200 dark:bg-zinc-700 overflow-hidden">
                     <div
                       className="h-full rounded-full bg-emerald-500 transition-all duration-500"
@@ -450,20 +450,20 @@ export default function CrearMovimiento() {
         </GuidedTarget>
 
         {guidedMode && (
-          <div className="mt-5 overflow-hidden rounded-[28px] border border-emerald-100 bg-white/90 p-5 shadow-xl shadow-emerald-100/40 backdrop-blur dark:border-emerald-900/40 dark:bg-zinc-950/80 dark:shadow-none">
+          <div className="mt-5 min-w-0 overflow-hidden rounded-2xl border border-emerald-100 bg-white/90 p-3 shadow-xl shadow-emerald-100/40 backdrop-blur dark:border-emerald-900/40 dark:bg-zinc-950/80 dark:shadow-none sm:rounded-[28px] sm:p-5">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
+              <div className="min-w-0">
                 <div className="text-xs font-black uppercase tracking-[0.22em] text-emerald-600 dark:text-emerald-300">
                   Flujo guiado
                 </div>
-                <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950 dark:text-white">
+                <h2 className="mt-1 break-words text-xl font-black tracking-tight text-slate-950 dark:text-white sm:text-2xl">
                   {guidedStepTitle}
                 </h2>
                 <p className="mt-1 max-w-2xl text-sm font-medium text-slate-500 dark:text-zinc-400">
                   {guidedStepDescription}
                 </p>
               </div>
-              <div className="min-w-[150px] rounded-2xl bg-emerald-50 p-4 text-center dark:bg-emerald-950/30">
+              <div className="w-full rounded-2xl bg-emerald-50 p-3 text-center dark:bg-emerald-950/30 sm:w-auto sm:min-w-[150px] sm:p-4">
                 <div className="text-3xl font-black text-emerald-700 dark:text-emerald-300">{guidedProgress}%</div>
                 <div className="text-xs font-bold uppercase tracking-wide text-emerald-700/70 dark:text-emerald-300/70">
                   completado
@@ -482,7 +482,7 @@ export default function CrearMovimiento() {
         {/* Contenido de steps (1,2,3) desacoplado en componentes especializados. */}
         <GuidedTarget id="create-movement-step-content">
         <div className={Movimiento.clsx(
-          "mt-6 border backdrop-blur-sm p-5 sm:p-6 transition-colors",
+          "mt-4 min-w-0 overflow-hidden border p-3 backdrop-blur-sm transition-colors min-[380px]:p-4 sm:mt-6 sm:p-6",
           guidedMode
             ? "rounded-[28px] border-emerald-100 bg-white/95 shadow-2xl shadow-emerald-100/50 dark:border-emerald-900/40 dark:bg-zinc-950/90 dark:shadow-none"
             : "rounded-2xl border-slate-200/80 dark:border-zinc-800/60 bg-white/95 dark:bg-zinc-950/90 shadow-xl shadow-slate-200/30 dark:shadow-zinc-900/30"
@@ -587,10 +587,10 @@ export default function CrearMovimiento() {
         </GuidedTarget>
 
         {/* Navegacion declarativa del wizard. */}
-        <div className="mt-5 flex flex-wrap gap-3">
+        <div className="mt-5 flex min-w-0 flex-wrap gap-2 sm:gap-3">
           <button
             onClick={clearAction}
-            className="rounded-xl border border-slate-200 dark:border-zinc-700 px-4 py-2.5 text-sm font-medium text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all active:scale-[0.97]"
+            className="min-h-11 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-600 transition-all hover:bg-slate-50 active:scale-[0.97] dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 min-[420px]:flex-none sm:px-4"
           >
             {clearLabel}
           </button>
@@ -599,18 +599,18 @@ export default function CrearMovimiento() {
             <button
               onClick={guidedGoPrev}
               data-guide-action="create-movement-prev"
-              className="rounded-xl border border-amber-300 dark:border-amber-700 px-4 py-2.5 text-sm font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all active:scale-[0.97]"
+              className="min-h-11 flex-1 rounded-xl border border-amber-300 px-3 py-2.5 text-sm font-medium text-amber-700 transition-all hover:bg-amber-50 active:scale-[0.97] dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/20 min-[420px]:flex-none sm:px-4"
             >
               ← Anterior
             </button>
           )}
 
           {showNextButton && (
-            <GuidedTarget id="create-movement-next-step" className="inline-flex">
+            <GuidedTarget id="create-movement-next-step" className="inline-flex min-w-0 flex-1 min-[420px]:flex-none">
               <button
                 onClick={guidedGoNext}
                 data-guide-action="create-movement-next"
-                className="rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:from-emerald-600 hover:to-emerald-700 transition-all active:scale-[0.97]"
+                className="min-h-11 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 transition-all hover:from-emerald-600 hover:to-emerald-700 hover:shadow-emerald-500/40 active:scale-[0.97] sm:px-5"
               >
                 {guidedNextLabel}
               </button>
@@ -621,7 +621,7 @@ export default function CrearMovimiento() {
           <button
             onClick={goSalir}
             data-guide-action="create-movement-exit"
-            className="ml-auto rounded-xl border border-rose-200 dark:border-rose-800 px-4 py-2.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all active:scale-95"
+            className="min-h-11 flex-1 rounded-xl border border-rose-200 px-3 py-2.5 text-sm font-medium text-rose-600 transition-all hover:bg-rose-50 active:scale-95 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-900/20 min-[420px]:ml-auto min-[420px]:flex-none sm:px-4"
             title="Volver a mis movimientos"
           >
             Salir

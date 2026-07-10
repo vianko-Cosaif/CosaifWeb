@@ -21,6 +21,7 @@ import type {
   TornoServiceStatus,
   TornoWheelSide,
   TornoWheelStatus,
+  TornoWheelCount,
   TornoWheelWork,
   TornoWorkSummary,
 } from "./types";
@@ -201,6 +202,11 @@ function normalizePosition(input: any): TornoMeasurePosition | null {
   return MEASURE_POSITIONS.includes(composed) ? composed : null;
 }
 
+function normalizeWheelCount(input: any): TornoWheelCount | undefined {
+  const value = Number(input);
+  return value === 4 || value === 6 || value === 8 || value === 12 ? value : undefined;
+}
+
 export function normalizeMeasures(input: any): TornoMeasures {
   const measures: TornoMeasures = {};
   if (!input) return measures;
@@ -214,6 +220,11 @@ export function normalizeMeasures(input: any): TornoMeasures {
   }
 
   if (typeof input === "object") {
+    const wheelCount = normalizeWheelCount(
+      input.wheelCount ?? input.cantidadRuedas ?? input.totalWheels ?? input.numeroRuedas
+    );
+    if (wheelCount) measures.wheelCount = wheelCount;
+
     for (const position of MEASURE_POSITIONS) {
       const lower = position.toLowerCase();
       const raw = input[position] ?? input[lower] ?? input[position.replace("", "")];
@@ -272,6 +283,12 @@ function normalizeWheelWork(input: any): TornoWheelWork {
 function normalizeWorkSummary(input: any): TornoWorkSummary | null {
   const source = input?.torno ?? input?.tornoG ?? input;
   if (!source) return null;
+  const requestedWheelCount = normalizeWheelCount(
+    input?.medidasSolicitadas?.wheelCount ??
+      input?.ruedaSolicitud?.wheelCount ??
+      input?.wheelCount ??
+      input?.cantidadRuedas
+  );
   const rawWheels = source.detalleRuedas ?? source.wheels ?? source.ruedas ?? [];
   const wheels = Array.isArray(rawWheels)
     ? rawWheels
@@ -283,7 +300,10 @@ function normalizeWorkSummary(input: any): TornoWorkSummary | null {
   return {
     id: source.id,
     status: source.estado ?? source.status,
-    totalWheels: Number(source.cantidadRuedas ?? source.totalWheels ?? wheels.length) || wheels.length,
+    totalWheels:
+      Number(source.cantidadRuedas ?? source.totalWheels ?? requestedWheelCount ?? wheels.length) ||
+      requestedWheelCount ||
+      wheels.length,
     completedWheels:
       Number(source.ruedasTerminadas ?? source.completedWheels) ||
       wheels.filter((wheel) => upper(wheel.status) === "TERMINADO").length,

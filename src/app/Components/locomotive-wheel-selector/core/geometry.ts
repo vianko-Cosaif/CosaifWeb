@@ -3,6 +3,11 @@ import { getAxleCount, normalizeWheels } from './wheelFactory';
 
 export const VIEWBOX_WIDTH = 420;
 export const VIEWBOX_HEIGHT = 760;
+const SIDE_SVG_SCALE = 0.51;
+const SIDE_SVG_TRANSLATE_X = -82;
+const SIDE_SVG_TRANSLATE_X_HORIZONTAL = 90;
+const SIDE_FRONT_AXLE_SOURCE_RANGE = [220, 500] as const;
+const SIDE_REAR_AXLE_SOURCE_RANGE = [660, 920] as const;
 
 export interface DiagramMetrics {
   width: number;
@@ -91,34 +96,37 @@ export function getWheelPoints(
     }
 
     const axleCount = Math.max(1, wheelCount / 2);
-    const sideSvgScale = 0.51;
-    const sideSvgTranslateX = orientation === 'horizontal' ? 90 : -82;
-    const sideCanvasWidth = orientation === 'horizontal' ? 760 : 420;
-    const sideWheelXFromReference = (sourceX: number) => {
-      const x = sideSvgTranslateX + sourceX * sideSvgScale;
-      return viewMode === 'right' ? sideCanvasWidth - x : x;
+    const frontAxleCount = Math.ceil(axleCount / 2);
+    const rearAxleCount = axleCount - frontAxleCount;
+    const sideCanvasWidth = orientation === 'horizontal' ? VIEWBOX_HEIGHT : VIEWBOX_WIDTH;
+    const sideTranslateX = orientation === 'horizontal'
+      ? SIDE_SVG_TRANSLATE_X_HORIZONTAL
+      : SIDE_SVG_TRANSLATE_X;
+    const fromSideSvgX = (sourceX: number) => sideTranslateX + sourceX * SIDE_SVG_SCALE;
+    const buildUniformRange = (start: number, end: number, count: number) => {
+      if (count <= 0) return [];
+      if (count === 1) return [(start + end) / 2];
+      const gap = (end - start) / (count - 1);
+      return Array.from({ length: count }, (_, index) => start + gap * index);
     };
-    const sideWheelXByAxleCount: Record<number, number[]> = {
-      2: [sideWheelXFromReference(240), sideWheelXFromReference(930)],
-      3: [sideWheelXFromReference(142), sideWheelXFromReference(240), sideWheelXFromReference(930)],
-      4: [
-        sideWheelXFromReference(142),
-        sideWheelXFromReference(240),
-        sideWheelXFromReference(835),
-        sideWheelXFromReference(930),
-      ],
-      6: [142, 240, 338, 835, 930, 1025].map(sideWheelXFromReference),
-    };
-    const sideWheelXs = sideWheelXByAxleCount[axleCount] ?? Array.from(
-      { length: axleCount },
-      (_, index) => 64 + (301 / Math.max(1, axleCount - 1)) * index,
-    );
+    const sideWheelXs = [
+      ...buildUniformRange(
+        fromSideSvgX(SIDE_FRONT_AXLE_SOURCE_RANGE[0]),
+        fromSideSvgX(SIDE_FRONT_AXLE_SOURCE_RANGE[1]),
+        frontAxleCount,
+      ),
+      ...buildUniformRange(
+        fromSideSvgX(SIDE_REAR_AXLE_SOURCE_RANGE[0]),
+        fromSideSvgX(SIDE_REAR_AXLE_SOURCE_RANGE[1]),
+        rearAxleCount,
+      ),
+    ].map((x) => (viewMode === 'right' ? sideCanvasWidth - x : x));
 
     return {
       ...wheel,
       x: sideWheelXs[wheel.axleIndex - 1] ?? metrics.centerX,
       y: 212,
-      radius: visualStatus === 'selected' ? 27 : 23,
+      radius: visualStatus === 'selected' ? 21 : 17,
       visible: viewMode === 'left' ? wheel.side === 'left' : wheel.side === 'right',
       visualStatus,
     };

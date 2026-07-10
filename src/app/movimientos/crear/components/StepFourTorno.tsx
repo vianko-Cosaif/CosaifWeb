@@ -81,9 +81,9 @@ export default function StepFourTorno(props: StepFourTornoProps) {
   ];
 
   return (
-    <div className="grid gap-4">
+    <div className="grid min-w-0 gap-4">
       <GuidedTarget id="create-movement-torno-pdf-summary">
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-xl shadow-slate-200/40 dark:border-slate-800 dark:bg-[#0d1117] dark:text-slate-100 dark:shadow-zinc-900/30 sm:p-5">
+      <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 text-slate-900 shadow-xl shadow-slate-200/40 dark:border-slate-800 dark:bg-[#0d1117] dark:text-slate-100 dark:shadow-zinc-900/30 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-700">
           <div>
             <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Resumen de Medidas</h3>
@@ -98,7 +98,10 @@ export default function StepFourTorno(props: StepFourTornoProps) {
           </div>
         </div>
 
-        <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+        <p className="mt-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 sm:hidden">
+          Desliza horizontalmente para consultar todas las medidas.
+        </p>
+        <div className="mt-2 w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 sm:mt-3">
           <DynamicTable
             data={tableData}
             columns={tableColumns}

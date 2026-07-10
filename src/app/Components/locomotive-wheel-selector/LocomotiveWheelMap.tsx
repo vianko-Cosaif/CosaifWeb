@@ -23,101 +23,69 @@ function TopLocomotiveBody({
   wheelCount, 
   viewMode,
   orientation,
-}: Pick<LocomotiveMapProps, 'wheelCount' | 'viewMode'> & OrientationProps) {
-  const metrics = getDiagramMetrics(viewMode);
+  theme,
+}: Pick<LocomotiveMapProps, 'wheelCount' | 'viewMode'> & OrientationProps & {
+  theme: ReturnType<typeof resolveTheme>;
+}) {
   const bogies = getBogieRanges(wheelCount, viewMode);
-
-  const getRectProps = (x: number, y: number, w: number, h: number) => {
-    return orientation === 'horizontal'
-      ? { x: y, y: x, width: h, height: w }
-      : { x, y, width: w, height: h };
-  };
-
-  const getCircleProps = (cx: number, cy: number, r: number) => {
-    return orientation === 'horizontal'
-      ? { cx: cy, cy: cx, r }
-      : { cx, cy, r };
-  };
-
-  const getTextProps = (x: number, y: number) => {
-    return orientation === 'horizontal'
-      ? { x: y, y: x }
-      : { x, y };
-  };
+  const scale = 0.68;
+  const topTransform = orientation === 'horizontal'
+    ? `translate(91 136) scale(${scale})`
+    : `translate(283 91) rotate(90) scale(${scale})`;
+  const base = theme.colors.primary;
+  const baseDeep = 'var(--loco-map-accent-shadow)';
+  const baseDark = theme.colors.machineStroke;
+  const baseLight = theme.colors.primarySoft;
+  const baseGlow = 'var(--loco-map-accent-highlight)';
+  const metal = theme.colors.machineStroke;
 
   return (
     <>
-      {orientation === 'horizontal' ? (
-        <text x="72" y="210" textAnchor="middle" fontSize="11" fontWeight="700" fill="#64748B" className="select-none">
-          ← FRENTE
-        </text>
-      ) : (
-        <text x="210" y="72" textAnchor="middle" fontSize="11" fontWeight="700" fill="#64748B" className="select-none">
-          FRENTE ↑
-        </text>
-      )}
+      <g className="loco-map-body" transform={topTransform}>
+        <rect x="-18" y="112" width="836" height="42" rx="18" fill="#020617" opacity="0.16" />
+        <rect x="-20" y="95" width="40" height="30" fill={metal} rx="4" />
+        <rect x="780" y="95" width="40" height="30" fill={metal} rx="4" />
+
+        <rect x="0" y="20" width="800" height="180" fill={baseDeep} rx="8" />
+        <rect x="6" y="28" width="788" height="34" fill={baseLight} opacity="0.22" rx="7" />
+        <rect x="0" y="150" width="800" height="50" fill={baseDeep} opacity="0.7" rx="8" />
+        <line x1="10" y1="35" x2="790" y2="35" stroke={baseGlow} strokeWidth="2" strokeDasharray="10 5" opacity="0.95" />
+        <line x1="10" y1="185" x2="790" y2="185" stroke={baseGlow} strokeWidth="2" strokeDasharray="10 5" opacity="0.75" />
+
+        <rect x="250" y="45" width="530" height="130" fill={baseDark} />
+        <rect x="260" y="60" width="510" height="100" fill={base} />
+        <rect x="260" y="60" width="510" height="28" fill={baseLight} opacity="0.32" />
+        <rect x="260" y="140" width="510" height="20" fill={baseDeep} opacity="0.36" />
+
+        <rect x="30" y="30" width="190" height="160" fill={baseDark} rx="4" />
+        <rect x="40" y="45" width="160" height="130" fill={base} rx="4" />
+        <rect x="42" y="47" width="156" height="28" fill={baseLight} opacity="0.34" rx="4" />
+        <rect x="40" y="145" width="160" height="30" fill={baseDeep} opacity="0.34" rx="4" />
+        <rect x="70" y="70" width="80" height="80" fill={baseDeep} rx="4" />
+        <rect x="80" y="80" width="60" height="60" fill={baseDark} rx="2" />
+        <rect x="86" y="86" width="48" height="16" fill={baseLight} opacity="0.28" rx="2" />
+
+        <rect x="220" y="45" width="30" height="130" fill={baseDeep} opacity="0.72" />
+
+        {[300, 420, 540, 660].map((x, index) => (
+          <g key={`top-module-${index}`}>
+            <rect x={x} y="75" width="70" height="70" fill={baseDeep} rx="4" />
+            <rect x={x + 5} y="80" width="60" height="18" fill={baseLight} opacity="0.24" rx="3" />
+            <circle cx={x + 35} cy="110" r="25" fill={metal} />
+            <circle cx={x + 35} cy="110" r="15" fill={baseDark} />
+            <circle cx={x + 30} cy="105" r="7" fill={baseGlow} opacity="0.28" />
+          </g>
+        ))}
+      </g>
 
       <rect
-        {...getRectProps(metrics.bodyX, metrics.bodyY, metrics.bodyWidth, metrics.bodyHeight)}
-        rx="28"
-        fill="#F8FAFC"
-        stroke="#475569"
-        strokeWidth="2"
-      />
-
-      <rect
-        {...getRectProps(metrics.bodyX + 10, metrics.bodyY + 12, metrics.bodyWidth - 20, 88)}
-        rx="14"
-        fill="#FFFFFF"
-        stroke="#CBD5E1"
-        strokeWidth="2"
-      />
-
-      <text 
-        {...getTextProps(210, metrics.bodyY + 62)}
-        textAnchor="middle" 
-        fontSize="13" 
-        fontWeight="800" 
-        fill="#334155" 
-        className="select-none"
-      >
-        CABINA
-      </text>
-
-      <rect
-        {...getRectProps(metrics.bodyX + 22, metrics.bodyY + 142, metrics.bodyWidth - 44, 248)}
-        rx="14"
-        fill="#FFFFFF"
-        stroke="#CBD5E1"
-        strokeWidth="2"
-      />
-
-      <text 
-        {...getTextProps(210, metrics.bodyY + 260)}
-        textAnchor="middle" 
-        fontSize="12" 
-        fontWeight="700" 
-        fill="#64748B" 
-        className="select-none"
-      >
-        MOTOR
-      </text>
-
-      {[0, 1, 2].map(index => (
-        <circle
-          key={index}
-          {...getCircleProps(210, metrics.bodyY + 190 + index * 64, 20)}
-          fill="#F1F5F9"
-          stroke="#94A3B8"
-          strokeWidth="1.5"
-        />
-      ))}
-
-      <rect
-        {...getRectProps(bogies.front.x, bogies.front.y, bogies.front.width, bogies.front.height)}
+        x={orientation === 'horizontal' ? bogies.front.y : bogies.front.x}
+        y={orientation === 'horizontal' ? bogies.front.x : bogies.front.y}
+        width={orientation === 'horizontal' ? bogies.front.height : bogies.front.width}
+        height={orientation === 'horizontal' ? bogies.front.width : bogies.front.height}
         rx="16"
         fill="none"
-        stroke="#0B63CE"
+        stroke={theme.colors.primary}
         strokeWidth="2"
         strokeDasharray="8 6"
         opacity="0.65"
@@ -125,25 +93,19 @@ function TopLocomotiveBody({
 
       {bogies.rear && (
         <rect
-          {...getRectProps(bogies.rear.x, bogies.rear.y, bogies.rear.width, bogies.rear.height)}
+          x={orientation === 'horizontal' ? bogies.rear.y : bogies.rear.x}
+          y={orientation === 'horizontal' ? bogies.rear.x : bogies.rear.y}
+          width={orientation === 'horizontal' ? bogies.rear.height : bogies.rear.width}
+          height={orientation === 'horizontal' ? bogies.rear.width : bogies.rear.height}
           rx="16"
           fill="none"
-          stroke="#0B63CE"
+          stroke={theme.colors.primary}
           strokeWidth="2"
           strokeDasharray="8 6"
           opacity="0.45"
         />
       )}
 
-      {orientation === 'horizontal' ? (
-        <text x="696" y="210" textAnchor="middle" fontSize="11" fontWeight="700" fill="#64748B" className="select-none">
-          TRASERA →
-        </text>
-      ) : (
-        <text x="210" y="696" textAnchor="middle" fontSize="11" fontWeight="700" fill="#64748B" className="select-none">
-          TRASERA ↓
-        </text>
-      )}
     </>
   );
 }
@@ -363,9 +325,13 @@ function SideLocomotiveBodyReferenceSvg({
   theme: ReturnType<typeof resolveTheme>;
   rotateForPortrait?: boolean;
 }) {
-  const sideLabel = viewMode === 'left' ? 'COSTADO IZQUIERDO' : 'COSTADO DERECHO';
   const canvasWidth = orientation === 'horizontal' ? VIEWBOX_HEIGHT : VIEWBOX_WIDTH;
-  const locoFill = theme.colors.text;
+  const locoFill = theme.colors.primary;
+  const locoShadow = theme.colors.machineStroke;
+  const locoDark = theme.colors.machineStroke;
+  const locoDeep = 'var(--loco-map-accent-shadow)';
+  const locoHighlight = theme.colors.primarySoft;
+  const locoSoftHighlight = 'var(--loco-map-accent-highlight)';
   const cutFill = theme.colors.background;
   const cutStroke = theme.colors.background;
   const sideScale = 0.51;
@@ -381,12 +347,22 @@ function SideLocomotiveBodyReferenceSvg({
 
   return (
     <>
-      <text x={canvasWidth / 2} y="84" textAnchor="middle" fontSize="12" fontWeight="900" fill={theme.colors.text} className="select-none">
-        {sideLabel}
-      </text>
-
       <g transform={rotateForPortrait ? portraitRotation : undefined}>
-        <g transform={sideTransform}>
+        <g className="loco-map-body" transform={sideTransform}>
+        <g opacity="0.18" transform="translate(8 28)">
+          <path
+            d="M88 276 H1050 C1076 276 1090 284 1104 300 H64 C72 288 78 282 88 276 Z"
+            fill="#020617"
+          />
+        </g>
+        <g opacity="0.34" transform="translate(0 16)">
+          <path
+            d="M72 224 H1072 V275 H1040 V266 H1032 L1028 257 H792 L787 266 H760 V275 H418 V266 H391 L386 257 H142 L137 266 H105 V275 H72 Z"
+            fill={locoShadow}
+          />
+          <path d="M92 126 L111 72 H225 V52 H346 V74 H352 V138 H270 V224 H72 V150 H88 Z" fill={locoShadow} />
+          <path d="M270 64 H530 V102 H570 L608 66 H1048 L1055 86 H1088 V225 H270 Z" fill={locoShadow} />
+        </g>
         <g>
           <path d="M20 228 H42 V178 C42 170 48 165 54 165 C60 165 66 170 66 178 V228 H75 V236 H8 V228 Z" fill={locoFill} />
           <path d="M1082 228 H1091 V178 C1091 170 1097 165 1103 165 C1109 165 1115 170 1115 178 V228 H1137 V236 H1072 V228 Z" fill={locoFill} />
@@ -407,9 +383,20 @@ function SideLocomotiveBodyReferenceSvg({
           d="M72 224 H1072 V275 H1040 V266 H1032 L1028 257 H792 L787 266 H760 V275 H418 V266 H391 L386 257 H142 L137 266 H105 V275 H72 Z"
           fill={locoFill}
         />
+        <path d="M78 230 H1066 V244 H78 Z" fill={locoHighlight} opacity="0.34" />
+        <path d="M86 218 H1060" fill="none" stroke={locoSoftHighlight} strokeWidth="4" opacity="0.28" strokeLinecap="round" />
+        <path
+          d="M72 266 H1072 V275 H1040 V266 H1032 L1028 257 H792 L787 266 H760 V275 H418 V266 H391 L386 257 H142 L137 266 H105 V275 H72 Z"
+          fill={locoDeep}
+          opacity="0.58"
+        />
+        <path d="M72 248 H1072 V258 H72 Z" fill={locoDark} opacity="0.24" />
 
         <g>
           <path d="M92 126 L111 72 H225 V52 H346 V74 H352 V138 H270 V224 H72 V150 H88 Z" fill={locoFill} />
+          <path d="M96 132 L116 82 H225 V64 H342 V74 H348 V92 H112 L96 132 Z" fill={locoHighlight} opacity="0.38" />
+          <path d="M76 184 H270 V224 H72 V150 H88 Z" fill={locoDeep} opacity="0.22" />
+          <path d="M108 74 H226 V88 H102 Z" fill={locoSoftHighlight} opacity="0.34" />
           <path d="M92 126 L111 72" fill="none" stroke={cutStroke} strokeWidth="5" strokeLinecap="square" />
           <path d="M72 150 V210 L80 236" fill="none" stroke={cutStroke} strokeWidth="5" strokeLinecap="square" />
           <rect x="142" y="42" width="120" height="18" fill={locoFill} />
@@ -420,16 +407,19 @@ function SideLocomotiveBodyReferenceSvg({
 
         <g>
           <path d="M270 64 H530 V102 H570 L608 66 H1048 L1055 86 H1088 V225 H270 Z" fill={locoFill} />
+          <path d="M286 74 H520 V108 H566 L606 74 H1036 L1042 90 H1080 V104 H608 L570 140 H270 V74 Z" fill={locoHighlight} opacity="0.28" />
+          <path d="M270 178 H1088 V225 H270 Z" fill={locoDeep} opacity="0.24" />
+          <path d="M300 64 H530 V78 H300 Z M610 66 H1040 L1046 82 H600 Z" fill={locoSoftHighlight} opacity="0.32" />
           <path d="M570 102 L608 66" fill="none" stroke={cutStroke} strokeWidth="5" strokeLinecap="square" />
 
           <rect x="300" y="74" width="200" height="42" fill={cutFill} />
           {[306, 346, 386, 426, 466].map(x => (
-            <rect key={`upper-left-panel-${x}`} x={x} y="74" width="34" height="38" fill={locoFill} />
+            <rect key={`upper-left-panel-${x}`} x={x} y="74" width="34" height="38" fill={locoDark} opacity="0.78" />
           ))}
 
           <rect x="780" y="112" width="230" height="48" fill={cutFill} />
-          <rect x="786" y="118" width="106" height="36" fill={locoFill} />
-          <rect x="898" y="118" width="106" height="36" fill={locoFill} />
+          <rect x="786" y="118" width="106" height="36" fill={locoDark} opacity="0.82" />
+          <rect x="898" y="118" width="106" height="36" fill={locoDark} opacity="0.82" />
 
           <rect x="1030" y="154" width="70" height="70" fill={cutFill} />
           <rect x="1037" y="162" width="50" height="36" fill={locoFill} />
@@ -461,11 +451,14 @@ function SideLocomotiveBodyReferenceSvg({
 
         <g>
           <rect x="422" y="246" width="330" height="54" fill={locoFill} />
+          <rect x="422" y="276" width="330" height="24" fill={locoDeep} opacity="0.5" />
+          <rect x="432" y="250" width="310" height="8" fill={locoSoftHighlight} opacity="0.25" />
           <line x1="430" y1="246" x2="744" y2="246" stroke={cutStroke} strokeWidth="3" strokeLinecap="square" />
         </g>
 
         <g>
           <path d="M105 266 L114 256 H190 V248 H205 V256 H288 V248 H303 V256 H382 L392 266 V286 H105 Z" fill={locoFill} />
+          <path d="M105 274 H392 V286 H105 Z" fill={locoDeep} opacity="0.48" />
           <path d="M175 286 H220 V304 H175 Z" fill={locoFill} />
           <path d="M270 286 H315 V304 H270 Z" fill={locoFill} />
           <line x1="105" y1="266" x2="392" y2="266" stroke={cutStroke} strokeWidth="3" strokeLinecap="square" />
@@ -473,6 +466,7 @@ function SideLocomotiveBodyReferenceSvg({
 
         <g>
           <path d="M790 266 L800 256 H872 V248 H887 V256 H966 V248 H981 V256 H1042 L1052 266 V286 H790 Z" fill={locoFill} />
+          <path d="M790 274 H1052 V286 H790 Z" fill={locoDeep} opacity="0.48" />
           <path d="M862 286 H907 V304 H862 Z" fill={locoFill} />
           <path d="M958 286 H1003 V304 H958 Z" fill={locoFill} />
           <line x1="790" y1="266" x2="1052" y2="266" stroke={cutStroke} strokeWidth="3" strokeLinecap="square" />
@@ -579,11 +573,15 @@ function WheelNode({
   const canPress = !disabled && wheel.status !== 'disabled';
   const completed = wheel.status === 'completed';
   const pending = wheel.status === 'available';
+  const locked = wheel.status === 'disabled';
   const selected = wheel.visualStatus === 'selected';
   const compactSideWheel = viewMode !== 'top';
-  const hitRadius = compactSideWheel ? 37 : 48;
-  const sideLabelOffset = compactSideWheel ? 40 : 45;
-  const axleLabelOffset = compactSideWheel ? 54 : 59;
+  const hitRadius = compactSideWheel ? 43 : 48;
+  const sideLabelOffset = compactSideWheel ? 47 : 48;
+  const axleLabelOffset = compactSideWheel ? 65 : 64;
+  const outerWheelRadius = compactSideWheel ? wheel.radius + 11 : wheel.radius + 6;
+  const tireRadius = compactSideWheel ? wheel.radius + 6 : wheel.radius;
+  const innerWheelRadius = compactSideWheel ? Math.max(10, wheel.radius - 4) : 9;
 
   const getCircleProps = (cx: number, cy: number, r: number) => {
     return rotateCoordinates
@@ -596,6 +594,9 @@ function WheelNode({
       ? { x: y, y: x }
       : { x, y };
   };
+  const getPoint = (x: number, y: number) => {
+    return rotateCoordinates ? { x: y, y: x } : { x, y };
+  };
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -605,54 +606,145 @@ function WheelNode({
   return (
     <g
       onClick={canPress ? handleClick : undefined}
-      className={canPress ? 'cursor-pointer select-none' : 'select-none'}
+      className={[
+        'loco-wheel-node',
+        canPress ? 'can-press cursor-pointer' : '',
+        selected ? 'is-selected' : '',
+        completed ? 'is-completed' : '',
+        locked ? 'is-locked' : '',
+        'select-none',
+      ].filter(Boolean).join(' ')}
     >
+      {compactSideWheel ? (
+        <circle
+          {...getCircleProps(wheel.x, wheel.y + 7, outerWheelRadius + 4)}
+          fill="#020617"
+          opacity="0.18"
+        />
+      ) : null}
+      <circle
+        {...getCircleProps(wheel.x, wheel.y, outerWheelRadius)}
+        fill={compactSideWheel ? 'var(--loco-map-wheel-rim)' : theme.colors.surface}
+        stroke={compactSideWheel ? 'var(--loco-map-wheel-tire)' : theme.colors.border}
+        strokeWidth={compactSideWheel ? 5 : 2}
+      />
+      {compactSideWheel ? (
+        <circle
+          {...getCircleProps(wheel.x, wheel.y, tireRadius)}
+          fill="var(--loco-map-wheel-tire)"
+          stroke={selected ? theme.colors.primary : theme.colors.border}
+          strokeWidth={selected ? 4 : 2}
+        />
+      ) : null}
       <circle
         {...getCircleProps(wheel.x, wheel.y, wheel.radius)}
-        fill={fill}
+        fill={compactSideWheel ? theme.colors.surface : fill}
         stroke={stroke}
-        strokeWidth={selected ? 6 : completed ? 5 : 3}
+        strokeWidth={selected ? 6 : completed ? 5 : 4}
         strokeDasharray={pending ? '8 6' : undefined}
       />
       <circle
-        {...getCircleProps(wheel.x, wheel.y, 9)}
-        fill={stroke}
-        opacity={pending ? 0.35 : 1}
+        {...getCircleProps(wheel.x - 5, wheel.y - 6, Math.max(8, wheel.radius - 7))}
+        fill={theme.colors.surfaceMuted}
+        opacity={compactSideWheel ? 0.9 : 0}
       />
+      <circle
+        {...getCircleProps(wheel.x, wheel.y, innerWheelRadius)}
+        fill={compactSideWheel ? theme.colors.textMuted : stroke}
+        stroke={compactSideWheel ? stroke : undefined}
+        strokeWidth={compactSideWheel ? 2 : undefined}
+        opacity={pending && !compactSideWheel ? 0.35 : 1}
+      />
+      {locked ? (
+        <g transform={`translate(${getPoint(wheel.x, wheel.y).x} ${getPoint(wheel.x, wheel.y).y})`}>
+          <path
+            d="M -7 -2 V-7 A 7 7 0 0 1 7 -7 V-2"
+            fill="none"
+            stroke={theme.colors.disabled}
+            strokeWidth="4"
+            strokeLinecap="round"
+          />
+          <rect
+            x="-10"
+            y="-3"
+            width="20"
+            height="16"
+            rx="4"
+            fill={theme.colors.disabled}
+            stroke={theme.colors.surface}
+            strokeWidth="2"
+          />
+          <circle cx="0" cy="4" r="2" fill={theme.colors.surface} />
+          <rect x="-1" y="5" width="2" height="4" rx="1" fill={theme.colors.surface} />
+        </g>
+      ) : null}
       {completed ? (
         <>
-          <circle {...getCircleProps(wheel.x + 21, wheel.y - 22, 14)} fill={theme.colors.success} stroke="#FFFFFF" strokeWidth="2" />
-          <text {...getTextProps(wheel.x + 21, wheel.y - 17)} textAnchor="middle" fontSize="14" fontWeight="900" fill="#FFFFFF">
-            OK
-          </text>
+          <circle {...getCircleProps(wheel.x + 21, wheel.y - 22, 14)} fill={theme.colors.success} stroke={theme.colors.surface} strokeWidth="3" />
+          <g transform={`translate(${getPoint(wheel.x + 21, wheel.y - 22).x} ${getPoint(wheel.x + 21, wheel.y - 22).y})`}>
+            <path
+              d="M -6 0 L -2 5 L 7 -6"
+              fill="none"
+              stroke={theme.colors.surface}
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </g>
         </>
       ) : pending ? (
-        <text {...getTextProps(wheel.x, wheel.y + 5)} textAnchor="middle" fontSize="9" fontWeight="900" fill={stroke}>
+        <text {...getTextProps(wheel.x, wheel.y + 5)} textAnchor="middle" fontFamily="sans-serif" fontSize="9" fontWeight="900" fill={compactSideWheel ? theme.colors.text : stroke}>
           PEND
         </text>
       ) : null}
       {completed ? (
-        <text {...getTextProps(wheel.x, wheel.y + 5)} textAnchor="middle" fontSize="10" fontWeight="900" fill={stroke}>
-          OK
-        </text>
+        <g transform={`translate(${getPoint(wheel.x, wheel.y).x} ${getPoint(wheel.x, wheel.y).y})`}>
+          <path
+            d="M -7 0 L -2 6 L 8 -7"
+            fill="none"
+            stroke={stroke}
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </g>
       ) : null}
       {sidePortraitMode ? (
         <>
-          <text x={wheel.x + 38} y={wheel.y - 4} textAnchor="start" fontSize="10" fontWeight="800" fill={theme.colors.text} className="select-none">
+          <text x={wheel.x + 38} y={wheel.y - 4} textAnchor="start" fontFamily="sans-serif" fontSize="11" fontWeight="900" fill={theme.colors.text} className="select-none">
             {wheel.side === 'left' ? 'IZQ' : 'DER'}
           </text>
-          <text x={wheel.x + 38} y={wheel.y + 10} textAnchor="start" fontSize="10" fill={theme.colors.textMuted} className="select-none">
+          <text x={wheel.x + 38} y={wheel.y + 11} textAnchor="start" fontFamily="sans-serif" fontSize="9" fontWeight="700" fill={theme.colors.textMuted} className="select-none">
             {`Eje ${wheel.axleIndex}`}
           </text>
         </>
       ) : (
         <>
-          <text {...getTextProps(wheel.x, wheel.y + sideLabelOffset)} textAnchor="middle" fontSize="10" fontWeight="800" fill={theme.colors.text} className="select-none">
-            {wheel.side === 'left' ? 'IZQ' : 'DER'}
-          </text>
-          <text {...getTextProps(wheel.x, wheel.y + axleLabelOffset)} textAnchor="middle" fontSize="10" fill={theme.colors.textMuted} className="select-none">
-            {`Eje ${wheel.axleIndex}`}
-          </text>
+          {compactSideWheel ? (
+            <>
+              <rect
+                {...(rotateCoordinates
+                  ? { x: wheel.y + sideLabelOffset - 13, y: wheel.x - 24, width: 26, height: 48 }
+                  : { x: wheel.x - 24, y: wheel.y + sideLabelOffset - 13, width: 48, height: 26 })}
+                rx="8"
+                fill={theme.colors.surface}
+                stroke={theme.colors.border}
+                strokeWidth="1"
+              />
+              <text {...getTextProps(wheel.x, wheel.y + sideLabelOffset + 4)} textAnchor="middle" fontFamily="sans-serif" fontSize="10" fontWeight="900" fill={theme.colors.text} className="select-none">
+                {`EJE ${wheel.axleIndex}`}
+              </text>
+            </>
+          ) : (
+            <>
+              <text {...getTextProps(wheel.x, wheel.y + sideLabelOffset)} textAnchor="middle" fontFamily="sans-serif" fontSize="11" fontWeight="900" fill={theme.colors.text} className="select-none">
+                {wheel.side === 'left' ? 'IZQ' : 'DER'}
+              </text>
+              <text {...getTextProps(wheel.x, wheel.y + axleLabelOffset)} textAnchor="middle" fontFamily="sans-serif" fontSize="9" fontWeight="700" fill={theme.colors.textMuted} className="select-none">
+                {`Eje ${wheel.axleIndex}`}
+              </text>
+            </>
+          )}
         </>
       )}
       <circle
@@ -688,11 +780,17 @@ export function LocomotiveWheelMap({
           surface: 'var(--loco-map-surface)',
           surfaceMuted: 'var(--loco-map-surface-muted)',
           border: 'var(--loco-map-border)',
+          primary: 'var(--loco-map-accent)',
+          primarySoft: 'var(--loco-map-accent-soft)',
+          success: 'var(--loco-map-accent-deep)',
+          successSoft: 'var(--loco-map-accent-soft)',
+          disabled: 'var(--loco-map-disabled)',
+          disabledSoft: 'var(--loco-map-surface)',
           text: 'var(--loco-map-text)',
           textMuted: 'var(--loco-map-muted)',
           rail: 'var(--loco-map-rail)',
-          machineStroke: 'var(--loco-map-text)',
-          machineFill: 'var(--loco-map-surface-muted)',
+          machineStroke: 'var(--loco-map-accent-deep)',
+          machineFill: 'var(--loco-map-accent)',
         },
       };
   const labels = resolveLabels(customLabels);
@@ -721,9 +819,15 @@ export function LocomotiveWheelMap({
   const renderedWheelPoints = wheelPoints.map(transformSidePortraitWheel);
   const visibleWheels = renderedWheelPoints.filter(wheel => wheel.visible);
   const rotateWheelCoordinates = viewMode === 'top' && renderOrientation === 'horizontal';
+  const compactHorizontalSide = viewMode !== 'top' && renderOrientation === 'horizontal';
 
   const widthVal = renderOrientation === 'horizontal' ? VIEWBOX_HEIGHT : VIEWBOX_WIDTH;
   const heightVal = renderOrientation === 'horizontal' ? VIEWBOX_WIDTH : VIEWBOX_HEIGHT;
+  const renderedHeight = compactHorizontalSide
+    ? 300
+    : renderOrientation === 'horizontal'
+      ? 380
+      : 640;
 
   const getTitleProps = () => {
     return renderOrientation === 'horizontal'
@@ -747,7 +851,7 @@ export function LocomotiveWheelMap({
     <svg 
       viewBox={`0 0 ${widthVal} ${heightVal}`} 
       width="100%" 
-      height={renderOrientation === 'horizontal' ? 380 : 640} 
+      height={renderedHeight}
       className="loco-map-root mx-auto block"
     >
       <style>
@@ -760,6 +864,56 @@ export function LocomotiveWheelMap({
             --loco-map-surface-muted: #f1f5f9;
             --loco-map-border: #cbd5e1;
             --loco-map-rail: #94a3b8;
+            --loco-map-accent: #059669;
+            --loco-map-accent-deep: #047857;
+            --loco-map-accent-soft: #d1fae5;
+            --loco-map-accent-shadow: #064e3b;
+            --loco-map-accent-highlight: #a7f3d0;
+            --loco-map-disabled: #64748b;
+            --loco-map-wheel-rim: #e5e7eb;
+            --loco-map-wheel-tire: #1f2937;
+          }
+          .loco-map-body {
+            animation: locoMapBodyEnter 220ms cubic-bezier(0.22, 1, 0.36, 1);
+            will-change: opacity;
+          }
+          .loco-wheel-node {
+            transition: opacity 160ms ease, filter 180ms ease, transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+            transform-box: fill-box;
+            transform-origin: center;
+            will-change: transform, opacity;
+          }
+          .loco-wheel-node.can-press:hover {
+            filter: drop-shadow(0 8px 12px rgba(15, 23, 42, 0.16));
+            transform: translateY(-1.5px) scale(1.025);
+          }
+          .loco-wheel-node.can-press:active {
+            filter: drop-shadow(0 4px 8px rgba(15, 23, 42, 0.12));
+            transform: scale(0.985);
+          }
+          .loco-wheel-node.is-selected {
+            filter: drop-shadow(0 0 10px color-mix(in srgb, var(--loco-map-accent) 46%, transparent));
+          }
+          .loco-wheel-node.is-completed {
+            filter: drop-shadow(0 4px 8px rgba(15, 23, 42, 0.1));
+          }
+          .loco-wheel-node.is-locked {
+            opacity: 0.78;
+          }
+          @keyframes locoMapBodyEnter {
+            from {
+              opacity: 0.88;
+            }
+            to {
+              opacity: 1;
+            }
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .loco-map-body,
+            .loco-wheel-node {
+              animation: none;
+              transition: none;
+            }
           }
           .dark .loco-map-root {
             --loco-map-text: #f8fafc;
@@ -769,19 +923,44 @@ export function LocomotiveWheelMap({
             --loco-map-surface-muted: #1e293b;
             --loco-map-border: #475569;
             --loco-map-rail: #94a3b8;
+            --loco-map-accent: #34d399;
+            --loco-map-accent-deep: #6ee7b7;
+            --loco-map-accent-soft: #064e3b;
+            --loco-map-accent-shadow: #022c22;
+            --loco-map-accent-highlight: #bbf7d0;
+            --loco-map-disabled: #94a3b8;
+            --loco-map-wheel-rim: #cbd5e1;
+            --loco-map-wheel-tire: #020617;
           }
         `}
       </style>
-      <text {...getTitleProps()} textAnchor="middle" fontSize="14" fontWeight="800" fill={theme.colors.text} className="select-none">
+      <text
+        {...getTitleProps()}
+        textAnchor="middle"
+        fontFamily="sans-serif"
+        fontSize="13"
+        fontWeight="900"
+        letterSpacing="0"
+        fill={theme.colors.text}
+        className="select-none"
+      >
         {titleForView(viewMode)}
       </text>
 
-      <text {...getSubTitleProps()} textAnchor="middle" fontSize="11" fill={theme.colors.textMuted} className="select-none">
-        {`${wheelCount} ruedas torneables · ${wheelCount / 2} ejes`}
+      <text
+        {...getSubTitleProps()}
+        textAnchor="middle"
+        fontFamily="sans-serif"
+        fontSize="10"
+        fontWeight="700"
+        fill={theme.colors.textMuted}
+        className="select-none"
+      >
+        {`${wheelCount} ruedas torneables - ${wheelCount / 2} ejes`}
       </text>
 
       {viewMode === 'top' ? (
-        <TopLocomotiveBody wheelCount={wheelCount} viewMode={viewMode} orientation={renderOrientation} />
+        <TopLocomotiveBody wheelCount={wheelCount} viewMode={viewMode} orientation={renderOrientation} theme={theme} />
       ) : (
         <SideLocomotiveBodyReferenceSvg
           wheelCount={wheelCount}

@@ -13,8 +13,8 @@ import { parseTornoMedicionFromApi } from "./../../movimientos/torno/tornoMeasur
 import { buildBackendTornoMedidas } from "./../../movimientos/crear/tornoSubmit.adapter";
 import StepTwoTorno from "./../../movimientos/crear/components/StepTwoTorno";
 import {
+  createEmptyTornoRow,
   DEFAULT_TORNO_MEDICION_STATE,
-  EMPTY_TORNO_ROW,
   EMPTY_TORNO_VALUE,
   normalizeTornoMeasureValue,
   sanitizeTornoMeasurePart,
@@ -829,7 +829,7 @@ export default function EditarMovimiento({
     ) => {
       const cleanPartValue = sanitizeTornoMeasurePart(part, value);
       setTornoMedicion((prev) => {
-        const prevRow = prev.rows[position] ?? EMPTY_TORNO_ROW;
+        const prevRow = prev.rows[position] ?? createEmptyTornoRow();
         const prevValue = prevRow[field] ?? EMPTY_TORNO_VALUE;
         const nextValue = normalizeTornoMeasureValue({
           ...prevValue,

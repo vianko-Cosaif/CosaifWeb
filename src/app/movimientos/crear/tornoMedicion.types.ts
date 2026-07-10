@@ -116,6 +116,14 @@ export const EMPTY_TORNO_ROW: TornoMeasurementRow = {
   lectura: { ...EMPTY_TORNO_VALUE },
 };
 
+/** Crea una fila vacia nueva para evitar compartir referencias entre ruedas. */
+export function createEmptyTornoRow(): TornoMeasurementRow {
+  return TORNO_FIELD_KEYS.reduce((row, field) => {
+    row[field] = { ...EMPTY_TORNO_VALUE };
+    return row;
+  }, {} as TornoMeasurementRow);
+}
+
 /** Estado inicial recomendado para el flujo Torno. */
 export const DEFAULT_TORNO_MEDICION_STATE: TornoMedicionState = {
   wheelCount: 8,

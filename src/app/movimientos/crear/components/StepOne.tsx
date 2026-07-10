@@ -490,11 +490,11 @@ export default function StepOne(props: StepOneProps) {
             {(!form.service || selectionMode === "de_via") && (
               <div className="mb-4">
                 <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">De via</span>
-                <div className="flex gap-2">
+                <div className="flex min-w-0 flex-col gap-2 min-[420px]:flex-row">
                   <button
                     onClick={() => { setShowFromOpts(!showFromOpts); if (form.fromTrack) ensureSections(form.fromTrack); }}
                     className={Movimiento.clsx(
-                      "min-w-[220px] rounded-md border px-3 py-2 text-left transition-colors duration-200",
+                      "w-full min-w-0 rounded-md border px-3 py-2 text-left transition-colors duration-200 min-[420px]:w-auto min-[420px]:min-w-[220px]",
                       form.fromTrack
                         ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-500 dark:text-emerald-300"
                         : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
@@ -523,11 +523,11 @@ export default function StepOne(props: StepOneProps) {
             {(!form.service || selectionMode === "para_via") && (
               <div>
                 <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Para via</span>
-                <div className="flex gap-2">
+                <div className="flex min-w-0 flex-col gap-2 min-[420px]:flex-row">
                   <button
                     onClick={() => { setShowToOpts(!showToOpts); if (form.toTrack) ensureSections(form.toTrack); }}
                     className={Movimiento.clsx(
-                      "min-w-[220px] rounded-md border px-3 py-2 text-left transition-colors duration-200",
+                      "w-full min-w-0 rounded-md border px-3 py-2 text-left transition-colors duration-200 min-[420px]:w-auto min-[420px]:min-w-[220px]",
                       form.toTrack
                         ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-500 dark:text-emerald-300"
                         : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
@@ -556,8 +556,8 @@ export default function StepOne(props: StepOneProps) {
       )}
 
       {altaOpen && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-2 sm:items-center sm:p-4">
+          <div className="max-h-[calc(100dvh-1rem)] w-full max-w-sm overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900 sm:p-4">
             <div className="text-base font-semibold text-slate-800 dark:text-slate-100">Confirmar prioridad ALTA</div>
             <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               Ingresa la contrasena de ALTA para la empresa seleccionada.

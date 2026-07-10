@@ -1,6 +1,7 @@
 // app/api/cliente/rondas/route.ts
 import { NextResponse, NextRequest } from "next/server";
 import { cookies } from "next/headers";
+import { normalizeHttpOrigin } from "@/lib/serverOrigin";
 import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
 
 export const dynamic = "force-dynamic";
@@ -148,7 +149,10 @@ type TorreonRondaRecord = {
 };
 
 function getApiBase(origin: string) {
-  return (process.env.API_ORIGIN || process.env.NEXT_PUBLIC_API_URL || `${origin}/bff`).replace(/\/$/, "");
+  const raw = String(process.env.API_ORIGIN || process.env.NEXT_PUBLIC_API_URL || "").trim();
+  if (!raw) return `${origin}/bff`.replace(/\/+$/, "");
+  if (raw.startsWith("/")) return `${origin}${raw}`.replace(/\/+$/, "");
+  return normalizeHttpOrigin(raw).replace(/\/+$/, "");
 }
 
 function asRecord(input: unknown): UnknownRecord {

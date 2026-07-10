@@ -17,8 +17,8 @@ import { downloadTornoPdf } from "./tornoPdf";
 import { parseTornoMedicionFromApi } from "../torno/tornoMeasureParser";
 import type { ScheduledTornoMovement } from "./components/ScheduledTornoActivationModal";
 import {
+  createEmptyTornoRow,
   DEFAULT_TORNO_MEDICION_STATE,
-  EMPTY_TORNO_ROW,
   EMPTY_TORNO_VALUE,
   normalizeTornoMeasureValue,
   sanitizeTornoMeasurePart,
@@ -400,7 +400,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
       const cleanPartValue = sanitizeTornoMeasurePart(part, value);
 
       setTornoMedicion((prev) => {
-        const prevRow = prev.rows[position] ?? EMPTY_TORNO_ROW;
+        const prevRow = prev.rows[position] ?? createEmptyTornoRow();
         const prevValue = prevRow[field] ?? EMPTY_TORNO_VALUE;
         const nextValue = normalizeTornoMeasureValue({
           ...prevValue,

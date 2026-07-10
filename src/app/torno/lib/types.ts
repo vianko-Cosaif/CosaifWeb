@@ -31,7 +31,10 @@ export type TornoMeasurePosition =
   | "L6"
   | "R6";
 
-export type TornoMeasures = Partial<Record<TornoMeasurePosition, string | number | null>>;
+export type TornoWheelCount = 4 | 6 | 8 | 12;
+export type TornoMeasures = Partial<Record<TornoMeasurePosition, string | number | null>> & {
+  wheelCount?: TornoWheelCount;
+};
 
 export type TornoWheelSide = "L" | "R";
 

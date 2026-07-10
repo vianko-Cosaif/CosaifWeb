@@ -134,12 +134,12 @@ function MeasurePickerModal(props: {
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[100010] flex items-end justify-center bg-black/50 p-3 sm:items-center">
-      <div className="w-full max-w-md overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="border-b border-slate-200 bg-emerald-50 px-5 py-4 dark:border-zinc-800 dark:bg-emerald-950/30">
+    <div className="fixed inset-0 z-[100010] flex items-end justify-center overflow-hidden bg-black/50 p-2 sm:items-center sm:p-3">
+      <div className="flex max-h-[calc(100dvh-1rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[28px]">
+        <div className="shrink-0 border-b border-slate-200 bg-emerald-50 px-3 py-3 dark:border-zinc-800 dark:bg-emerald-950/30 sm:px-5 sm:py-4">
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
-              <h4 className="text-xl font-black text-slate-950 dark:text-white">{title}</h4>
+              <h4 className="break-words text-lg font-black text-slate-950 dark:text-white sm:text-xl">{title}</h4>
               <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-zinc-400">{subtitle}</p>
             </div>
             <button
@@ -151,12 +151,13 @@ function MeasurePickerModal(props: {
               x
             </button>
           </div>
-          <div className="mt-4 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-center text-2xl font-black text-emerald-800 dark:border-emerald-800 dark:bg-zinc-950 dark:text-emerald-200">
+          <div className="mt-3 rounded-2xl border border-emerald-200 bg-white px-3 py-2 text-center text-xl font-black text-emerald-800 dark:border-emerald-800 dark:bg-zinc-950 dark:text-emerald-200 sm:mt-4 sm:px-4 sm:py-3 sm:text-2xl">
             {preview}
           </div>
         </div>
 
-        <div className="grid gap-4 px-5 py-5">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-5 sm:py-5">
+          <div className="grid gap-3 sm:gap-4">
           {[
             ["whole", "Entero", wholeOptions],
             ["num", "Numerador", numeratorOptions],
@@ -179,9 +180,10 @@ function MeasurePickerModal(props: {
               </select>
             </label>
           ))}
+          </div>
         </div>
 
-        <div className="flex gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-slate-50 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900 min-[360px]:flex-row sm:gap-3 sm:px-5 sm:py-4">
           <button
             type="button"
             onClick={onCancel}
@@ -334,8 +336,8 @@ export default function MobileGuidedTornoMeasuresStep({
 
   if (visualPage <= 0) {
     return (
-      <div className="grid gap-4">
-        <div className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="grid min-w-0 gap-3 sm:gap-4">
+        <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[26px] sm:p-5">
           <div className="text-xs font-black uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-300">
             Formato de medicion
           </div>
@@ -344,9 +346,9 @@ export default function MobileGuidedTornoMeasuresStep({
         </div>
 
         <GuidedTarget id="torno-movement-type">
-          <div className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[26px] sm:p-5">
             <div className="text-sm font-black text-slate-950 dark:text-white">Tipo de movimiento</div>
-            <div className="mt-3 grid grid-cols-2 gap-3">
+            <div className="mt-3 grid grid-cols-1 gap-2 min-[380px]:grid-cols-2 sm:gap-3">
               {(["MD_TRABAJANDO", "REMOLCADA"] as const).map((type) => {
                 const selected = form.movementType === type;
                 return (
@@ -370,9 +372,9 @@ export default function MobileGuidedTornoMeasuresStep({
         </GuidedTarget>
 
         {form.movementType === "REMOLCADA" ? (
-          <div className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[26px] sm:p-5">
             <div className="text-sm font-black text-slate-950 dark:text-white">Direccion</div>
-            <div className="mt-3 grid grid-cols-2 gap-3">
+            <div className="mt-3 grid grid-cols-1 gap-2 min-[380px]:grid-cols-2 sm:gap-3">
               {(["EMPUJAR", "JALAR"] as const).map((direction) => {
                 const selected = form.direccionEmpuje === direction;
                 return (
@@ -396,9 +398,9 @@ export default function MobileGuidedTornoMeasuresStep({
         ) : null}
 
         <GuidedTarget id="torno-wheel-count">
-          <div className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[26px] sm:p-5">
             <div className="text-sm font-black text-slate-950 dark:text-white">Numero de ruedas</div>
-            <div className="mt-3 grid grid-cols-4 gap-2">
+            <div className="mt-3 grid grid-cols-2 gap-2 min-[420px]:grid-cols-4">
               {TORNO_WHEEL_COUNT_OPTIONS.map((count) => {
                 const selected = tornoMedicion.wheelCount === count;
                 return (
@@ -425,8 +427,8 @@ export default function MobileGuidedTornoMeasuresStep({
   }
 
   return (
-    <div className="grid gap-4">
-      <div className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="grid min-w-0 gap-3 sm:gap-4">
+      <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 min-[380px]:p-3 sm:rounded-[26px] sm:p-4">
         <div className="mb-3 grid grid-cols-3 gap-2">
           {views.map((view) => {
             const active = viewMode === view.key;
@@ -436,7 +438,7 @@ export default function MobileGuidedTornoMeasuresStep({
                 type="button"
                 onClick={() => setViewMode(view.key)}
                 className={Movimiento.clsx(
-                  "min-h-11 rounded-2xl border px-2 text-xs font-black transition-colors",
+                  "min-h-11 min-w-0 rounded-xl border px-1 text-[11px] font-black transition-colors min-[380px]:rounded-2xl min-[380px]:px-2 min-[380px]:text-xs",
                   active
                     ? "border-emerald-600 bg-emerald-600 text-white"
                     : "border-slate-200 bg-slate-50 text-slate-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
@@ -449,8 +451,8 @@ export default function MobileGuidedTornoMeasuresStep({
         </div>
         <div
           className={Movimiento.clsx(
-            "grid gap-3",
-            isLandscape && "lg:grid-cols-[minmax(0,1fr)_220px] lg:items-start"
+            "grid min-w-0 gap-3",
+            isLandscape && "md:grid-cols-[minmax(0,1fr)_minmax(150px,220px)] md:items-start"
           )}
         >
           <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900">
@@ -467,8 +469,8 @@ export default function MobileGuidedTornoMeasuresStep({
           </div>
           <div
             className={Movimiento.clsx(
-              "flex flex-wrap gap-2",
-              isLandscape && "lg:max-h-[380px] lg:overflow-y-auto lg:pr-1"
+              "flex min-w-0 flex-wrap gap-2",
+              isLandscape && "md:max-h-[320px] md:overflow-y-auto md:pr-1"
             )}
           >
             {enabledPositions.map((position) => {
@@ -481,7 +483,7 @@ export default function MobileGuidedTornoMeasuresStep({
                   onClick={() => openWheelModal(position)}
                   className={Movimiento.clsx(
                     "rounded-full border px-3 py-2 text-xs font-black transition-colors",
-                    isLandscape && "lg:w-full lg:justify-start",
+                    isLandscape && "md:w-full md:justify-start",
                     selected
                       ? "border-emerald-600 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200"
                       : "border-slate-200 bg-slate-50 text-slate-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
@@ -495,7 +497,7 @@ export default function MobileGuidedTornoMeasuresStep({
         </div>
       </div>
 
-      <div className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[26px] sm:p-5">
         <div className="text-sm font-black text-slate-950 dark:text-white">Captura por rueda</div>
         <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-zinc-400">
           Toca una rueda en la locomotora para abrir sus medidas. Puedes regresar a cualquier rueda antes de revisar la solicitud.
@@ -503,14 +505,14 @@ export default function MobileGuidedTornoMeasuresStep({
       </div>
 
       {wheelModalOpen && selectedPosition ? createPortal(
-        <div className="fixed inset-0 z-[100010] flex items-end justify-center bg-black/50 p-3 sm:items-center">
-          <div className="flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
-            <div className="flex items-start gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-lg font-black text-white">
+        <div className="fixed inset-0 z-[100010] flex items-end justify-center overflow-hidden bg-black/50 p-2 sm:items-center sm:p-3">
+          <div className="flex max-h-[calc(100dvh-1rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[30px]">
+            <div className="flex shrink-0 items-start gap-2 border-b border-slate-200 bg-slate-50 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900 sm:gap-3 sm:px-5 sm:py-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-base font-black text-white sm:h-14 sm:w-14 sm:rounded-2xl sm:text-lg">
                 {selectedPosition}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-xl font-black text-slate-950 dark:text-white">Rueda {selectedPosition}</div>
+                <div className="break-words text-lg font-black text-slate-950 dark:text-white sm:text-xl">Rueda {selectedPosition}</div>
                 <p className="text-sm font-semibold text-slate-500 dark:text-zinc-400">
                   Selecciona cada propiedad para capturar su medida.
                 </p>
@@ -525,7 +527,7 @@ export default function MobileGuidedTornoMeasuresStep({
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-5 sm:py-4">
               <div className="grid gap-3">
                 {fieldDefs.map((field) => {
                   const value = tornoMedicion.rows[selectedPosition]?.[field.key] ?? EMPTY_TORNO_VALUE;
@@ -537,7 +539,7 @@ export default function MobileGuidedTornoMeasuresStep({
                       type="button"
                       onClick={() => openMeasureModal(selectedPosition, field.key, field.label, value)}
                       className={Movimiento.clsx(
-                        "flex items-center gap-3 rounded-2xl border px-4 py-4 text-left transition-colors",
+                        "flex min-w-0 items-center gap-2 rounded-xl border px-3 py-3 text-left transition-colors sm:gap-3 sm:rounded-2xl sm:px-4 sm:py-4",
                         hasValue
                           ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/30"
                           : "border-slate-200 bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900"
@@ -587,7 +589,7 @@ export default function MobileGuidedTornoMeasuresStep({
               </div>
             </div>
 
-            <div className="border-t border-slate-200 bg-slate-50 px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="shrink-0 border-t border-slate-200 bg-slate-50 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900 sm:px-5 sm:py-4">
               <button
                 type="button"
                 onClick={() => setWheelModalOpen(false)}

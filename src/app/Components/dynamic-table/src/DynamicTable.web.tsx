@@ -196,7 +196,11 @@ function DynamicTable<T>({
       <div
         style={{
           width: "100%",
+          maxWidth: "100%",
+          minWidth: 0,
           height,
+          boxSizing: "border-box",
+          contain: "inline-size",
           border: `1px solid ${tableTheme.borderColor}`,
           borderRadius: 10,
           overflow: "hidden",
@@ -228,6 +232,9 @@ function DynamicTable<T>({
                 minWidth: 0,
                 overflowX: "auto",
                 overflowY: "hidden",
+                overscrollBehaviorX: "contain",
+                touchAction: "pan-x",
+                WebkitOverflowScrolling: "touch",
                 scrollbarWidth: "none",
               }}
             >
@@ -240,7 +247,10 @@ function DynamicTable<T>({
           ref={parentRef}
           style={{
             height: bodyHeight,
+            width: "100%",
+            minWidth: 0,
             overflowY: "auto",
+            overflowX: "hidden",
             overscrollBehavior: "contain",
             position: "relative",
           }}
@@ -248,7 +258,7 @@ function DynamicTable<T>({
           {data.length === 0 ? (
             renderEmptyState()
           ) : (
-            <div style={{ height: bodyContentHeight, minWidth: "100%", position: "relative", display: "flex" }}>
+            <div style={{ height: bodyContentHeight, width: "100%", minWidth: 0, position: "relative", display: "flex" }}>
               <div
                 style={{
                   width: firstColumnWidth,
@@ -315,6 +325,9 @@ function DynamicTable<T>({
                   minWidth: 0,
                   overflowX: "auto",
                   overflowY: "hidden",
+                  overscrollBehaviorX: "contain",
+                  touchAction: "pan-x",
+                  WebkitOverflowScrolling: "touch",
                   position: "relative",
                 }}
               >
@@ -370,14 +383,29 @@ function DynamicTable<T>({
     <div
       style={{
         width: "100%",
+        maxWidth: "100%",
+        minWidth: 0,
         height,
+        boxSizing: "border-box",
+        contain: "inline-size",
         border: `1px solid ${tableTheme.borderColor}`,
         borderRadius: 10,
         overflow: "hidden",
         background: tableTheme.backgroundColor,
       }}
     >
-      <div style={{ width: "100%", overflowX: "auto", overflowY: "hidden", height: "100%" }}>
+      <div
+        style={{
+          width: "100%",
+          minWidth: 0,
+          overflowX: "auto",
+          overflowY: "hidden",
+          overscrollBehaviorX: "contain",
+          touchAction: "pan-x",
+          WebkitOverflowScrolling: "touch",
+          height: "100%",
+        }}
+      >
         <div style={{ minWidth: totalWidth, height: "100%" }}>
           {stickyHeader ? renderHeader() : null}
 

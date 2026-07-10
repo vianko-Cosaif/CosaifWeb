@@ -2,6 +2,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { normalizeHttpOrigin } from "@/lib/serverOrigin";
 
 export const dynamic = "force-dynamic";
 
@@ -168,6 +169,13 @@ function getTornoQueueCreatedTime(item: RondaOut): number {
   return Number.isFinite(numericId) ? numericId : Number.MAX_SAFE_INTEGER;
 }
 
+function getApiBase(origin: string) {
+  const raw = String(process.env.API_ORIGIN || process.env.NEXT_PUBLIC_API_URL || "").trim();
+  if (!raw) return `${origin}/bff`.replace(/\/+$/, "");
+  if (raw.startsWith("/")) return `${origin}${raw}`.replace(/\/+$/, "");
+  return normalizeHttpOrigin(raw).replace(/\/+$/, "");
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams, origin } = new URL(req.url);
@@ -181,7 +189,7 @@ export async function GET(req: Request) {
     const token = c.get(process.env.JWT_COOKIE_NAME ?? "token")?.value ?? "";
     const empresaId = Number(c.get("empresaId")?.value) || null;
 
-    const base = process.env.NEXT_PUBLIC_API_URL || `${origin}/bff`;
+    const base = getApiBase(origin);
 
     if (entity === "torneados") {
       const statusParam = concluido ? "CONCLUIDO,CANCELADO" : "SOLICITADO,EN_PROCESO,DETENIDO";
@@ -394,7 +402,7 @@ export async function POST(req: Request) {
 
     const c = await cookies();
     const token = c.get(process.env.JWT_COOKIE_NAME ?? "token")?.value ?? "";
-    const base = process.env.NEXT_PUBLIC_API_URL || `${origin}/bff`;
+    const base = getApiBase(origin);
 
     if (action === "swap") {
       const rondaAId = Number(body?.rondaAId);
