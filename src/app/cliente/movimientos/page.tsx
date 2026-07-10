@@ -28,7 +28,7 @@ export default async function Page() {
     Number(c.get("localidadId")?.value ?? "") ||
     null;
 
-  if (empIdCookie == null) {
+  if (empIdCookie == null || locIdCookie == null) {
     redirect("/login?loc=cliente");
   }
 
@@ -53,8 +53,9 @@ export default async function Page() {
           rol={role}
           token={token}
           empresaIdUsuario={empIdCookie}
-          localidadIdUsuario={capabilities.canSwitchLocalidad ? null : locIdCookie}
-          puedeCrear
+          localidadIdUsuario={locIdCookie}
+          bloquearLocalidad
+          puedeCrear={capabilities.canCreateMovements}
           intervaloAutoMs={15000}
         />
       </div>

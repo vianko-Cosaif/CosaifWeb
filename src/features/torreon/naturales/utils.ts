@@ -50,6 +50,16 @@ export function getOperatorLabel(row: MovimientoNatural) {
   return id ? `Usuario #${id}` : "Sin iniciar";
 }
 
+export function getMovimientoFolio(row: MovimientoNatural) {
+  if (row.folioLocalidadLabel) return row.folioLocalidadLabel;
+  if (row.folioLocalidad) return `#${row.folioLocalidad}`;
+  return `#${row.id}`;
+}
+
+export function getMovimientoTechnicalId(row: MovimientoNatural) {
+  return row.idTecnico || row.id;
+}
+
 export function getClientLabel(row: MovimientoNatural) {
   if (row.clienteNombre) return row.clienteNombre;
   if (row.clienteId) return `Cliente #${row.clienteId}`;
@@ -125,6 +135,8 @@ export function filterNaturalRows(
       if (!q) return true;
       return [
         row.id,
+        row.folioLocalidad,
+        row.folioLocalidadLabel,
         row.empresaNombre,
         row.locomotiveNumber,
         row.estado,

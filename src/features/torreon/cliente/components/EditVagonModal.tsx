@@ -33,8 +33,10 @@ export function EditVagonModal({ draft, busy, onChange, onClose, onSubmit }: Pro
               <option value="LLENO">Lleno</option>
             </select>
           </div>
-          <EditField label="Via" value={draft.viaId} onChange={(value) => onChange({ viaId: value })} placeholder="Via" numeric />
-          <EditField label="Seccion" value={draft.seccionId} onChange={(value) => onChange({ seccionId: value })} placeholder="Seccion" numeric />
+          <EditField label="Via origen" value={draft.viaOrigenId || ""} onChange={(value) => onChange({ viaOrigenId: value })} placeholder="Via origen" />
+          <EditField label="Seccion origen" value={draft.seccionOrigenId || ""} onChange={(value) => onChange({ seccionOrigenId: value })} placeholder="Seccion origen" />
+          <EditField label="Via destino" value={draft.viaId} onChange={(value) => onChange({ viaId: value })} placeholder="Via destino" />
+          <EditField label="Seccion destino" value={draft.seccionId} onChange={(value) => onChange({ seccionId: value })} placeholder="Seccion destino" />
         </div>
 
         <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type RealtimeMovementEventType =
   | "movimiento.creado"
@@ -43,10 +43,14 @@ export type RealtimeMovementEvent = {
   locomotiveNumber?: number | string | null;
   occurredAt?: string;
   transport?: "websocket" | "sse";
+  version?: string | number | null;
+  snapshot?: Record<string, unknown> | null;
   [key: string]: unknown;
 };
 
 type Subscriber = (event: RealtimeMovementEvent) => void;
+export type RealtimeConnectionStatus = "connecting" | "connected" | "disconnected";
+type StatusSubscriber = (status: RealtimeConnectionStatus) => void;
 
 type StreamState = {
   abortController: AbortController | null;
@@ -68,6 +72,8 @@ const DEFAULT_REALTIME_WS_CONFIG_URL =
   process.env.NEXT_PUBLIC_REALTIME_WS_CONFIG_URL || "/api/realtime/ws-config";
 
 const subscribers = new Set<Subscriber>();
+const statusSubscribers = new Set<StatusSubscriber>();
+let realtimeStatus: RealtimeConnectionStatus = "disconnected";
 const recentEvents = new Map<string, number>();
 const RECENT_EVENT_TTL_MS = 1_200;
 
@@ -96,6 +102,15 @@ function markActivity() {
   streamState.lastActivityAt = Date.now();
 }
 
+function setRealtimeStatus(status: RealtimeConnectionStatus) {
+  if (realtimeStatus === status) return;
+  realtimeStatus = status;
+  for (const subscriber of statusSubscribers) subscriber(status);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("cosaif:realtime-status", { detail: { status } }));
+  }
+}
+
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null;
   const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
@@ -120,6 +135,10 @@ function scopedUrl(url: string, localidadId?: number | null): string {
 
 function notifySubscribers(event: RealtimeMovementEvent) {
   if (shouldSuppressEvent(event)) return;
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("cosaif:realtime-event", { detail: event }));
+  }
 
   for (const subscriber of subscribers) {
     subscriber(event);
@@ -213,6 +232,7 @@ function parseSseBlock(block: string): RealtimeMovementEvent | null {
 function scheduleReconnect() {
   if (!streamState.running || streamState.reconnectTimer != null) return;
   if (!browserIsOnline()) return;
+  setRealtimeStatus("disconnected");
 
   const base = Math.min(30_000, 1_000 * 2 ** streamState.attempt);
   const jitter = Math.floor(Math.random() * 1_000);
@@ -272,6 +292,7 @@ async function connectStream(url: string, token: number) {
 
     streamState.attempt = 0;
     markActivity();
+    setRealtimeStatus("connected");
     await readSseStream(response, abortController.signal);
   } catch (error) {
     if (!abortController.signal.aborted) {
@@ -281,6 +302,7 @@ async function connectStream(url: string, token: number) {
     if (streamState.abortController === abortController) {
       streamState.abortController = null;
     }
+    if (streamState.connectionToken === token) setRealtimeStatus("disconnected");
     if (!abortController.signal.aborted && streamState.connectionToken === token) scheduleReconnect();
   }
 }
@@ -374,6 +396,7 @@ async function connectWebSocket(configUrl: string, token: number): Promise<void>
       settled = true;
       streamState.attempt = 0;
       markActivity();
+      setRealtimeStatus("connected");
       startWebSocketHealthTimer(ws);
       window.clearTimeout(timeoutId);
       resolve();
@@ -398,6 +421,7 @@ async function connectWebSocket(configUrl: string, token: number): Promise<void>
       if (streamState.webSocket === ws) {
         streamState.webSocket = null;
         clearWebSocketHealthTimer();
+        setRealtimeStatus("disconnected");
       }
       window.clearTimeout(timeoutId);
       if (!settled) {
@@ -437,6 +461,7 @@ async function connectRealtime() {
   const token = streamState.connectionToken + 1;
   streamState.connectionToken = token;
   streamState.connecting = true;
+  setRealtimeStatus("connecting");
   closeActiveConnection();
 
   try {
@@ -469,6 +494,7 @@ function forceRealtimeReconnect(reason: string, notify = true) {
   streamState.connectionToken += 1;
   streamState.connecting = false;
   streamState.attempt = 0;
+  setRealtimeStatus("connecting");
   clearReconnectTimer();
   closeActiveConnection();
   if (notify) notifyRealtimeResume(reason);
@@ -522,6 +548,7 @@ function startRealtime(sseUrl: string, wsConfigUrl: string, localidadId?: number
   }
 
   if (streamState.abortController || streamState.webSocket || streamState.connecting) return;
+  setRealtimeStatus("connecting");
   void connectRealtime();
 }
 
@@ -531,6 +558,7 @@ function stopRealtime() {
   streamState.connecting = false;
   closeActiveConnection();
   clearReconnectTimer();
+  setRealtimeStatus("disconnected");
 }
 
 export function useRealtimeMovimientos({
@@ -547,10 +575,19 @@ export function useRealtimeMovimientos({
   onEvent: Subscriber;
 }) {
   const onEventRef = useRef(onEvent);
+  const [status, setStatus] = useState<RealtimeConnectionStatus>(realtimeStatus);
 
   useEffect(() => {
     onEventRef.current = onEvent;
   }, [onEvent]);
+
+  useEffect(() => {
+    statusSubscribers.add(setStatus);
+    setStatus(realtimeStatus);
+    return () => {
+      statusSubscribers.delete(setStatus);
+    };
+  }, []);
 
   useEffect(() => {
     if (!enabled || typeof window === "undefined") return;
@@ -564,4 +601,6 @@ export function useRealtimeMovimientos({
       if (subscribers.size === 0) stopRealtime();
     };
   }, [enabled, url, wsConfigUrl, localidadId]);
+
+  return status;
 }

@@ -23,7 +23,10 @@ import {
   Edit3,
   Timer,
 } from "lucide-react";
-import { Button, ConfigProvider, Empty, Table } from "antd";
+import Button from "antd/es/button";
+import ConfigProvider from "antd/es/config-provider";
+import Empty from "antd/es/empty";
+import Table from "antd/es/table";
 import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
 import type { SorterResult } from "antd/es/table/interface";
 import styles from "./Tabla.module.scss";
@@ -42,6 +45,22 @@ import {
 } from "@/features/movimientos/table";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/xapi";
+
+function getMovementFolio(movement: Movement) {
+  if (movement.folioLocalidadLabel) return movement.folioLocalidadLabel;
+  if (movement.folioLocalidad) return `#${movement.folioLocalidad}`;
+  return `#${movement.id}`;
+}
+
+function getMovementTechnicalId(movement: Movement) {
+  const raw = movement.idTecnico ?? movement.id;
+  const id = Number(raw);
+  return Number.isFinite(id) && id > 0 ? id : movement.id;
+}
+
+function getMovementRowKey(movement: Movement) {
+  return `${movement.localidadId || 0}:${getMovementTechnicalId(movement)}`;
+}
 
 /* --- PROPS --- */
 interface TablaProps {
@@ -90,7 +109,7 @@ function TablaInner({
   );
   const showEditColumn = Boolean(onEditar) && filas.some((m) => puedeEditarMovimiento(m.estado));
   const showMeasuresColumn = false;
-  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [isDarkTheme, setIsDarkTheme] = useState(false);
   const { measuresModal, openMeasuresModal, closeMeasuresModal } =
     useTornoMeasuresModal(API_BASE);
@@ -120,10 +139,10 @@ function TablaInner({
     [startIndex, filas.length, total]
   );
 
-  const toggle = useCallback((id: number) => {
+  const toggle = useCallback((rowKey: string) => {
     setExpanded((prev) => ({
       ...prev,
-      [id]: !prev[id],
+      [rowKey]: !prev[rowKey],
     }));
   }, []);
 
@@ -138,7 +157,7 @@ function TablaInner({
   const handleViewMeasures = useCallback(
     (movement: Movement) =>
       openMeasuresModal({
-        movementId: movement.id,
+        movementId: getMovementTechnicalId(movement),
         locomotiveLabel: String(movement.locomotora ?? ""),
         companyName: movement.empresaNombre,
       }),
@@ -184,17 +203,20 @@ function TablaInner({
         ),
       },
       {
-        title: "ID",
-        dataIndex: "id",
+        title: "Folio",
         key: "id",
-        width: 92,
+        width: 116,
         sorter: true,
         sortOrder: getSortOrder("id"),
-        render: (value: Movement["id"]) => (
-          <span className="rounded-md bg-slate-100 px-2 py-1 font-mono text-xs font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-            #{value}
-          </span>
-        ),
+        render: (_value: unknown, movement) => {
+          return (
+            <div className="min-w-0">
+              <span className="inline-flex rounded-md bg-slate-100 px-2 py-1 font-mono text-xs font-black text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                {getMovementFolio(movement)}
+              </span>
+            </div>
+          );
+        },
       },
       {
         title: "Locomotora",
@@ -379,12 +401,13 @@ function TablaInner({
         align: "center",
         render: (_value, movement) => {
           const canEdit = puedeEditarMovimiento(movement.estado);
+          const movementId = getMovementTechnicalId(movement);
           return canEdit ? (
             <Button
               size="small"
               onClick={(event) => {
                 event.stopPropagation();
-                onEditar?.(movement.id);
+                onEditar?.(movementId);
               }}
               className="font-bold"
             >
@@ -426,7 +449,7 @@ function TablaInner({
 
   return (
     <div className="flex h-full w-full flex-col space-y-3 sm:space-y-4 font-sans">
-      <div className="relative w-full overflow-hidden rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900/95 shadow-sm transition-all">
+      <div className="relative w-full overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-sm transition-all">
         {/* Loader Overlay */}
         {cargando && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-[2px] transition-opacity duration-300 dark:bg-slate-950/60">
@@ -456,9 +479,10 @@ function TablaInner({
           ) : (
             filas.map((movement) => (
               <MobileCard
-                key={movement.id}
+                key={getMovementRowKey(movement)}
+                rowKey={getMovementRowKey(movement)}
                 movement={movement}
-                isOpen={Boolean(expanded[movement.id])}
+                isOpen={Boolean(expanded[getMovementRowKey(movement)])}
                 onToggle={toggle}
                 onEditar={onEditar}
                 showEdit={showEditColumn}
@@ -479,46 +503,47 @@ function TablaInner({
                 colorPrimary: "#059669",
                 borderRadius: 10,
                 fontFamily: "inherit",
-                colorBgContainer: isDarkTheme ? "#0f172a" : "#ffffff",
-                colorText: isDarkTheme ? "#e2e8f0" : "#0f172a",
-                colorTextSecondary: isDarkTheme ? "#94a3b8" : "#475569",
-                colorBorderSecondary: isDarkTheme ? "#1e293b" : "#e2e8f0",
+                colorBgContainer: isDarkTheme ? "#141c23" : "#ffffff",
+                colorText: isDarkTheme ? "#e8edf1" : "#17212b",
+                colorTextSecondary: isDarkTheme ? "#a3afb9" : "#5f6f7d",
+                colorBorderSecondary: isDarkTheme ? "#293640" : "#d9e1e7",
               },
               components: {
                 Table: {
-                  headerBg: isDarkTheme ? "#020617" : "#f8fafc",
-                  headerColor: isDarkTheme ? "#cbd5e1" : "#475569",
-                  rowHoverBg: isDarkTheme ? "#111827" : "#f8fafc",
-                  borderColor: isDarkTheme ? "#1e293b" : "#e2e8f0",
-                  colorBgContainer: isDarkTheme ? "#0f172a" : "#ffffff",
+                  headerBg: isDarkTheme ? "#182129" : "#f8fafb",
+                  headerColor: isDarkTheme ? "#e8edf1" : "#5f6f7d",
+                  rowHoverBg: isDarkTheme ? "#1d2932" : "#f3f6f8",
+                  borderColor: isDarkTheme ? "#293640" : "#d9e1e7",
+                  colorBgContainer: isDarkTheme ? "#141c23" : "#ffffff",
                 },
               },
             }}
           >
             <Table<Movement>
-              rowKey="id"
+              virtual={filas.length > 50}
+              rowKey={getMovementRowKey}
               className="cosaif-ant-table"
               columns={antColumns}
               dataSource={filas}
-              loading={cargando ? { spinning: true, tip: "Sincronizando..." } : false}
+              loading={cargando ? { spinning: true, description: "Sincronizando..." } : false}
               size="middle"
-              scroll={{ x: 1880 }}
+              scroll={{ x: 1880, ...(filas.length > 50 ? { y: 640 } : {}) }}
               onChange={handleAntTableChange}
               onRow={(movement) => ({
                 onClick: (event) => {
                   const target = event.target as HTMLElement | null;
                   if (target?.closest("button,a,input,select,textarea,[role='button']")) return;
-                  toggle(movement.id);
+                  toggle(getMovementRowKey(movement));
                 },
                 className: "cursor-pointer",
               })}
               expandable={{
                 expandedRowKeys: Object.entries(expanded)
                   .filter(([, isOpen]) => isOpen)
-                  .map(([id]) => Number(id)),
+                  .map(([rowKey]) => rowKey),
                 showExpandColumn: false,
                 expandIcon: () => null,
-                onExpand: (_open, movement) => toggle(movement.id),
+                onExpand: (_open, movement) => toggle(getMovementRowKey(movement)),
                 expandedRowRender: (movement) => (
                   <ExpandedDetailsContent
                     movement={movement}
@@ -536,7 +561,7 @@ function TablaInner({
                 pageSize: tamPagina,
                 total,
                 showSizeChanger: false,
-                position: ["bottomCenter"],
+                placement: ["bottomCenter"],
                 showTotal: (count, range) =>
                   `Mostrando ${range[0]}-${range[1]} de ${count}${totalEstimado ? "+" : ""}`,
               }}
@@ -655,9 +680,10 @@ export default memo(TablaInner);
 /* ================== TARJETA MOVIL ================== */
 
 interface MovimientoRowProps {
+  rowKey: string;
   movement: Movement;
   isOpen: boolean;
-  onToggle: (id: number) => void;
+  onToggle: (rowKey: string) => void;
   onEditar?: (id: number) => void;
   showEdit?: boolean;
   canEdit?: boolean;
@@ -668,6 +694,7 @@ interface MovimientoRowProps {
 }
 
 const MobileCard = memo(function MobileCard({
+  rowKey,
   movement,
   isOpen,
   onToggle,
@@ -694,15 +721,15 @@ const MobileCard = memo(function MobileCard({
   const isPriorityHigh = movement.prioridad === "ALTA";
 
   const toggle = useCallback(() => {
-    onToggle(movement.id);
-  }, [onToggle, movement.id]);
+    onToggle(rowKey);
+  }, [onToggle, rowKey]);
 
   const handleEditClick = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
       event.stopPropagation();
-      if (onEditar && canEdit) onEditar(movement.id);
+      if (onEditar && canEdit) onEditar(getMovementTechnicalId(movement));
     },
-    [onEditar, movement.id, canEdit]
+    [onEditar, movement, canEdit]
   );
 
   const handleMeasuresClick = useCallback(
@@ -745,7 +772,7 @@ const MobileCard = memo(function MobileCard({
                 {movement.locomotora ?? "—"}
               </div>
               <div className="flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-500">
-                <span className="font-mono">#{movement.id}</span>
+                <span className="font-mono">{getMovementFolio(movement)}</span>
                 <BadgeTipoMovimiento tipo={movement.tipoMovimiento} compact />
                 {isPriorityHigh && (
                   <span className="text-[10px] font-bold uppercase tracking-wider text-rose-500 dark:text-rose-400">

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import RailQueueBoard from "./RailQueueBoard";
 import { DynamicBanner } from "@/app/Components/DynamicBanner";
-import { getClientCookie, setClientCookie } from "@/lib/cookies";
+import { getClientCookie } from "@/lib/cookies";
 import { syncFirebaseNotificationLocalidad } from "@/lib/firebase";
 
 const SupervisorPage: React.FC = () => {
@@ -14,20 +14,8 @@ const SupervisorPage: React.FC = () => {
       getClientCookie("locId") ??
       (typeof window !== "undefined" ? localStorage.getItem("locId") : null);
 
-    let num = raw ? Number(raw) : NaN;
-
-    // si no hay locId válido, usamos 1 y lo dejamos grabado
-    if (!Number.isFinite(num) || num <= 0) {
-      num = 1;
-      try {
-        localStorage.setItem("locId", "1");
-      } catch { }
-      setClientCookie("locId", "1", {
-        path: "/",
-        sameSite: "lax",
-        maxAge: 60 * 60 * 24 * 365,
-      });
-    }
+    const num = raw ? Number(raw) : NaN;
+    if (!Number.isFinite(num) || num <= 0) return;
 
     setLocalidadId(num);
     window.dispatchEvent(new CustomEvent("cosaif:localidad-change", { detail: { localidadId: num } }));

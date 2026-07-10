@@ -52,6 +52,7 @@ export default function CrearMovimiento() {
     secLoading,
     rol,
     canManageAll,
+    canChooseLocality,
     userCompanyName,
     showFromOpts,
     setShowFromOpts,
@@ -137,7 +138,11 @@ export default function CrearMovimiento() {
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Badge tone={online ? "ok" : "error"}>{online ? "En línea" : "Sin conexión"}</Badge>
-          <RoleBadge rol={rol} canManageAll={canManageAll} />
+          <RoleBadge
+            rol={rol}
+            canManageAll={canManageAll}
+            canChooseLocality={canChooseLocality}
+          />
           {pendingCount > 0 && (
             <>
               <Badge tone="warn">{pendingCount} pendiente(s)</Badge>
@@ -230,6 +235,7 @@ export default function CrearMovimiento() {
                 localidades={localidades}
                 vias={vias}
                 canManageAll={canManageAll}
+                canChooseLocality={canChooseLocality}
                 userCompanyName={userCompanyName}
                 showFromOpts={showFromOpts}
                 setShowFromOpts={setShowFromOpts}

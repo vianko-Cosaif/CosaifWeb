@@ -31,7 +31,7 @@ export default function PaginationBar({
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 sm:flex-row sm:items-center sm:justify-between",
+        "flex flex-col gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm font-bold text-[var(--app-text-muted)] sm:flex-row sm:items-center sm:justify-between",
         className
       )}
     >
@@ -48,7 +48,7 @@ export default function PaginationBar({
         >
           Anterior
         </Button>
-        <span className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-black text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+        <span className="rounded-lg bg-[var(--app-surface-muted)] px-3 py-2 text-xs font-black text-[var(--app-text)]">
           {safePage} / {safeTotalPages}
         </span>
         <Button

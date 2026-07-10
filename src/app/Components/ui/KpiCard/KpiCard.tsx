@@ -18,32 +18,32 @@ export type KpiCardProps = {
 
 const toneClasses: Record<KpiTone, { card: string; icon: string; value: string }> = {
   neutral: {
-    card: "bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100",
+    card: "bg-[var(--app-surface)] text-[var(--app-text)]",
     icon: "text-slate-500 dark:text-slate-400",
     value: "text-slate-950 dark:text-white",
   },
   success: {
-    card: "bg-emerald-50/70 text-emerald-950 dark:bg-emerald-950/30 dark:text-emerald-100",
+    card: "bg-[var(--app-surface)] text-[var(--app-text)]",
     icon: "text-emerald-600 dark:text-emerald-300",
     value: "text-emerald-700 dark:text-emerald-300",
   },
   info: {
-    card: "bg-blue-50/70 text-blue-950 dark:bg-blue-950/30 dark:text-blue-100",
+    card: "bg-[var(--app-surface)] text-[var(--app-text)]",
     icon: "text-blue-600 dark:text-blue-300",
     value: "text-blue-700 dark:text-blue-300",
   },
   warning: {
-    card: "bg-amber-50/70 text-amber-950 dark:bg-amber-950/30 dark:text-amber-100",
+    card: "bg-[var(--app-surface)] text-[var(--app-text)]",
     icon: "text-amber-700 dark:text-amber-300",
     value: "text-amber-800 dark:text-amber-300",
   },
   danger: {
-    card: "bg-rose-50/70 text-rose-950 dark:bg-rose-950/30 dark:text-rose-100",
+    card: "bg-[var(--app-surface)] text-[var(--app-text)]",
     icon: "text-rose-600 dark:text-rose-300",
     value: "text-rose-700 dark:text-rose-300",
   },
   indigo: {
-    card: "bg-indigo-50/70 text-indigo-950 dark:bg-indigo-950/30 dark:text-indigo-100",
+    card: "bg-[var(--app-surface)] text-[var(--app-text)]",
     icon: "text-indigo-600 dark:text-indigo-300",
     value: "text-indigo-700 dark:text-indigo-300",
   },
@@ -63,7 +63,7 @@ export default function KpiCard({
   return (
     <div
       className={cn(
-        "rounded-xl border border-slate-200 shadow-sm dark:border-slate-800",
+        "rounded-lg border border-[var(--app-border)] shadow-sm",
         compact ? "px-3 py-2" : "px-4 py-3",
         toneClass.card,
         className
@@ -71,7 +71,7 @@ export default function KpiCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-[10px] font-black uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          <p className="truncate text-[10px] font-black uppercase tracking-wide text-[var(--app-text-soft)]">
             {label}
           </p>
           <div

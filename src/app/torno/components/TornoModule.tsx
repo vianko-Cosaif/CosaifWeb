@@ -19,7 +19,7 @@ type View = "historial" | "incidentes" | "navajas";
 type Notice = { type: "success" | "error" | "info"; message: string };
 
 const moduleCanvasClass =
-  "relative isolate -mx-4 -mt-4 min-h-svh max-w-none overflow-x-hidden bg-[#f4f7fb] px-3 pb-6 pt-5 dark:bg-slate-950 sm:-mx-6 sm:-mt-6 sm:px-5 sm:pb-7 md:-mx-8 md:-mt-8 md:px-6 md:py-6";
+  "relative isolate -mx-4 -mt-4 min-h-svh max-w-none overflow-x-hidden bg-[var(--app-bg)] px-3 pb-6 pt-5 sm:-mx-6 sm:-mt-6 sm:px-5 sm:pb-7 md:-mx-8 md:-mt-8 md:px-6 md:py-6";
 
 export default function TornoModule({ roleHint }: { roleHint?: TornoRole }) {
   const router = useRouter();
@@ -140,7 +140,7 @@ export default function TornoModule({ roleHint }: { roleHint?: TornoRole }) {
   return (
     <section className={moduleCanvasClass}>
       <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4">
-        <header className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm shadow-slate-200/70 dark:border-slate-800 dark:bg-slate-950 dark:shadow-none">
+        <header className="overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-[var(--app-shadow-sm)]">
           <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
             <div className="min-w-0">
               <p className="text-[11px] font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
@@ -158,7 +158,7 @@ export default function TornoModule({ roleHint }: { roleHint?: TornoRole }) {
               {role}
             </div>
           </div>
-          <nav className="grid gap-2 border-t border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/45 sm:grid-cols-3">
+          <nav className="grid gap-2 border-t border-[var(--app-border)] bg-[var(--app-surface-subtle)] p-3 sm:grid-cols-3">
             {views.map((item) => {
               const Icon = item.icon;
               const active = view === item.id;
@@ -171,7 +171,7 @@ export default function TornoModule({ roleHint }: { roleHint?: TornoRole }) {
                     "inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-3 text-sm font-black transition",
                     active
                       ? "border-emerald-600 bg-emerald-600 text-white shadow-sm dark:border-emerald-400 dark:bg-emerald-400 dark:text-slate-950"
-                      : "border-slate-200 bg-white text-slate-600 hover:border-emerald-200 hover:text-slate-950 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-emerald-700",
+                      : "border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text-muted)] hover:border-emerald-300 hover:text-[var(--app-text)]",
                   )}
                 >
                   <Icon className="h-4 w-4" />

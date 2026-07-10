@@ -10,7 +10,7 @@ import {
   XCircle,
   type LucideIcon,
 } from "lucide-react";
-import { KpiCard, type KpiTone } from "@/app/Components/ui";
+import KpiCard, { type KpiTone } from "@/app/Components/ui/KpiCard";
 import type { ArrastreStats } from "../types";
 
 type StatusStripItem = {
@@ -20,8 +20,8 @@ type StatusStripItem = {
   icon: LucideIcon;
 };
 
-export default function ArrastreStatusStrip({ stats }: { stats: ArrastreStats }) {
-  const items: StatusStripItem[] = [
+export default function ArrastreStatusStrip({ stats, operational = false }: { stats: ArrastreStats; operational?: boolean }) {
+  const allItems: StatusStripItem[] = [
     { label: "Solicitados", value: stats.solicitados, tone: "neutral", icon: ClipboardList },
     { label: "En proceso", value: stats.proceso, tone: "info", icon: LoaderCircle },
     { label: "Detenidos", value: stats.detenidos, tone: "warning", icon: PauseCircle },
@@ -30,9 +30,12 @@ export default function ArrastreStatusStrip({ stats }: { stats: ArrastreStats })
     { label: "Vagones activos", value: stats.vagonesPendientes, tone: "indigo", icon: Boxes },
     { label: "Incidentes", value: stats.incidentesAbiertos, tone: "warning", icon: AlertTriangle },
   ];
+  const items = operational
+    ? [allItems[0], allItems[1], allItems[2], allItems[5], allItems[6]]
+    : allItems;
 
   return (
-    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+    <div className={`grid gap-2 sm:grid-cols-2 lg:grid-cols-3 ${operational ? "xl:grid-cols-5" : "xl:grid-cols-7"}`}>
       {items.map((item) => (
         <KpiCard
           key={item.label}

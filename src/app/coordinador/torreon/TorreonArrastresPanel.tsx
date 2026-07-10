@@ -8,17 +8,17 @@ import {
   RefreshCw,
   Search,
 } from "lucide-react";
-import {
-  Button,
-  FieldShell,
-  FilterPanel,
-  LoadingState,
-  ModuleHeader,
-  PaginationBar,
-  SegmentedControl,
-} from "@/app/Components/ui";
+import Button from "@/app/Components/ui/Button";
+import FieldShell from "@/app/Components/ui/FieldShell";
+import FilterPanel from "@/app/Components/ui/FilterPanel";
+import LoadingState from "@/app/Components/ui/LoadingState";
+import ModuleHeader from "@/app/Components/ui/ModuleHeader";
+import PaginationBar from "@/app/Components/ui/PaginationBar";
+import SearchInput from "@/app/Components/ui/SearchInput";
+import SegmentedControl from "@/app/Components/ui/SegmentedControl";
 import {
   ArrastreOperationalTable,
+  ArrastreAirportBoard,
   ArrastreStatusStrip,
   STATUS_OPTIONS,
   VAGON_STATUS_OPTIONS,
@@ -41,14 +41,17 @@ import {
   type VagonStatusFilter,
 } from "@/features/torreon/arrastres";
 import { useRealtimeBoardRefresh } from "@/app/hooks/useRealtimeBoardRefresh";
+import { TorreonRealtimeBadge } from "@/features/torreon/components/TorreonRealtimeBadge";
+import { isTorreonArrastreEvent, realtimeArrastreSnapshot } from "@/features/torreon/realtime";
 import TorreonIncidentDetailModal, { type TorreonIncidentDetail } from "./TorreonIncidentDetailModal";
 
 type Props = {
   localidadId: number;
   variant?: "dashboard" | "movimientos";
+  embedded?: boolean;
 };
 
-export default function TorreonArrastresPanel({ localidadId, variant = "dashboard" }: Props) {
+export default function TorreonArrastresPanel({ localidadId, variant = "dashboard", embedded = false }: Props) {
   const [arrastres, setArrastres] = useState<Arrastre[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -151,11 +154,17 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
     void load();
   }, [load]);
 
-  useRealtimeBoardRefresh({
+  const realtimeStatus = useRealtimeBoardRefresh({
     enabled: true,
     realtimeLocalidadId: localidadId,
     scopeLocalidadId: localidadId,
+    matchesEvent: isTorreonArrastreEvent,
     onRefresh: ({ event }) => {
+      const snapshot = realtimeArrastreSnapshot(event);
+      if (snapshot) {
+        setArrastres((current) => sortArrastres([snapshot, ...current.filter((item) => item.id !== snapshot.id)]));
+        return;
+      }
       const arrastreId = Number(event.arrastreId || 0);
       if (String(event.type || "").startsWith("torreon.arrastre") && arrastreId > 0) {
         return refreshArrastreById(arrastreId);
@@ -306,8 +315,8 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
   }, [load]);
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white/95 shadow-sm dark:border-slate-800 dark:bg-slate-950/90">
-      <div className="border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950 sm:px-5">
+    <section className={embedded ? "min-w-0" : "overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"}>
+      {!embedded ? <div className="border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950 sm:px-5">
         <ModuleHeader
           eyebrow="Torreon"
           title={variant === "dashboard" ? "Arrastres activos" : "Arrastres"}
@@ -315,12 +324,7 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
           icon={ClipboardList}
           actions={
             <>
-              {variant === "dashboard" ? (
-                <span className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-black uppercase tracking-wide text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  Live
-                </span>
-              ) : null}
+              {variant === "dashboard" ? <TorreonRealtimeBadge status={realtimeStatus} /> : null}
               <span className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
                 <Hash className="h-4 w-4 text-emerald-600" />
                 {headerCount} movimiento{headerCount === 1 ? "" : "s"}
@@ -335,12 +339,49 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
             </>
           }
         />
-      </div>
+      </div> : null}
 
-      <div className="space-y-4 p-4 sm:p-5">
-        <ArrastreStatusStrip stats={stats} />
+      <div className={embedded ? "space-y-3" : "space-y-4 p-4 sm:p-5"}>
+        {embedded && variant === "movimientos" ? (
+          <div className="space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <SegmentedControl
+                ariaLabel="Ámbito de arrastres"
+                value={scope}
+                options={scopeOptions}
+                onChange={setScope}
+              />
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <TorreonRealtimeBadge status={realtimeStatus} />
+                <span className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-slate-100 px-3 text-xs font-black text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  <Hash className="h-3.5 w-3.5 text-emerald-600" />
+                  {headerCount} registro{headerCount === 1 ? "" : "s"}
+                </span>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => load(true)}
+                  loading={refreshing}
+                  leftIcon={<RefreshCw className="h-4 w-4" aria-hidden />}
+                >
+                  Actualizar
+                </Button>
+              </div>
+            </div>
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              onClear={() => setSearch("")}
+              placeholder="Buscar por folio, arrastre, vagón o estado"
+              label="Buscar arrastres"
+              inputClassName="min-h-[44px] rounded-xl border-slate-200 bg-white/90 text-[16px] focus:border-emerald-400 focus:ring-emerald-500/40 dark:border-slate-700 dark:bg-slate-900/90 sm:text-sm"
+            />
+          </div>
+        ) : null}
 
-        {variant === "movimientos" && (
+        {!embedded ? <ArrastreStatusStrip stats={stats} operational={variant === "dashboard"} /> : null}
+
+        {variant === "movimientos" && !embedded && (
           <SegmentedControl
             ariaLabel="Ambito de arrastres"
             value={scope}
@@ -359,9 +400,11 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
           </div>
         ) : null}
 
-        <FilterPanel
+        {variant === "movimientos" ? <FilterPanel
           title="Filtros de arrastre"
           count={`${selectedRows.length} visibles`}
+          collapsible
+          defaultOpen={embedded}
           footer={
             <div className="flex flex-wrap items-center gap-1.5">
               <Button size="sm" onClick={() => applyToday("solicitud")}>
@@ -382,16 +425,18 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
             </div>
           }
         >
-          <div className="grid gap-2 xl:grid-cols-[minmax(240px,1fr)_145px_150px_130px_190px_190px_90px]">
-            <FieldShell label="Buscar" icon={<Search className="h-4 w-4" aria-hidden />}>
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                className="min-w-0 flex-1 bg-transparent text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100"
-                placeholder="Folio, ID, vagon, estado..."
-              />
-            </FieldShell>
-            <FieldShell label="Estado">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-12">
+            {!embedded ? (
+              <FieldShell className="md:col-span-2 xl:col-span-4" label="Buscar" icon={<Search className="h-4 w-4" aria-hidden />}>
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  className="min-w-0 flex-1 bg-transparent text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100"
+                  placeholder="Folio, ID, vagon, estado..."
+                />
+              </FieldShell>
+            ) : null}
+            <FieldShell className="xl:col-span-2" label="Estado">
               <select
                 value={status}
                 onChange={(event) => setStatus(event.target.value as ArrastreStatus)}
@@ -403,7 +448,7 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
                 ))}
               </select>
             </FieldShell>
-            <FieldShell label="Vagones">
+            <FieldShell className="xl:col-span-2" label="Vagones">
               <select
                 value={vagonStatus}
                 onChange={(event) => setVagonStatus(event.target.value as VagonStatusFilter)}
@@ -415,7 +460,7 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
                 ))}
               </select>
             </FieldShell>
-            <FieldShell label="Fecha base">
+            <FieldShell className="xl:col-span-2" label="Fecha base">
               <select
                 value={fechaCampo}
                 onChange={(event) => setFechaCampo(event.target.value as ArrastreFechaCampo)}
@@ -427,7 +472,7 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
                 <option value="fin">Fin</option>
               </select>
             </FieldShell>
-            <FieldShell label="Desde" icon={<CalendarDays className="h-4 w-4" aria-hidden />}>
+            <FieldShell className="xl:col-span-3" label="Desde" icon={<CalendarDays className="h-4 w-4" aria-hidden />}>
               <input
                 type="datetime-local"
                 value={desde}
@@ -435,7 +480,7 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
                 className="min-w-0 flex-1 bg-transparent font-semibold text-slate-700 outline-none dark:text-slate-100"
               />
             </FieldShell>
-            <FieldShell label="Hasta" icon={<CalendarDays className="h-4 w-4" aria-hidden />}>
+            <FieldShell className="xl:col-span-3" label="Hasta" icon={<CalendarDays className="h-4 w-4" aria-hidden />}>
               <input
                 type="datetime-local"
                 value={hasta}
@@ -443,7 +488,7 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
                 className="min-w-0 flex-1 bg-transparent font-semibold text-slate-700 outline-none dark:text-slate-100"
               />
             </FieldShell>
-            <FieldShell label="Por pagina">
+            <FieldShell className="xl:col-span-2" label="Por pagina">
               <select
                 value={pageSize}
                 onChange={(event) => setPageSize(Number(event.target.value))}
@@ -456,7 +501,9 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
               </select>
             </FieldShell>
           </div>
-        </FilterPanel>
+        </FilterPanel> : null}
+
+        {embedded ? <ArrastreStatusStrip stats={stats} operational={false} /> : null}
 
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -476,11 +523,21 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
           </div>
           {loading ? (
             <LoadingState className="h-48" />
+          ) : variant === "dashboard" ? (
+            <ArrastreAirportBoard
+              rows={paginatedRows}
+              dailyCounters={dailyCounters}
+              onIncidentSelect={(incident, arrastre) => setSelectedIncident({
+                arrastreId: arrastre.id,
+                incident,
+                title: `Arrastre ${buildArrastreFolio(arrastre, dailyCounters.get(arrastre.id))}`,
+                subtitle: `Movimiento de arrastre #${arrastre.id}`,
+              })}
+            />
           ) : rows.length ? (
             <ArrastreOperationalTable
               rows={paginatedRows}
               dailyCounters={dailyCounters}
-              compact={variant === "dashboard"}
               mode={selectedMode}
               busyArrastreId={priorityBusyId}
               canPrioritizeByIncident={hasOpenIncidentInQueue}

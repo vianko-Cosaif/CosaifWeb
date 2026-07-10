@@ -136,6 +136,15 @@ function filterByVista(rows: ArrastreRecord[], vista: string | null) {
 function normalizeVagones(input: unknown) {
   if (!Array.isArray(input)) return [];
 
+  const asText = (...values: unknown[]) => {
+    for (const value of values) {
+      if (value == null) continue;
+      const text = String(value).trim();
+      if (text) return text;
+    }
+    return "";
+  };
+
   return input
     .map((item) => {
       const record = item && typeof item === "object" ? item as Record<string, unknown> : {};
@@ -145,8 +154,10 @@ function normalizeVagones(input: unknown) {
           ? record.numeroVagon.trim()
           : undefined,
         carga: carga === "LLENO" ? "LLENO" : "VACIO",
-        viaId: Number(record.viaId),
-        seccionId: Number(record.seccionId),
+        viaOrigen: asText(record.viaOrigen, record.viaOrigenNombre, record.viaOrigenId),
+        seccionOrigen: asText(record.seccionOrigen, record.seccionOrigenNombre, record.seccionOrigenId),
+        viaDestino: asText(record.viaDestino, record.viaDestinoNombre, record.viaId),
+        seccionDestino: asText(record.seccionDestino, record.seccionDestinoNombre, record.seccionId),
       };
     });
 }
@@ -234,12 +245,21 @@ export async function POST(req: NextRequest) {
     if (!Number.isFinite(localidadId) || !isTorreonLocalidad(localidadId)) {
       return jsonError("Localidad Torreon invalida", 400);
     }
+    const instrucciones = typeof body.instrucciones === "string" ? body.instrucciones.trim() : "";
+    if (instrucciones.length < 3) {
+      return jsonError("Describe el movimiento u operacion del arrastre", 400);
+    }
 
     const vagones = normalizeVagones(body.vagones);
     if (vagones.length < 1) return jsonError("Agrega al menos un vagon", 400);
     if (vagones.length > 8) return jsonError("Maximo 8 vagones por arrastre", 400);
-    if (vagones.some((item) => !Number.isFinite(item.viaId) || item.viaId <= 0 || !Number.isFinite(item.seccionId) || item.seccionId <= 0)) {
-      return jsonError("Cada vagon necesita via y seccion validas", 400);
+    if (vagones.some((item) => (
+      !item.viaOrigen ||
+      !item.seccionOrigen ||
+      !item.viaDestino ||
+      !item.seccionDestino
+    ))) {
+      return jsonError("Cada vagon necesita origen y destino con via/seccion", 400);
     }
 
     const capacidad = vagones.reduce((total, item) => total + (item.carga === "LLENO" ? 2 : 1), 0);
@@ -251,9 +271,7 @@ export async function POST(req: NextRequest) {
       empresaId,
       creadoPorId: userId,
       localidadId,
-      instrucciones: typeof body.instrucciones === "string" && body.instrucciones.trim()
-        ? body.instrucciones.trim()
-        : undefined,
+      instrucciones,
       vagones,
     };
 

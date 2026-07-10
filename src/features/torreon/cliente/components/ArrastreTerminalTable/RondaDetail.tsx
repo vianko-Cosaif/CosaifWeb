@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Pencil } from "lucide-react";
+import { ArrowDown, ArrowUp, MapPin, Pencil } from "lucide-react";
 import { buildArrastreFolio, fmtDate, getArrastreTimeline, type Arrastre, type DailyInfo, type VagonArrastre } from "@/features/torreon/arrastres";
 import { isArrastreEditable, statusText } from "../../utils";
 import { EstadoBadge } from "../EstadoBadge";
@@ -40,7 +40,7 @@ export function RondaDetail({ arrastre, dailyInfo, busyAction, onEditVagon, onRe
               <th className="w-20 px-3 py-3">Orden</th>
               <th className="px-3 py-3">Vagon</th>
               <th className="px-3 py-3">Carga</th>
-              <th className="px-3 py-3">Zona</th>
+              <th className="px-3 py-3">Origen / destino</th>
               <th className="px-3 py-3">Estado</th>
               <th className="px-3 py-3">Inicio</th>
               <th className="px-3 py-3">Fin</th>
@@ -65,7 +65,18 @@ export function RondaDetail({ arrastre, dailyInfo, busyAction, onEditVagon, onRe
                   <td className="px-3 py-3">
                     <span className="rounded-md border border-slate-200 px-2 py-1 text-xs font-black text-slate-700 dark:border-slate-700 dark:text-slate-200">{statusText(vagon.carga)}</span>
                   </td>
-                  <td className="px-3 py-3 text-slate-700 dark:text-slate-300">Via {vagon.viaId ?? "-"} / Seccion {vagon.seccionId ?? "-"}</td>
+                  <td className="px-3 py-3 text-slate-700 dark:text-slate-300">
+                    <div className="space-y-1 text-xs font-bold">
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                        <span>Origen {formatPoint(vagon.viaOrigenNombre, vagon.seccionOrigenNombre, vagon.viaOrigenId, vagon.seccionOrigenId)}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
+                        <MapPin className="h-3.5 w-3.5 text-emerald-500" />
+                        <span>Destino {formatPoint(vagon.viaDestinoNombre, vagon.seccionDestinoNombre, vagon.viaId, vagon.seccionId)}</span>
+                      </div>
+                    </div>
+                  </td>
                   <td className="px-3 py-3"><EstadoBadge estado={vagon.estado} /></td>
                   <td className="px-3 py-3 text-slate-600 dark:text-slate-300">{fmtDate(vagon.fechaInicio)}</td>
                   <td className="px-3 py-3 text-slate-600 dark:text-slate-300">{fmtDate(vagon.fechaFin)}</td>
@@ -96,4 +107,8 @@ export function RondaDetail({ arrastre, dailyInfo, busyAction, onEditVagon, onRe
       </div>
     </div>
   );
+}
+
+function formatPoint(viaName?: string | null, sectionName?: string | null, viaId?: number | null, seccionId?: number | null) {
+  return `Via ${viaName || viaId || "-"} / Seccion ${sectionName || seccionId || "-"}`;
 }

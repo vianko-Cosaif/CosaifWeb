@@ -1,4 +1,5 @@
 import { CalendarDays, Search } from "lucide-react";
+import FilterPanel from "@/app/Components/ui/FilterPanel";
 import { STATUS_TABS } from "../constants";
 import type { EmpresaOption, FechaCampo, SortDir, SortKey, StatusTab } from "../types";
 
@@ -24,6 +25,9 @@ type Props = {
   onPageSizeChange: (value: number) => void;
   onToday: (field: FechaCampo) => void;
   onClearDates: () => void;
+  showStatusTabs?: boolean;
+  showSearch?: boolean;
+  defaultOpen?: boolean;
 };
 
 export function NaturalesFilters({
@@ -48,37 +52,58 @@ export function NaturalesFilters({
   onPageSizeChange,
   onToday,
   onClearDates,
+  showStatusTabs = true,
+  showSearch = true,
+  defaultOpen = false,
 }: Props) {
+  const activeFilters = [
+    status !== "activos",
+    Boolean(search.trim()),
+    empresaId !== null,
+    Boolean(desde),
+    Boolean(hasta),
+  ].filter(Boolean).length;
+
   return (
-    <div className="rounded-3xl border border-slate-200 bg-slate-50/60 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/40">
-      <div className="flex flex-wrap gap-2">
-        {STATUS_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            type="button"
-            onClick={() => onStatusChange(tab.value)}
-            className={`inline-flex h-9 flex-1 items-center justify-center rounded-lg px-3 text-sm font-bold transition sm:flex-none ${
-              status === tab.value
-                ? "bg-slate-950 text-white shadow-sm dark:bg-white dark:text-slate-950"
-                : "border border-slate-200 bg-white text-slate-500 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:text-white"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+    <FilterPanel
+      title="Filtros de movimientos"
+      count={activeFilters ? `${activeFilters} aplicados` : "Sin aplicar"}
+      collapsible
+      defaultOpen={defaultOpen}
+      className="bg-slate-50/60 dark:bg-slate-950/40"
+    >
+      {showStatusTabs ? (
+        <div className="flex flex-wrap gap-2">
+          {STATUS_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() => onStatusChange(tab.value)}
+              className={`inline-flex h-9 flex-1 items-center justify-center rounded-lg px-3 text-sm font-bold transition sm:flex-none ${
+                status === tab.value
+                  ? "bg-slate-950 text-white shadow-sm dark:bg-white dark:text-slate-950"
+                  : "border border-slate-200 bg-white text-slate-500 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:text-white"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
-      <div className="relative mt-3">
-        <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-        <input
-          value={search}
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="Buscar por locomotora, cliente, operador, estado..."
-          className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-12 pr-4 text-sm font-semibold text-slate-700 outline-none shadow-sm focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-        />
-      </div>
+      {showSearch ? (
+        <div className={showStatusTabs ? "relative mt-3" : "relative"}>
+          <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Buscar por locomotora, cliente, operador, estado..."
+            className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-12 pr-4 text-sm font-semibold text-slate-700 outline-none shadow-sm focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+          />
+        </div>
+      ) : null}
 
-      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_160px_1fr_1fr_170px_150px_120px]">
+      <div className={`${showStatusTabs || showSearch ? "mt-3 " : ""}grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_160px_1fr_1fr_170px_150px_120px]`}>
         <SelectControl label="Empresa" value={empresaId ? String(empresaId) : ""} onChange={(value) => onEmpresaChange(value ? Number(value) : null)}>
           <option value="">Todas</option>
           {empresas.map((empresa) => (
@@ -117,7 +142,7 @@ export function NaturalesFilters({
           Limpiar fechas
         </button>
       </div>
-    </div>
+    </FilterPanel>
   );
 }
 

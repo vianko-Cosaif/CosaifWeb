@@ -33,13 +33,14 @@ export const isPos = (n: number) => Number.isFinite(n) && n > 0;
 export function resolveIds(args: {
   rol: Rol;
   adminRoles: string[];
+  localityAdminRoles: string[];
   form: Pick<MovementFormData, "empresaId" | "creadoPorId" | "selectedLocalityId">;
   user: UserSession;
   cookieEmp: number;
   cookieLoc: number;
   cookieUserId: number;
 }): ResolvedIds {
-  const { rol, adminRoles, form, user, cookieEmp, cookieLoc, cookieUserId } = args;
+  const { rol, adminRoles, localityAdminRoles, form, user, cookieEmp, cookieLoc, cookieUserId } = args;
   const role = String(rol).toUpperCase();
 
   const forcedEmpresa = Number(user?.empresaId ?? user?.empresa?.id ?? NaN);
@@ -65,7 +66,7 @@ export function resolveIds(args: {
         : NaN;
 
   const rawFormLoc = Number(form.selectedLocalityId ?? NaN);
-  const localidadId = adminRoles.includes(role)
+  const localidadId = localityAdminRoles.includes(role)
     ? (isPos(rawFormLoc) ? rawFormLoc : NaN)
     : (isPos(cookieLoc)
       ? cookieLoc
@@ -85,15 +86,16 @@ export function resolveIds(args: {
  */
 export function validateStep1Data(args: {
   canManageAll: boolean;
+  canChooseLocality: boolean;
   resolvedIds: ResolvedIds;
   form: Pick<MovementFormData, "service" | "fromTrack" | "toTrack" | "locomotiveNumber">;
   selectionMode: SelectionMode;
 }): Record<string, string> {
-  const { canManageAll, resolvedIds, form, selectionMode } = args;
+  const { canManageAll, canChooseLocality, resolvedIds, form, selectionMode } = args;
   const e: Record<string, string> = {};
 
   if (canManageAll && !Number.isFinite(resolvedIds.empresaId)) e.empresaId = "Selecciona empresa.";
-  if (canManageAll && !Number.isFinite(resolvedIds.localidadId)) e.selectedLocalityId = "Selecciona localidad.";
+  if (canChooseLocality && !Number.isFinite(resolvedIds.localidadId)) e.selectedLocalityId = "Selecciona localidad.";
 
   if (form.service) {
     if (selectionMode === "de_via" && !form.fromTrack) e.fromTrack = "Selecciona via de origen.";
@@ -344,12 +346,13 @@ export function applyCatalogDefaults(args: {
   form: MovementFormData;
   user: UserSession;
   adminRoles: string[];
+  localityAdminRoles: string[];
   role: Rol;
   empresas: { id: number }[];
   localidades: { id: number }[];
   cookieEmp: number;
 }) {
-  const { form, user, adminRoles, role, empresas, localidades, cookieEmp } = args;
+  const { form, user, adminRoles, localityAdminRoles, role, empresas, localidades, cookieEmp } = args;
 
   let empresaId = form.empresaId ?? (user?.empresaId ?? user?.empresa?.id ?? (Number.isFinite(cookieEmp) ? cookieEmp : null));
   if (adminRoles.includes(String(role).toUpperCase())) {
@@ -357,8 +360,8 @@ export function applyCatalogDefaults(args: {
   }
 
   let localidadId = form.selectedLocalityId;
-  const canAll = adminRoles.includes(String(role).toUpperCase());
-  if (!Number.isFinite(Number(localidadId)) && canAll && localidades.length === 1) {
+  const canChooseLocality = localityAdminRoles.includes(String(role).toUpperCase());
+  if (!Number.isFinite(Number(localidadId)) && canChooseLocality && localidades.length === 1) {
     localidadId = localidades[0].id;
   }
 

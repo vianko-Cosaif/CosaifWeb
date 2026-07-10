@@ -165,9 +165,12 @@ function mapTorreonIncidente(input: UnknownRecord) {
   const seccionBloqueadaId = asNumber(input.seccionBloqueadaId);
   const fotos = normalizeTorreonFotos(input.fotos);
   const imagenes = fotos.map((foto) => foto.url);
-  const movimientoId = asNumber(movimiento.id);
+  const movimientoId = asNumber(movimiento.idTecnico) || asNumber(movimiento.id);
   const routeOrigen = isArrastre
-    ? formatTorreonZona(arrastre.viaOrigenId, arrastre.seccionOrigenId)
+    ? formatTorreonZona(
+        vagon.viaOrigenId ?? arrastre.viaOrigenId ?? viaBloqueadaId,
+        vagon.seccionOrigenId ?? arrastre.seccionOrigenId ?? seccionBloqueadaId
+      )
     : formatTorreonVia(movimiento, "Origen");
   const routeDestino = isArrastre
     ? formatTorreonZona(
@@ -251,6 +254,9 @@ function getTorreonSearchParams(req: NextRequest, cookieStore: Awaited<ReturnTyp
 
   const estado = incoming.get("estado");
   if (estado) params.set("estado", estado);
+
+  const tipo = incoming.get("tipo") || incoming.get("tipoIncidente");
+  if (tipo) params.set("tipo", tipo);
 
   params.set("page", incoming.get("page") || "1");
   params.set("pageSize", incoming.get("pageSize") || "20");
@@ -356,12 +362,12 @@ async function getTorreonById(req: NextRequest, id: string) {
   return NextResponse.json({ success: true, data });
 }
 
-async function resolveTorreon(req: NextRequest, id: string) {
+async function mutateTorreonIncident(req: NextRequest, id: string, action: "resolver" | "cerrar") {
   const cookieStore = await cookies();
   const session = requireTorreonSession(cookieStore);
   if (!session.ok) return session.response;
   if (!canResolveTorreonIncidentRole(session.role)) {
-    return NextResponse.json({ success: false, error: "No autorizado para resolver incidentes" }, { status: 403 });
+    return NextResponse.json({ success: false, error: "No autorizado para gestionar incidentes" }, { status: 403 });
   }
 
   const userId = readUserId(cookieStore);
@@ -380,9 +386,11 @@ async function resolveTorreon(req: NextRequest, id: string) {
     cleanText(body.solucion) ||
     cleanText(body.comentario) ||
     cleanText(body.comments) ||
-    "Resuelto desde Cosaif Web";
+    (action === "cerrar"
+      ? "Incidente cerrado y movimiento cancelado desde Cosaif Web"
+      : "Resuelto desde Cosaif Web");
 
-  const data = await fetchTorreonMsJson(`/incidentes/${encodeURIComponent(id)}/resolver${query}`, {
+  const data = await fetchTorreonMsJson(`/incidentes/${encodeURIComponent(id)}/${action}${query}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ resueltoPorId: userId, solucion }),
@@ -398,10 +406,15 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path?: string[]
   if (shouldUseTorreon(req)) {
     if (req.method === "GET" && segments.length === 0) return listTorreon(req);
     if (req.method === "GET" && id && segments.length === 1) return getTorreonById(req, id);
-    if (id && ["resuelto", "resolver", "cerrar"].includes(String(action || "").toLowerCase())) {
-      return resolveTorreon(req, id);
+    if (id && ["resuelto", "resolver"].includes(String(action || "").toLowerCase())) {
+      return mutateTorreonIncident(req, id, "resolver");
     }
-    if (req.method === "PUT" && id && segments.length === 1) return resolveTorreon(req, id);
+    if (id && String(action || "").toLowerCase() === "cerrar") {
+      return mutateTorreonIncident(req, id, "cerrar");
+    }
+    if (req.method === "PUT" && id && segments.length === 1) {
+      return mutateTorreonIncident(req, id, "resolver");
+    }
     return NextResponse.json({ success: false, error: "Operacion Torreon no soportada" }, { status: 400 });
   }
 

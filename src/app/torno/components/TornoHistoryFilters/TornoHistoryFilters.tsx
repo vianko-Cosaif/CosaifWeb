@@ -28,9 +28,9 @@ export default function TornoHistoryFilters({
   };
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/60 dark:border-slate-800 dark:bg-slate-950 dark:shadow-none">
+    <section className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-3 shadow-[var(--app-shadow-sm)]">
       <div className="grid gap-3 xl:grid-cols-[minmax(240px,320px)_minmax(280px,1fr)_auto] xl:items-center">
-        <div className="grid grid-cols-2 rounded-md bg-slate-100 p-1 dark:bg-slate-900">
+        <div className="grid grid-cols-2 rounded-md bg-[var(--app-surface-muted)] p-1">
           {[
             { id: "activos" as const, label: "Activos" },
             { id: "concluidos" as const, label: "Pasados" },
@@ -42,7 +42,7 @@ export default function TornoHistoryFilters({
               className={cn(
                 "min-h-10 rounded px-4 py-2 text-sm font-black transition",
                 tab === item.id
-                  ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white"
+                  ? "bg-[var(--app-surface)] text-[var(--app-text)] shadow-sm"
                   : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200",
               )}
             >
@@ -57,7 +57,7 @@ export default function TornoHistoryFilters({
             value={filters.search ?? ""}
             onChange={(event) => onSearch(event.target.value)}
             placeholder="Buscar locomotora, cliente, folio..."
-            className="h-11 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-sm font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-cyan-950"
+            className="h-11 w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-subtle)] pl-9 pr-3 text-sm font-semibold text-[var(--app-text)] outline-none transition placeholder:text-[var(--app-text-soft)] focus:border-[var(--app-accent)] focus:ring-2 focus:ring-[var(--app-focus)]"
           />
         </div>
 
@@ -65,7 +65,7 @@ export default function TornoHistoryFilters({
           type="button"
           onClick={onRefresh}
           disabled={refreshing || loading}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] px-3 text-sm font-black text-[var(--app-text-muted)] shadow-sm transition hover:bg-[var(--app-surface-subtle)] disabled:opacity-50"
         >
           <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
           Actualizar
@@ -79,7 +79,7 @@ export default function TornoHistoryFilters({
             type="datetime-local"
             value={toDateInput(filters.fechaInicio)}
             onChange={(event) => setDate("fechaInicio", event.target.value)}
-            className="h-11 rounded-md border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-cyan-950"
+            className="h-11 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-subtle)] px-3 text-sm font-bold text-[var(--app-text)] outline-none focus:border-[var(--app-accent)] focus:ring-2 focus:ring-[var(--app-focus)]"
           />
         </label>
         <label className="grid gap-1">
@@ -88,7 +88,7 @@ export default function TornoHistoryFilters({
             type="datetime-local"
             value={toDateInput(filters.fechaFin)}
             onChange={(event) => setDate("fechaFin", event.target.value)}
-            className="h-11 rounded-md border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-cyan-950"
+            className="h-11 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-subtle)] px-3 text-sm font-bold text-[var(--app-text)] outline-none focus:border-[var(--app-accent)] focus:ring-2 focus:ring-[var(--app-focus)]"
           />
         </label>
         <label className="grid gap-1">
@@ -96,7 +96,7 @@ export default function TornoHistoryFilters({
           <select
             value={filters.pageSize ?? 25}
             onChange={(event) => onFiltersChange({ pageSize: Number(event.target.value), page: 1 })}
-            className="h-11 rounded-md border border-slate-200 bg-white px-3 text-sm font-black text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-cyan-950"
+            className="h-11 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-subtle)] px-3 text-sm font-black text-[var(--app-text)] outline-none focus:border-[var(--app-accent)] focus:ring-2 focus:ring-[var(--app-focus)]"
           >
             {[10, 25, 50, 100].map((size) => (
               <option key={size} value={size}>{size}</option>

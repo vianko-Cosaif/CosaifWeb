@@ -20,6 +20,7 @@ import { useVisibleInterval } from "@/app/hooks/useVisibleInterval";
 type OutboxItem = {
   id: string;
   payload: unknown;
+  endpoint?: string;
   createdAt: number;
 };
 
@@ -59,7 +60,7 @@ export function useCrearMovimientoOutbox() {
   }, []);
 
   /** Encola payload para sincronizar cuando vuelva la red. */
-  const pushOutbox = useCallback((payload: unknown) => {
+  const pushOutbox = useCallback((payload: unknown, endpoint = `${API_BASE}/movimientos`) => {
     let q: OutboxItem[] = [];
     try {
       const raw = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]") as unknown;
@@ -69,6 +70,7 @@ export function useCrearMovimientoOutbox() {
     const item = {
       id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
       payload,
+      endpoint,
       createdAt: Date.now(),
     };
 
@@ -94,7 +96,10 @@ export function useCrearMovimientoOutbox() {
     const keep: OutboxItem[] = [];
     for (const item of q) {
       try {
-        const res = await Movimiento.fetchWithTimeout(`${API_BASE}/movimientos`, {
+        const endpoint = typeof item.endpoint === "string" && item.endpoint.trim()
+          ? item.endpoint
+          : `${API_BASE}/movimientos`;
+        const res = await Movimiento.fetchWithTimeout(endpoint, {
           method: "POST",
           credentials: "include",
           headers: {

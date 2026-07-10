@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, CalendarClock, Camera, CheckCircle2, ExternalLink, Hash, ImageOff, Loader2, MapPin, X, type LucideIcon } from "lucide-react";
+import { AlertTriangle, Ban, CalendarClock, Camera, CheckCircle2, ExternalLink, Hash, ImageOff, Loader2, MapPin, X, type LucideIcon } from "lucide-react";
 
 export type TorreonIncidentImage = {
   id?: number | string | null;
@@ -35,6 +35,7 @@ type Props = {
   subtitle?: string;
   resolving?: boolean;
   onResolve?: (solucion: string) => Promise<void> | void;
+  onCancel?: (motivo: string) => Promise<void> | void;
   onClose: () => void;
 };
 
@@ -67,30 +68,48 @@ function incidentImages(incident: TorreonIncidentDetail) {
     .map<TorreonIncidentImage>((url, index) => ({ url, orden: index + 1 }));
 }
 
-export default function TorreonIncidentDetailModal({ incident, title, subtitle, resolving = false, onResolve, onClose }: Props) {
+export default function TorreonIncidentDetailModal({ incident, title, subtitle, resolving = false, onResolve, onCancel, onClose }: Props) {
   const status = normalizeStatus(incident.estado);
   const fotos = incidentImages(incident);
   const canResolve = status === "ABIERTO" && Boolean(onResolve);
+  const canCancel = status === "ABIERTO" && Boolean(onCancel);
   const [solucion, setSolucion] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<"resolve" | "cancel" | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   useEffect(() => {
     setSolucion("");
     setError(null);
+    setPendingAction(null);
+    setConfirmCancel(false);
   }, [incident.id]);
 
-  const submitResolve = async () => {
+  const requestCancelConfirmation = () => {
+    if (solucion.trim().length < 3) {
+      setError("Indica el motivo de la cancelación.");
+      return;
+    }
+    setError(null);
+    setConfirmCancel(true);
+  };
+
+  const submitAction = async (action: "resolve" | "cancel") => {
     const value = solucion.trim();
     if (value.length < 3) {
-      setError("Describe la solución del incidente.");
+      setError(action === "resolve" ? "Describe la solución del incidente." : "Indica el motivo de la cancelación.");
       return;
     }
 
     setError(null);
+    setPendingAction(action);
     try {
-      await onResolve?.(value);
+      if (action === "resolve") await onResolve?.(value);
+      else await onCancel?.(value);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo resolver el incidente.");
+      setError(err instanceof Error ? err.message : "No se pudo procesar el incidente.");
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -104,24 +123,12 @@ export default function TorreonIncidentDetailModal({ incident, title, subtitle, 
             {subtitle ? <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">{subtitle}</p> : null}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {canResolve ? (
-              <button
-                type="button"
-                onClick={submitResolve}
-                disabled={resolving}
-                title="Resolver incidente y liberar bloqueo"
-                className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-sm font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {resolving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                Resolver incidente
-              </button>
-            ) : null}
             <button
               type="button"
               onClick={onClose}
               className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-              aria-label="Cerrar ventana sin resolver"
-              title="Cerrar ventana sin resolver"
+              aria-label="Cerrar ventana"
+              title="Cerrar ventana"
             >
               <X className="h-5 w-5" />
             </button>
@@ -181,22 +188,72 @@ export default function TorreonIncidentDetailModal({ incident, title, subtitle, 
             </div>
           )}
 
-          {canResolve ? (
+          {canResolve || canCancel ? (
             <section className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 dark:border-emerald-800 dark:bg-emerald-950/20">
               <div className="flex items-center gap-2 text-sm font-black uppercase tracking-wide text-emerald-800 dark:text-emerald-200">
                 <CheckCircle2 className="h-4 w-4" />
                 Resolución del incidente
               </div>
               <p className="mt-2 text-xs font-bold text-emerald-800/80 dark:text-emerald-200/80">
-                Resolver cambia el incidente a RESUELTO y libera el bloqueo. Cerrar la ventana no modifica el incidente.
+                Resolver libera el bloqueo, regresa el movimiento a SOLICITADO y lo coloca primero en la cola. Cerrar el incidente cancela el movimiento o arrastre ligado.
               </p>
               <textarea
                 value={solucion}
                 onChange={(event) => setSolucion(event.target.value)}
                 className="mt-3 min-h-24 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-emerald-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:ring-emerald-950"
-                placeholder="Describe qué se hizo para resolver el incidente y liberar el bloqueo..."
+                placeholder="Describe la solución o, si se cancelará, el motivo del cierre..."
               />
               {error ? <p className="mt-2 text-sm font-bold text-rose-600 dark:text-rose-300">{error}</p> : null}
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                {canCancel && !confirmCancel ? (
+                  <button
+                    type="button"
+                    onClick={requestCancelConfirmation}
+                    disabled={resolving}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-rose-300 bg-white px-4 text-sm font-black text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-800 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/30"
+                  >
+                    {resolving && pendingAction === "cancel" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+                    Cerrar y cancelar movimiento
+                  </button>
+                ) : null}
+                {canResolve && !confirmCancel ? (
+                  <button
+                    type="button"
+                    onClick={() => submitAction("resolve")}
+                    disabled={resolving}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {resolving && pendingAction === "resolve" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                    Resolver y reencolar primero
+                  </button>
+                ) : null}
+              </div>
+              {canCancel && confirmCancel ? (
+                <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 dark:border-rose-800 dark:bg-rose-950/30">
+                  <p className="text-sm font-black text-rose-800 dark:text-rose-200">
+                    Se cancelará el movimiento o arrastre ligado y saldrá de la cola activa.
+                  </p>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmCancel(false)}
+                      disabled={resolving}
+                      className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    >
+                      Volver
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => submitAction("cancel")}
+                      disabled={resolving}
+                      className="inline-flex h-9 items-center gap-2 rounded-lg bg-rose-600 px-3 text-sm font-black text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {resolving && pendingAction === "cancel" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+                      Confirmar cancelación
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </section>
           ) : null}
 
@@ -240,9 +297,14 @@ function EvidenceFigure({ foto, incidentId, index }: { foto: TorreonIncidentImag
     <figure className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/40">
       <div className="relative flex h-72 items-center justify-center bg-slate-100 dark:bg-slate-950">
         {url && !failed ? (
+          // La evidencia usa URL autenticada/proxy; se difiere sin pasar por el optimizador remoto.
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={url}
             alt={`Incidente ${incidentId ?? ""} foto ${foto.orden ?? index + 1}`}
+            loading="lazy"
+            decoding="async"
+            fetchPriority="low"
             className="h-full w-full object-contain"
             onError={() => setFailed(true)}
           />

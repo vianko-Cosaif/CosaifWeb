@@ -5,7 +5,6 @@ import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import { S } from "./RailQueueBoardCliente.styles";
 import QueueSegmentedFilter, { type QueueSegmentedFilterOption } from "./components/QueueSegmentedFilter";
-import TornoMeasuresViewerModal from "../movimientos/torno/TornoMeasuresViewerModal";
 import { useRealtimeBoardRefresh } from "../hooks/useRealtimeBoardRefresh";
 import { useTornoMeasuresModal } from "@/features/torno-measures";
 import {
@@ -15,14 +14,19 @@ import {
   fmtLoco as formatLoco,
   formatQueueDate as fmtDate,
   movementIdFrom,
+} from "@/features/rail-queue/utils";
+import {
   useLocalStorageBoolean,
   useToasts,
   useVisibleInterval,
-  type QueueEntityKind,
-  type QueueStatusKind,
-  type Ronda,
-  type RondaInfo,
-} from "@/features/rail-queue";
+} from "@/features/rail-queue/hooks";
+import type {
+  QueueEntityKind,
+  QueueStatusKind,
+  Ronda,
+  RondaInfo,
+} from "@/features/rail-queue/types";
+import { peekCachedJson } from "@/lib/clientRequestCache";
 
 const API_BASE = API_XAPI_BASE;
 const fmtLoco = (value: unknown) => formatLoco(value, "—");
@@ -64,6 +68,10 @@ const EditRondas = dynamic(() => import("../Components/EditRondas"), {
   ssr: false,
   loading: () => <div className="p-10 text-center text-sm text-slate-500">Cargando editor...</div>,
 });
+const TornoMeasuresViewerModal = dynamic(
+  () => import("../movimientos/torno/TornoMeasuresViewerModal"),
+  { ssr: false }
+);
 
 const ENTITY_OPTIONS: QueueSegmentedFilterOption<QueueEntityKind>[] = [
   { label: "Movimientos", value: "movimientos" },
@@ -82,13 +90,15 @@ export default function RailQueueBoard({
   localidadId: number;
   autoMs?: number;
 }) {
-  const [items, setItems] = useState<Ronda[]>([]);
-  const [info, setInfo] = useState<Record<number, RondaInfo>>({});
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [openEditor, setOpenEditor] = useState(false);
   const [activeEntity, setActiveEntity] = useState<QueueEntityKind>("movimientos");
   const [activeStatus, setActiveStatus] = useState<QueueStatusKind>("pendientes");
+  const roundsUrl = `/api/cliente/rondas?localidadId=${localidadId}&estado=${activeStatus}&entity=${activeEntity}`;
+  const initialItems = peekCachedJson<Ronda[]>(roundsUrl) ?? [];
+  const [items, setItems] = useState<Ronda[]>(() => initialItems);
+  const [info, setInfo] = useState<Record<number, RondaInfo>>({});
+  const [loading, setLoading] = useState(initialItems.length === 0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [openEditor, setOpenEditor] = useState(false);
   const [polling, setPolling] = useLocalStorageBoolean("rail-queue:polling", true);
   const [soundOn, setSoundOn] = useLocalStorageBoolean("rail-queue:soundOn", false);
 
@@ -110,10 +120,12 @@ export default function RailQueueBoard({
     if (showRefreshing) setRefreshing(true); else setLoading(true);
 
     try {
-      const data = await fetchJson<Ronda[]>(
-        `/api/cliente/rondas?localidadId=${localidadId}&estado=${activeStatus}&entity=${activeEntity}`,
-        ac.signal
+      const responseData = await fetchJson<Ronda[]>(
+        roundsUrl,
+        ac.signal,
+        { force: showRefreshing, ttlMs: 20_000 }
       );
+      const data = [...responseData];
       data.sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden);
 
       const nextIds = data.map(d => d.id);
@@ -147,7 +159,7 @@ export default function RailQueueBoard({
     }
   }
 
-  useRealtimeBoardRefresh({
+  const realtimeStatus = useRealtimeBoardRefresh({
     enabled: Boolean(localidadId),
     realtimeLocalidadId: localidadId,
     scopeLocalidadId: localidadId,
@@ -155,11 +167,18 @@ export default function RailQueueBoard({
   });
 
   useEffect(() => {
-    firstLoad.current = true; prevIdsRef.current = []; setInfo({}); setItems([]); setLoading(true); load();
+    firstLoad.current = true;
+    prevIdsRef.current = [];
+    if (!items.length) setLoading(true);
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localidadId, activeStatus, activeEntity]);
 
-  useVisibleInterval(() => polling && load(), polling ? autoMs || null : null, [autoMs, localidadId, polling, activeStatus, activeEntity]);
+  useVisibleInterval(
+    () => polling && load(),
+    polling && realtimeStatus !== "connected" ? Math.min(autoMs, 30_000) : null,
+    [autoMs, localidadId, polling, activeStatus, activeEntity, realtimeStatus]
+  );
 
   useEffect(() => {
     const curId = items[0]?.id ?? null;
@@ -219,7 +238,7 @@ export default function RailQueueBoard({
 
       {/* ─── CONTENT ─── */}
       <main className={S.Layout.main}>
-        <section className="lg:col-span-12 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-white/[0.06] dark:bg-[#161b22] sm:flex-row sm:items-center sm:justify-between">
+        <section className="flex flex-col gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-2 shadow-[var(--app-shadow-sm)] sm:flex-row sm:items-center sm:justify-between lg:col-span-12">
           <QueueSegmentedFilter
             ariaLabel="Tipo de listado"
             options={entityOptions}
@@ -254,10 +273,10 @@ export default function RailQueueBoard({
                 ))}
               </div>
             ) : items.length === 0 ? (
-              <div className="flex min-h-[300px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm dark:border-white/[0.08] dark:bg-[#161b22]">
+              <div className="flex min-h-[300px] flex-col items-center justify-center rounded-lg border border-dashed border-[var(--app-border-strong)] bg-[var(--app-surface)] p-8 text-center shadow-[var(--app-shadow-sm)]">
                 <div className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Sin registros</div>
                 <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{emptyMessage}</div>
-                <button type="button" onClick={() => load(true)} className="mt-5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-950">
+                <button type="button" onClick={() => load(true)} className="mt-5 rounded-md bg-[var(--app-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--app-accent-hover)]">
                   Actualizar
                 </button>
               </div>
@@ -286,10 +305,10 @@ export default function RailQueueBoard({
             {loading ? (
               <div className={S.Layout.skeleton} />
             ) : !current ? (
-              <div className="flex min-h-[360px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm dark:border-white/[0.08] dark:bg-[#161b22]">
+              <div className="flex min-h-[360px] flex-col items-center justify-center rounded-lg border border-dashed border-[var(--app-border-strong)] bg-[var(--app-surface)] p-8 text-center shadow-[var(--app-shadow-sm)]">
                 <div className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Sin registros</div>
                 <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{emptyMessage}</div>
-                <button type="button" onClick={() => load(true)} className="mt-5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-950">
+                <button type="button" onClick={() => load(true)} className="mt-5 rounded-md bg-[var(--app-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--app-accent-hover)]">
                   Actualizar
                 </button>
               </div>
@@ -332,7 +351,7 @@ export default function RailQueueBoard({
           <motion.div
             initial={{ opacity: 0, scale: 0.97 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-5xl h-[90vh] shadow-2xl rounded-xl overflow-hidden bg-white dark:bg-slate-900"
+            className="h-[90vh] w-full max-w-5xl overflow-hidden rounded-lg bg-[var(--app-surface)] shadow-[var(--app-shadow-md)]"
             onClick={e => e.stopPropagation()}
           >
             <EditRondas localidadId={localidadId} onClose={() => setOpenEditor(false)} onSaved={() => { setOpenEditor(false); load(true); }} />
@@ -340,18 +359,20 @@ export default function RailQueueBoard({
         </div>
       )}
 
-      <audio ref={bellRef} src="/sounds/notification.mp3" preload="auto" />
+      <audio ref={bellRef} src="/sounds/notification.mp3" preload="none" />
 
-      <TornoMeasuresViewerModal
-        open={measuresModal.open && !measuresModal.loading && !measuresModal.error}
-        onClose={closeMeasuresModal}
-        tornoMedicion={measuresModal.tornoMedicion}
-        locomotiveLabel={measuresModal.locomotiveLabel}
-        companyName={measuresModal.companyName}
-      />
+      {measuresModal.open && !measuresModal.loading && !measuresModal.error ? (
+        <TornoMeasuresViewerModal
+          open
+          onClose={closeMeasuresModal}
+          tornoMedicion={measuresModal.tornoMedicion}
+          locomotiveLabel={measuresModal.locomotiveLabel}
+          companyName={measuresModal.companyName}
+        />
+      ) : null}
       {measuresModal.open && (measuresModal.loading || measuresModal.error) ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/35 p-4">
-          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+          <div className="w-full max-w-md rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-4 shadow-[var(--app-shadow-md)]">
             {measuresModal.loading ? (
               <p className="text-sm text-slate-600 dark:text-slate-300">Cargando medidas de torno...</p>
             ) : (

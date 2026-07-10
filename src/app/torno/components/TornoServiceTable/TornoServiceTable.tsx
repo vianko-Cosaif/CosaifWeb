@@ -42,8 +42,8 @@ export default function TornoServiceTable({
   const canNext = meta.page < meta.totalPages;
 
   return (
-    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm shadow-slate-200/70 dark:border-slate-800 dark:bg-slate-950 dark:shadow-none">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-3 py-3 dark:border-slate-800">
+    <section className="overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-[var(--app-shadow-sm)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--app-border)] px-3 py-3">
         <div>
           <h2 className="text-base font-black text-slate-950 dark:text-slate-100">
             Servicios de torno
@@ -56,7 +56,7 @@ export default function TornoServiceTable({
           type="button"
           onClick={onRefresh}
           disabled={refreshing || loading}
-          className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+          className="inline-flex h-10 items-center gap-2 rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] px-3 text-sm font-black text-[var(--app-text-muted)] shadow-sm transition hover:bg-[var(--app-surface-subtle)] disabled:opacity-50"
         >
           <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
           Actualizar
@@ -65,7 +65,7 @@ export default function TornoServiceTable({
 
       <div className="overflow-auto">
         <table className="w-full min-w-[1120px] text-left text-sm">
-          <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 shadow-[0_1px_0_rgba(148,163,184,0.30)] dark:bg-slate-900 dark:text-slate-400">
+          <thead className="sticky top-0 z-10 bg-[var(--app-surface-subtle)] text-[11px] uppercase text-[var(--app-text-muted)] shadow-[0_1px_0_var(--app-border)]">
             <tr>
               <th className="px-4 py-3 font-black">Folio</th>
               <th className="px-4 py-3 font-black">Estado</th>
@@ -76,7 +76,7 @@ export default function TornoServiceTable({
               <th className="px-4 py-3 font-black">Fin</th>
               {canViewDurations && <th className="px-4 py-3 font-black">Tiempo</th>}
               <th className="px-4 py-3 font-black">Avance</th>
-              <th className="sticky right-0 bg-slate-50 px-4 py-3 text-right font-black dark:bg-slate-900">Detalle</th>
+              <th className="sticky right-0 bg-[var(--app-surface-subtle)] px-4 py-3 text-right font-black">Detalle</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -152,7 +152,7 @@ export default function TornoServiceTable({
                   <td className="px-4 py-3">
                     <Progress item={item} />
                   </td>
-                  <td className="sticky right-0 bg-white px-4 py-3 text-right shadow-[-10px_0_16px_-16px_rgba(15,23,42,0.5)] group-hover:bg-cyan-50 dark:bg-slate-950 dark:group-hover:bg-slate-900">
+                  <td className="sticky right-0 bg-[var(--app-surface)] px-4 py-3 text-right shadow-[-10px_0_16px_-16px_rgba(15,23,42,0.5)] group-hover:bg-[var(--app-surface-subtle)]">
                     <button
                       type="button"
                       onClick={(event) => {
@@ -173,7 +173,7 @@ export default function TornoServiceTable({
         </table>
       </div>
 
-      <div className="grid gap-2 border-t border-slate-200 bg-slate-50 px-3 py-3 text-sm dark:border-slate-800 dark:bg-slate-900/50 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+      <div className="grid gap-2 border-t border-[var(--app-border)] bg-[var(--app-surface-subtle)] px-3 py-3 text-sm sm:grid-cols-[1fr_auto_1fr] sm:items-center">
         <button
           type="button"
           disabled={!canPrev}
@@ -238,7 +238,7 @@ function totalDuration(item: TornoHistoryItem) {
 function EmptyState() {
   return (
     <div className="p-6 text-center">
-      <div className="mx-auto max-w-md rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-10 dark:border-slate-700 dark:bg-slate-900">
+      <div className="mx-auto max-w-md rounded-lg border border-dashed border-[var(--app-border-strong)] bg-[var(--app-surface-subtle)] px-4 py-10">
         <div className="font-black text-slate-800 dark:text-slate-100">Sin servicios para mostrar</div>
         <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">
           Ajusta busqueda, estado o fechas para revisar otros registros.

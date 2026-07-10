@@ -23,7 +23,7 @@ export default function SelectField({
   return (
     <label className={cn("block min-w-0", containerClassName)}>
       {label ? (
-        <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-[var(--app-text-muted)]">
           {label}
         </span>
       ) : null}
@@ -35,9 +35,8 @@ export default function SelectField({
         ) : null}
         <select
           className={cn(
-            "h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-9 text-sm font-semibold text-slate-800 shadow-sm transition",
-            "focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60",
-            "dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100",
+            "h-10 w-full appearance-none rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 pr-9 text-sm font-semibold text-[var(--app-text)] shadow-sm transition",
+            "focus:border-[var(--app-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-focus)] disabled:cursor-not-allowed disabled:opacity-60",
             icon ? "pl-10" : "",
             error ? "border-rose-500 focus:border-rose-500 focus:ring-rose-500/20" : "",
             className

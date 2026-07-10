@@ -2,6 +2,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { invalidateCachedJson } from '@/lib/clientRequestCache';
 
 /* =======================
    CONFIG
@@ -26,6 +27,9 @@ export interface Ronda {
   createdAt?: string | null;
   movimiento: {
     id?: number;
+    idTecnico?: number | null;
+    folioLocalidad?: number | null;
+    folioLocalidadLabel?: string | null;
     title?: string;
     description?: string;
     date?: string;
@@ -159,6 +163,8 @@ async function postClienteRondas<T = unknown>(body: unknown): Promise<T> {
     } catch { }
     throw new Error(message || `${r.status} ${r.statusText}`);
   }
+  invalidateCachedJson('/api/cliente/rondas');
+  invalidateCachedJson('/movimientos');
   if (!txt) return null as T;
   const raw = JSON.parse(txt);
   return (raw && typeof raw === 'object' && 'data' in raw) ? (raw.data as T) : (raw as T);
@@ -199,13 +205,22 @@ function movementTitle(movimientoId?: number, locomotiveNumber?: number | string
 function normalizeRonda(raw: Ronda): Ronda {
   const movimientoId = Number(raw.movimiento?.id ?? raw.movimientoId ?? NaN) || undefined;
   const locomotiveNumber = raw.movimiento?.locomotiveNumber ?? null;
+  const folioLocalidad = Number(raw.movimiento?.folioLocalidad ?? NaN) || null;
+  const folioLocalidadLabel =
+    raw.movimiento?.folioLocalidadLabel ?? (folioLocalidad ? `#${folioLocalidad}` : null);
+  const movimientoTitle = folioLocalidadLabel
+    ? `Movimiento ${folioLocalidadLabel}`
+    : movementTitle(movimientoId, locomotiveNumber);
   return {
     ...raw,
     movimientoId: raw.movimientoId ?? movimientoId ?? null,
     movimiento: {
       ...raw.movimiento,
       id: movimientoId,
-      title: raw.movimiento?.title ?? movementTitle(movimientoId, locomotiveNumber),
+      idTecnico: raw.movimiento?.idTecnico ?? movimientoId ?? null,
+      folioLocalidad,
+      folioLocalidadLabel,
+      title: raw.movimiento?.title ?? movimientoTitle,
       description: raw.movimiento?.description ?? raw.movimiento?.instrucciones ?? undefined,
       locomotiveNumber,
       prioridad: raw.movimiento?.prioridad ?? null,

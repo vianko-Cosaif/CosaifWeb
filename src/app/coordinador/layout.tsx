@@ -1,20 +1,31 @@
 // src/app/coordinador/layout.tsx
 "use client";
 
+import { useEffect, useState } from "react";
 import AdaptiveAppShell from "@/app/Components/layout/AdaptiveAppShell";
-import ScopedIncidentMonitor from "@/app/Components/IncidentModal/ScopedIncidentMonitor";
+import dynamic from "next/dynamic";
+
+const ScopedIncidentMonitor = dynamic(
+  () => import("@/app/Components/IncidentModal/ScopedIncidentMonitor"),
+  { ssr: false }
+);
 
 export default function CoordinadorLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const [monitorReady, setMonitorReady] = useState(false);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => setMonitorReady(true), 1200);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
+
   return (
     <AdaptiveAppShell
-      beforeMain={<ScopedIncidentMonitor scope="localidad" intervalMs={60000} />}
-      backgroundClassName="bg-gradient-to-b from-violet-50 via-zinc-50 to-zinc-100 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950"
-      gridClassName="bg-[linear-gradient(to_right,rgba(88,28,135,0.07)_1px,transparent_1px),linear-gradient(to_bottom,rgba(88,28,135,0.07)_1px,transparent_1px)] bg-[size:24px_24px] dark:opacity-[0.10]"
-      footerClassName="text-zinc-500"
+      beforeMain={monitorReady ? <ScopedIncidentMonitor scope="localidad" intervalMs={60000} /> : null}
+      footerClassName="text-[var(--app-text-soft)]"
     >
       {children}
     </AdaptiveAppShell>

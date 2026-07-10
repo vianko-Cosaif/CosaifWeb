@@ -28,6 +28,9 @@ interface RefNombre {
 }
 interface DetalleMovimiento {
   id: number;
+  idTecnico?: number;
+  folioLocalidad?: number | null;
+  folioLocalidadLabel?: string | null;
   locomotora?: string | number;
   estado?: string;
   prioridad?: string;
@@ -74,6 +77,10 @@ export default function Detalle({
   const [modoEdicion, setModoEdicion] = useState(false);
   const [instruccionesEdit, setInstruccionesEdit] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const folioMovimiento =
+    detalle?.folioLocalidadLabel ??
+    (detalle?.folioLocalidad ? `#${detalle.folioLocalidad}` : `#${detalle?.id ?? movimientoId}`);
+  const idOperacion = detalle?.idTecnico ?? movimientoId;
 
   /* Cerrar con Esc */
   useEffect(() => {
@@ -129,7 +136,7 @@ export default function Detalle({
     if (!detalle) return;
     setGuardando(true);
     try {
-      const res = await fetch(`${apiBase}/movimientos/${detalle.id}`, {
+      const res = await fetch(`${apiBase}/movimientos/${idOperacion}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -182,7 +189,7 @@ export default function Detalle({
               <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
                 Movimiento{" "}
                 <span className="text-emerald-600 dark:text-emerald-400">
-                  #{movimientoId}
+                  {folioMovimiento}
                 </span>
               </h2>
               {detalle?.locomotora && (

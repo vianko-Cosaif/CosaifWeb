@@ -5,7 +5,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import type { Ambito } from "./useMovimientos";
 import { RefreshCw, Plus, Clock } from "lucide-react";
 import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
-import { Button, SearchInput } from "@/app/Components/ui";
+import Button from "@/app/Components/ui/Button";
+import SearchInput from "@/app/Components/ui/SearchInput";
 
 export interface NavMovimientosProps {
   ambito: Ambito;
@@ -67,10 +68,10 @@ export default function Nav({
       {/* Row 1: Tabs + Actions */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         {/* Animated Pill Tabs */}
-        <div className="relative inline-flex rounded-xl sm:rounded-2xl bg-slate-100/80 dark:bg-slate-800/60 p-0.5 sm:p-1 shadow-inner w-full sm:w-auto">
+        <div className="relative inline-flex w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0.5 sm:w-auto sm:p-1">
           {/* Animated indicator */}
           <div
-            className="absolute top-0.5 sm:top-1 bottom-0.5 sm:bottom-1 rounded-lg sm:rounded-xl bg-white dark:bg-slate-700 shadow-md transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+            className="absolute bottom-0.5 top-0.5 rounded-md bg-[var(--app-surface)] shadow-sm transition-all duration-200 sm:bottom-1 sm:top-1"
             style={{
               left: ambito === "actuales" ? "2px" : "50%",
               width: "calc(50% - 2px)",
@@ -152,7 +153,7 @@ export default function Nav({
           }}
           placeholder={placeholderBusqueda}
           label="Buscar movimientos"
-          inputClassName="rounded-lg sm:rounded-xl border-slate-200 bg-white/90 backdrop-blur-sm min-h-[44px] text-[16px] sm:text-sm focus:ring-emerald-500/40 focus:border-emerald-400 dark:border-slate-700 dark:bg-slate-900/90 dark:focus:ring-emerald-500/30 dark:focus:border-emerald-500"
+          inputClassName="min-h-[44px] rounded-lg text-[16px] sm:text-sm"
         />
 
         {/* Loading shimmer bar */}
@@ -191,11 +192,11 @@ function TabBoton({
       onClick={onClick}
       aria-pressed={activo}
       className={[
-        "relative z-10 flex-1 sm:flex-none px-4 sm:px-5 py-2 text-xs sm:text-sm font-semibold rounded-xl transition-all duration-200 text-center",
+        "relative z-10 flex-1 rounded-md px-4 py-2 text-center text-xs font-semibold transition-colors sm:flex-none sm:px-5 sm:text-sm",
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2",
         activo
           ? "text-emerald-700 dark:text-emerald-300"
-          : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200",
+          : "text-[var(--app-text-muted)] hover:text-[var(--app-text)]",
       ].join(" ")}
     >
       <span className="inline-flex items-center justify-center gap-2">

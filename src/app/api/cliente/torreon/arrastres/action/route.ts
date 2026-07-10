@@ -56,6 +56,11 @@ function asPositiveInt(input: unknown) {
   return Number.isInteger(value) && value > 0 ? value : null;
 }
 
+function asText(input: unknown) {
+  if (input == null) return "";
+  return String(input).trim();
+}
+
 function asPositiveIntArray(input: unknown) {
   if (!Array.isArray(input)) return [];
   return input
@@ -212,21 +217,35 @@ export async function POST(req: NextRequest) {
       const payload: JsonRecord = {};
       const numeroVagon = typeof body.numeroVagon === "string" ? body.numeroVagon.trim() : "";
       const carga = typeof body.carga === "string" ? body.carga.trim().toUpperCase() : "";
-      const viaId = body.viaId === undefined ? null : asPositiveInt(body.viaId);
-      const seccionId = body.seccionId === undefined ? null : asPositiveInt(body.seccionId);
+      const viaOrigen = body.viaOrigen ?? body.viaOrigenNombre ?? body.viaOrigenId;
+      const seccionOrigen = body.seccionOrigen ?? body.seccionOrigenNombre ?? body.seccionOrigenId;
+      const viaDestino = body.viaDestino ?? body.viaDestinoNombre ?? body.viaId;
+      const seccionDestino = body.seccionDestino ?? body.seccionDestinoNombre ?? body.seccionId;
 
       if (numeroVagon) payload.numeroVagon = numeroVagon;
       if (carga) {
         if (carga !== "VACIO" && carga !== "LLENO") return jsonError("Carga invalida", 400);
         payload.carga = carga;
       }
-      if (body.viaId !== undefined) {
-        if (!viaId) return jsonError("Via invalida", 400);
-        payload.viaId = viaId;
+      if (viaOrigen !== undefined) {
+        const value = asText(viaOrigen);
+        if (!value) return jsonError("Via origen invalida", 400);
+        payload.viaOrigen = value;
       }
-      if (body.seccionId !== undefined) {
-        if (!seccionId) return jsonError("Seccion invalida", 400);
-        payload.seccionId = seccionId;
+      if (seccionOrigen !== undefined) {
+        const value = asText(seccionOrigen);
+        if (!value) return jsonError("Seccion origen invalida", 400);
+        payload.seccionOrigen = value;
+      }
+      if (viaDestino !== undefined) {
+        const value = asText(viaDestino);
+        if (!value) return jsonError("Via destino invalida", 400);
+        payload.viaDestino = value;
+      }
+      if (seccionDestino !== undefined) {
+        const value = asText(seccionDestino);
+        if (!value) return jsonError("Seccion destino invalida", 400);
+        payload.seccionDestino = value;
       }
       if (!Object.keys(payload).length) return jsonError("Envia al menos un campo para editar", 400);
 

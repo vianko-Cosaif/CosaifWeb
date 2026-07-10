@@ -46,7 +46,7 @@ export default function Modal({
       <div
         className={cn(
           "relative w-full animate-in zoom-in-95 fade-in slide-in-from-bottom-4 duration-200",
-          "max-h-[90vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900",
+          "max-h-[90vh] overflow-y-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-[var(--app-shadow-md)]",
           maxWidth,
           className
         )}
@@ -54,8 +54,8 @@ export default function Modal({
         aria-modal="true"
         aria-label={typeof title === "string" ? title : undefined}
       >
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/95 px-6 py-4 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/95">
-          <h2 className="text-lg font-black text-slate-900 dark:text-white">{title}</h2>
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--app-border)] bg-[var(--app-surface)] px-6 py-4">
+          <h2 className="text-lg font-black text-[var(--app-text)]">{title}</h2>
           <button
             type="button"
             onClick={onClose}

@@ -16,12 +16,22 @@ export function arrastreMatchesSearch(arrastre: Arrastre, query: string) {
     arrastre.estado,
     arrastre.instrucciones,
     arrastre.fechaSolicitud,
+    arrastre.viaOrigenId,
+    arrastre.seccionOrigenId,
+    arrastre.viaDestinoId,
+    arrastre.seccionDestinoId,
     ...(arrastre.vagones || []).flatMap((vagon) => [
       vagon.numeroVagon,
       vagon.carga,
       vagon.estado,
+      vagon.viaOrigenId,
+      vagon.seccionOrigenId,
       vagon.viaId,
       vagon.seccionId,
+      vagon.viaOrigenNombre,
+      vagon.seccionOrigenNombre,
+      vagon.viaDestinoNombre,
+      vagon.seccionDestinoNombre,
     ]),
   ]
     .filter((item) => item != null)

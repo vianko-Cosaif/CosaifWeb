@@ -4,6 +4,8 @@ import { DynamicBanner } from "@/app/Components/DynamicBanner";
 import type { Arrastre, DailyInfo, IncidenteArrastre } from "@/features/torreon/arrastres";
 import { ArrastreTerminalTable, Metric } from "../components";
 import type { ClienteArrastreStats } from "../types";
+import type { RealtimeConnectionStatus } from "@/app/hooks/useRealtimeMovimientos";
+import { TorreonRealtimeBadge } from "@/features/torreon/components/TorreonRealtimeBadge";
 import { isArrastreEditable, statusText } from "../utils";
 
 type Props = {
@@ -13,6 +15,7 @@ type Props = {
   dailyCounters: Map<number, DailyInfo>;
   loading: boolean;
   refreshing: boolean;
+  realtimeStatus: RealtimeConnectionStatus;
   onMovimientos: () => void;
   onCrear: () => void;
   onRefresh: () => void;
@@ -28,7 +31,7 @@ function canReorderSolicitud(arrastre: Arrastre) {
   return isArrastreEditable(arrastre.estado) && !hasVagonEnProceso(arrastre);
 }
 
-export function DashboardView({ feedback, stats, activeArrastres, dailyCounters, loading, refreshing, onMovimientos, onCrear, onRefresh, onPrioritizeSolicitud, onIncidentSelect }: Props) {
+export function DashboardView({ feedback, stats, activeArrastres, dailyCounters, loading, refreshing, realtimeStatus, onMovimientos, onCrear, onRefresh, onPrioritizeSolicitud, onIncidentSelect }: Props) {
   const editableSolicitudIds = activeArrastres.filter(canReorderSolicitud).map((arrastre) => arrastre.id);
   const hasOpenIncident = activeArrastres.some((arrastre) => (arrastre.incidentes || []).some((incident) => statusText(incident.estado) === "ABIERTO"));
 
@@ -40,10 +43,7 @@ export function DashboardView({ feedback, stats, activeArrastres, dailyCounters,
         <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <h1 className="text-lg font-bold text-slate-900">Control de Patio</h1>
-            <span className="inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-emerald-700">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              En vivo
-            </span>
+            <TorreonRealtimeBadge status={realtimeStatus} />
           </div>
           <div className="flex flex-wrap gap-2">
             <DashboardButton onClick={onMovimientos} icon={TrainFront}>Movimientos</DashboardButton>

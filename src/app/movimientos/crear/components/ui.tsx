@@ -84,12 +84,22 @@ export function Badge({ tone, children }: { tone: "ok" | "warn" | "error" | "mut
   return <span className={Movimiento.clsx(chipBase, map[tone])}>{children}</span>;
 }
 
-export function RoleBadge({ rol, canManageAll }: { rol: string; canManageAll: boolean }) {
+export function RoleBadge({
+  rol,
+  canManageAll,
+  canChooseLocality,
+}: {
+  rol: string;
+  canManageAll: boolean;
+  canChooseLocality: boolean;
+}) {
   const R = String(rol || "").toUpperCase();
   const tone: "ok" | "warn" | "muted" = canManageAll ? "ok" : (R === "SUPERVISOR" ? "warn" : "muted");
   const text =
-    canManageAll
+    canChooseLocality
       ? `${R} · puede elegir empresa y localidad`
-      : `${R} · solo su empresa${R === "CLIENTE" || R === "SUPERVISOR" ? " y localidad asignada" : ""}`;
+      : canManageAll
+        ? `${R} · puede elegir empresa · localidad asignada`
+        : `${R} · solo su empresa y localidad asignada`;
   return <Badge tone={tone}>{text}</Badge>;
 }

@@ -25,13 +25,13 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    "border-emerald-600 bg-emerald-600 text-white shadow-sm shadow-emerald-500/20 hover:border-emerald-700 hover:bg-emerald-700 dark:border-emerald-500 dark:bg-emerald-500 dark:hover:border-emerald-400 dark:hover:bg-emerald-400",
+    "border-[var(--app-accent)] bg-[var(--app-accent)] text-white shadow-sm hover:border-[var(--app-accent-hover)] hover:bg-[var(--app-accent-hover)]",
   secondary:
-    "border-slate-200 bg-white text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-slate-50 hover:text-emerald-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:border-emerald-700 dark:hover:bg-slate-900 dark:hover:text-emerald-300",
+    "border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text-muted)] shadow-sm hover:border-[var(--app-border-strong)] hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)]",
   ghost:
-    "border-transparent bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white",
+    "border-transparent bg-transparent text-[var(--app-text-muted)] hover:bg-[var(--app-surface-muted)] hover:text-[var(--app-text)]",
   danger:
-    "border-rose-200 bg-white text-rose-600 shadow-sm hover:bg-rose-50 dark:border-rose-800 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/40",
+    "border-rose-200 bg-[var(--app-surface)] text-rose-600 shadow-sm hover:bg-rose-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/30",
   success:
     "border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50",
   warning:
@@ -64,7 +64,7 @@ export default function Button({
       type={type}
       disabled={disabled || loading}
       className={cn(
-        "inline-flex shrink-0 items-center justify-center gap-2 border font-black transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40",
+        "inline-flex shrink-0 items-center justify-center gap-2 border font-black transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]",
         sizeClasses[size],
         variantClasses[variant],
         className

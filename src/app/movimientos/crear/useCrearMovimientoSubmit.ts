@@ -1,6 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Movimiento } from "../Movimiento";
 import { API_BASE, roleBase, type MovementFormData, type Rol } from "../movimientos.shared";
+import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 import {
   buildMovimientoPayload,
   isPos,
@@ -8,6 +9,7 @@ import {
 } from "./crearMovimiento.domain";
 import type { ResolvedIds, SelectionMode } from "./controller.types";
 import type { TornoMedicionState } from "./tornoMedicion.types";
+import { invalidateCachedJson } from "@/lib/clientRequestCache";
 
 /**
  * MODULO: useCrearMovimientoSubmit
@@ -68,7 +70,101 @@ function getErrorMessage(err: unknown): string {
 }
 
 function isTorreonName(value?: string | null) {
-  return String(value || "").trim().toLowerCase() === "torreon";
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .includes("torreon");
+}
+
+function isTorreonSelection(localidadId?: number | null, localityName?: string | null) {
+  return isTorreonLocalidadId(localidadId) || isTorreonName(localityName);
+}
+
+function compactPayload(payload: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => (
+      value !== undefined &&
+      value !== null &&
+      value !== "" &&
+      !(typeof value === "number" && Number.isNaN(value))
+    ))
+  );
+}
+
+function optionalPositiveNumber(value: unknown) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : undefined;
+}
+
+function buildClientRequestId(input: {
+  localidadId?: number | null;
+  userId?: number | string | null;
+  locomotiveNumber?: string | null;
+  fromTrack?: number | null;
+  toTrack?: number | null;
+  fromSection?: number;
+  toSection?: number;
+}) {
+  const entropy = `${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+  return [
+    "web",
+    "torreon",
+    input.localidadId || "loc",
+    input.userId || "user",
+    String(input.locomotiveNumber || "").trim() || "loco",
+    input.fromTrack || "from",
+    input.fromSection ?? "fs",
+    input.toTrack || "to",
+    input.toSection ?? "ts",
+    entropy,
+  ].join(":");
+}
+
+function buildTorreonMovimientoPayload(args: {
+  basePayload: Record<string, unknown>;
+  fromTrack?: number | null;
+  toTrack?: number | null;
+  fromSection?: number;
+  toSection?: number;
+  viaName: (id?: number | null) => string;
+  companyName?: string;
+  localityName?: string;
+}) {
+  const { basePayload, fromTrack, toTrack, fromSection, toSection, viaName, companyName, localityName } = args;
+  const tipoMovimiento = String(basePayload.tipoMovimiento || "");
+  const prioridad = String(basePayload.prioridad || "BAJA");
+  const direccionEmpuje = String(basePayload.direccionEmpuje || "Sin_Solicitar");
+  const posicionCabina = String(basePayload.posicionCabina || "Sin_Solicitar");
+  const posicionChimenea = String(basePayload.posicionChimenea || "Sin_Solicitar");
+
+  return compactPayload({
+    empresaId: optionalPositiveNumber(basePayload.empresaId),
+    creadoPorId: optionalPositiveNumber(basePayload.creadoPorId),
+    clienteId: optionalPositiveNumber(basePayload.clienteId),
+    supervisorId: optionalPositiveNumber(basePayload.supervisorId),
+    coordinadorId: optionalPositiveNumber(basePayload.coordinadorId),
+    operadorId: optionalPositiveNumber(basePayload.operadorId),
+    localidadId: optionalPositiveNumber(basePayload.localidadId),
+    viaOrigenId: fromTrack ? Number(fromTrack) : undefined,
+    viaDestinoId: toTrack ? Number(toTrack) : undefined,
+    seccionOrigenId: typeof fromSection === "number" ? Number(fromSection) : undefined,
+    seccionDestinoId: typeof toSection === "number" ? Number(toSection) : undefined,
+    locomotiveNumber: optionalPositiveNumber(basePayload.locomotiveNumber),
+    prioridad: prioridad === "ALTA" ? "ALTA" : "BAJA",
+    tipoMovimiento: ["MD_TRABAJANDO", "REMOLCADA"].includes(tipoMovimiento) ? tipoMovimiento : undefined,
+    instrucciones: basePayload.instrucciones,
+    direccionEmpuje: ["EMPUJAR", "JALAR", "Sin_Solicitar"].includes(direccionEmpuje) ? direccionEmpuje : "Sin_Solicitar",
+    posicionCabina: ["DENTRO", "AFUERA", "Sin_Solicitar"].includes(posicionCabina) ? posicionCabina : "Sin_Solicitar",
+    posicionChimenea: ["DENTRO", "AFUERA", "Sin_Solicitar"].includes(posicionChimenea) ? posicionChimenea : "Sin_Solicitar",
+    empresaNombreSnapshot: companyName,
+    localidadNombreSnapshot: localityName,
+    viaOrigenNombreSnapshot: fromTrack ? viaName(fromTrack) : undefined,
+    viaDestinoNombreSnapshot: toTrack ? viaName(toTrack) : undefined,
+    seccionOrigenNombreSnapshot: typeof fromSection === "number" ? `Seccion ${fromSection}` : undefined,
+    seccionDestinoNombreSnapshot: typeof toSection === "number" ? `Seccion ${toSection}` : undefined,
+  });
 }
 
 function asIncidentArray(raw: unknown): TorreonIncidentProbe[] {
@@ -159,7 +255,7 @@ export function useCrearMovimientoSubmit(args: {
   localityName?: string;
   scheduledActivationId?: number | null;
   recoveredCancelledTornoId?: number | null;
-  pushOutbox: (payload: unknown) => void;
+  pushOutbox: (payload: unknown, endpoint?: string) => void;
   onSuccess: (ctx: { movimientoId: number; agendado?: boolean; activatedScheduled?: boolean }) => void;
   redirectOnSuccess?: boolean;
 }) {
@@ -183,8 +279,10 @@ export function useCrearMovimientoSubmit(args: {
   } = args;
 
   const [sending, setSending] = useState(false);
+  const inFlightRef = useRef(false);
 
   const submit = useCallback(async () => {
+    if (inFlightRef.current || sending) return;
     const { empresaId, creadoPorId, localidadId } = resolvedIds;
 
     const missing: string[] = [];
@@ -213,10 +311,14 @@ export function useCrearMovimientoSubmit(args: {
       return;
     }
 
+    inFlightRef.current = true;
     let payloadForOffline: unknown = null;
+    let endpointForOffline = `${API_BASE}/movimientos`;
 
     try {
-      if (isTorreonName(localityName)) {
+      const isTorreon = isTorreonSelection(localidadId, localityName);
+
+      if (isTorreon) {
         const confirmed = await confirmTorreonOpenIncident({
           localidadId,
           fromTrack,
@@ -245,17 +347,43 @@ export function useCrearMovimientoSubmit(args: {
         scheduledActivationId,
         recoveredCancelledTornoId,
       });
-      payloadForOffline = payload;
+
+      const requestPayload = isTorreon
+        ? {
+          ...buildTorreonMovimientoPayload({
+          basePayload: payload,
+          fromTrack,
+          toTrack,
+          fromSection,
+          toSection,
+          viaName,
+          companyName,
+          localityName,
+          }),
+          clientRequestId: buildClientRequestId({
+            localidadId,
+            userId,
+            locomotiveNumber: form.locomotiveNumber,
+            fromTrack,
+            toTrack,
+            fromSection,
+            toSection,
+          }),
+        }
+        : payload;
+      const createEndpoint = isTorreon ? `${API_BASE}/torreon/movimientos` : `${API_BASE}/movimientos`;
+      payloadForOffline = requestPayload;
+      endpointForOffline = createEndpoint;
 
       setSending(true);
 
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
-        pushOutbox(payload);
+        pushOutbox(requestPayload, createEndpoint);
         setSending(false);
         return;
       }
 
-      const res = await Movimiento.fetchWithTimeout(`${API_BASE}/movimientos`, {
+      const res = await Movimiento.fetchWithTimeout(createEndpoint, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -263,7 +391,7 @@ export function useCrearMovimientoSubmit(args: {
           Accept: "application/json",
           ...Movimiento.tokenHeader(),
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(requestPayload),
       });
 
       const txt = await res.text();
@@ -279,11 +407,15 @@ export function useCrearMovimientoSubmit(args: {
 
       const created = txt ? Movimiento.safeJSON(txt) : {};
       const movimientoId = readMovementId(created);
-      const createdRecord = created as Record<string, any>;
+      const createdRecord = created as {
+        agendado?: unknown;
+        activatedScheduled?: unknown;
+        data?: { agendado?: unknown; activatedScheduled?: unknown } | null;
+      };
       const wasScheduled = !!(createdRecord?.agendado || createdRecord?.data?.agendado);
       const activatedScheduled = !!(createdRecord?.activatedScheduled || createdRecord?.data?.activatedScheduled);
 
-      if (movimientoId && viaParaAsignar && typeof numeroParaAsignar === "number") {
+      if (!isTorreon && movimientoId && viaParaAsignar && typeof numeroParaAsignar === "number") {
         await Movimiento.fetchWithTimeout(`${API_BASE}/secciones/via/${viaParaAsignar}/asignar`, {
           method: "POST",
           credentials: "include",
@@ -292,6 +424,8 @@ export function useCrearMovimientoSubmit(args: {
         }).catch(() => { });
       }
 
+      invalidateCachedJson("/movimientos");
+      invalidateCachedJson("/api/cliente/rondas");
       onSuccess({ movimientoId, agendado: wasScheduled, activatedScheduled });
       if (redirectOnSuccess && !wasScheduled) {
         window.location.assign(`${roleBase(rol)}/movimientos`);
@@ -302,15 +436,17 @@ export function useCrearMovimientoSubmit(args: {
       const isTypeErr = getErrorMessage(e).toLowerCase().includes("failed to fetch");
 
       if (isAbort || isTypeErr) {
-        if (payloadForOffline !== null) pushOutbox(payloadForOffline);
+        if (payloadForOffline !== null) pushOutbox(payloadForOffline, endpointForOffline);
         return;
       }
 
       alert(getErrorMessage(e));
     } finally {
+      inFlightRef.current = false;
       setSending(false);
     }
   }, [
+    sending,
     resolvedIds,
     form,
     selectionMode,

@@ -49,7 +49,7 @@ export default function SegmentedControl<TValue extends string>({
       role="tablist"
       aria-label={ariaLabel}
       className={cn(
-        "inline-flex max-w-full flex-wrap gap-1 rounded-2xl border border-slate-200 bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-800",
+        "inline-flex max-w-full flex-wrap gap-1 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-1",
         className
       )}
     >
@@ -66,11 +66,11 @@ export default function SegmentedControl<TValue extends string>({
             disabled={option.disabled}
             onClick={() => onChange(option.value)}
             className={cn(
-              "inline-flex min-w-0 items-center justify-center gap-2 rounded-xl font-black transition",
+              "inline-flex min-w-0 items-center justify-center gap-2 rounded-md font-black transition",
               sizes.button,
               active
-                ? "bg-white text-emerald-700 shadow-sm dark:bg-slate-950 dark:text-emerald-300"
-                : "text-slate-500 hover:bg-white/70 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-white",
+                ? "bg-[var(--app-surface)] text-[var(--app-accent)] shadow-sm"
+                : "text-[var(--app-text-muted)] hover:bg-[var(--app-surface-subtle)] hover:text-[var(--app-text)]",
               option.disabled ? "cursor-not-allowed opacity-50" : ""
             )}
           >

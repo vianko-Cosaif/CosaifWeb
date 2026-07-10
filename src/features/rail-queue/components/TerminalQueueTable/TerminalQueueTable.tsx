@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Button, ConfigProvider, Empty, Table } from "antd";
+import Button from "antd/es/button";
+import ConfigProvider from "antd/es/config-provider";
+import Empty from "antd/es/empty";
+import Table from "antd/es/table";
 import type { ColumnsType } from "antd/es/table";
 import type { Ronda, RondaInfo } from "../../types";
 import { fmtLoco, formatDateTimeMX } from "../../utils";
@@ -15,6 +18,13 @@ export type TerminalQueueTableProps = {
 
 function formatBoardDateTime(iso?: string | null) {
   return formatDateTimeMX(iso, { fallback: "Sin fecha", dateStyle: "short" });
+}
+
+function getMovementFolio(mv?: Ronda["movimiento"] | RondaInfo["movimiento"] | null, fallbackId?: number | null) {
+  if (mv?.folioLocalidadLabel) return mv.folioLocalidadLabel;
+  if (mv?.folioLocalidad) return `#${mv.folioLocalidad}`;
+  const id = mv?.id ?? fallbackId;
+  return id ? `#${id}` : "—";
 }
 
 function TerminalServiceChip({
@@ -63,17 +73,17 @@ export function TerminalQueueTable({
       token: {
         colorPrimary: "#059669",
         borderRadius: 6,
-        colorBgContainer: isDarkTheme ? "#0f172a" : "#ffffff",
-        colorText: isDarkTheme ? "#e5e7eb" : "#0f172a",
-        colorBorder: isDarkTheme ? "#334155" : "#e2e8f0",
+        colorBgContainer: isDarkTheme ? "#141c23" : "#ffffff",
+        colorText: isDarkTheme ? "#e8edf1" : "#17212b",
+        colorBorder: isDarkTheme ? "#293640" : "#d9e1e7",
         fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
       },
       components: {
         Table: {
-          headerBg: isDarkTheme ? "#111827" : "#f8fafc",
-          headerColor: isDarkTheme ? "#a7f3d0" : "#334155",
-          rowHoverBg: isDarkTheme ? "#1e293b" : "#f1f5f9",
-          borderColor: isDarkTheme ? "#334155" : "#e2e8f0",
+          headerBg: isDarkTheme ? "#182129" : "#f8fafb",
+          headerColor: isDarkTheme ? "#a3afb9" : "#5f6f7d",
+          rowHoverBg: isDarkTheme ? "#1d2932" : "#edf2f5",
+          borderColor: isDarkTheme ? "#293640" : "#d9e1e7",
         },
       },
     }),
@@ -110,11 +120,19 @@ export function TerminalQueueTable({
         key: "rondaNumero",
         width: 110,
         sorter: (a, b) => a.rondaNumero - b.rondaNumero,
-        render: (value: Ronda["rondaNumero"]) => (
-          <span className="font-mono text-lg font-black text-emerald-700 dark:text-emerald-300">
-            #{value}
-          </span>
-        ),
+        render: (value: Ronda["rondaNumero"], ronda) => {
+          const mv = info[ronda.id]?.movimiento ?? ronda.movimiento;
+          return (
+            <div className="font-mono">
+              <span className="text-lg font-black text-emerald-700 dark:text-emerald-300">
+                #{value}
+              </span>
+              <div className="mt-0.5 text-[11px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Mov {getMovementFolio(mv, ronda.movimientoId)}
+              </div>
+            </div>
+          );
+        },
       },
       {
         title: "Locomotora",
@@ -240,13 +258,13 @@ export function TerminalQueueTable({
   );
 
   return (
-    <div className="hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/85 dark:shadow-none lg:block">
+    <div className="hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-4 shadow-[var(--app-shadow-sm)] lg:block">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <p className="font-mono text-xs font-black uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">
             Terminal de rondas
           </p>
-          <h2 className="font-mono text-lg font-black uppercase text-slate-950 dark:text-slate-100">
+          <h2 className="font-mono text-lg font-black uppercase text-[var(--app-text)]">
             Cola de operacion
           </h2>
         </div>
@@ -256,18 +274,19 @@ export function TerminalQueueTable({
       </div>
       <ConfigProvider theme={tableTheme}>
         <Table<Ronda>
+          virtual={items.length > 50}
           rowKey="id"
           className="cosaif-terminal-table"
           columns={columns}
           dataSource={items}
-          loading={loading ? { spinning: true, tip: "Cargando rondas..." } : false}
+          loading={loading ? { spinning: true, description: "Cargando rondas..." } : false}
           size="middle"
-          scroll={{ x: 1420 }}
+          scroll={{ x: 1420, ...(items.length > 50 ? { y: 640 } : {}) }}
           rowClassName={(_ronda, index) => (index === 0 ? "terminal-row-current" : "")}
           pagination={{
             pageSize: 8,
             showSizeChanger: false,
-            position: ["bottomCenter"],
+            placement: ["bottomCenter"],
           }}
           expandable={{
             expandedRowRender: (ronda) => {
@@ -293,7 +312,7 @@ export function TerminalQueueTable({
                       Movimiento
                     </div>
                     <p className="mt-1 text-slate-700 dark:text-slate-200">
-                      #{info[ronda.id]?.movimientoId ?? mv?.id ?? ronda.movimientoId ?? "—"}
+                      {getMovementFolio(mv, info[ronda.id]?.movimientoId ?? ronda.movimientoId ?? null)}
                     </p>
                   </div>
                 </div>

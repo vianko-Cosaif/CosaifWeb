@@ -25,7 +25,8 @@ import ThemeToggle from "@/app/Components/ui/ThemeToggle";
 import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import { ClientMovementGuideButton } from "@/app/Components/GuidedManualAtom/ClientMovementGuide";
 import { buildNavigationForRole, isNavigationItemActive, type AppNavigationItem } from "@/lib/appNavigation";
-import { getRoleCapabilities, normalizeAppRole, type NavModuleId } from "@/lib/accessControl";
+import { getRoleClient } from "@/lib/cookies";
+import { getRoleCapabilities, normalizeAppRole, type AppRole, type NavModuleId } from "@/lib/accessControl";
 
 /* ==========================================================================
    INTERFACES & TYPES
@@ -51,7 +52,40 @@ type NavigationItem = {
   icon: LucideIcon;
 };
 
-// PREMIUM COLOR CONFIGURATION
+function readStoredSession(): UserSession | null {
+  if (typeof window === "undefined") return null;
+  for (const storage of [window.sessionStorage, window.localStorage]) {
+    try {
+      const rawUser = storage.getItem("user");
+      if (!rawUser) continue;
+      const parsed = JSON.parse(rawUser) as UserSession | null;
+      if (parsed?.id || parsed?.rol || parsed?.nombre) return parsed;
+    } catch {
+      // seguimos con la siguiente fuente
+    }
+  }
+  return null;
+}
+
+function inferRoleFromPath(pathname: string | null): AppRole | null {
+  const path = String(pathname || "").toLowerCase();
+  if (path.startsWith("/administrador")) return "ADMINISTRADOR";
+  if (path.startsWith("/coordinador")) return "COORDINADOR";
+  if (path.startsWith("/supervisor")) return "SUPERVISOR";
+  if (path.startsWith("/cliente/torreon")) return "ARRASTRE_TORREON";
+  if (path.startsWith("/cliente")) return "CLIENTE";
+  return null;
+}
+
+const COMMON_ROLE_STYLE = {
+  text: "text-[var(--app-accent)]",
+  bg: "bg-[var(--app-accent-soft)]",
+  gradient: "from-emerald-600 to-teal-600",
+  border: "border-[var(--app-border)]",
+  ring: "ring-[var(--app-focus)]",
+  hoverBg: "hover:bg-[var(--app-surface-muted)]",
+} as const;
+
 const ROLE_CONFIG: Record<
   Rol,
   {
@@ -67,44 +101,24 @@ const ROLE_CONFIG: Record<
   }
 > = {
   ADMINISTRADOR: {
+    ...COMMON_ROLE_STYLE,
     icon: ShieldHalf,
     label: "Administrador",
-    text: "text-emerald-500 dark:text-emerald-400",
-    bg: "bg-emerald-50 dark:bg-emerald-950/40",
-    gradient: "from-emerald-500 to-teal-400",
-    border: "border-emerald-200 dark:border-emerald-800",
-    ring: "ring-emerald-500/20",
-    hoverBg: "hover:bg-emerald-50 dark:hover:bg-emerald-900/20",
   },
   COORDINADOR: {
+    ...COMMON_ROLE_STYLE,
     icon: Train,
     label: "Coordinador",
-    text: "text-blue-500 dark:text-blue-400",
-    bg: "bg-blue-50 dark:bg-blue-950/40",
-    gradient: "from-blue-500 to-indigo-400",
-    border: "border-blue-200 dark:border-blue-800",
-    ring: "ring-blue-500/20",
-    hoverBg: "hover:bg-blue-50 dark:hover:bg-blue-900/20",
   },
   SUPERVISOR: {
+    ...COMMON_ROLE_STYLE,
     icon: Users,
     label: "Supervisor",
-    text: "text-violet-500 dark:text-violet-400",
-    bg: "bg-violet-50 dark:bg-violet-950/40",
-    gradient: "from-violet-500 to-purple-400",
-    border: "border-violet-200 dark:border-violet-800",
-    ring: "ring-violet-500/20",
-    hoverBg: "hover:bg-violet-50 dark:hover:bg-violet-900/20",
   },
   CLIENTE: {
+    ...COMMON_ROLE_STYLE,
     icon: Building2,
     label: "Cliente",
-    text: "text-amber-500 dark:text-amber-400",
-    bg: "bg-amber-50 dark:bg-amber-950/40",
-    gradient: "from-amber-500 to-orange-400",
-    border: "border-amber-200 dark:border-amber-800",
-    ring: "ring-amber-500/20",
-    hoverBg: "hover:bg-amber-50 dark:hover:bg-amber-900/20",
   },
 };
 
@@ -137,17 +151,24 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
 
   useEffect(() => {
     setMounted(true);
-    const rawUser = localStorage.getItem("user");
-    if (rawUser) {
-      try {
-        setSession(JSON.parse(rawUser));
-      } catch (e) {
-        console.error(e);
-      }
-    }
+    setSession(readStoredSession());
     // Auto-collapse on small screens
     if (window.innerWidth < 1024) setIsOpen(false);
   }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    const syncSession = () => setSession(readStoredSession());
+    window.addEventListener("storage", syncSession);
+    window.addEventListener("focus", syncSession);
+    document.addEventListener("visibilitychange", syncSession);
+    return () => {
+      window.removeEventListener("storage", syncSession);
+      window.removeEventListener("focus", syncSession);
+      document.removeEventListener("visibilitychange", syncSession);
+    };
+  }, [mounted]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -179,7 +200,12 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
     };
   }, [mobileOpen]);
 
-  const appRole = useMemo(() => normalizeAppRole(String(session?.rol || "")) ?? "CLIENTE", [session]);
+  const appRole = useMemo(() => (
+    normalizeAppRole(String(session?.rol || "")) ??
+    normalizeAppRole(getRoleClient()) ??
+    inferRoleFromPath(pathname) ??
+    "CLIENTE"
+  ), [session, pathname]);
   const capabilities = useMemo(() => getRoleCapabilities(appRole), [appRole]);
   const normRol = useMemo<Rol>(() => {
     if (capabilities.area === "administrador") return "ADMINISTRADOR";
@@ -216,11 +242,11 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
         setMobileOpen(false);
       }}
       className={cn(
-        "group relative flex w-full items-center gap-3 rounded-xl px-3 py-3 transition-all duration-300 ease-out",
+        "group relative flex w-full items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors duration-150",
         // Active State
         isActive
-          ? cn("font-bold shadow-md shadow-zinc-200/50 dark:shadow-none ring-1 ring-inset", roleConfig.bg, roleConfig.text, roleConfig.ring)
-          : cn("text-slate-600 dark:text-zinc-500 hover:text-slate-900 dark:hover:text-zinc-300", roleConfig.hoverBg),
+          ? cn("font-bold", roleConfig.bg, roleConfig.text, roleConfig.border)
+          : cn("text-[var(--app-text-muted)] hover:text-[var(--app-text)]", roleConfig.hoverBg),
         !isOpen && !mobileOpen ? "justify-center px-2" : ""
       )}
       title={!isOpen ? item.label : undefined}
@@ -228,8 +254,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
       <item.icon
         className={cn(
           "h-5 w-5 shrink-0 transition-transform duration-300",
-          isActive ? "scale-110" : "group-hover:scale-105",
-          isActive ? roleConfig.text : "text-slate-400 dark:text-zinc-600 group-hover:text-slate-600 dark:group-hover:text-zinc-400"
+          isActive ? roleConfig.text : "text-[var(--app-text-soft)] group-hover:text-[var(--app-text-muted)]"
         )}
       />
 
@@ -239,7 +264,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
 
       {/* Active Indicator (Glowing line) */}
       {isActive && (
-        <div className={cn("absolute left-0 h-6 w-1 rounded-r-full transition-all bg-gradient-to-b", roleConfig.gradient)} />
+        <div className="absolute left-0 h-5 w-0.5 rounded-r bg-[var(--app-accent)]" />
       )}
 
       {/* Tooltip for collapsed state */}
@@ -267,12 +292,12 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
       {/* MOBILE TRIGGER */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="fixed left-4 top-[calc(env(safe-area-inset-top)+1rem)] z-40 flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white/80 shadow-sm backdrop-blur-md transition-transform hover:scale-105 active:scale-95 md:hidden dark:border-slate-800 dark:bg-slate-900/80"
+        className="fixed left-4 top-[calc(env(safe-area-inset-top)+1rem)] z-40 flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-sm transition-colors hover:bg-[var(--app-surface-muted)] active:scale-95 md:hidden"
         aria-label="Abrir menú"
         aria-expanded={mobileOpen}
         aria-controls="cosaif-sidebar"
       >
-        <MenuIcon className="h-5 w-5 text-slate-700 dark:text-slate-300" />
+        <MenuIcon className="h-5 w-5 text-[var(--app-text-muted)]" />
       </button>
 
       {/* MOBILE OVERLAY */}
@@ -288,7 +313,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
       <aside
         id="cosaif-sidebar"
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-200 bg-white/95 backdrop-blur-xl dark:border-zinc-800 dark:bg-black/90 transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]",
+          "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-[var(--app-border)] bg-[var(--app-sidebar)] transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]",
           mobileOpen ? "translate-x-0 w-[280px] shadow-2xl" : "-translate-x-full md:translate-x-0",
           !mobileOpen && (isOpen ? "md:w-[280px]" : "md:w-[80px]")
         )}
@@ -297,7 +322,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
         <div className="flex h-20 shrink-0 items-center justify-between px-5 md:px-4 relative">
           <div className={cn("flex items-center gap-3 transition-opacity", !isOpen && !mobileOpen ? "w-full justify-center" : "")}>
             <div className={cn(
-              "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-lg transition-all duration-500 bg-gradient-to-br",
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-white shadow-sm transition-colors",
               roleConfig.gradient
             )}>
               <Home className="h-5 w-5" />
@@ -305,8 +330,8 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
 
             {(isOpen || mobileOpen) && (
               <div className="flex flex-col animate-in fade-in slide-in-from-left-2 duration-300">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500">Logistics</span>
-                <span className="text-xl font-black tracking-tighter text-slate-900 dark:text-white leading-none">COSAIF</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--app-text-soft)]">Logistics</span>
+                <span className="text-xl font-black leading-none text-[var(--app-text)]">COSAIF</span>
               </div>
             )}
           </div>
@@ -314,7 +339,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
           {/* COLLAPSE TOGGLE (Moved to Header) */}
           <button
             onClick={() => setIsOpen(!isOpen)}
-            className="hidden md:flex absolute right-[-12px] top-1/2 -translate-y-1/2 h-6 w-6 items-center justify-center rounded-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 shadow-md text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 transition-all hover:scale-110 z-50"
+            className="absolute right-[-12px] top-1/2 z-50 hidden h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text-muted)] shadow-sm transition-colors hover:text-[var(--app-text)] md:flex"
             title={isOpen ? "Colapsar menú" : "Expandir menú"}
           >
             {isOpen ? <ChevronLeft className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -336,15 +361,14 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
         <div className="px-3 mb-6">
           <div
             className={cn(
-              "relative flex items-center gap-3 overflow-hidden rounded-2xl border transition-all duration-300",
+              "relative flex items-center gap-3 overflow-hidden rounded-lg border transition-colors",
               !isOpen && !mobileOpen
                 ? "justify-center px-0 py-3 border-transparent bg-transparent"
-                : cn("p-3 bg-white dark:bg-zinc-900/50 border-slate-100 dark:border-zinc-800/50 shadow-sm", roleConfig.hoverBg)
+                : "border-[var(--app-border)] bg-[var(--app-surface-subtle)] p-3 shadow-sm"
             )}
           >
             <div className={cn(
-              "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold shadow-sm ring-2 ring-white dark:ring-zinc-950 transition-transform",
-              "text-white bg-gradient-to-br from-slate-700 to-slate-900 dark:from-zinc-100 dark:to-zinc-300 dark:text-black",
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-800 text-sm font-bold text-white shadow-sm ring-2 ring-[var(--app-surface)] dark:bg-slate-200 dark:text-slate-900",
               !isOpen && !mobileOpen && "h-10 w-10"
             )}>
               {session?.nombre?.charAt(0)?.toUpperCase() || "U"}
@@ -352,7 +376,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
 
             {(isOpen || mobileOpen) && (
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-bold text-slate-800 dark:text-zinc-100 leading-tight">
+                <p className="truncate text-sm font-bold leading-tight text-[var(--app-text)]">
                   {session?.nombre?.split(" ")[0]}
                 </p>
                 <div className="flex items-center gap-1.5 mt-0.5">
@@ -373,8 +397,8 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
         </div>
 
         {/* NAVIGATION */}
-        <nav className="flex-1 space-y-1 px-3 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-200 dark:scrollbar-thumb-zinc-800">
-          <div className="mb-2 px-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-600">
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3">
+          <div className="mb-2 px-2 text-[10px] font-bold uppercase tracking-widest text-[var(--app-text-soft)]">
             {(isOpen || mobileOpen) ? "Módulos" : "..."}
           </div>
 
@@ -385,11 +409,11 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
         </nav>
 
         {/* FOOTER */}
-        <div className="mt-auto border-t border-slate-100 bg-slate-50/50 p-4 dark:border-zinc-800 dark:bg-zinc-900/30 backdrop-blur-sm">
+        <div className="mt-auto border-t border-[var(--app-border)] bg-[var(--app-surface-subtle)] p-4">
           {/* THEME TOGGLE */}
           <div className={cn("mb-3 flex items-center gap-2", (isOpen || mobileOpen) ? "justify-between" : "justify-center")}>
             {(isOpen || mobileOpen) && (
-              <span className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-zinc-600">
+              <span className="text-[10px] uppercase tracking-widest text-[var(--app-text-soft)]">
                 Tema
               </span>
             )}
@@ -413,7 +437,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
           {/* LOGOUT + VERSION */}
           <div className={cn("flex items-center", isOpen ? "justify-between" : "flex-col gap-3 justify-center")}>
             {(isOpen || mobileOpen) && (
-              <span className="text-[10px] text-slate-400 dark:text-slate-600 font-mono select-none transition-opacity hover:text-slate-600 dark:hover:text-slate-400">
+              <span className="select-none font-mono text-[10px] text-[var(--app-text-soft)]">
                 {version}
               </span>
             )}
@@ -421,7 +445,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
             <button
               onClick={handleLogout}
               className={cn(
-                "flex items-center gap-2 rounded-lg p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-900/10 dark:hover:text-rose-400 transition-all active:scale-95 group",
+                "group flex items-center gap-2 rounded-lg p-2 text-[var(--app-text-muted)] transition-colors hover:bg-rose-50 hover:text-rose-600 active:scale-95 dark:hover:bg-rose-950/30 dark:hover:text-rose-300",
                 !isOpen && !mobileOpen && "justify-center"
               )}
               title="Cerrar Sesión"

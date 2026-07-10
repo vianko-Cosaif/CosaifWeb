@@ -1,11 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import { User, Lock, Eye, EyeOff, LogIn, AlertCircle } from "lucide-react";
-import {
-  isFirebaseConfigured,
-  registerFirebaseNotificationToken,
-  requestFirebaseNotificationToken,
-} from "@/lib/firebase";
 import { getNotificationRuntimePolicy } from "@/lib/notificationRuntime";
 import { isClienteAreaRole, isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 import { getRoleCapabilities } from "@/lib/accessControl";
@@ -65,6 +60,12 @@ export default function LoginForm() {
 
   async function prepareNotificationAfterLogin(accessToken: string, localidadId?: number) {
     if (!notificationPolicy.enabled) return true;
+
+    const {
+      isFirebaseConfigured,
+      registerFirebaseNotificationToken,
+      requestFirebaseNotificationToken,
+    } = await import("@/lib/firebase");
 
     if (!isFirebaseConfigured()) {
       setNotificationGate("error");

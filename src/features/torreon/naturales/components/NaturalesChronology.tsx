@@ -1,6 +1,6 @@
 import { Hash, UserRound } from "lucide-react";
 import type { MovimientoNatural, SortKey } from "../types";
-import { formatDate, formatDuration, getClientLabel, getOperatorLabel, normalizeStatus, statusClass } from "../utils";
+import { formatDate, formatDuration, getClientLabel, getMovimientoFolio, getOperatorLabel, normalizeStatus, statusClass } from "../utils";
 
 type Props = {
   rows: MovimientoNatural[];
@@ -41,7 +41,7 @@ function ChronologyCard({ row, index }: { row: MovimientoNatural; index: number 
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-black uppercase tracking-wide text-slate-400">
-            #{index + 1} · Movimiento #{row.id}
+            #{index + 1} · Movimiento {getMovimientoFolio(row)}
           </p>
           <p className="mt-1 text-sm font-black text-slate-950 dark:text-white">
             Loco {row.locomotiveNumber || "--"} · {getClientLabel(row)}

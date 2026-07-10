@@ -102,7 +102,14 @@ function IncidentesTableComp({
                       <span className="text-xs font-bold text-slate-500 dark:text-slate-400">ID</span>
                       <span className="text-sm font-extrabold text-emerald-800 dark:text-emerald-300">{row.id ?? "—"}</span>
                     </div>
-                    <StatusBadge status={row.estatus} tone={incidentStatusTone(row.estatus)} size="sm" />
+                    <div className="flex items-center gap-2">
+                      {row.tipoIncidente ? (
+                        <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-black uppercase text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                          {row.tipoIncidente}
+                        </span>
+                      ) : null}
+                      <StatusBadge status={row.estatus} tone={incidentStatusTone(row.estatus)} size="sm" />
+                    </div>
                   </div>
 
                   <div className="mt-2 grid grid-cols-2 gap-2 text-xs sm:text-sm">
@@ -144,16 +151,17 @@ function IncidentesTableComp({
           isStale && "opacity-70"
         )}
       >
-        <div className="min-w-[900px]">
+        <div className="min-w-[1040px]">
           {/* sticky header for long scrolls */}
           <div
             className={cn(
-              "grid grid-cols-7 px-3 py-3 text-center text-sm font-bold",
+              "grid grid-cols-8 px-3 py-3 text-center text-sm font-bold",
               "bg-emerald-800 text-white dark:bg-emerald-900",
               "sticky top-0 z-10"
             )}
           >
             <div className="text-left">ID</div>
+            <div>Tipo</div>
             <div>Fecha</div>
             <div>Estado</div>
             <div className="hidden lg:block">Empresa</div>
@@ -175,13 +183,18 @@ function IncidentesTableComp({
                       onClick={() => onRowPress?.(row)}
                       onKeyDown={(e) => e.key === "Enter" && onRowPress?.(row)}
                       className={cn(
-                        "grid w-full grid-cols-7 px-3 py-3 text-center",
+                        "grid w-full grid-cols-8 px-3 py-3 text-center",
                         "hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-600 dark:hover:bg-slate-800/60",
                         i % 2 === 0 && "bg-slate-50/40 dark:bg-slate-900"
                       )}
                       aria-label={`Abrir incidente ${row.id ?? ""}`}
                     >
                       <div className="truncate text-left font-bold text-emerald-800 dark:text-emerald-300">{row.id ?? "—"}</div>
+                      <div className="flex items-center justify-center">
+                        <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-black uppercase text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                          {row.tipoIncidente ?? row.fuente ?? "—"}
+                        </span>
+                      </div>
                       <div className="truncate text-slate-700 dark:text-slate-300">{row.fecha ?? "—"}</div>
                       <div className="flex items-center justify-center">
                         <StatusBadge status={row.estatus} tone={incidentStatusTone(row.estatus)} />

@@ -24,7 +24,9 @@ import {
   AlertCircle,
   Filter,
 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { fetchJSON } from "@/lib/api";
+import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 import { SearchInput } from "@/app/Components/ui";
 import { IncidentCatalogSelect, IncidentStatCard } from "@/features/incidentes";
 import { useRealtimeMovimientos, type RealtimeMovementEvent } from "@/app/hooks/useRealtimeMovimientos";
@@ -58,8 +60,12 @@ const withCreds = <T = any,>(url: string, init: RequestInit = {}) =>
 
 type DropdownOption = { id: number; nombre: string };
 type Tab = "Actuales" | "Pasados";
+type IncidentSource = "cosaif" | "torreon";
+type TorreonIncidentKind = "TODOS" | "NATURAL" | "ARRASTRE";
 
 type FilterState = {
+  source: IncidentSource;
+  torreonTipo: TorreonIncidentKind;
   empresaId: number | null;
   localidadId: number | null;
   searchQuery: string;
@@ -191,12 +197,19 @@ function isTorreonIncident(incident: any) {
   return String(incident?._source || incident?.source || incident?._detalle?._source || "").toLowerCase() === "torreon";
 }
 
+function torreonMovementFolio(incident: any) {
+  const movimiento = incident?.movimiento ?? incident?._detalle?.movimiento;
+  if (movimiento?.folioLocalidadLabel) return movimiento.folioLocalidadLabel;
+  if (movimiento?.folioLocalidad) return `#${movimiento.folioLocalidad}`;
+  if (movimiento?.id) return `#${movimiento.id}`;
+  return "#—";
+}
+
 function torreonIncidentTitle(incident: any) {
   const tipo = String(incident?._torreonTipo || incident?.tipoIncidente || incident?._detalle?._torreonTipo || "").toUpperCase();
   const arrastreId = incident?.arrastreId ?? incident?.arrastre?.id ?? incident?._detalle?.arrastreId ?? incident?._detalle?.arrastre?.id;
-  const movimientoId = incident?.movimiento?.id ?? incident?._detalle?.movimiento?.id;
   if (tipo.includes("ARRASTRE") || arrastreId) return `Arrastre #${arrastreId ?? "—"} · Incidente #${incident?.id ?? "—"}`;
-  return `Movimiento Torreon #${movimientoId ?? "—"} · Incidente #${incident?.id ?? "—"}`;
+  return `Movimiento Torreon ${torreonMovementFolio(incident)} · Incidente #${incident?.id ?? "—"}`;
 }
 
 function torreonIncidentSubtitle(incident: any) {
@@ -280,6 +293,12 @@ function useNotifications() {
 }
 
 export default function IncidenteController() {
+  const searchParams = useSearchParams();
+  const initialSource: IncidentSource =
+    String(searchParams.get("source") || "").toLowerCase() === "torreon" ? "torreon" : "cosaif";
+  const initialTipo = String(searchParams.get("tipo") || searchParams.get("tipoIncidente") || "").toUpperCase();
+  const initialTorreonTipo: TorreonIncidentKind =
+    initialTipo === "ARRASTRE" ? "ARRASTRE" : initialTipo === "NATURAL" ? "NATURAL" : "TODOS";
   const { role, empresaId: userEmpresaId, localidadId: userLocalidadId } =
     useUserRole();
   const { notification, showNotification, hideNotification } =
@@ -302,10 +321,13 @@ export default function IncidenteController() {
   });
 
   const [filters, setFilters] = useState<FilterState>({
+    source: initialSource,
+    torreonTipo: initialTorreonTipo,
     empresaId: isLimitedClientView ? userEmpresaId : null,
     localidadId: isLimitedClientView ? userLocalidadId : null,
     searchQuery: "",
   });
+  const isTorreonScope = filters.source === "torreon" || isTorreonLocalidadId(filters.localidadId);
 
   const [filtersOpen, setFiltersOpen] = useState(false); // Collapsible on mobile
 
@@ -441,10 +463,14 @@ export default function IncidenteController() {
         searchParams.set("empresaId", String(filters.empresaId));
       if (filters.localidadId)
         searchParams.set("localidadId", String(filters.localidadId));
+      if (isTorreonScope) {
+        searchParams.set("source", "torreon");
+        if (filters.torreonTipo !== "TODOS") searchParams.set("tipo", filters.torreonTipo);
+      }
 
       return `${INCIDENTES}?${searchParams.toString()}`;
     },
-    [activeTab, filters.empresaId, filters.localidadId]
+    [activeTab, filters.empresaId, filters.localidadId, filters.torreonTipo, isTorreonScope]
   );
 
   /** Fetch de incidentes + detalle, con logs de empresas */
@@ -479,6 +505,10 @@ export default function IncidenteController() {
             const details = detailsMap[incidentCacheKey(incident)] || {};
             const movement = details.movimiento || incident.movimiento || {};
             const original = { ...incident, ...details, _detalle: details };
+            const torreon = isTorreonIncident(original);
+            const tipoIncidente = String(
+              original?._torreonTipo || original?.tipoIncidente || details?._torreonTipo || ""
+            ).toUpperCase();
 
             return {
               id: incident.id,
@@ -502,6 +532,8 @@ export default function IncidenteController() {
               estadoRaw: incident.estado,
               usuario:
                 details?.usuario?.nombre ?? incident?.usuario?.nombre,
+              fuente: torreon ? "Torreón" : "Cosaif",
+              tipoIncidente: torreon ? (tipoIncidente === "ARRASTRE" ? "Arrastre" : "Natural") : "GDL",
               _original: original,
             };
           }
@@ -616,7 +648,17 @@ export default function IncidenteController() {
 
   const handleFilterChange = useCallback(
     (filterKey: keyof FilterState, value: any) => {
-      setFilters((prev) => ({ ...prev, [filterKey]: value }));
+      setFilters((prev) => {
+        const next = { ...prev, [filterKey]: value };
+        if (filterKey === "localidadId" && isTorreonLocalidadId(value)) {
+          next.source = "torreon";
+        }
+        if (filterKey === "source" && value === "cosaif" && isTorreonLocalidadId(prev.localidadId)) {
+          next.localidadId = null;
+          next.torreonTipo = "TODOS";
+        }
+        return next;
+      });
     },
     []
   );
@@ -626,6 +668,7 @@ export default function IncidenteController() {
       ...prev,
       empresaId: null,
       localidadId: null,
+      torreonTipo: "TODOS",
     }));
   }, []);
 
@@ -666,17 +709,13 @@ export default function IncidenteController() {
   const handleIncidentAction = useCallback(
     async (action: "resolve" | "skip", comments?: string) => {
       if (!uiState.selectedIncident) return;
+      const selectedIncident = uiState.selectedIncident;
 
       try {
-        setUiState((prev) => ({
-          ...prev,
-          blockerVisible: false,
-          selectedIncident: null,
-        }));
-        setModalKey((k) => k + 1);
+        setUiState((prev) => ({ ...prev, refreshing: true }));
 
         if (action === "resolve") {
-          await withCreds(`${INCIDENTES}/${uiState.selectedIncident.id}${incidentSourceQuery(uiState.selectedIncident)}`, {
+          await withCreds(`${INCIDENTES}/${selectedIncident.id}${incidentSourceQuery(selectedIncident)}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -687,16 +726,32 @@ export default function IncidenteController() {
           showNotification("success", "Incidente resuelto correctamente");
         } else {
           await withCreds(
-            `${INCIDENTES}/${uiState.selectedIncident.id}/cerrar${incidentSourceQuery(uiState.selectedIncident)}`,
-            { method: "POST" }
+            `${INCIDENTES}/${selectedIncident.id}/cerrar${incidentSourceQuery(selectedIncident)}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ comentario: comments }),
+            }
           );
-          showNotification("success", "Incidente cerrado sin resolución");
+          showNotification("success", isTorreonIncident(selectedIncident)
+            ? "Incidente cerrado y movimiento cancelado"
+            : "Incidente cerrado sin resolución");
         }
 
         detailCache.clear();
-        fetchIncidents(incidentData.meta.page);
-      } catch {
-        showNotification("error", "Error al procesar incidente");
+        await fetchIncidents(incidentData.meta.page);
+        setUiState((prev) => ({
+          ...prev,
+          refreshing: false,
+          blockerVisible: false,
+          selectedIncident: null,
+        }));
+        setModalKey((k) => k + 1);
+      } catch (error) {
+        setUiState((prev) => ({ ...prev, refreshing: false }));
+        const message = error instanceof Error ? error.message : "Error al procesar incidente";
+        showNotification("error", message);
+        throw error;
       }
     },
     [uiState.selectedIncident, fetchIncidents, incidentData.meta.page, showNotification]
@@ -716,6 +771,8 @@ export default function IncidenteController() {
         incident.locomotora,
         incident.estatus,
         incident.descripcion,
+        incident.fuente,
+        incident.tipoIncidente,
       ]
         .map((v) => String(v ?? "").toLowerCase())
         .some((t) => t.includes(searchTerm))
@@ -760,7 +817,12 @@ export default function IncidenteController() {
     );
   };
 
-  const hasActiveFilters = Boolean(filters.empresaId || filters.localidadId);
+  const hasActiveFilters = Boolean(
+    filters.empresaId ||
+    filters.localidadId ||
+    isTorreonScope ||
+    filters.torreonTipo !== "TODOS"
+  );
 
   return (
     <div className="flex w-full flex-col min-h-screen bg-slate-50/50 dark:bg-slate-950/50">
@@ -795,6 +857,53 @@ export default function IncidenteController() {
                   );
                 })}
               </div>
+
+              <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                {[
+                  { value: "cosaif", label: "Cosaif / GDL" },
+                  { value: "torreon", label: "Torreón" },
+                ].map((option) => {
+                  const isActive = (isTorreonScope ? "torreon" : "cosaif") === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => handleFilterChange("source", option.value)}
+                      className={`rounded-lg px-3 py-2 text-xs font-black uppercase tracking-wide transition ${isActive
+                        ? "bg-slate-950 text-white shadow-sm dark:bg-white dark:text-slate-950"
+                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                        }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {isTorreonScope && (
+                <div className="inline-flex rounded-xl border border-emerald-200 bg-emerald-50/70 p-1 dark:border-emerald-800 dark:bg-emerald-950/30">
+                  {[
+                    { value: "TODOS", label: "Todos" },
+                    { value: "NATURAL", label: "Naturales" },
+                    { value: "ARRASTRE", label: "Arrastre" },
+                  ].map((option) => {
+                    const isActive = filters.torreonTipo === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => handleFilterChange("torreonTipo", option.value)}
+                        className={`rounded-lg px-3 py-2 text-xs font-black uppercase tracking-wide transition ${isActive
+                          ? "bg-emerald-600 text-white shadow-sm"
+                          : "text-emerald-700 hover:bg-white/70 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
+                          }`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Last update pill */}
               {incidentData.lastUpdated && (
@@ -998,6 +1107,7 @@ export default function IncidenteController() {
             subtitle={torreonIncidentSubtitle(uiState.selectedIncident)}
             resolving={uiState.refreshing}
             onResolve={(comments) => handleIncidentAction("resolve", comments)}
+            onCancel={(comments) => handleIncidentAction("skip", comments)}
             onClose={() => {
               setUiState((p) => ({ ...p, blockerVisible: false, selectedIncident: null }));
               setModalKey((k) => k + 1);

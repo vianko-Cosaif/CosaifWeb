@@ -17,6 +17,8 @@ export type VagonDraft = {
   tempId: number;
   numeroVagon: string;
   carga: CargaVagon;
+  viaOrigenId: string;
+  seccionOrigenId: string;
   viaId: string;
   seccionId: string;
 };
@@ -26,6 +28,8 @@ export type EditVagonDraft = {
   vagonId: number;
   numeroVagon: string;
   carga: CargaVagon;
+  viaOrigenId?: string;
+  seccionOrigenId?: string;
   viaId: string;
   seccionId: string;
 };
@@ -43,6 +47,8 @@ export const makeVagonDraft = (tempId: number): VagonDraft => ({
   tempId,
   numeroVagon: "",
   carga: "VACIO",
+  viaOrigenId: "",
+  seccionOrigenId: "",
   viaId: "",
   seccionId: "",
 });

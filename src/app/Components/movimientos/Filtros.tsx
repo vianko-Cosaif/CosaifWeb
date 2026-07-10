@@ -230,12 +230,12 @@ export default function Filtros({
   const cantidadActivos = activeFilters.length;
 
   const selectClass =
-    "w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5 min-h-[44px] text-[16px] sm:text-sm text-slate-800 dark:text-slate-100 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-400 dark:focus:ring-emerald-500/30 dark:focus:border-emerald-500 transition-all duration-200 appearance-none";
+    "w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2.5 min-h-[44px] text-[16px] sm:text-sm text-[var(--app-text)] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[var(--app-focus)] focus:border-[var(--app-accent)] transition-colors appearance-none";
 
   const inputClass =
-    "w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5 pr-9 min-h-[44px] text-[16px] sm:text-sm text-slate-800 dark:text-slate-100 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-400 dark:focus:ring-emerald-500/30 dark:focus:border-emerald-500 transition-all duration-200";
+    "w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2.5 pr-9 min-h-[44px] text-[16px] sm:text-sm text-[var(--app-text)] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[var(--app-focus)] focus:border-[var(--app-accent)] transition-colors";
   const inputPlain =
-    "w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5 min-h-[44px] text-[16px] sm:text-sm text-slate-800 dark:text-slate-100 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-400 dark:focus:ring-emerald-500/30 dark:focus:border-emerald-500 transition-all duration-200";
+    "w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2.5 min-h-[44px] text-[16px] sm:text-sm text-[var(--app-text)] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[var(--app-focus)] focus:border-[var(--app-accent)] transition-colors";
 
   return (
     <section aria-label="Filtros de movimientos" className="w-full min-w-0">
@@ -243,7 +243,7 @@ export default function Filtros({
       <button
         type="button"
         onClick={() => setAbierto((prev) => !prev)}
-        className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 transition-colors duration-150"
+        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--app-text-muted)] transition-colors hover:bg-[var(--app-surface-muted)]"
       >
         <span className="inline-flex items-center gap-2">
           <SlidersHorizontal size={15} className="text-slate-400 dark:text-slate-500" />
@@ -294,7 +294,7 @@ export default function Filtros({
           }`}
       >
         <div className="overflow-hidden">
-          <div className="rounded-xl border border-slate-100 dark:border-slate-800/60 bg-slate-50/40 dark:bg-slate-900/30 p-3 sm:p-4">
+          <div className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-3 sm:p-4">
             <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-12 items-end">
               {/* Empresa */}
               <div className="min-w-0 xl:col-span-3">
@@ -485,7 +485,7 @@ export default function Filtros({
 
               {mostrarFiltrosTiempo ? (
               <div className="min-w-0 col-span-1 sm:col-span-2 xl:col-span-12">
-                <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900">
+                <div className="flex flex-wrap gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-subtle)] p-2">
                   <span className="inline-flex items-center px-2 text-[11px] font-black uppercase tracking-wide text-slate-400">
                     Atajos de tiempo
                   </span>
@@ -537,7 +537,7 @@ export default function Filtros({
               <div className="min-w-0 col-span-1 sm:col-span-2 xl:col-span-12 flex gap-2 justify-stretch xl:justify-end pt-1">
                 <button
                   type="button"
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 w-full sm:w-auto text-xs font-medium text-slate-600 dark:text-slate-300 hover:border-rose-300 hover:text-rose-600 dark:hover:border-rose-500 dark:hover:text-rose-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 active:scale-[0.97]"
+                  className="inline-flex w-full items-center gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-4 py-2.5 text-xs font-medium text-[var(--app-text-muted)] transition-colors hover:border-rose-300 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.97] sm:w-auto"
                   onClick={onLimpiarFiltros}
                   disabled={deshabilitado}
                 >

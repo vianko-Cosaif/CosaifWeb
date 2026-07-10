@@ -20,7 +20,7 @@ export default async function Page() {
     Number(c.get("localidadId")?.value ?? "") ||
     null;
 
-  if (empIdCookie == null) {
+  if (empIdCookie == null || locIdCookie == null) {
     redirect("/login");
   }
 
@@ -28,6 +28,7 @@ export default async function Page() {
     <CoordinatorMovimientosPageClient
       apiBase={MOVIMIENTOS_API_BASE}
       token={token}
+      rol="COORDINADOR"
       empresaIdUsuario={empIdCookie}
       localidadIdUsuario={locIdCookie}
     />

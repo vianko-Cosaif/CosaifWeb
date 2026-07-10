@@ -27,6 +27,7 @@ type StepOneProps = {
   localidades: Localidad[];
   vias: Via[];
   canManageAll: boolean;
+  canChooseLocality: boolean;
   userCompanyName: string;
   showFromOpts: boolean;
   setShowFromOpts: (v: boolean) => void;
@@ -73,7 +74,7 @@ const fromDatetimeLocalValue = (value: string) => {
  */
 export default function StepOne(props: StepOneProps) {
   const {
-    form, setForm, errors, empresas, localidades, vias, canManageAll, userCompanyName,
+    form, setForm, errors, empresas, localidades, vias, canManageAll, canChooseLocality, userCompanyName,
     showFromOpts, setShowFromOpts, showToOpts, setShowToOpts, selectionMode, setSelectionMode,
     tapToggle, sectionsByVia, secLoading, ensureSections, fromSection, toSection,
     setFromSection, setToSection, viaName, companyName, scheduledTornoMovements = [],
@@ -279,7 +280,7 @@ export default function StepOne(props: StepOneProps) {
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      {canManageAll ? (
+      {canChooseLocality ? (
         <Select
           label="Empresa"
           value={form.empresaId ?? ""}

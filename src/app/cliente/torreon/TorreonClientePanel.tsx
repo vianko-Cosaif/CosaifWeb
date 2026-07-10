@@ -25,6 +25,7 @@ import {
   type VagonDraft,
 } from "@/features/torreon/cliente";
 import { useRealtimeBoardRefresh } from "@/app/hooks/useRealtimeBoardRefresh";
+import { isTorreonArrastreEvent, realtimeArrastreSnapshot } from "@/features/torreon/realtime";
 import { canViewTorreonArrastreRole, normalizeRoleName } from "@/lib/torreonLocalidad";
 import TorreonIncidentDetailModal, { type TorreonIncidentDetail } from "@/app/coordinador/torreon/TorreonIncidentDetailModal";
 
@@ -169,11 +170,17 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
     load();
   }, [load]);
 
-  useRealtimeBoardRefresh({
+  const realtimeStatus = useRealtimeBoardRefresh({
     enabled: canViewArrastres,
     realtimeLocalidadId: localidadId,
     scopeLocalidadId: localidadId,
+    matchesEvent: isTorreonArrastreEvent,
     onRefresh: ({ event }) => {
+      const snapshot = realtimeArrastreSnapshot(event);
+      if (snapshot) {
+        setArrastres((current) => [snapshot, ...current.filter((item) => item.id !== snapshot.id)]);
+        return;
+      }
       const arrastreId = Number(event.arrastreId || 0);
       if (String(event.type || "").startsWith("torreon.arrastre") && arrastreId > 0) {
         return refreshArrastreById(arrastreId);
@@ -255,6 +262,33 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
     });
   }
 
+  function routePatchFrom(vagon: VagonDraft) {
+    return {
+      viaOrigenId: vagon.viaOrigenId,
+      seccionOrigenId: vagon.seccionOrigenId,
+      viaId: vagon.viaId,
+      seccionId: vagon.seccionId,
+    };
+  }
+
+  function usePreviousRoute(tempId: number) {
+    setDraftVagones((prev) => {
+      const index = prev.findIndex((vagon) => vagon.tempId === tempId);
+      if (index <= 0) return prev;
+      const patch = routePatchFrom(prev[index - 1]);
+      return prev.map((vagon) => vagon.tempId === tempId ? { ...vagon, ...patch } : vagon);
+    });
+  }
+
+  function copyRouteToAll(tempId: number) {
+    setDraftVagones((prev) => {
+      const source = prev.find((vagon) => vagon.tempId === tempId);
+      if (!source) return prev;
+      const patch = routePatchFrom(source);
+      return prev.map((vagon) => vagon.tempId === tempId ? vagon : { ...vagon, ...patch });
+    });
+  }
+
   function openEditVagon(arrastre: Arrastre, vagon: VagonArrastre) {
     if (!isArrastreEditable(arrastre.estado)) {
       setMessage({ type: "error", text: `Solo puedes editar arrastres solicitados o detenidos sin vagon en proceso. Estado actual: ${statusText(arrastre.estado)}` });
@@ -270,8 +304,10 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
       vagonId: vagon.id,
       numeroVagon: vagon.numeroVagon || "",
       carga: statusText(vagon.carga) === "LLENO" ? "LLENO" : "VACIO",
-      viaId: String(vagon.viaId),
-      seccionId: String(vagon.seccionId),
+      viaOrigenId: vagon.viaOrigenNombre || (vagon.viaOrigenId ? String(vagon.viaOrigenId) : ""),
+      seccionOrigenId: vagon.seccionOrigenNombre || (vagon.seccionOrigenId ? String(vagon.seccionOrigenId) : ""),
+      viaId: vagon.viaDestinoNombre || (vagon.viaId ? String(vagon.viaId) : ""),
+      seccionId: vagon.seccionDestinoNombre || (vagon.seccionId ? String(vagon.seccionId) : ""),
     });
   }
 
@@ -283,10 +319,12 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
     if (!editingVagon) return;
     setMessage(null);
 
-    const viaId = Number(editingVagon.viaId);
-    const seccionId = Number(editingVagon.seccionId);
-    if (!Number.isFinite(viaId) || viaId <= 0 || !Number.isFinite(seccionId) || seccionId <= 0) {
-      setMessage({ type: "error", text: "Via y seccion deben ser validas" });
+    const viaOrigen = editingVagon.viaOrigenId?.trim() || "";
+    const seccionOrigen = editingVagon.seccionOrigenId?.trim() || "";
+    const viaDestino = editingVagon.viaId.trim();
+    const seccionDestino = editingVagon.seccionId.trim();
+    if (!viaOrigen || !seccionOrigen || !viaDestino || !seccionDestino) {
+      setMessage({ type: "error", text: "Origen y destino deben tener via/seccion" });
       return;
     }
 
@@ -319,8 +357,10 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
           vagonId: editingVagon.vagonId,
           numeroVagon: editingVagon.numeroVagon.trim() || undefined,
           carga: editingVagon.carga,
-          viaId,
-          seccionId,
+          viaOrigen,
+          seccionOrigen,
+          viaDestino,
+          seccionDestino,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -339,15 +379,28 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
   async function submitArrastre() {
     setMessage(null);
 
+    const movimiento = instrucciones.trim();
+    if (movimiento.length < 3) {
+      setMessage({ type: "error", text: "Describe el movimiento u operacion del arrastre" });
+      return;
+    }
+
     const vagones = draftVagones.map((vagon) => ({
       numeroVagon: vagon.numeroVagon.trim() || undefined,
       carga: vagon.carga,
-      viaId: Number(vagon.viaId),
-      seccionId: Number(vagon.seccionId),
+      viaOrigen: vagon.viaOrigenId.trim(),
+      seccionOrigen: vagon.seccionOrigenId.trim(),
+      viaDestino: vagon.viaId.trim(),
+      seccionDestino: vagon.seccionId.trim(),
     }));
 
-    if (vagones.some((vagon) => !Number.isFinite(vagon.viaId) || vagon.viaId <= 0 || !Number.isFinite(vagon.seccionId) || vagon.seccionId <= 0)) {
-      setMessage({ type: "error", text: "Cada vagon necesita via y seccion" });
+    if (vagones.some((vagon) => (
+      !vagon.viaOrigen ||
+      !vagon.seccionOrigen ||
+      !vagon.viaDestino ||
+      !vagon.seccionDestino
+    ))) {
+      setMessage({ type: "error", text: "Cada vagon necesita origen y destino con via/seccion" });
       return;
     }
 
@@ -363,7 +416,7 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ localidadId, instrucciones, vagones }),
+        body: JSON.stringify({ localidadId, instrucciones: movimiento, vagones }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(parseErrorMessage(data, "No se pudo crear el arrastre"));
@@ -399,7 +452,9 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
       action: "REORDENAR_VAGONES",
       arrastreId: arrastre.id,
       vagonIds: vagones.map((item) => item.id),
-    });
+    }, (current) => current.map((item) => item.id === arrastre.id
+      ? { ...item, vagones: vagones.map((vagon, orden) => ({ ...vagon, orden: orden + 1 })) }
+      : item));
   }
 
   async function reorderSolicitud(arrastre: Arrastre, direction: "up" | "down") {
@@ -418,7 +473,10 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
       action: "REORDENAR_SOLICITUDES",
       arrastreId: arrastre.id,
       arrastreIds: solicitudes.map((item) => item.id),
-    });
+    }, (current) => current.map((item) => {
+      const index = solicitudes.findIndex((solicitud) => solicitud.id === item.id);
+      return index >= 0 ? { ...item, ordenSolicitud: index + 1 } : item;
+    }));
   }
 
   async function prioritizeSolicitud(arrastre: Arrastre) {
@@ -438,13 +496,18 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
     await runAction({
       action: "PRIORIZAR_SOLICITUD",
       arrastreId: arrastre.id,
-    });
+    }, (current) => [
+      { ...arrastre, ordenSolicitud: 1 },
+      ...current.filter((item) => item.id !== arrastre.id).map((item, index) => ({ ...item, ordenSolicitud: index + 2 })),
+    ]);
   }
 
-  async function runAction(payload: ActionPayload) {
+  async function runAction(payload: ActionPayload, optimistic?: (current: Arrastre[]) => Arrastre[]) {
     setMessage(null);
     const actionKey = `${payload.arrastreId}:${payload.vagonId ?? payload.action}`;
     setBusyAction(actionKey);
+    const previous = arrastres;
+    if (optimistic) setArrastres(optimistic);
 
     try {
       const response = await fetch("/api/cliente/torreon/arrastres/action", {
@@ -459,6 +522,7 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
       setMessage({ type: "ok", text: "Operacion aplicada" });
       await load(true);
     } catch (error) {
+      if (optimistic) setArrastres(previous);
       setMessage({ type: "error", text: error instanceof Error ? error.message : "No se pudo operar el arrastre" });
     } finally {
       setBusyAction(null);
@@ -472,7 +536,7 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
       action: "CANCELAR",
       arrastreId: arrastre.id,
       motivo: motivo.trim() || undefined,
-    });
+    }, (current) => current.map((item) => item.id === arrastre.id ? { ...item, estado: "CANCELADO" } : item));
   }
 
   function openIncident(incident: IncidenteArrastre, arrastre: Arrastre) {
@@ -569,6 +633,7 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
       <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6">
         {view === "dashboard" && (
           <DashboardView
+            realtimeStatus={realtimeStatus}
             feedback={feedback}
             stats={stats}
             activeArrastres={activeArrastres}
@@ -625,6 +690,8 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
             onUpdateVagon={updateDraftVagon}
             onRemoveVagon={removeDraftVagon}
             onMoveVagon={moveDraftVagon}
+            onUsePreviousRoute={usePreviousRoute}
+            onCopyRouteToAll={copyRouteToAll}
             onAddVagon={addDraftVagon}
             onSubmit={submitArrastre}
           />

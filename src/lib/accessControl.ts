@@ -86,6 +86,7 @@ const COORDINADOR_CAPABILITIES: RoleCapabilities = {
   home: "/coordinador",
   label: ROLE_LABELS.COORDINADOR,
   canViewAllCompanies: true,
+  canSwitchLocalidad: false,
   canViewTorno: true,
   navModules: ["dashboard", "movimientos", "torno", "usuarios", "incidentes", "reporteria"],
 };
@@ -136,7 +137,7 @@ const CLIENT_ADMIN_CAPABILITIES: RoleCapabilities = {
   ...CLIENT_CAPABILITIES,
   label: ROLE_LABELS.CLIENTE_ADMIN,
   canViewCompanyWide: true,
-  canSwitchLocalidad: true,
+  canSwitchLocalidad: false,
   canViewTorreonArrastres: true,
   canCreateTorreonArrastres: true,
   navModules: ["dashboard", "movimientos", "torreon_arrastres", "torno", "incidentes", "reporteria"],
