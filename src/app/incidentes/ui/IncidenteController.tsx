@@ -11,30 +11,30 @@ import React, {
 } from "react";
 import IncidentesTable from "./IncidentesTable";
 import SmartIncidentBlocker from "./SmartIncidentBlocker";
+import TorreonIncidentDetailModal from "@/app/coordinador/torreon/TorreonIncidentDetailModal";
 import type { IncidenteRow, Meta, Role } from "./types";
 import {
   AlertTriangle,
   BriefcaseBusiness,
-  MapPin,
   RefreshCw,
-  Search,
   Clock,
-  SlidersHorizontal,
   X,
   Loader2,
   CheckCircle,
   AlertCircle,
   Filter,
-  ChevronDown,
-  ChevronUp
 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { fetchJSON } from "@/lib/api";
+import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
+import { SearchInput } from "@/app/Components/ui";
+import { IncidentCatalogSelect, IncidentStatCard } from "@/features/incidentes";
+import { useRealtimeMovimientos, type RealtimeMovementEvent } from "@/app/hooks/useRealtimeMovimientos";
 
-/** Base same-origin proxy. Zero CORS. */
-const BASE = "/bff";
-const INCIDENTES = `${BASE}/incidentes`;
-const EMPRESAS = `${BASE}/empresas`;
-const LOCALIDADES = `${BASE}/localidades`;
+/** Incidentes son locality-aware: Torreon usa ms_torreon y el resto Cosaif normal. */
+const INCIDENTES = "/api/incidentes";
+const EMPRESAS = "/bff/empresas";
+const LOCALIDADES = "/bff/localidades";
 
 /** Read token from non-HttpOnly cookie and build Authorization header. */
 function authFromCookie(): HeadersInit {
@@ -60,8 +60,12 @@ const withCreds = <T = any,>(url: string, init: RequestInit = {}) =>
 
 type DropdownOption = { id: number; nombre: string };
 type Tab = "Actuales" | "Pasados";
+type IncidentSource = "cosaif" | "torreon";
+type TorreonIncidentKind = "TODOS" | "NATURAL" | "ARRASTRE";
 
 type FilterState = {
+  source: IncidentSource;
+  torreonTipo: TorreonIncidentKind;
   empresaId: number | null;
   localidadId: number | null;
   searchQuery: string;
@@ -83,18 +87,18 @@ function prettyError(object: any): string {
 
 // Cache optimizado con TTL
 class DetailCache {
-  private cache = new Map<number, { data: any; timestamp: number }>();
+  private cache = new Map<string, { data: any; timestamp: number }>();
   private TTL = 5 * 60 * 1000; // 5 minutos
 
-  set(id: number, data: any) {
-    this.cache.set(id, { data, timestamp: Date.now() });
+  set(key: string, data: any) {
+    this.cache.set(key, { data, timestamp: Date.now() });
   }
 
-  get(id: number) {
-    const entry = this.cache.get(id);
+  get(key: string) {
+    const entry = this.cache.get(key);
     if (!entry) return null;
     if (Date.now() - entry.timestamp > this.TTL) {
-      this.cache.delete(id);
+      this.cache.delete(key);
       return null;
     }
     return entry.data;
@@ -107,29 +111,66 @@ class DetailCache {
 
 const detailCache = new DetailCache();
 
-async function fetchIncidenteDetailsBulk(
-  ids: number[],
-  maxConcurrency = 6
-): Promise<Record<number, any>> {
-  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
-  const result: Record<number, any> = {};
-  const pendingIds: number[] = [];
+function incidentSourceQuery(incident: any): string {
+  const source = String(incident?._source || incident?.source || incident?._detalle?._source || "").toLowerCase();
+  if (source !== "torreon") return "";
+  const params = new URLSearchParams({ source: "torreon" });
+  const tipo = String(
+    incident?._torreonTipo ||
+    incident?.tipoIncidente ||
+    incident?._detalle?._torreonTipo ||
+    incident?._detalle?.tipoIncidente ||
+    ""
+  ).toUpperCase();
+  if (tipo.includes("ARRASTRE")) params.set("tipo", "ARRASTRE");
+  if (tipo.includes("NATURAL")) params.set("tipo", "NATURAL");
+  const localidadId =
+    incident?.localidadId ??
+    incident?.movimiento?.localidadId ??
+    incident?._detalle?.localidadId ??
+    incident?._detalle?.movimiento?.localidadId;
+  if (localidadId) params.set("localidadId", String(localidadId));
+  return `?${params.toString()}`;
+}
 
-  for (const id of uniqueIds) {
-    const cached = detailCache.get(id);
-    if (cached) result[id] = cached;
-    else pendingIds.push(id);
+function incidentCacheKey(incident: any) {
+  const tipo = String(incident?._torreonTipo || incident?.tipoIncidente || "general").toLowerCase();
+  return `${String(incident?._source || incident?.source || "cosaif").toLowerCase()}:${tipo}:${Number(incident?.id) || incident?.id}`;
+}
+
+async function fetchIncidenteDetailsBulk(
+  incidents: any[],
+  maxConcurrency = 6
+): Promise<Record<string, any>> {
+  const result: Record<string, any> = {};
+  const uniqueIncidents = Array.from(
+    new Map(
+      incidents
+        .filter((incident) => incident?.id)
+        .filter((incident) => !isTorreonIncident(incident))
+        .map((incident) => [incidentCacheKey(incident), incident])
+    ).values()
+  );
+  const pending: any[] = [];
+
+  for (const incident of uniqueIncidents) {
+    const key = incidentCacheKey(incident);
+    const cached = detailCache.get(key);
+    if (cached) result[key] = cached;
+    else pending.push(incident);
   }
 
-  for (let i = 0; i < pendingIds.length; i += maxConcurrency) {
-    const chunk = pendingIds.slice(i, i + maxConcurrency);
+  for (let i = 0; i < pending.length; i += maxConcurrency) {
+    const chunk = pending.slice(i, i + maxConcurrency);
     await Promise.all(
-      chunk.map(async (id) => {
+      chunk.map(async (incident) => {
+        const id = Number(incident.id);
+        const key = incidentCacheKey(incident);
         try {
-          const response = await withCreds<any>(`${INCIDENTES}/${id}`);
+          const response = await withCreds<any>(`${INCIDENTES}/${encodeURIComponent(String(incident.id))}${incidentSourceQuery(incident)}`);
           const data = (response as any)?.data ?? response;
-          detailCache.set(id, data);
-          result[id] = data;
+          detailCache.set(key, data);
+          result[key] = data;
           return { id, data };
         } catch {
           return { id, data: null };
@@ -150,6 +191,33 @@ function formatDate(dateString: string): string {
   } catch {
     return "Fecha inválida";
   }
+}
+
+function isTorreonIncident(incident: any) {
+  return String(incident?._source || incident?.source || incident?._detalle?._source || "").toLowerCase() === "torreon";
+}
+
+function torreonMovementFolio(incident: any) {
+  const movimiento = incident?.movimiento ?? incident?._detalle?.movimiento;
+  if (movimiento?.folioLocalidadLabel) return movimiento.folioLocalidadLabel;
+  if (movimiento?.folioLocalidad) return `#${movimiento.folioLocalidad}`;
+  if (movimiento?.id) return `#${movimiento.id}`;
+  return "#—";
+}
+
+function torreonIncidentTitle(incident: any) {
+  const tipo = String(incident?._torreonTipo || incident?.tipoIncidente || incident?._detalle?._torreonTipo || "").toUpperCase();
+  const arrastreId = incident?.arrastreId ?? incident?.arrastre?.id ?? incident?._detalle?.arrastreId ?? incident?._detalle?.arrastre?.id;
+  if (tipo.includes("ARRASTRE") || arrastreId) return `Arrastre #${arrastreId ?? "—"} · Incidente #${incident?.id ?? "—"}`;
+  return `Movimiento Torreon ${torreonMovementFolio(incident)} · Incidente #${incident?.id ?? "—"}`;
+}
+
+function torreonIncidentSubtitle(incident: any) {
+  const tipo = String(incident?._torreonTipo || incident?.tipoIncidente || incident?._detalle?._torreonTipo || "").toUpperCase();
+  const empresa = incident?.movimiento?.empresa?.nombre ?? incident?._detalle?.movimiento?.empresa?.nombre;
+  const destino = incident?.movimiento?.viaDestino?.nombre ?? incident?._detalle?.movimiento?.viaDestino?.nombre;
+  const label = tipo.includes("ARRASTRE") ? "Incidente de arrastre" : "Incidente natural";
+  return [label, empresa, destino].filter(Boolean).join(" · ");
 }
 
 // Hook usuario (lee cookies primero)
@@ -225,6 +293,12 @@ function useNotifications() {
 }
 
 export default function IncidenteController() {
+  const searchParams = useSearchParams();
+  const initialSource: IncidentSource =
+    String(searchParams.get("source") || "").toLowerCase() === "torreon" ? "torreon" : "cosaif";
+  const initialTipo = String(searchParams.get("tipo") || searchParams.get("tipoIncidente") || "").toUpperCase();
+  const initialTorreonTipo: TorreonIncidentKind =
+    initialTipo === "ARRASTRE" ? "ARRASTRE" : initialTipo === "NATURAL" ? "NATURAL" : "TODOS";
   const { role, empresaId: userEmpresaId, localidadId: userLocalidadId } =
     useUserRole();
   const { notification, showNotification, hideNotification } =
@@ -247,10 +321,13 @@ export default function IncidenteController() {
   });
 
   const [filters, setFilters] = useState<FilterState>({
+    source: initialSource,
+    torreonTipo: initialTorreonTipo,
     empresaId: isLimitedClientView ? userEmpresaId : null,
     localidadId: isLimitedClientView ? userLocalidadId : null,
     searchQuery: "",
   });
+  const isTorreonScope = filters.source === "torreon" || isTorreonLocalidadId(filters.localidadId);
 
   const [filtersOpen, setFiltersOpen] = useState(false); // Collapsible on mobile
 
@@ -282,6 +359,7 @@ export default function IncidenteController() {
 
   const [modalKey, setModalKey] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
+  const realtimeRefreshTimerRef = useRef<number | null>(null);
   const [isPending, startTransition] = useTransition();
 
   /** Sincroniza filtros iniciales cuando llegue user info (solo cliente) */
@@ -362,7 +440,7 @@ export default function IncidenteController() {
             loading: false,
           });
         }
-      } catch (error: any) {
+      } catch {
         setCatalogues((p) => ({ ...p, loading: false }));
         showNotification("error", "Error al cargar catálogos");
       }
@@ -385,10 +463,14 @@ export default function IncidenteController() {
         searchParams.set("empresaId", String(filters.empresaId));
       if (filters.localidadId)
         searchParams.set("localidadId", String(filters.localidadId));
+      if (isTorreonScope) {
+        searchParams.set("source", "torreon");
+        if (filters.torreonTipo !== "TODOS") searchParams.set("tipo", filters.torreonTipo);
+      }
 
       return `${INCIDENTES}?${searchParams.toString()}`;
     },
-    [activeTab, filters.empresaId, filters.localidadId]
+    [activeTab, filters.empresaId, filters.localidadId, filters.torreonTipo, isTorreonScope]
   );
 
   /** Fetch de incidentes + detalle, con logs de empresas */
@@ -410,11 +492,7 @@ export default function IncidenteController() {
           );
         }
 
-        const incidentIds = response.data
-          .map((x: any) => Number(x.id))
-          .filter(Boolean);
-
-        const detailsMap = await fetchIncidenteDetailsBulk(incidentIds);
+        const detailsMap = await fetchIncidenteDetailsBulk(response.data);
 
         const statusDisplayMap: Record<string, string> = {
           ABIERTO: "Activo",
@@ -424,8 +502,13 @@ export default function IncidenteController() {
 
         const enrichedIncidents: IncidenteRow[] = response.data.map(
           (incident: any) => {
-            const details = detailsMap[incident.id] || {};
+            const details = detailsMap[incidentCacheKey(incident)] || {};
             const movement = details.movimiento || incident.movimiento || {};
+            const original = { ...incident, ...details, _detalle: details };
+            const torreon = isTorreonIncident(original);
+            const tipoIncidente = String(
+              original?._torreonTipo || original?.tipoIncidente || details?._torreonTipo || ""
+            ).toUpperCase();
 
             return {
               id: incident.id,
@@ -441,7 +524,7 @@ export default function IncidenteController() {
               destino:
                 movement?.viaDestino?.nombre ??
                 incident?.movimiento?.viaDestino?.nombre,
-              descripcion: details.descripcion ?? incident.descripcion,
+              descripcion: details.descripcion ?? details.motivo ?? incident.descripcion ?? incident.motivo,
               fecha: incident.fechaInicio
                 ? formatDate(incident.fechaInicio)
                 : "—",
@@ -449,7 +532,9 @@ export default function IncidenteController() {
               estadoRaw: incident.estado,
               usuario:
                 details?.usuario?.nombre ?? incident?.usuario?.nombre,
-              _original: { ...incident, _detalle: details },
+              fuente: torreon ? "Torreón" : "Cosaif",
+              tipoIncidente: torreon ? (tipoIncidente === "ARRASTRE" ? "Arrastre" : "Natural") : "GDL",
+              _original: original,
             };
           }
         );
@@ -488,6 +573,37 @@ export default function IncidenteController() {
     },
     [buildApiUrl, activeTab, showNotification]
   );
+
+  const scheduleRealtimeIncidentRefresh = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (realtimeRefreshTimerRef.current != null) return;
+
+    const jitterMs = 450 + Math.floor(Math.random() * 1_250);
+    realtimeRefreshTimerRef.current = window.setTimeout(() => {
+      realtimeRefreshTimerRef.current = null;
+      fetchIncidents(incidentData.meta.page || 1, false);
+    }, jitterMs);
+  }, [fetchIncidents, incidentData.meta.page]);
+
+  useRealtimeMovimientos({
+    enabled: true,
+    localidadId: filters.localidadId,
+    onEvent: (event: RealtimeMovementEvent) => {
+      const type = String(event.type || "");
+      if (!type.includes("incidente") && type !== "realtime.ready" && type !== "realtime.resume") return;
+      const eventLocalidadId = Number(event.localidadId || 0) || null;
+      if (filters.localidadId && eventLocalidadId && filters.localidadId !== eventLocalidadId) return;
+      scheduleRealtimeIncidentRefresh();
+    },
+  });
+
+  useEffect(() => {
+    return () => {
+      if (realtimeRefreshTimerRef.current != null) {
+        window.clearTimeout(realtimeRefreshTimerRef.current);
+      }
+    };
+  }, []);
 
   /** Carga datos cuando cambian filtros / tab */
   useEffect(() => {
@@ -532,7 +648,17 @@ export default function IncidenteController() {
 
   const handleFilterChange = useCallback(
     (filterKey: keyof FilterState, value: any) => {
-      setFilters((prev) => ({ ...prev, [filterKey]: value }));
+      setFilters((prev) => {
+        const next = { ...prev, [filterKey]: value };
+        if (filterKey === "localidadId" && isTorreonLocalidadId(value)) {
+          next.source = "torreon";
+        }
+        if (filterKey === "source" && value === "cosaif" && isTorreonLocalidadId(prev.localidadId)) {
+          next.localidadId = null;
+          next.torreonTipo = "TODOS";
+        }
+        return next;
+      });
     },
     []
   );
@@ -542,32 +668,54 @@ export default function IncidenteController() {
       ...prev,
       empresaId: null,
       localidadId: null,
+      torreonTipo: "TODOS",
     }));
   }, []);
 
   const handleIncidentSelect = useCallback((incident: any) => {
+    const original = incident._original;
     setUiState((prev) => ({
       ...prev,
-      selectedIncident: incident._original,
+      selectedIncident: original,
       blockerVisible: true,
     }));
     setModalKey((k) => k + 1);
+
+    if (!isTorreonIncident(original)) return;
+    const key = incidentCacheKey(original);
+    const cached = detailCache.get(key);
+    if (cached) {
+      setUiState((prev) => (
+        prev.selectedIncident?.id === original.id
+          ? { ...prev, selectedIncident: { ...prev.selectedIncident, ...cached, _detalle: cached } }
+          : prev
+      ));
+      return;
+    }
+
+    withCreds<any>(`${INCIDENTES}/${encodeURIComponent(String(original.id))}${incidentSourceQuery(original)}`)
+      .then((response) => {
+        const detail = (response as any)?.data ?? response;
+        detailCache.set(key, detail);
+        setUiState((prev) => (
+          prev.selectedIncident?.id === original.id
+            ? { ...prev, selectedIncident: { ...prev.selectedIncident, ...detail, _detalle: detail } }
+            : prev
+        ));
+      })
+      .catch(() => undefined);
   }, []);
 
   const handleIncidentAction = useCallback(
     async (action: "resolve" | "skip", comments?: string) => {
       if (!uiState.selectedIncident) return;
+      const selectedIncident = uiState.selectedIncident;
 
       try {
-        setUiState((prev) => ({
-          ...prev,
-          blockerVisible: false,
-          selectedIncident: null,
-        }));
-        setModalKey((k) => k + 1);
+        setUiState((prev) => ({ ...prev, refreshing: true }));
 
         if (action === "resolve") {
-          await withCreds(`${INCIDENTES}/${uiState.selectedIncident.id}`, {
+          await withCreds(`${INCIDENTES}/${selectedIncident.id}${incidentSourceQuery(selectedIncident)}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -578,16 +726,32 @@ export default function IncidenteController() {
           showNotification("success", "Incidente resuelto correctamente");
         } else {
           await withCreds(
-            `${INCIDENTES}/${uiState.selectedIncident.id}/cerrar`,
-            { method: "POST" }
+            `${INCIDENTES}/${selectedIncident.id}/cerrar${incidentSourceQuery(selectedIncident)}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ comentario: comments }),
+            }
           );
-          showNotification("success", "Incidente cerrado");
+          showNotification("success", isTorreonIncident(selectedIncident)
+            ? "Incidente cerrado y movimiento cancelado"
+            : "Incidente cerrado sin resolución");
         }
 
         detailCache.clear();
-        fetchIncidents(incidentData.meta.page);
-      } catch {
-        showNotification("error", "Error al procesar incidente");
+        await fetchIncidents(incidentData.meta.page);
+        setUiState((prev) => ({
+          ...prev,
+          refreshing: false,
+          blockerVisible: false,
+          selectedIncident: null,
+        }));
+        setModalKey((k) => k + 1);
+      } catch (error) {
+        setUiState((prev) => ({ ...prev, refreshing: false }));
+        const message = error instanceof Error ? error.message : "Error al procesar incidente";
+        showNotification("error", message);
+        throw error;
       }
     },
     [uiState.selectedIncident, fetchIncidents, incidentData.meta.page, showNotification]
@@ -607,6 +771,8 @@ export default function IncidenteController() {
         incident.locomotora,
         incident.estatus,
         incident.descripcion,
+        incident.fuente,
+        incident.tipoIncidente,
       ]
         .map((v) => String(v ?? "").toLowerCase())
         .some((t) => t.includes(searchTerm))
@@ -651,7 +817,12 @@ export default function IncidenteController() {
     );
   };
 
-  const hasActiveFilters = Boolean(filters.empresaId || filters.localidadId);
+  const hasActiveFilters = Boolean(
+    filters.empresaId ||
+    filters.localidadId ||
+    isTorreonScope ||
+    filters.torreonTipo !== "TODOS"
+  );
 
   return (
     <div className="flex w-full flex-col min-h-screen bg-slate-50/50 dark:bg-slate-950/50">
@@ -687,6 +858,53 @@ export default function IncidenteController() {
                 })}
               </div>
 
+              <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                {[
+                  { value: "cosaif", label: "Cosaif / GDL" },
+                  { value: "torreon", label: "Torreón" },
+                ].map((option) => {
+                  const isActive = (isTorreonScope ? "torreon" : "cosaif") === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => handleFilterChange("source", option.value)}
+                      className={`rounded-lg px-3 py-2 text-xs font-black uppercase tracking-wide transition ${isActive
+                        ? "bg-slate-950 text-white shadow-sm dark:bg-white dark:text-slate-950"
+                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                        }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {isTorreonScope && (
+                <div className="inline-flex rounded-xl border border-emerald-200 bg-emerald-50/70 p-1 dark:border-emerald-800 dark:bg-emerald-950/30">
+                  {[
+                    { value: "TODOS", label: "Todos" },
+                    { value: "NATURAL", label: "Naturales" },
+                    { value: "ARRASTRE", label: "Arrastre" },
+                  ].map((option) => {
+                    const isActive = filters.torreonTipo === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => handleFilterChange("torreonTipo", option.value)}
+                        className={`rounded-lg px-3 py-2 text-xs font-black uppercase tracking-wide transition ${isActive
+                          ? "bg-emerald-600 text-white shadow-sm"
+                          : "text-emerald-700 hover:bg-white/70 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
+                          }`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* Last update pill */}
               {incidentData.lastUpdated && (
                 <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-slate-50 border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
@@ -711,24 +929,16 @@ export default function IncidenteController() {
 
             {/* Search & Actions */}
             <div className="flex flex-1 items-center justify-end gap-3 w-full xl:w-auto">
-              <div className="relative w-full max-w-md group">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-emerald-500" />
-                <input
-                  ref={searchRef}
-                  value={filters.searchQuery}
-                  onChange={(e) => handleFilterChange("searchQuery", e.target.value)}
-                  placeholder="Buscar por ID, empresa, via..."
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-10 pr-4 text-sm outline-none transition-all focus:border-emerald-500 focus:bg-white focus:ring-1 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800/50 dark:focus:bg-slate-900 dark:text-slate-100"
-                />
-                {filters.searchQuery && (
-                  <button
-                    onClick={() => handleFilterChange("searchQuery", "")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
+              <SearchInput
+                ref={searchRef}
+                value={filters.searchQuery}
+                onChange={(value) => handleFilterChange("searchQuery", value)}
+                onClear={() => handleFilterChange("searchQuery", "")}
+                placeholder="Buscar por ID, empresa, via..."
+                label="Buscar incidentes"
+                className="w-full max-w-md"
+                inputClassName="h-10 bg-slate-50/50 font-medium focus:border-emerald-500 focus:bg-white focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800/50 dark:focus:bg-slate-900"
+              />
 
               {/* Mobile Filter Toggle */}
               <button
@@ -745,15 +955,17 @@ export default function IncidenteController() {
               <div className="hidden xl:flex items-center gap-2">
                 {!isLimitedClientView && (
                   <>
-                    <SelectEnterprise
+                    <IncidentCatalogSelect
                       value={filters.empresaId}
                       onChange={(v: number | null) => handleFilterChange("empresaId", v)}
                       options={catalogues.empresas}
+                      placeholder="Todas las Empresas"
                     />
-                    <SelectLocality
+                    <IncidentCatalogSelect
                       value={filters.localidadId}
                       onChange={(v: number | null) => handleFilterChange("localidadId", v)}
                       options={catalogues.localidades}
+                      placeholder="Todas las Localidades"
                     />
                   </>
                 )}
@@ -774,16 +986,18 @@ export default function IncidenteController() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2">
               {!isLimitedClientView && (
                 <>
-                  <SelectEnterprise
+                  <IncidentCatalogSelect
                     value={filters.empresaId}
                     onChange={(v: number | null) => handleFilterChange("empresaId", v)}
                     options={catalogues.empresas}
+                    placeholder="Todas las Empresas"
                     fullWidth
                   />
-                  <SelectLocality
+                  <IncidentCatalogSelect
                     value={filters.localidadId}
                     onChange={(v: number | null) => handleFilterChange("localidadId", v)}
                     options={catalogues.localidades}
+                    placeholder="Todas las Localidades"
                     fullWidth
                   />
                 </>
@@ -811,25 +1025,25 @@ export default function IncidenteController() {
         {/* STATS CARDS - Placed ABOVE table */}
         {!incidentData.error && incidentData.data.length > 0 && (
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <StatCard
+            <IncidentStatCard
               label="Total Incidentes"
               value={incidentData.data.length}
               icon={AlertTriangle}
               color="slate"
             />
-            <StatCard
+            <IncidentStatCard
               label="Activos"
               value={totalActivos}
               icon={Clock}
               color="emerald"
             />
-            <StatCard
+            <IncidentStatCard
               label="Resueltos"
               value={totalResueltos}
               icon={CheckCircle}
               color="blue"
             />
-            <StatCard
+            <IncidentStatCard
               label="Empresas"
               value={totalEmpresas}
               icon={BriefcaseBusiness}
@@ -885,86 +1099,34 @@ export default function IncidenteController() {
 
       {/* Smart Blocker Modal */}
       {uiState.blockerVisible && uiState.selectedIncident && (
-        <SmartIncidentBlocker
-          key={`${uiState.selectedIncident.id}-${modalKey}`}
-          incident={uiState.selectedIncident}
-          operatorComment={uiState.selectedIncident.operadorComentario}
-          onResolve={(comments) => handleIncidentAction("resolve", comments)}
-          onContinue={() => {
-            setUiState((p) => ({ ...p, blockerVisible: false, selectedIncident: null }));
-            setModalKey((k) => k + 1);
-          }}
-          onSkip={() => handleIncidentAction("skip")}
-        />
+        isTorreonIncident(uiState.selectedIncident) ? (
+          <TorreonIncidentDetailModal
+            key={`${uiState.selectedIncident.id}-${modalKey}`}
+            incident={uiState.selectedIncident}
+            title={torreonIncidentTitle(uiState.selectedIncident)}
+            subtitle={torreonIncidentSubtitle(uiState.selectedIncident)}
+            resolving={uiState.refreshing}
+            onResolve={(comments) => handleIncidentAction("resolve", comments)}
+            onCancel={(comments) => handleIncidentAction("skip", comments)}
+            onClose={() => {
+              setUiState((p) => ({ ...p, blockerVisible: false, selectedIncident: null }));
+              setModalKey((k) => k + 1);
+            }}
+          />
+        ) : (
+          <SmartIncidentBlocker
+            key={`${uiState.selectedIncident.id}-${modalKey}`}
+            incident={uiState.selectedIncident}
+            operatorComment={uiState.selectedIncident.operadorComentario}
+            onResolve={(comments) => handleIncidentAction("resolve", comments)}
+            onContinue={() => {
+              setUiState((p) => ({ ...p, blockerVisible: false, selectedIncident: null }));
+              setModalKey((k) => k + 1);
+            }}
+            onSkip={() => handleIncidentAction("skip")}
+          />
+        )
       )}
-    </div>
-  );
-}
-
-/* === SUBCOMPONENTS (Clean & Isolated) === */
-
-function StatCard({ label, value, icon: Icon, color }: { label: string, value: number, icon: any, color: "slate" | "emerald" | "blue" | "indigo" }) {
-  const styles = {
-    slate: "from-slate-500 to-slate-700 shadow-slate-500/20",
-    emerald: "from-emerald-500 to-emerald-700 shadow-emerald-500/20",
-    blue: "from-blue-500 to-blue-700 shadow-blue-500/20",
-    indigo: "from-indigo-500 to-indigo-700 shadow-indigo-500/20",
-  };
-
-  return (
-    <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 group">
-      <div className={`absolute top-0 right-0 p-3 opacity-10 transition-transform group-hover:scale-110`}>
-        <Icon className="h-24 w-24" />
-      </div>
-
-      <div className="relative z-10 flex items-start justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1 opacity-80">{label}</p>
-          <p className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">{value}</p>
-        </div>
-        <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${styles[color]} text-white shadow-lg`}>
-          <Icon className="h-6 w-6" />
-        </div>
-      </div>
-
-      {/* Glass shine effect */}
-      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-    </div>
-  );
-}
-
-function SelectEnterprise({ value, onChange, options, fullWidth }: any) {
-  return (
-    <div className={`relative ${fullWidth ? "w-full" : "w-48"}`}>
-      <select
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
-        className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3 pr-8 text-sm font-medium text-slate-700 shadow-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-      >
-        <option value="">Todas las Empresas</option>
-        {options.map((o: any) => (
-          <option key={o.id} value={o.id}>{o.nombre}</option>
-        ))}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-    </div>
-  );
-}
-
-function SelectLocality({ value, onChange, options, fullWidth }: any) {
-  return (
-    <div className={`relative ${fullWidth ? "w-full" : "w-48"}`}>
-      <select
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
-        className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3 pr-8 text-sm font-medium text-slate-700 shadow-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-      >
-        <option value="">Todas las Localidades</option>
-        {options.map((o: any) => (
-          <option key={o.id} value={o.id}>{o.nombre}</option>
-        ))}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
     </div>
   );
 }

@@ -5,6 +5,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import type { Ambito } from "./useMovimientos";
 import { Search, RefreshCw, Plus, X, Clock } from "lucide-react";
 import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
+import Button from "@/app/Components/ui/Button";
+import SearchInput from "@/app/Components/ui/SearchInput";
 
 export interface NavMovimientosProps {
   ambito: Ambito;
@@ -66,10 +68,10 @@ export default function Nav({
       {/* Row 1: Tabs + Actions */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         {/* Animated Pill Tabs */}
-        <div className="relative inline-flex rounded-xl sm:rounded-2xl bg-slate-100/80 dark:bg-slate-800/60 p-0.5 sm:p-1 shadow-inner w-full sm:w-auto">
+        <div className="relative inline-flex w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0.5 sm:w-auto sm:p-1">
           {/* Animated indicator */}
           <div
-            className="absolute top-0.5 sm:top-1 bottom-0.5 sm:bottom-1 rounded-lg sm:rounded-xl bg-white dark:bg-slate-700 shadow-md transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+            className="absolute bottom-0.5 top-0.5 rounded-md bg-[var(--app-surface)] shadow-sm transition-all duration-200 sm:bottom-1 sm:top-1"
             style={{
               left: ambito === "actuales" ? "2px" : "50%",
               width: "calc(50% - 2px)",
@@ -108,64 +110,53 @@ export default function Nav({
             </span>
           </label>
 
-          <button
+          <Button
             type="button"
             title={tituloBotonRefrescar}
             onClick={onRefrescar}
-            disabled={estaCargando}
-            className="inline-flex items-center justify-center gap-2 rounded-lg sm:rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 px-3 sm:px-3 py-2 min-h-[44px] sm:min-h-[38px] text-xs font-medium text-slate-600 dark:text-slate-300 hover:border-emerald-400 hover:text-emerald-600 hover:shadow-sm dark:hover:border-emerald-500 dark:hover:text-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 active:scale-[0.97]"
+            loading={estaCargando}
+            variant="secondary"
+            size="md"
+            className="min-h-[44px] sm:min-h-[38px]"
+            leftIcon={<RefreshCw size={18} aria-hidden />}
           >
-            <RefreshCw
-              size={18}
-              aria-hidden
-              className={`transition-transform duration-500 ${estaCargando ? "animate-spin" : "group-hover:rotate-90"}`}
-            />
             <span className="hidden sm:inline">{estaCargando ? "Actualizando…" : "Actualizar"}</span>
-          </button>
+          </Button>
 
           {puedeCrear && (
-            <GuidedTarget id="client-new-movement" className="inline-flex">
-              <button
-                type="button"
-                onClick={onNuevo}
-                className="inline-flex items-center justify-center gap-2 rounded-lg sm:rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-4 sm:px-4 py-2 min-h-[44px] sm:min-h-[38px] text-xs font-bold shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:from-emerald-600 hover:to-emerald-700 active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                disabled={estaCargando}
-              >
-                <Plus size={18} aria-hidden />
-                <span>Nuevo</span>
-              </button>
+            <GuidedTarget id="movimientos-new-button" className="inline-flex">
+              <GuidedTarget id="client-new-movement" className="inline-flex">
+                <Button
+                  type="button"
+                  onClick={onNuevo}
+                  variant="primary"
+                  size="md"
+                  className="min-h-[44px] sm:min-h-[38px]"
+                  disabled={estaCargando}
+                  leftIcon={<Plus size={18} aria-hidden />}
+                >
+                  <span>Nuevo</span>
+                </Button>
+              </GuidedTarget>
             </GuidedTarget>
           )}
         </div>
       </div>
 
       {/* Row 2: Search */}
-      <div className="relative group">
-        <input
-          type="search"
+      <div className="relative">
+        <SearchInput
           value={textoBusqueda}
-          onChange={(e) => setTextoBusqueda(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setTextoBusqueda("");
-            if (e.key === "Enter") onBuscar(textoBusqueda);
+          onChange={setTextoBusqueda}
+          onClear={() => setTextoBusqueda("")}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setTextoBusqueda("");
+            if (event.key === "Enter") onBuscar(textoBusqueda);
           }}
           placeholder={placeholderBusqueda}
-          aria-label="Buscar movimientos"
-          className="w-full rounded-lg sm:rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm pl-9 sm:pl-10 pr-9 sm:pr-10 py-2.5 min-h-[44px] text-[16px] sm:text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-400 dark:focus:ring-emerald-500/30 dark:focus:border-emerald-500 transition-all duration-200 shadow-sm focus:shadow-md"
+          label="Buscar movimientos"
+          inputClassName="min-h-[44px] rounded-lg text-[16px] sm:text-sm"
         />
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 transition-colors group-focus-within:text-emerald-500">
-          <Search size={16} aria-hidden />
-        </span>
-        {textoBusqueda ? (
-          <button
-            type="button"
-            aria-label="Limpiar búsqueda"
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-all duration-150 active:scale-90"
-            onClick={() => setTextoBusqueda("")}
-          >
-            <X size={14} aria-hidden />
-          </button>
-        ) : null}
 
         {/* Loading shimmer bar */}
         {estaCargando && (
@@ -203,11 +194,11 @@ function TabBoton({
       onClick={onClick}
       aria-pressed={activo}
       className={[
-        "relative z-10 flex-1 sm:flex-none px-4 sm:px-5 py-2 text-xs sm:text-sm font-semibold rounded-xl transition-all duration-200 text-center",
+        "relative z-10 flex-1 rounded-md px-4 py-2 text-center text-xs font-semibold transition-colors sm:flex-none sm:px-5 sm:text-sm",
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2",
         activo
           ? "text-emerald-700 dark:text-emerald-300"
-          : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200",
+          : "text-[var(--app-text-muted)] hover:text-[var(--app-text)]",
       ].join(" ")}
     >
       <span className="inline-flex items-center justify-center gap-2">

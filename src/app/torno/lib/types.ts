@@ -1,4 +1,11 @@
-export type TornoRole = "CLIENTE" | "ADMINISTRADOR" | "SUPERVISOR" | "COORDINADOR";
+export type TornoRole =
+  | "CLIENTE"
+  | "CLIENTE_ADMIN"
+  | "CLIENTE_COOR"
+  | "ARRASTRE_TORREON"
+  | "ADMINISTRADOR"
+  | "SUPERVISOR"
+  | "COORDINADOR";
 
 export type TornoHistoryTab = "activos" | "concluidos";
 
@@ -24,7 +31,40 @@ export type TornoMeasurePosition =
   | "L6"
   | "R6";
 
-export type TornoMeasures = Partial<Record<TornoMeasurePosition, string | number | null>>;
+export type TornoWheelCount = 4 | 6 | 8 | 12;
+export type TornoMeasures = Partial<Record<TornoMeasurePosition, string | number | null>> & {
+  wheelCount?: TornoWheelCount;
+};
+
+export type TornoWheelSide = "L" | "R";
+
+export type TornoWheelStatus =
+  | "PENDIENTE"
+  | "EN_PROCESO"
+  | "PAUSADO"
+  | "TERMINADO"
+  | (string & {});
+
+export type TornoWheelWork = {
+  id: string | number;
+  side: TornoWheelSide;
+  position: number;
+  status: TornoWheelStatus;
+  startAt?: string | null;
+  endAt?: string | null;
+  durationSeconds?: number | null;
+  original?: unknown;
+};
+
+export type TornoWorkSummary = {
+  id?: string | number;
+  status?: string;
+  totalWheels: number;
+  completedWheels: number;
+  startAt?: string | null;
+  endAt?: string | null;
+  wheels: TornoWheelWork[];
+};
 
 export type TornoIncidentStatus =
   | "ABIERTO"
@@ -74,16 +114,33 @@ export type TornoHistoryItem = {
   id: string | number;
   servicioId?: string | number;
   rondaServicioId?: string | number;
+  ruedaSolicitudId?: string | number | null;
+  movimientoId?: string | number | null;
+  localidadId?: string | number | null;
+  empresaId?: string | number | null;
   status: TornoServiceStatus;
+  storedStatus?: TornoServiceStatus;
   locomotive?: string | number;
   numeroLocomotora?: string | number;
   service?: string;
+  companyName?: string;
+  localityName?: string;
+  originName?: string;
+  destinationName?: string;
+  priority?: string | null;
+  rondaNumber?: string | number | null;
+  orderNumber?: string | number | null;
   startAt?: string | null;
   endAt?: string | null;
   date?: string | null;
+  updatedAt?: string | null;
   operator?: string;
+  operatorId?: string | number | null;
   measuresRequested?: TornoMeasures;
   measuresFinal?: TornoMeasures;
+  work?: TornoWorkSummary | null;
+  activeIncidents?: number;
+  hasIncident?: boolean;
   incidents?: TornoIncidentParent[];
   original?: unknown;
 };
@@ -120,13 +177,36 @@ export type TornoFilters = {
 
 export type TornoPermissions = {
   role: TornoRole;
+  scopeEmpresaId: boolean;
+  scopeLocalidadId: boolean;
   canViewHistory: boolean;
+  canViewDurations: boolean;
+  canOperateServices: boolean;
+  canCancelServices: boolean;
+  canManageFinalMeasures: boolean;
   canViewIncidents: boolean;
   canManageIncidents: boolean;
   canResolveParentIncident: boolean;
   canResolveChildIncident: boolean;
   canViewNavajas: boolean;
   canManageNavajas: boolean;
+};
+
+export type TornoServiceStartPayload = {
+  torneroId: string | number;
+  inicio?: string;
+};
+
+export type TornoAxisPayload = {
+  lados?: TornoWheelSide[];
+  fechaInicio?: string;
+  fechaFin?: string;
+};
+
+export type TornoFinalMeasuresPayload = {
+  ruedaSolicitudId: string | number;
+  torneroId: string | number;
+  measures: TornoMeasures;
 };
 
 export type TornoIncidentPayload = {

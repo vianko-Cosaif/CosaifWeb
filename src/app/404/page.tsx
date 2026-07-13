@@ -1,164 +1,147 @@
-// app/404/page.tsx
-import React from "react";
-import styles from "./train404.module.scss";
 import Link from "next/link";
+import { Home, LogIn } from "lucide-react";
 import { Ubuntu } from "next/font/google";
+import styles from "./train404.module.scss";
 
 export const dynamic = "force-static";
 
 const ubuntu = Ubuntu({ subsets: ["latin"], weight: ["400", "700"] });
 
+const smokePuffs = ["one", "two", "three", "four", "five", "six"] as const;
+
+function RailWorker({ mode }: { mode: "walking" | "chasing" }) {
+  const phaseClass = mode === "walking" ? styles.runnerWalkingPhase : styles.runnerChasingPhase;
+  const gaitClass = mode === "walking" ? styles.runnerWalking : styles.runnerChasing;
+
+  return (
+    <div className={`${styles.runnerPhase} ${phaseClass}`}>
+      <div className={`${styles.runner} ${gaitClass}`}>
+        <span className={styles.runnerHead}>
+          <span className={styles.runnerFace} />
+        </span>
+        <span className={styles.runnerBody} />
+        <span className={`${styles.runnerArm} ${styles.runnerArmFront}`}>
+          <span className={styles.runnerForearm}>
+            <span className={styles.runnerHand} />
+          </span>
+        </span>
+        <span className={`${styles.runnerArm} ${styles.runnerArmBack}`}>
+          <span className={styles.runnerForearm}>
+            <span className={styles.runnerHand} />
+          </span>
+        </span>
+        <span className={`${styles.runnerLeg} ${styles.runnerLegFront}`}>
+          <span className={styles.runnerShin}>
+            <span className={styles.runnerShoe} />
+          </span>
+        </span>
+        <span className={`${styles.runnerLeg} ${styles.runnerLegBack}`}>
+          <span className={styles.runnerShin}>
+            <span className={styles.runnerShoe} />
+          </span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function NotFound() {
   return (
-    <main
-      className={`${styles.center} ${ubuntu.className}`}
-      style={{
-        position: "relative",
-        height: "100svh",
-        overflow: "clip", // sin scroll
-      }}
-    >
-      {/* Fondo: brillo cálido bajo y gradientes */}
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: 0,
-          background:
-            "radial-gradient(80rem 40rem at 50% 120%, rgba(255,115,0,0.15), transparent 60%), radial-gradient(60rem 30rem at 15% -10%, rgba(255,210,120,0.20), transparent 60%)",
-          animation: "heatwave 8s ease-in-out infinite",
-        }}
-      />
+    <main className={`${styles.center} ${ubuntu.className}`}>
+      <div className={styles.skyGlow} aria-hidden />
+      <div className={styles.stars} aria-hidden />
 
-      {/* Nubes sutiles en la parte alta */}
-      <div aria-hidden style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none" }}>
-        {Array.from({ length: 6 }).map((_, i) => {
-          const top = 5 + Math.random() * 90; // 5–30%
-          const left = Math.random() * 1000;
-          const w = 120 + Math.random() * 2400; // ancho
-          const h = 30 + Math.random() * 800; // alto
-          const dur = 14 + Math.random() * 89; // duración
-          return (
-            <span
-              key={i}
-              style={{
-                position: "absolute",
-                top: `${top}%`,
-                left: `${left}%`,
-                width: `${w}px`,
-                height: `${h}px`,
-                borderRadius: "999px",
-                background: "linear-gradient(to right, rgba(255,255,255,.55), rgba(255,255,255,.25))",
-                filter: "blur(1px)",
-      
-                animation: `drift ${dur}s ease-in-out ${i * 3}s infinite alternate`,
-              }}
-            />
-          );
-        })}
+      <div className={styles.clouds} aria-hidden>
+        <span className={`${styles.cloud} ${styles.cloudOne}`} />
+        <span className={`${styles.cloud} ${styles.cloudTwo}`} />
+        <span className={`${styles.cloud} ${styles.cloudThree}`} />
+        <span className={`${styles.cloud} ${styles.cloudFour}`} />
       </div>
 
-      {/* Montañas y marco */}
-      <div className={styles.mountains} />
-      <div className={styles.frame}>
-        {/* Vías bajo el tren (si no tienes .tracks en SCSS, ignóralo) */}
-       
-
-        {/* Tren */}
-        <div className={styles.train}>
-          <div className={styles["engine-front"]}>
-            <div className={styles.chimney}>
-              <div className={styles.smoke} />
-              <div className={`${styles.smoke} ${styles["smoke-2"]}`} />
-              <div className={`${styles.smoke} ${styles["smoke-3"]}`} />
-              <div className={`${styles.smoke} ${styles["smoke-4"]}`} />
-            </div>
-          </div>
-
-          <div className={styles["engine-body"]} />
-
-          <div className={styles.compartment}>
-            <div className={styles["compartment-window"]} />
-          </div>
-
-          <div className={`${styles.compartment} ${styles["compartment-two"]}`}>
-            <div className={styles["compartment-window"]} />
-          </div>
-
-          <div className={`${styles.compartment} ${styles["compartment-three"]}`}>
-            <div className={styles["compartment-window"]} />
-          </div>
-
-          <div className={styles["wheel-holder"]}>
-            <div className={styles.wheel} />
-            <div className={`${styles.wheel} ${styles["wheel-2"]}`}>
-              <div className={styles["wheel-joint"]} />
-              <div className={`${styles["wheel-joint"]} ${styles["wheel-joint-2"]}`} />
-            </div>
-            <div className={`${styles.wheel} ${styles["wheel-3"]}`} />
-            <div className={`${styles.wheel} ${styles["wheel-4"]}`} />
-            <div className={`${styles.wheel} ${styles["wheel-5"]}`} />
-            <div className={`${styles.wheel} ${styles["wheel-6"]}`} />
-            <div className={`${styles.wheel} ${styles["wheel-7"]}`} />
-            <div className={`${styles.wheel} ${styles["wheel-8"]}`} />
-            <div className={`${styles.wheel} ${styles["wheel-9"]}`} />
-          </div>
-        </div>
+      <div className={styles.mountains} aria-hidden>
+        <div className={styles.nearRidge} />
       </div>
 
-      <div className={styles.bridge} />
-
-      {/* CTA abajo del tren */}
-      <div
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: "15.5rem", // debajo del tren (tren bottom: 12.6rem, puente: 10rem)
-          zIndex: 2, // visible pero sin tapar elementos con z>2 si los hubiera
-          display: "grid",
-          placeItems: "center",
-          padding: "0 1rem",
-          textAlign: "center",
-          color: "#ffffffff",
-          textShadow: "0 2px 10px rgba(159, 26, 26, 1)",
-        }}
-      >
-        <h1 style={{ fontSize: "2.2rem", fontWeight: 800, letterSpacing: "0.02em" }}>
-          Página no encontrada
-        </h1>
-        <p style={{ opacity: 0.9, marginTop: ".4rem" }}>
-          Upps, por el momento nos encontramos trabajando en el problema
+      <section className={styles.message} aria-labelledby="not-found-title">
+        <p className={styles.eyebrow}>COSAIF · Fuera de ruta</p>
+        <p className={styles.errorCode} aria-hidden="true">404</p>
+        <h1 id="not-found-title">Pagina no encontrada</h1>
+        <p className={styles.description}>
+          Esta ruta no aparece en el itinerario. Regresa al inicio o inicia sesion para continuar.
         </p>
-        <div style={{ marginTop: "1rem", display: "flex", gap: ".6rem", justifyContent: "center" }}>
-          <Link
-            href="/"
-            style={{
-              background: "#be0505ff",
-              color: "#111827",
-              padding: ".6rem 1rem",
-              borderRadius: ".8rem",
-              fontWeight: 700,
-            }}
-          >
+        <div className={styles.actions}>
+          <Link href="/" className={`${styles.action} ${styles.primaryAction}`}>
+            <Home aria-hidden size={17} />
             Inicio
           </Link>
-          <Link
-            href="/login"
-            style={{
-              background: "#111827",
-              color: "#ffffff",
-              padding: ".6rem 1rem",
-              borderRadius: ".8rem",
-              fontWeight: 700,
-            }}
-          >
-            Login
+          <Link href="/login" className={`${styles.action} ${styles.secondaryAction}`}>
+            <LogIn aria-hidden size={17} />
+            Iniciar sesion
           </Link>
+        </div>
+      </section>
+
+      <div className={styles.railScene} aria-hidden="true">
+        <div className={styles.bridge} />
+        <div className={styles.railBed} />
+        <div className={styles.tracks} />
+
+        <div className={styles.train}>
+          <div className={styles.dustTrail} />
+
+          <div className={styles.engineFront}>
+            <span className={styles.headlight} />
+            <span className={`${styles.boilerBand} ${styles.boilerBandOne}`} />
+            <span className={`${styles.boilerBand} ${styles.boilerBandTwo}`} />
+            <span className={styles.cowcatcher} />
+            <div className={styles.chimney}>
+              {smokePuffs.map((puff) => (
+                <span key={puff} className={`${styles.smoke} ${styles[`smoke${puff[0].toUpperCase()}${puff.slice(1)}`]}`} />
+              ))}
+            </div>
+            <span className={styles.steamDome} />
+          </div>
+
+          <div className={styles.engineBody}>
+            <span className={styles.cabinWindow} />
+            <span className={styles.engineRoof} />
+          </div>
+
+          <div className={styles.compartment}>
+            <div className={styles.compartmentWindow} />
+          </div>
+          <div className={`${styles.compartment} ${styles.compartmentTwo}`}>
+            <div className={styles.compartmentWindow} />
+          </div>
+          <div className={`${styles.compartment} ${styles.compartmentThree}`}>
+            <div className={styles.compartmentWindow} />
+          </div>
+
+          <div className={styles.wheelHolder}>
+            <span className={`${styles.wheel} ${styles.wheelOne}`} />
+            <span className={`${styles.wheel} ${styles.wheelTwo}`} />
+            <span className={`${styles.wheel} ${styles.wheelThree}`} />
+            <span className={`${styles.wheel} ${styles.wheelFour}`} />
+            <span className={`${styles.wheel} ${styles.wheelFive}`} />
+            <span className={`${styles.wheel} ${styles.wheelSix}`} />
+            <span className={`${styles.wheel} ${styles.wheelSeven}`} />
+            <span className={`${styles.wheel} ${styles.wheelEight}`} />
+            <span className={`${styles.wheel} ${styles.wheelNine}`} />
+            <span className={styles.driveRod} />
+          </div>
+
+        </div>
+
+        <div className={styles.runnerActor}>
+          <span className={styles.runnerShadow} />
+          <span className={styles.runnerDust} />
+          <span className={styles.runnerSurprise}>!</span>
+          <RailWorker mode="walking" />
+          <RailWorker mode="chasing" />
         </div>
       </div>
 
+      <div className={styles.foreground} aria-hidden />
     </main>
   );
 }

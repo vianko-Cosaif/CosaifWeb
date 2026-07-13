@@ -1,18 +1,13 @@
 "use client";
-import React, { useCallback, Suspense, lazy } from "react";
+import React, { Suspense, lazy } from "react";
 import SelectLocalidad from "@/app/Components/cliente/SelectLocalidad";
-import type { IncidenteEmergente } from "@/app/hooks/useIncidentMonitor";
 import { DynamicBanner } from "@/app/Components/DynamicBanner";
+import { getRoleCapabilities } from "@/lib/accessControl";
 /* ================= Tipos ================= */
 interface ClientPageWrapperProps {
   localidadId: number | null;
   empresaId: number | null;
-}
-
-interface IncidentHandlers {
-  onIncidentResolved: (incident: IncidenteEmergente) => void;
-  onIncidentSkipped: (incident: IncidenteEmergente) => void;
-  onIncidentContinued: (incident: IncidenteEmergente) => void;
+  role?: string | null;
 }
 
 /* ================= Componentes de UI ================= */
@@ -87,24 +82,8 @@ const preloadRailQueueBoard = () => {
 const LazyRailQueueBoard = lazy(() => preloadRailQueueBoard());
 
 /* ================= Componente Principal Mejorado ================= */
-export default function ClientPageWrapper({ localidadId, empresaId }: ClientPageWrapperProps) {
-  // Memoized handlers para evitar recreaciones innecesarias
-  const handleIncidentResolved = useCallback((incident: IncidenteEmergente) => {
-    console.log("Incidente resuelto:", incident);
-    // Aquí puedes agregar lógica adicional, como mostrar una notificación
-    // o actualizar el estado de la aplicación
-  }, []);
-
-  const handleIncidentSkipped = useCallback((incident: IncidenteEmergente) => {
-    console.log("Incidente omitido:", incident);
-    // Aquí puedes agregar lógica adicional
-  }, []);
-
-  const handleIncidentContinued = useCallback((incident: IncidenteEmergente) => {
-    console.log("Continuando con incidente:", incident);
-    // Aquí puedes agregar lógica adicional
-  }, []);
-
+export default function ClientPageWrapper({ localidadId, role }: ClientPageWrapperProps) {
+  const capabilities = React.useMemo(() => getRoleCapabilities(role), [role]);
   // Preload del componente cuando el wrapper se monta
   React.useEffect(() => {
     if (localidadId) {
@@ -125,13 +104,15 @@ export default function ClientPageWrapper({ localidadId, empresaId }: ClientPage
             <div className="flex flex-col items-center justify-center min-h-[420px] rounded-2xl border border-slate-200 bg-white/70 p-6 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900/60">
               <div className="text-5xl mb-3">🚆</div>
               <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">
-                Selecciona una Localidad
+                Selecciona una entidad operativa
               </h2>
               <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-                Para mostrar el tablero en tiempo real.
+                {capabilities.canSwitchLocalidad
+                  ? "Elige el patio o localidad que quieres revisar."
+                  : "Para mostrar el tablero en tiempo real."}
               </p>
               <div className="w-full max-w-md">
-                <SelectLocalidad />
+                <SelectLocalidad allowCatalog={capabilities.canSwitchLocalidad} />
               </div>
             </div>
           )}
@@ -142,16 +123,6 @@ export default function ClientPageWrapper({ localidadId, empresaId }: ClientPage
 }
 
 /* ================= Componente de Carga Optimizado (Alternativa) ================= */
-/* ================= Tipo del componente dinámico ================= */
-type RailQueueBoardProps = {
-  localidadId: number;
-  autoMs?: number;
-  nextCount?: number;
-};
-
-/* ================= Componente de Carga Optimizado (Alternativa) ================= */
-
-
 // Exportación de componentes auxiliares para testing
 export {
   LoadingFallback,

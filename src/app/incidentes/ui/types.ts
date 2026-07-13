@@ -10,6 +10,8 @@ export type IncidenteRow = {
   destino?: string;
   descripcion?: string;
   usuario?: string;
+  fuente?: string;
+  tipoIncidente?: string;
   _original?: any;
 };
 
@@ -20,4 +22,13 @@ export type Meta = {
   totalPages: number;
 };
 
-export type Role = "CLIENTE" | "ADMINISTRADOR" | "SUPERVISOR" | "COORDINADOR";
+export type Role =
+  | "CLIENTE"
+  | "CLIENTE_ADMIN"
+  | "CLIENTE_COOR"
+  | "ARRASTRE_TORREON"
+  | "ADMINISTRADOR"
+  | "SUPERVISOR"
+  | "COORDINADOR"
+  | "MAQUINISTA"
+  | "MAQUINISTA_ARRASTRE";

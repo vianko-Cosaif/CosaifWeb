@@ -21,7 +21,7 @@ export default async function Page() {
     Number(c.get("localidadId")?.value ?? "") ||
     null;
 
-  if (empIdCookie == null) {
+  if (empIdCookie == null || locIdCookie == null) {
     redirect("/login");
   }
 
@@ -29,14 +29,15 @@ export default async function Page() {
     // Contenedor de página: no permite scroll horizontal global
     <section className="w-full min-h-screen overflow-x-hidden">
       {/* Contenedor centrado del panel */}
-      <div className="mx-auto w-full max-w-5xl px-3 sm:px-4 lg:px-6">
+      <div className="mx-auto w-full max-w-screen-2xl px-3 sm:px-4 lg:px-6">
         <MovimientosPanel
           apiBase={MOVIMIENTOS_API_BASE}
           rol="SUPERVISOR"
           token={token}
           empresaIdUsuario={empIdCookie}
           localidadIdUsuario={locIdCookie}
-          puedeCrear
+          bloquearLocalidad
+          puedeCrear={false}
           intervaloAutoMs={15000}
         />
       </div>

@@ -5,38 +5,62 @@ import React,
   useState,
   useMemo,
   useCallback,
+  useEffect,
   memo,
-  Fragment,
 } from "react";
 import {
-  ArrowUp,
-  ArrowDown,
   ChevronDown,
   Loader2,
   TrainFront,
   MapPin,
-  Building2,
-  CalendarClock,
-  Hash,
   Info,
-  Activity,
-  CheckCircle2,
   User,
   Flag,
   Settings,
-  Tags,
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
   Edit3,
+  Timer,
 } from "lucide-react";
+import Button from "antd/es/button";
+import ConfigProvider from "antd/es/config-provider";
+import Empty from "antd/es/empty";
+import Table from "antd/es/table";
+import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
+import type { SorterResult } from "antd/es/table/interface";
 import styles from "./Tabla.module.scss";
-import type { Movement, CampoOrden, DireccionOrden } from "./useMovimientos";
+import type { Movement, CampoOrden, DireccionOrden, Rol } from "./useMovimientos";
 import TornoMeasuresViewerModal from "../../movimientos/torno/TornoMeasuresViewerModal";
-import { parseTornoMedicionFromApi } from "../../movimientos/torno/tornoMeasureParser";
-import { DEFAULT_TORNO_MEDICION_STATE, type TornoMedicionState } from "../../movimientos/crear/tornoMedicion.types";
+import { useTornoMeasuresModal } from "@/features/torno-measures";
+import {
+  BadgeEstado,
+  BadgeTipoMovimiento,
+  BooleanChip,
+  canViewMovementDuration,
+  formatTipoMovimientoLabel,
+  formatoDuracionMovimiento,
+  formatoFecha,
+  isClientLikeRole,
+} from "@/features/movimientos/table";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/xapi";
+
+function getMovementFolio(movement: Movement) {
+  if (movement.folioLocalidadLabel) return movement.folioLocalidadLabel;
+  if (movement.folioLocalidad) return `#${movement.folioLocalidad}`;
+  return `#${movement.id}`;
+}
+
+function getMovementTechnicalId(movement: Movement) {
+  const raw = movement.idTecnico ?? movement.id;
+  const id = Number(raw);
+  return Number.isFinite(id) && id > 0 ? id : movement.id;
+}
+
+function getMovementRowKey(movement: Movement) {
+  return `${movement.localidadId || 0}:${getMovementTechnicalId(movement)}`;
+}
 
 /* --- PROPS --- */
 interface TablaProps {
@@ -51,52 +75,8 @@ interface TablaProps {
   onPagina: (p: number) => void;
   onOrden: (c: CampoOrden, d: DireccionOrden) => void;
   onEditar?: (id: number) => void;
+  rol?: Rol;
 }
-
-type MeasuresModalState = {
-  open: boolean;
-  loading: boolean;
-  error: string | null;
-  tornoMedicion: TornoMedicionState;
-  locomotiveLabel?: string;
-  companyName?: string;
-};
-
-/* ================== CONSTANTES UI ================== */
-
-const BADGE_ESTADO: Record<string, { bg: string; dot: string; text: string }> = {
-  SOLICITADO: {
-    bg: "bg-sky-50 border-sky-200 dark:bg-sky-900/20 dark:border-sky-800",
-    dot: "bg-sky-500",
-    text: "text-sky-700 dark:text-sky-400",
-  },
-  EN_PROCESO: {
-    bg: "bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800",
-    dot: "bg-amber-500 animate-pulse",
-    text: "text-amber-700 dark:text-amber-400",
-  },
-  CONCLUIDO: {
-    bg: "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800",
-    dot: "bg-emerald-500",
-    text: "text-emerald-700 dark:text-emerald-400",
-  },
-  CANCELADO: {
-    bg: "bg-rose-50 border-rose-200 dark:bg-rose-900/20 dark:border-rose-800",
-    dot: "bg-rose-500",
-    text: "text-rose-700 dark:text-rose-400",
-  },
-  DETENIDO: {
-    bg: "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800",
-    dot: "bg-red-500",
-    text: "text-red-700 dark:text-red-400",
-  },
-};
-
-const DEFAULT_BADGE = {
-  bg: "bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700",
-  dot: "bg-slate-400",
-  text: "text-slate-600 dark:text-slate-400",
-};
 
 /* ================== COMPONENTE PRINCIPAL ================== */
 
@@ -112,7 +92,10 @@ function TablaInner({
   onPagina,
   onOrden,
   onEditar,
+  rol,
 }: TablaProps) {
+  const clienteSoloIds = isClientLikeRole(rol);
+  const puedeVerDuracion = canViewMovementDuration(rol);
   const NO_EDIT_STATES = useMemo(
     () => new Set(["DETENIDO", "EN_PROCESO", "CONCLUIDO"]),
     []
@@ -126,14 +109,10 @@ function TablaInner({
   );
   const showEditColumn = Boolean(onEditar) && filas.some((m) => puedeEditarMovimiento(m.estado));
   const showMeasuresColumn = false;
-  const tableColumnSpan = 10 + (showEditColumn ? 1 : 0) + (showMeasuresColumn ? 1 : 0);
-  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
-  const [measuresModal, setMeasuresModal] = useState<MeasuresModalState>({
-    open: false,
-    loading: false,
-    error: null,
-    tornoMedicion: DEFAULT_TORNO_MEDICION_STATE,
-  });
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [isDarkTheme, setIsDarkTheme] = useState(false);
+  const { measuresModal, openMeasuresModal, closeMeasuresModal } =
+    useTornoMeasuresModal(API_BASE);
 
   const totalPaginas = useMemo(
     () => Math.max(1, Math.ceil(total / tamPagina)),
@@ -141,6 +120,15 @@ function TablaInner({
   );
 
   const tieneFilas = filas.length > 0;
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const syncTheme = () => setIsDarkTheme(root.classList.contains("dark"));
+    syncTheme();
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
 
   const startIndex = useMemo(
     () => (total === 0 ? 0 : (pagina - 1) * tamPagina + 1),
@@ -151,10 +139,10 @@ function TablaInner({
     [startIndex, filas.length, total]
   );
 
-  const toggle = useCallback((id: number) => {
+  const toggle = useCallback((rowKey: string) => {
     setExpanded((prev) => ({
       ...prev,
-      [id]: !prev[id],
+      [rowKey]: !prev[rowKey],
     }));
   }, []);
 
@@ -166,46 +154,15 @@ function TablaInner({
     if (pagina < totalPaginas) onPagina(pagina + 1);
   }, [pagina, totalPaginas, onPagina]);
 
-  const closeMeasuresModal = useCallback(() => {
-    setMeasuresModal((prev) => ({ ...prev, open: false, error: null }));
-  }, []);
-
-  const handleViewMeasures = useCallback(async (movement: Movement) => {
-    const movementId = Number(movement.id);
-    if (!Number.isFinite(movementId) || movementId <= 0) return;
-
-    setMeasuresModal({
-      open: true,
-      loading: true,
-      error: null,
-      tornoMedicion: DEFAULT_TORNO_MEDICION_STATE,
-      locomotiveLabel: String(movement.locomotora ?? ""),
-      companyName: movement.empresaNombre,
-    });
-
-    try {
-      const response = await fetch(`${API_BASE}/movimientos/${movementId}/edicion`, {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        throw new Error(`No se pudo cargar medidas (${response.status}).`);
-      }
-      const payload = await response.json();
-      const parsed = parseTornoMedicionFromApi(payload);
-      setMeasuresModal((prev) => ({
-        ...prev,
-        loading: false,
-        tornoMedicion: parsed,
-        locomotiveLabel: String(payload?.movimiento?.locomotiveNumber ?? movement.locomotora ?? ""),
-        companyName: payload?.movimiento?.empresa?.nombre ?? movement.empresaNombre,
-      }));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "No se pudieron cargar las medidas.";
-      setMeasuresModal((prev) => ({ ...prev, loading: false, error: message }));
-    }
-  }, []);
+  const handleViewMeasures = useCallback(
+    (movement: Movement) =>
+      openMeasuresModal({
+        movementId: getMovementTechnicalId(movement),
+        locomotiveLabel: String(movement.locomotora ?? ""),
+        companyName: movement.empresaNombre,
+      }),
+    [openMeasuresModal]
+  );
 
   /* Page pills */
   const pageNumbers = useMemo(() => {
@@ -224,9 +181,275 @@ function TablaInner({
     return pages;
   }, [pagina, totalPaginas]);
 
+  const getSortOrder = useCallback(
+    (key: CampoOrden) => {
+      if (campoOrden !== key) return null;
+      return direccionOrden === "asc" ? "ascend" : "descend";
+    },
+    [campoOrden, direccionOrden]
+  );
+
+  const antColumns = useMemo<ColumnsType<Movement>>(() => {
+    const base: ColumnsType<Movement> = [
+      {
+        title: "Orden",
+        key: "orden",
+        width: 96,
+        fixed: "left",
+        render: (_value: unknown, _movement, index) => (
+          <span className="inline-flex min-w-10 justify-center rounded-md bg-slate-950 px-2 py-1 font-mono text-xs font-black text-white">
+            {startIndex + index}
+          </span>
+        ),
+      },
+      {
+        title: "Folio",
+        key: "id",
+        width: 116,
+        sorter: true,
+        sortOrder: getSortOrder("id"),
+        render: (_value: unknown, movement) => {
+          return (
+            <div className="min-w-0">
+              <span className="inline-flex rounded-md bg-slate-100 px-2 py-1 font-mono text-xs font-black text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                {getMovementFolio(movement)}
+              </span>
+            </div>
+          );
+        },
+      },
+      {
+        title: "Locomotora",
+        dataIndex: "locomotora",
+        key: "locomotora",
+        width: 150,
+        sorter: true,
+        sortOrder: getSortOrder("locomotora"),
+        render: (_value: unknown, movement) => (
+          <div className="flex items-center gap-3">
+            <span className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+              <TrainFront size={17} />
+            </span>
+            <div className="min-w-0">
+              <div className="font-black tabular-nums text-slate-950 dark:text-slate-100">
+                {movement.locomotora ?? "—"}
+              </div>
+              {movement.prioridad === "ALTA" && (
+                <div className="text-[10px] font-black uppercase tracking-wide text-rose-500">
+                  Prioridad alta
+                </div>
+              )}
+            </div>
+          </div>
+        ),
+      },
+      {
+        title: "Tipo",
+        dataIndex: "tipoMovimiento",
+        key: "tipo",
+        width: 140,
+        align: "center",
+        sorter: true,
+        sortOrder: getSortOrder("tipo"),
+        render: (value: Movement["tipoMovimiento"]) => <BadgeTipoMovimiento tipo={value} />,
+      },
+      {
+        title: "Localidad",
+        dataIndex: "localidadNombre",
+        key: "localidad",
+        width: 170,
+        sorter: true,
+        sortOrder: getSortOrder("localidad"),
+        render: (value: Movement["localidadNombre"]) => (
+          <span className="inline-flex max-w-[160px] items-center gap-1.5 truncate font-semibold text-slate-600 dark:text-slate-300">
+            <MapPin size={13} className="shrink-0 text-slate-400" />
+            <span className="truncate">{value || "—"}</span>
+          </span>
+        ),
+      },
+      {
+        title: "Empresa",
+        dataIndex: "empresaNombre",
+        key: "empresa",
+        width: 190,
+        sorter: true,
+        sortOrder: getSortOrder("empresa"),
+        render: (value: Movement["empresaNombre"]) => (
+          <span className="block max-w-[180px] truncate font-semibold text-slate-700 dark:text-slate-200">
+            {value || "—"}
+          </span>
+        ),
+      },
+      {
+        title: "Personal",
+        key: "personal",
+        width: 250,
+        render: (_value: unknown, movement) => {
+          const people = [
+            ["Cliente", movement.clienteNombre],
+            ["Operador", movement.operadorNombre],
+            ["Supervisor", movement.supervisorNombre],
+            ["Maquinista", movement.maquinistaNombre],
+          ] as const;
+          const ids = {
+            Cliente: movement.clienteId,
+            Operador: movement.operadorId,
+            Supervisor: movement.supervisorId,
+            Maquinista: movement.maquinistaId,
+          };
+          return (
+            <div className="grid grid-cols-2 gap-1">
+              {people.map(([label, value]) => (
+                <span
+                  key={label}
+                  className="inline-flex items-center justify-between gap-2 rounded-md bg-slate-50 px-2 py-1 text-[11px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300"
+                >
+                  <span>{label}</span>
+                  <strong className="truncate text-right text-slate-900 dark:text-slate-100">
+                    {clienteSoloIds ? ids[label] ?? "—" : value ?? "—"}
+                  </strong>
+                </span>
+              ))}
+            </div>
+          );
+        },
+      },
+      {
+        title: "Origen",
+        dataIndex: "viaOrigen",
+        key: "viaOrigen",
+        width: 130,
+        render: (value: Movement["viaOrigen"]) => (
+          <span className="font-bold text-emerald-700 dark:text-emerald-300">{value || "—"}</span>
+        ),
+      },
+      {
+        title: "Destino",
+        dataIndex: "viaDestino",
+        key: "viaDestino",
+        width: 130,
+        render: (value: Movement["viaDestino"]) => (
+          <span className="font-bold text-sky-700 dark:text-sky-300">{value || "—"}</span>
+        ),
+      },
+    ];
+
+    base.push({
+      title: "Solicitud",
+      dataIndex: "fechaSolicitud",
+      key: "solicitud",
+      width: 150,
+      sorter: true,
+      sortOrder: getSortOrder("solicitud"),
+      render: (value: Movement["fechaSolicitud"]) => (
+        <span className="font-mono text-xs text-slate-600 dark:text-slate-300">{formatoFecha(value)}</span>
+      ),
+    });
+    base.push({
+      title: "Inicio",
+      dataIndex: "fechaInicio",
+      key: "inicio",
+      width: 150,
+      sorter: true,
+      sortOrder: getSortOrder("inicio"),
+      render: (value: Movement["fechaInicio"]) => (
+        <span className="font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-300">{formatoFecha(value)}</span>
+      ),
+    });
+    base.push({
+      title: "Fin",
+      dataIndex: "fechaFin",
+      key: "fin",
+      width: 150,
+      sorter: true,
+      sortOrder: getSortOrder("fin"),
+      render: (value: Movement["fechaFin"]) => (
+        <span className="font-mono text-xs text-slate-600 dark:text-slate-300">{formatoFecha(value)}</span>
+      ),
+    });
+    if (puedeVerDuracion) {
+      base.push({
+        title: "Resolución",
+        key: "resolucion",
+        width: 140,
+        render: (_value: unknown, movement) => (
+          <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-50 px-2 py-1 text-xs font-black text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            <Timer size={13} className="text-slate-400" />
+            {formatoDuracionMovimiento(movement.fechaInicio, movement.fechaFin)}
+          </span>
+        ),
+      });
+    }
+
+    base.push({
+        title: "Estado",
+        dataIndex: "estado",
+        key: "estado",
+        width: 150,
+        align: "center",
+        sorter: true,
+        sortOrder: getSortOrder("estado"),
+        render: (value: Movement["estado"]) => <BadgeEstado estado={value} />,
+    });
+
+    if (showEditColumn) {
+      base.push({
+        title: "Acción",
+        key: "accion",
+        width: 120,
+        fixed: "right",
+        align: "center",
+        render: (_value, movement) => {
+          const canEdit = puedeEditarMovimiento(movement.estado);
+          const movementId = getMovementTechnicalId(movement);
+          return canEdit ? (
+            <Button
+              size="small"
+              onClick={(event) => {
+                event.stopPropagation();
+                onEditar?.(movementId);
+              }}
+              className="font-bold"
+            >
+              Editar
+            </Button>
+          ) : (
+            <span className="text-xs font-semibold text-slate-400">No editable</span>
+          );
+        },
+      });
+    }
+
+    return base;
+  }, [clienteSoloIds, getSortOrder, onEditar, puedeEditarMovimiento, puedeVerDuracion, showEditColumn, startIndex]);
+
+  const handleAntTableChange = useCallback(
+    (
+      pagination: TablePaginationConfig,
+      _filters: Record<string, unknown>,
+      sorter: SorterResult<Movement> | SorterResult<Movement>[],
+      extra?: { action?: "paginate" | "sort" | "filter" }
+    ) => {
+      const nextPage = Number(pagination.current || 1);
+      if (nextPage !== pagina) {
+        setExpanded({});
+        onPagina(nextPage);
+      }
+
+      if (extra?.action !== "sort") return;
+
+      const activeSorter = Array.isArray(sorter) ? sorter[0] : sorter;
+      const key = String(activeSorter?.columnKey || "") as CampoOrden;
+      if (key && activeSorter?.order) {
+        onOrden(key, activeSorter.order === "ascend" ? "asc" : "desc");
+      }
+    },
+    [onOrden, onPagina, pagina]
+  );
+
   return (
     <div className="flex h-full w-full flex-col space-y-3 sm:space-y-4 font-sans">
-      <div className="relative w-full overflow-hidden rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900/95 shadow-sm transition-all">
+      <div className="relative w-full overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-sm transition-all">
         {/* Loader Overlay */}
         {cargando && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-[2px] transition-opacity duration-300 dark:bg-slate-950/60">
@@ -256,167 +479,106 @@ function TablaInner({
           ) : (
             filas.map((movement) => (
               <MobileCard
-                key={movement.id}
+                key={getMovementRowKey(movement)}
+                rowKey={getMovementRowKey(movement)}
                 movement={movement}
-                isOpen={Boolean(expanded[movement.id])}
+                isOpen={Boolean(expanded[getMovementRowKey(movement)])}
                 onToggle={toggle}
                 onEditar={onEditar}
                 showEdit={showEditColumn}
                 canEdit={puedeEditarMovimiento(movement.estado)}
                 showMeasures={showMeasuresColumn}
                 onViewMeasures={handleViewMeasures}
+                clienteSoloIds={clienteSoloIds}
+                canViewDuration={puedeVerDuracion}
               />
             ))
           )}
         </div>
 
-        {/* Tabla (desktop) */}
-        <div className={`hidden xl:block w-full overflow-x-auto ${styles.tableContainer}`}>
-          <table className="w-full border-collapse text-left">
-            {/* HEADER */}
-            <thead
-              className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 ${styles.glassHeader}`}
-            >
-              <tr>
-                <th className="hidden sm:table-cell w-10 px-2 py-3 text-center sm:w-12 sm:px-4 sm:py-4">
-                  #
-                </th>
-                <HeaderCell
-                  label="ID"
-                  sortKey="id"
-                  currentSort={campoOrden}
-                  dir={direccionOrden}
-                  onSort={onOrden}
-                  icon={Hash}
-                />
-                <HeaderCell
-                  label="Locomotora"
-                  sortKey="locomotora"
-                  currentSort={campoOrden}
-                  dir={direccionOrden}
-                  onSort={onOrden}
-                  icon={TrainFront}
-                />
-                <HeaderCell
-                  label="Tipo"
-                  sortKey="tipo"
-                  currentSort={campoOrden}
-                  dir={direccionOrden}
-                  onSort={onOrden}
-                  icon={Tags}
-                  align="center"
-                />
-
-                <HeaderCell
-                  label="Localidad"
-                  sortKey="localidad"
-                  currentSort={campoOrden}
-                  dir={direccionOrden}
-                  onSort={onOrden}
-                  icon={MapPin}
-                  className="hidden md:table-cell"
-                />
-                <HeaderCell
-                  label="Empresa"
-                  sortKey="empresa"
-                  currentSort={campoOrden}
-                  dir={direccionOrden}
-                  onSort={onOrden}
-                  icon={Building2}
-                  className="hidden md:table-cell"
-                />
-                <HeaderCell
-                  label="Solicitud"
-                  sortKey="solicitud"
-                  currentSort={campoOrden}
-                  dir={direccionOrden}
-                  onSort={onOrden}
-                  icon={CalendarClock}
-                  className="hidden lg:table-cell"
-                />
-                <HeaderCell
-                  label="Inicio"
-                  sortKey="inicio"
-                  currentSort={campoOrden}
-                  dir={direccionOrden}
-                  onSort={onOrden}
-                  icon={CalendarClock}
-                  className="hidden xl:table-cell"
-                />
-                <HeaderCell
-                  label="Fin"
-                  sortKey="fin"
-                  currentSort={campoOrden}
-                  dir={direccionOrden}
-                  onSort={onOrden}
-                  icon={CalendarClock}
-                  className="hidden xl:table-cell"
-                />
-
-                <HeaderCell
-                  label="Estado"
-                  sortKey="estado"
-                  currentSort={campoOrden}
-                  dir={direccionOrden}
-                  onSort={onOrden}
-                  icon={Activity}
-                  align="center"
-                />
-
-                {showEditColumn && (
-                  <th className="px-2 py-3 text-center sm:px-4 sm:py-4">
-                    Editar
-                  </th>
-                )}
-                {showMeasuresColumn && (
-                  <th className="px-2 py-3 text-center sm:px-4 sm:py-4">
-                    Medidas
-                  </th>
-                )}
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs sm:text-xs md:text-sm">
-              {!tieneFilas ? (
-                <tr>
-                  <td colSpan={tableColumnSpan} className="py-16 text-center sm:py-20">
-                    <div className="flex flex-col items-center justify-center gap-4">
-                      <div className="rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 p-5">
-                        <TrainFront size={36} strokeWidth={1.2} className="text-slate-300 dark:text-slate-600" />
-                      </div>
-                      <div className="text-center">
-                        <p className="font-medium text-slate-500 dark:text-slate-400">
-                          No hay movimientos registrados
-                        </p>
-                        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                          Los movimientos aparecerán aquí cuando estén disponibles
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filas.map((movement) => (
-                  <MovimientoRow
-                    key={movement.id}
+        <div className="hidden xl:block">
+          <ConfigProvider
+            theme={{
+              token: {
+                colorPrimary: "#059669",
+                borderRadius: 10,
+                fontFamily: "inherit",
+                colorBgContainer: isDarkTheme ? "#141c23" : "#ffffff",
+                colorText: isDarkTheme ? "#e8edf1" : "#17212b",
+                colorTextSecondary: isDarkTheme ? "#a3afb9" : "#5f6f7d",
+                colorBorderSecondary: isDarkTheme ? "#293640" : "#d9e1e7",
+              },
+              components: {
+                Table: {
+                  headerBg: isDarkTheme ? "#182129" : "#f8fafb",
+                  headerColor: isDarkTheme ? "#e8edf1" : "#5f6f7d",
+                  rowHoverBg: isDarkTheme ? "#1d2932" : "#f3f6f8",
+                  borderColor: isDarkTheme ? "#293640" : "#d9e1e7",
+                  colorBgContainer: isDarkTheme ? "#141c23" : "#ffffff",
+                },
+              },
+            }}
+          >
+            <Table<Movement>
+              virtual={filas.length > 50}
+              rowKey={getMovementRowKey}
+              className="cosaif-ant-table"
+              columns={antColumns}
+              dataSource={filas}
+              loading={cargando ? { spinning: true, description: "Sincronizando..." } : false}
+              size="middle"
+              scroll={{ x: 1880, ...(filas.length > 50 ? { y: 640 } : {}) }}
+              onChange={handleAntTableChange}
+              onRow={(movement) => ({
+                onClick: (event) => {
+                  const target = event.target as HTMLElement | null;
+                  if (target?.closest("button,a,input,select,textarea,[role='button']")) return;
+                  toggle(getMovementRowKey(movement));
+                },
+                className: "cursor-pointer",
+              })}
+              expandable={{
+                expandedRowKeys: Object.entries(expanded)
+                  .filter(([, isOpen]) => isOpen)
+                  .map(([rowKey]) => rowKey),
+                showExpandColumn: false,
+                expandIcon: () => null,
+                onExpand: (_open, movement) => toggle(getMovementRowKey(movement)),
+                expandedRowRender: (movement) => (
+                  <ExpandedDetailsContent
                     movement={movement}
-                    isOpen={Boolean(expanded[movement.id])}
-                    onToggle={toggle}
-                    onEditar={onEditar}
-                    showEdit={showEditColumn}
-                    canEdit={puedeEditarMovimiento(movement.estado)}
-                    showMeasures={showMeasuresColumn}
-                    onViewMeasures={handleViewMeasures}
-                    tableColumnSpan={tableColumnSpan}
+                    fechaSolicitudFmt={formatoFecha(movement.fechaSolicitud)}
+                    fechaInicioFmt={formatoFecha(movement.fechaInicio)}
+                    fechaFinFmt={formatoFecha(movement.fechaFin)}
+                    isPriorityHigh={movement.prioridad === "ALTA"}
+                    clienteSoloIds={clienteSoloIds}
+                    canViewDuration={puedeVerDuracion}
                   />
-                ))
-              )}
-            </tbody>
-          </table>
+                ),
+              }}
+              pagination={{
+                current: pagina,
+                pageSize: tamPagina,
+                total,
+                showSizeChanger: false,
+                placement: ["bottomCenter"],
+                showTotal: (count, range) =>
+                  `Mostrando ${range[0]}-${range[1]} de ${count}${totalEstimado ? "+" : ""}`,
+              }}
+              locale={{
+                emptyText: (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description="No hay movimientos registrados"
+                  />
+                ),
+              }}
+            />
+          </ConfigProvider>
         </div>
 
         {/* Footer con page pills */}
-        <div className="flex flex-col items-center justify-between gap-3 sm:gap-4 rounded-b-xl sm:rounded-b-2xl border-t border-slate-200 dark:border-slate-800/60 bg-gradient-to-b from-slate-50 to-white dark:from-slate-900/80 dark:to-slate-900/60 p-2.5 sm:p-3 text-[10px] sm:flex-row sm:p-4 sm:text-xs">
+        <div className="flex flex-col items-center justify-between gap-3 sm:gap-4 rounded-b-xl sm:rounded-b-2xl border-t border-slate-200 bg-gradient-to-b from-slate-50 to-white p-2.5 text-[10px] dark:border-slate-800/60 dark:from-slate-900/80 dark:to-slate-900/60 sm:flex-row sm:p-4 sm:text-xs xl:hidden">
           <p className="order-2 font-medium text-slate-500 dark:text-slate-400 sm:order-1">
             {total === 0 ? (
               "Sin registros"
@@ -515,227 +677,24 @@ function TablaInner({
 
 export default memo(TablaInner);
 
-/* ================== FILA (MEMOIZADA) ================== */
+/* ================== TARJETA MOVIL ================== */
 
 interface MovimientoRowProps {
+  rowKey: string;
   movement: Movement;
   isOpen: boolean;
-  onToggle: (id: number) => void;
+  onToggle: (rowKey: string) => void;
   onEditar?: (id: number) => void;
   showEdit?: boolean;
   canEdit?: boolean;
   showMeasures?: boolean;
   onViewMeasures?: (movement: Movement) => void;
-  tableColumnSpan?: number;
+  clienteSoloIds?: boolean;
+  canViewDuration?: boolean;
 }
 
-const MovimientoRow = memo(function MovimientoRow({
-  movement,
-  isOpen,
-  onToggle,
-  onEditar,
-  showEdit = false,
-  canEdit = true,
-  showMeasures = false,
-  onViewMeasures,
-  tableColumnSpan = 10,
-}: MovimientoRowProps) {
-  const handleRowClick = useCallback(() => {
-    onToggle(movement.id);
-  }, [onToggle, movement.id]);
-
-  const handleEditClick = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
-      event.stopPropagation();
-      if (onEditar && canEdit) onEditar(movement.id);
-    },
-    [onEditar, movement.id, canEdit]
-  );
-
-  const handleMeasuresClick = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
-      event.stopPropagation();
-      if (onViewMeasures) onViewMeasures(movement);
-    },
-    [onViewMeasures, movement]
-  );
-
-  const fechaSolicitudFmt = useMemo(
-    () => formatoFecha(movement.fechaSolicitud),
-    [movement.fechaSolicitud]
-  );
-  const fechaInicioFmt = useMemo(
-    () => formatoFecha(movement.fechaInicio),
-    [movement.fechaInicio]
-  );
-  const fechaFinFmt = useMemo(
-    () => formatoFecha(movement.fechaFin),
-    [movement.fechaFin]
-  );
-
-  const isPriorityHigh = movement.prioridad === "ALTA";
-
-  return (
-    <Fragment>
-      {/* FILA PRINCIPAL */}
-      <tr
-        onClick={handleRowClick}
-        className={`group cursor-pointer border-l-[3px] transition-all duration-200 ${isOpen
-          ? `border-l-emerald-500 ${styles.rowExpanded}`
-          : isPriorityHigh
-            ? `border-l-rose-400 dark:border-l-rose-500 ${styles.rowBase}`
-            : `border-l-transparent ${styles.rowBase}`
-          }`}
-      >
-        {/* Chevron - Hidden on mobile, shown on sm+ */}
-        <td className="hidden sm:table-cell px-2 py-3 text-center align-middle sm:px-4 sm:py-4">
-          <div className="flex items-center justify-center">
-            <ChevronDown
-              size={16}
-              className={`${styles.chevron} ${isOpen ? styles.chevronExpanded : ""
-                }`}
-            />
-          </div>
-        </td>
-
-        <td className="hidden sm:table-cell px-2 py-3 align-middle font-mono text-xs text-slate-400 sm:px-4 sm:py-4 sm:text-xs">
-          <span className="rounded-md bg-slate-50 dark:bg-slate-800/60 px-1.5 py-0.5">
-            #{movement.id}
-          </span>
-        </td>
-
-        {/* Locomotora */}
-        {/* Locomotora - With embedded chevron on mobile */}
-        <td className="px-3 py-4 align-middle sm:px-4 sm:py-4">
-          <div className="flex items-center gap-3">
-            {/* Mobile Chevron */}
-            <div className="sm:hidden text-slate-400">
-              <ChevronDown size={18} className={`transition-transform duration-200 ${isOpen ? "rotate-180 text-emerald-500" : ""}`} />
-            </div>
-
-            <div
-              className={`flex h-10 w-10 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${isOpen
-                ? "bg-gradient-to-br from-emerald-100 to-emerald-50 text-emerald-600 dark:from-emerald-500/20 dark:to-emerald-500/10 dark:text-emerald-400 shadow-sm"
-                : "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 group-hover:bg-emerald-50 group-hover:text-emerald-500 dark:group-hover:bg-emerald-900/20 dark:group-hover:text-emerald-400"
-                }`}
-            >
-              <TrainFront size={18} strokeWidth={2} />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-sm font-bold text-slate-900 dark:text-slate-100 sm:text-base tabular-nums">
-                {movement.locomotora}
-              </span>
-              <div className="flex items-center gap-2">
-                <span className="sm:hidden font-mono text-[10px] text-slate-400 bg-slate-100 dark:bg-slate-800 px-1 rounded">#{movement.id}</span>
-                {isPriorityHigh && (
-                  <span className="text-[9px] font-bold text-rose-500 dark:text-rose-400 uppercase tracking-wider">
-                    Alta
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </td>
-
-        {/* Tipo de movimiento */}
-        <td className="px-2 py-3 text-center align-middle sm:px-4 sm:py-4">
-          <BadgeTipoMovimiento tipo={movement.tipoMovimiento} />
-        </td>
-
-        {/* Localidad */}
-        <td className="hidden px-2 py-3 align-middle md:table-cell sm:px-4 sm:py-4">
-          <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-            <MapPin size={13} className="shrink-0 text-slate-300 dark:text-slate-600" />
-            <span className="block max-w-[120px] truncate text-[11px] font-medium md:max-w-[160px] lg:max-w-[220px] sm:text-xs">
-              {movement.localidadNombre || "—"}
-            </span>
-          </div>
-        </td>
-
-        {/* Empresa */}
-        <td className="hidden px-2 py-3 align-middle md:table-cell sm:px-4 sm:py-4">
-          <div className="max-w-[120px] truncate text-[11px] font-medium text-slate-600 dark:text-slate-300 sm:max-w-[180px] lg:max-w-[220px] sm:text-xs">
-            {movement.empresaNombre}
-          </div>
-        </td>
-
-        {/* Fechas */}
-        <td className="hidden px-2 py-3 align-middle font-mono text-[11px] text-slate-500 sm:px-4 sm:py-4 sm:text-xs lg:table-cell">
-          {fechaSolicitudFmt}
-        </td>
-        <td className="hidden px-2 py-3 align-middle font-mono text-[11px] font-medium text-emerald-600 dark:text-emerald-500 sm:px-4 sm:py-4 sm:text-xs xl:table-cell">
-          {fechaInicioFmt}
-        </td>
-        <td className="hidden px-2 py-3 align-middle font-mono text-[11px] text-slate-500 sm:px-4 sm:py-4 sm:text-xs xl:table-cell">
-          {fechaFinFmt}
-        </td>
-
-        <td className="px-2 py-3 text-center align-middle sm:px-4 sm:py-4">
-          <BadgeEstado estado={movement.estado} />
-        </td>
-
-        {showEdit && (
-          <td className="px-2 py-3 text-center align-middle sm:px-4 sm:py-4">
-            {canEdit ? (
-              <button
-                type="button"
-                onClick={handleEditClick}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-xs font-semibold text-emerald-700 transition-all duration-200 hover:bg-emerald-100 hover:border-emerald-300 hover:shadow-sm active:scale-95 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
-                title="Editar movimiento"
-              >
-                <Edit3 size={13} />
-                <span className="hidden sm:inline">Editar</span>
-              </button>
-            ) : (
-              <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500">
-                No editable
-              </span>
-            )}
-          </td>
-        )}
-        {showMeasures && (
-          <td className="px-2 py-3 text-center align-middle sm:px-4 sm:py-4">
-            {movement.torno ? (
-              <button
-                type="button"
-                onClick={handleMeasuresClick}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-2 text-xs font-semibold text-sky-700 transition-all duration-200 hover:bg-sky-100 hover:border-sky-300 hover:shadow-sm active:scale-95 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-300 dark:hover:bg-sky-900/50"
-                title="Ver medidas de torno"
-              >
-                <Info size={13} />
-                <span className="hidden sm:inline">Medidas</span>
-              </button>
-            ) : (
-              <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500">
-                N/A
-              </span>
-            )}
-          </td>
-        )}
-      </tr>
-
-      {/* DETALLE */}
-      <tr className="m-0 border-0 p-0">
-        <td colSpan={tableColumnSpan} className="m-0 border-0 p-0">
-          <div
-            className={`${styles.expandedContentContainer} ${isOpen ? styles.show : ""
-              }`}
-          >
-            <ExpandedDetailsContent
-              movement={movement}
-              fechaSolicitudFmt={fechaSolicitudFmt}
-              fechaInicioFmt={fechaInicioFmt}
-              fechaFinFmt={fechaFinFmt}
-              isPriorityHigh={isPriorityHigh}
-            />
-          </div>
-        </td>
-      </tr>
-    </Fragment>
-  );
-});
-
 const MobileCard = memo(function MobileCard({
+  rowKey,
   movement,
   isOpen,
   onToggle,
@@ -744,6 +703,8 @@ const MobileCard = memo(function MobileCard({
   canEdit = true,
   showMeasures = false,
   onViewMeasures,
+  clienteSoloIds = false,
+  canViewDuration = true,
 }: MovimientoRowProps) {
   const fechaSolicitudFmt = useMemo(
     () => formatoFecha(movement.fechaSolicitud),
@@ -760,15 +721,15 @@ const MobileCard = memo(function MobileCard({
   const isPriorityHigh = movement.prioridad === "ALTA";
 
   const toggle = useCallback(() => {
-    onToggle(movement.id);
-  }, [onToggle, movement.id]);
+    onToggle(rowKey);
+  }, [onToggle, rowKey]);
 
   const handleEditClick = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
       event.stopPropagation();
-      if (onEditar && canEdit) onEditar(movement.id);
+      if (onEditar && canEdit) onEditar(getMovementTechnicalId(movement));
     },
-    [onEditar, movement.id, canEdit]
+    [onEditar, movement, canEdit]
   );
 
   const handleMeasuresClick = useCallback(
@@ -811,7 +772,7 @@ const MobileCard = memo(function MobileCard({
                 {movement.locomotora ?? "—"}
               </div>
               <div className="flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-500">
-                <span className="font-mono">#{movement.id}</span>
+                <span className="font-mono">{getMovementFolio(movement)}</span>
                 <BadgeTipoMovimiento tipo={movement.tipoMovimiento} compact />
                 {isPriorityHigh && (
                   <span className="text-[10px] font-bold uppercase tracking-wider text-rose-500 dark:text-rose-400">
@@ -877,6 +838,12 @@ const MobileCard = memo(function MobileCard({
               {fechaInicioFmt}
             </div>
           </div>
+          <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-2.5 py-2">
+            <div className="text-[10px] uppercase tracking-wider text-slate-400">Fin</div>
+            <div className="text-xs font-semibold text-slate-700 dark:text-slate-200 tabular-nums">
+              {fechaFinFmt}
+            </div>
+          </div>
         </div>
 
         <div className="mt-3 flex items-center justify-between">
@@ -931,6 +898,8 @@ const MobileCard = memo(function MobileCard({
           fechaInicioFmt={fechaInicioFmt}
           fechaFinFmt={fechaFinFmt}
           isPriorityHigh={isPriorityHigh}
+          clienteSoloIds={clienteSoloIds}
+          canViewDuration={canViewDuration}
         />
       </div>
     </div>
@@ -943,12 +912,16 @@ function ExpandedDetailsContent({
   fechaInicioFmt,
   fechaFinFmt,
   isPriorityHigh,
+  clienteSoloIds,
+  canViewDuration,
 }: {
   movement: Movement;
   fechaSolicitudFmt: string;
   fechaInicioFmt: string;
   fechaFinFmt: string;
   isPriorityHigh: boolean;
+  clienteSoloIds: boolean;
+  canViewDuration: boolean;
 }) {
   return (
     <div
@@ -988,6 +961,12 @@ function ExpandedDetailsContent({
               value={fechaFinFmt}
               className="xl:hidden"
             />
+            {canViewDuration ? (
+              <InfoBlock
+                label="Resolución"
+                value={formatoDuracionMovimiento(movement.fechaInicio, movement.fechaFin)}
+              />
+            ) : null}
           </div>
         </div>
 
@@ -1030,14 +1009,14 @@ function ExpandedDetailsContent({
           <div className="mt-3 space-y-2">
             <InfoRow
               label="Supervisor"
-              value={movement.supervisorId}
+              value={clienteSoloIds ? movement.supervisorId : movement.supervisorNombre}
             />
             <InfoRow
               label="Maquinista"
-              value={movement.maquinistaId}
+              value={clienteSoloIds ? movement.maquinistaId : movement.maquinistaNombre}
             />
-            <InfoRow label="Operador" value={movement.operadorId} />
-            <InfoRow label="Cliente ID" value={movement.clienteId} />
+            <InfoRow label="Operador" value={clienteSoloIds ? movement.operadorId : movement.operadorNombre} />
+            <InfoRow label="Cliente" value={clienteSoloIds ? movement.clienteId : movement.clienteNombre} />
           </div>
         </div>
 
@@ -1099,132 +1078,6 @@ function ExpandedDetailsContent({
   );
 }
 
-/* ================== UI COMPONENTS ================== */
-
-interface HeaderCellProps {
-  label: string;
-  icon: React.ElementType;
-  onSort: (c: CampoOrden, d: DireccionOrden) => void;
-  sortKey: CampoOrden;
-  currentSort: CampoOrden;
-  dir: DireccionOrden;
-  align?: "left" | "center" | "right";
-  className?: string;
-}
-
-const HeaderCell = memo(function HeaderCell({
-  label,
-  icon: Icon,
-  onSort,
-  sortKey,
-  currentSort,
-  dir,
-  align = "left",
-  className = "",
-}: HeaderCellProps) {
-  const active = sortKey === currentSort;
-
-  const handleClick = useCallback(() => {
-    const nextDir: DireccionOrden =
-      active && dir === "asc" ? "desc" : "asc";
-    onSort(sortKey, nextDir);
-  }, [active, dir, onSort, sortKey]);
-
-  return (
-    <th
-      className={`cursor-pointer select-none px-2 py-3 text-[10px] transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/50 sm:px-4 sm:py-4 sm:text-[11px] ${className}`}
-      onClick={handleClick}
-    >
-      <div
-        className={`flex items-center gap-1.5 ${align === "center" ? "justify-center" : ""
-          } ${active
-            ? "text-emerald-600 dark:text-emerald-400"
-            : "text-slate-500 dark:text-slate-400"
-          }`}
-      >
-        <Icon size={13} className={active ? "opacity-100" : "opacity-60"} />
-        <span>{label}</span>
-        <div className="flex flex-col -space-y-0.5">
-          <ArrowUp
-            size={8}
-            className={`transition-opacity ${active && dir === "asc" ? "opacity-100" : "opacity-25"}`}
-          />
-          <ArrowDown
-            size={8}
-            className={`transition-opacity ${active && dir === "desc" ? "opacity-100" : "opacity-25"}`}
-          />
-        </div>
-      </div>
-    </th>
-  );
-});
-
-function BadgeEstado({ estado }: { estado: string }) {
-  const badge = BADGE_ESTADO[estado] ?? DEFAULT_BADGE;
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide shadow-sm ${badge.bg} ${badge.text}`}
-    >
-      <span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} />
-      {estado}
-    </span>
-  );
-}
-
-function normalizeTipoMovimiento(tipo: string | null | undefined): string {
-  return String(tipo ?? "")
-    .trim()
-    .toUpperCase()
-    .replace(/[\s-]+/g, "_");
-}
-
-function formatGenericTipoMovimiento(tipo: string): string {
-  return tipo
-    .trim()
-    .replace(/_/g, " ")
-    .toLowerCase()
-    .replace(/^\w/, (match) => match.toUpperCase());
-}
-
-function formatTipoMovimientoLabel(tipo: string | null | undefined): string {
-  const raw = String(tipo ?? "").trim();
-  const key = normalizeTipoMovimiento(raw);
-
-  if (!raw || key === "N/A" || key === "NA") return "—";
-  if (key === "MD_TRABAJANDO" || key === "MD_TRABAJNDO") return "MD trabajando";
-  if (key === "REMOLCADA" || key === "REMOLCADO") return "Remolcada";
-  return formatGenericTipoMovimiento(raw);
-}
-
-function BadgeTipoMovimiento({
-  tipo,
-  compact = false,
-}: {
-  tipo: string | null | undefined;
-  compact?: boolean;
-}) {
-  const key = normalizeTipoMovimiento(tipo);
-  const label = formatTipoMovimientoLabel(tipo);
-  const tone =
-    key === "MD_TRABAJANDO" || key === "MD_TRABAJNDO"
-      ? "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-900/25 dark:text-indigo-300"
-      : key === "REMOLCADA" || key === "REMOLCADO"
-        ? "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-800 dark:bg-cyan-900/25 dark:text-cyan-300"
-        : "border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400";
-
-  return (
-    <span
-      className={`inline-flex max-w-full items-center rounded-lg border font-bold uppercase tracking-wide shadow-sm ${tone} ${
-        compact ? "px-2 py-0.5 text-[9px]" : "px-2.5 py-1.5 text-[10px]"
-      }`}
-      title={label === "—" ? "Tipo no disponible" : label}
-    >
-      <span className="truncate">{label}</span>
-    </span>
-  );
-}
-
 const SECTION_COLORS: Record<string, string> = {
   emerald: "border-l-emerald-400 dark:border-l-emerald-500",
   blue: "border-l-sky-400 dark:border-l-sky-500",
@@ -1278,28 +1131,6 @@ function InfoBlock({ label, value, className }: InfoBlockProps) {
   );
 }
 
-function BooleanChip({
-  label,
-  type,
-}: {
-  label: string;
-  type: "success" | "danger";
-}) {
-  const baseClass =
-    type === "success"
-      ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800"
-      : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/20 dark:text-rose-400 dark:border-rose-800";
-  const Icon = type === "success" ? CheckCircle2 : AlertTriangle;
-
-  return (
-    <span
-      className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-bold ${baseClass}`}
-    >
-      <Icon size={11} /> {label}
-    </span>
-  );
-}
-
 interface MiniBadgeProps {
   label: string;
   icon: React.ElementType;
@@ -1311,15 +1142,3 @@ function MiniBadge({ label, icon: Icon }: MiniBadgeProps) {
     </span>
   );
 }
-
-const formatoFecha = (iso: string | null): string => {
-  if (!iso) return "—";
-  const timestamp = Date.parse(iso);
-  if (Number.isNaN(timestamp)) return iso;
-  return new Date(timestamp).toLocaleString("es-MX", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-};

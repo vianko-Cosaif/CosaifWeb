@@ -3,7 +3,7 @@ import path from "node:path";
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: path.resolve(__dirname),
-  productionBrowserSourceMaps: true,
+  productionBrowserSourceMaps: false,
   eslint: { ignoreDuringBuilds: true },
   async headers() {
     return [
@@ -30,13 +30,6 @@ const nextConfig: NextConfig = {
         ],
       },
     ];
-  },
-  webpack(config, { dev, isServer }) {
-    if (!dev && !isServer) {
-      config.optimization.minimize = false;
-      config.optimization.minimizer = [];
-    }
-    return config;
   },
 };
 

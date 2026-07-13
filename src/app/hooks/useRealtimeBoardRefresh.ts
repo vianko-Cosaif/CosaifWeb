@@ -17,6 +17,7 @@ type UseRealtimeBoardRefreshArgs = {
   scopeLocalidadId?: number | null;
   minDelayMs?: number;
   maxDelayMs?: number;
+  matchesEvent?: (event: RealtimeMovementEvent) => boolean;
   onRefresh: (reason: RefreshReason) => void | Promise<void>;
 };
 
@@ -45,7 +46,10 @@ function eventKey(event: RealtimeMovementEvent) {
     [
       event.type,
       event.movimientoId,
+      event.arrastreId,
+      event.vagonId,
       event.incidenteId,
+      event.accion,
       event.estado,
       event.estadoAnterior,
       event.occurredAt,
@@ -61,9 +65,11 @@ export function useRealtimeBoardRefresh({
   scopeLocalidadId = null,
   minDelayMs = 450,
   maxDelayMs = 1_800,
+  matchesEvent,
   onRefresh,
 }: UseRealtimeBoardRefreshArgs) {
   const refreshRef = useRef(onRefresh);
+  const matchesEventRef = useRef(matchesEvent);
   const timerRef = useRef<number | null>(null);
   const inFlightRef = useRef(false);
   const pendingEventRef = useRef<RealtimeMovementEvent | null>(null);
@@ -73,6 +79,10 @@ export function useRealtimeBoardRefresh({
   useEffect(() => {
     refreshRef.current = onRefresh;
   }, [onRefresh]);
+
+  useEffect(() => {
+    matchesEventRef.current = matchesEvent;
+  }, [matchesEvent]);
 
   useEffect(() => {
     return () => {
@@ -111,12 +121,13 @@ export function useRealtimeBoardRefresh({
     }, jitterMs);
   };
 
-  useRealtimeMovimientos({
+  const connectionStatus = useRealtimeMovimientos({
     enabled,
     localidadId: realtimeLocalidadId,
     onEvent: (event) => {
       if (!isBoardRefreshEvent(event)) return;
       if (!matchesLocalidadScope(event, scopeLocalidadId)) return;
+      if (matchesEventRef.current && !matchesEventRef.current(event)) return;
 
       const key = eventKey(event);
       const now = Date.now();
@@ -127,4 +138,6 @@ export function useRealtimeBoardRefresh({
       scheduleRefresh(event);
     },
   });
+
+  return connectionStatus;
 }

@@ -17,8 +17,8 @@ import { downloadTornoPdf } from "./tornoPdf";
 import { parseTornoMedicionFromApi } from "../torno/tornoMeasureParser";
 import type { ScheduledTornoMovement } from "./components/ScheduledTornoActivationModal";
 import {
+  createEmptyTornoRow,
   DEFAULT_TORNO_MEDICION_STATE,
-  EMPTY_TORNO_ROW,
   EMPTY_TORNO_VALUE,
   normalizeTornoMeasureValue,
   sanitizeTornoMeasurePart,
@@ -38,16 +38,6 @@ export type {
 } from "./controller.types";
 
 type MovimientoLookup = { locomotiveNumber?: number | string | null };
-type CreateMovimientoResponse = {
-  id?: number | string | null;
-  movimientoId?: number | string | null;
-  movimiento?: { id?: number | string | null } | null;
-  data?: {
-    id?: number | string | null;
-    movimientoId?: number | string | null;
-    movimiento?: { id?: number | string | null } | null;
-  } | null;
-};
 
 function readLocomotiveNumber(raw: unknown): number {
   if (!raw || typeof raw !== "object") return 0;
@@ -55,23 +45,30 @@ function readLocomotiveNumber(raw: unknown): number {
   return Number(obj.locomotiveNumber ?? 0);
 }
 
-function toPositiveInt(raw: unknown): number {
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0;
+function asMovementType(value: unknown): MovementFormData["movementType"] | null {
+  return value === "MD_TRABAJANDO" || value === "REMOLCADA" ? value : null;
 }
 
-function readMovementId(raw: unknown): number {
-  if (!raw || typeof raw !== "object") return 0;
-  const obj = raw as CreateMovimientoResponse;
-  return (
-    toPositiveInt(obj.id) ||
-    toPositiveInt(obj.movimientoId) ||
-    toPositiveInt(obj.movimiento?.id) ||
-    toPositiveInt(obj.data?.id) ||
-    toPositiveInt(obj.data?.movimientoId) ||
-    toPositiveInt(obj.data?.movimiento?.id) ||
-    0
-  );
+function asDirection(value: unknown): NonNullable<MovementFormData["direccionEmpuje"]> | null {
+  return value === "EMPUJAR" || value === "JALAR" || value === "Sin_Solicitar" ? value : null;
+}
+
+function asPosition(value: unknown): MovementFormData["cabinPosition"] | null {
+  return value === "DENTRO" || value === "AFUERA" || value === "Sin_Solicitar" ? value : null;
+}
+
+function asPolo(value: unknown): MovementFormData["polo"] | null {
+  return value === "NORTE" || value === "SUR" || value === "Sin_Solicitar" ? value : null;
+}
+
+function readPositiveQueryId(value: string | null): number | null {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function readRequestedLocalidadIdClient(): number | null {
+  if (typeof window === "undefined") return null;
+  return readPositiveQueryId(new URLSearchParams(window.location.search).get("localidadId"));
 }
 
 /**
@@ -89,6 +86,7 @@ function readMovementId(raw: unknown): number {
  * - Este archivo coordina; no concentra reglas puras complejas.
  */
 export function useCrearMovimientoController(): CrearMovimientoController {
+  const [requestedLocalidadId] = useState<number | null>(() => readRequestedLocalidadIdClient());
   const [step, setStep] = useState<CrearMovimientoStep>(1);
   const [form, setForm] = useState<MovementFormData>(baseInitialForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -123,7 +121,9 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     user,
     userCompanyName,
     canManageAll,
+    canChooseLocality,
     adminRoles,
+    localityAdminRoles,
     initFormLocked,
     enforceLockedLocality,
   } = useCrearMovimientoSession(setForm);
@@ -180,13 +180,14 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     return resolveIds({
       rol,
       adminRoles,
+      localityAdminRoles,
       form,
       user,
       cookieEmp,
       cookieLoc,
       cookieUserId,
     });
-  }, [rol, adminRoles, form, user]);
+  }, [rol, adminRoles, localityAdminRoles, form, user]);
 
   /**
    * Bootstrap del flujo:
@@ -213,19 +214,42 @@ export function useCrearMovimientoController(): CrearMovimientoController {
         const userSnapshot = readStoredUserClient();
         const cookieEmp = Number(Movimiento.getCookie("empresaId") || NaN);
 
-        setForm((prev) => applyCatalogDefaults({
-          form: prev,
-          user: userSnapshot,
-          adminRoles,
-          role,
-          empresas: eList,
-          localidades: lList,
-          cookieEmp,
-        }));
+        setForm((prev) => {
+          const withDefaults = applyCatalogDefaults({
+            form: prev,
+            user: userSnapshot,
+            adminRoles,
+            localityAdminRoles,
+            role,
+            empresas: eList,
+            localidades: lList,
+            cookieEmp,
+          });
+
+          if (requestedLocalidadId && localityAdminRoles.includes(String(role).toUpperCase())) {
+            return {
+              ...withDefaults,
+              selectedLocalityId: requestedLocalidadId,
+              fromTrack: null,
+              toTrack: null,
+            };
+          }
+
+          return withDefaults;
+        });
       } catch { }
 
       if (!alive) return;
       hydrateDraft();
+      enforceLockedLocality();
+      if (requestedLocalidadId && localityAdminRoles.includes(String(getRoleClient()).toUpperCase())) {
+        setForm((prev) => ({
+          ...prev,
+          selectedLocalityId: requestedLocalidadId,
+          fromTrack: null,
+          toTrack: null,
+        }));
+      }
       hydratePendingCount();
     })();
 
@@ -238,6 +262,9 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     hydrateDraft,
     hydratePendingCount,
     adminRoles,
+    localityAdminRoles,
+    requestedLocalidadId,
+    enforceLockedLocality,
   ]);
 
   /** Guarda de permisos: re-aplica localidad bloqueada cuando corresponde. */
@@ -297,6 +324,10 @@ export function useCrearMovimientoController(): CrearMovimientoController {
   const selectedCompanyName = useMemo(
     () => empresas.find((empresa) => empresa.id === form.empresaId)?.nombre || userCompanyName || "",
     [empresas, form.empresaId, userCompanyName]
+  );
+  const selectedLocalityName = useMemo(
+    () => localidades.find((localidad) => localidad.id === form.selectedLocalityId)?.nombre || "",
+    [localidades, form.selectedLocalityId]
   );
 
   const normalizeScheduledTornoList = useCallback((payload: unknown): ScheduledTornoMovement[] => {
@@ -369,13 +400,14 @@ export function useCrearMovimientoController(): CrearMovimientoController {
   const validate1 = useCallback(() => {
     const next = validateStep1Data({
       canManageAll,
+      canChooseLocality,
       resolvedIds,
       form,
       selectionMode,
     });
     setErrors(next);
     return Object.keys(next).length === 0;
-  }, [canManageAll, resolvedIds, form, selectionMode]);
+  }, [canManageAll, canChooseLocality, resolvedIds, form, selectionMode]);
 
   /** Valida step 2 delegando a dominio puro. */
   const validate2 = useCallback(() => {
@@ -400,7 +432,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
       const cleanPartValue = sanitizeTornoMeasurePart(part, value);
 
       setTornoMedicion((prev) => {
-        const prevRow = prev.rows[position] ?? EMPTY_TORNO_ROW;
+        const prevRow = prev.rows[position] ?? createEmptyTornoRow();
         const prevValue = prevRow[field] ?? EMPTY_TORNO_VALUE;
         const nextValue = normalizeTornoMeasureValue({
           ...prevValue,
@@ -448,6 +480,11 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     setActivatingScheduledTorno(true);
     try {
       const parsedMedicion = parseTornoMedicionFromApi({ medidasTorno: scheduledMovement.medidasTorno });
+      const movementType = asMovementType(scheduledMovement.tipoMovimiento);
+      const direction = asDirection(scheduledMovement.direccionEmpuje);
+      const cabinPosition = asPosition(scheduledMovement.posicionCabina);
+      const chimneyPosition = asPosition(scheduledMovement.posicionChimenea);
+      const polo = asPolo(scheduledMovement.polo);
 
       const extractComments = (instr?: string | null) => {
         if (!instr) return "";
@@ -465,19 +502,21 @@ export function useCrearMovimientoController(): CrearMovimientoController {
       setForm((prev) => ({
         ...prev,
         empresaId: Number(scheduledMovement.empresaId) || prev.empresaId,
-        selectedLocalityId: Number(scheduledMovement.localidadId) || prev.selectedLocalityId,
+        selectedLocalityId: canChooseLocality
+          ? Number(scheduledMovement.localidadId) || prev.selectedLocalityId
+          : prev.selectedLocalityId,
         fromTrack: Number(scheduledMovement.viaOrigenId) || prev.fromTrack,
         toTrack: Number(scheduledMovement.viaDestinoId) || prev.toTrack,
         service: "Torno",
         locomotiveNumber: String(scheduledMovement.locomotiveNumber ?? prev.locomotiveNumber ?? ""),
-        movementType: (scheduledMovement.tipoMovimiento as any) || prev.movementType,
+        movementType: movementType || prev.movementType,
         priority: scheduledMovement.prioridad === "ALTA",
-        direccionEmpuje: (scheduledMovement.direccionEmpuje as any) || prev.direccionEmpuje,
-        pushPull: (scheduledMovement.direccionEmpuje as any) === "Sin_Solicitar" ? "" : (scheduledMovement.direccionEmpuje as any),
-        cabinPosition: (scheduledMovement.posicionCabina as any) || prev.cabinPosition,
-        chimneyPosition: (scheduledMovement.posicionChimenea as any) || prev.chimneyPosition,
-        posicionChimenea: (scheduledMovement.posicionChimenea as any) || prev.posicionChimenea,
-        polo: (scheduledMovement.polo as any) || prev.polo,
+        direccionEmpuje: direction || prev.direccionEmpuje,
+        pushPull: direction === "Sin_Solicitar" ? "" : direction || prev.pushPull,
+        cabinPosition: cabinPosition || prev.cabinPosition,
+        chimneyPosition: chimneyPosition || prev.chimneyPosition,
+        posicionChimenea: chimneyPosition || prev.posicionChimenea,
+        polo: polo || prev.polo,
         comments: extractComments(scheduledMovement.instrucciones) || prev.comments,
         agendado: false,
         fechaProgramada: "",
@@ -500,7 +539,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     } finally {
       setActivatingScheduledTorno(false);
     }
-  }, [activatingScheduledTorno]);
+  }, [activatingScheduledTorno, canChooseLocality]);
 
   /** Limpieza post-submit exitoso (estado temporal del wizard). */
   const onSubmitSuccess = useCallback(
@@ -575,6 +614,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     viaName,
     tornoMedicion,
     companyName: selectedCompanyName,
+    localityName: selectedLocalityName,
     scheduledActivationId,
     recoveredCancelledTornoId,
     pushOutbox,
@@ -595,7 +635,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     ? (["Paso 1 de 4", "Paso 2 de 4", "Paso 3 de 4", "Paso 4 de 4"] as const)[step - 1]
     : (["Paso 1 de 3", "Paso 2 de 3", "Paso 3 de 3"] as const)[Math.min(step, 3) - 1];
 
-  const lockedClienteMissingData = !canManageAll && !Number.isFinite(Number(Movimiento.getCookie("locId") || NaN));
+  const lockedClienteMissingData = !canChooseLocality && !Number.isFinite(Number(Movimiento.getCookie("locId") || NaN));
 
   /** Shortcut de envio en step final. */
   useEffect(() => {
@@ -666,7 +706,10 @@ export function useCrearMovimientoController(): CrearMovimientoController {
 
   const clearForm = useCallback(() => {
     clearDraft();
-    setForm((prev) => ({ ...baseInitialForm, selectedLocalityId: canManageAll ? null : prev.selectedLocalityId }));
+    setForm((prev) => ({
+      ...baseInitialForm,
+      selectedLocalityId: canChooseLocality ? null : prev.selectedLocalityId,
+    }));
     setFromSection(undefined);
     setToSection(undefined);
     clearTornoMedicion();
@@ -684,7 +727,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     setShowFromOpts(false);
     setShowToOpts(false);
     if (step >= 3) setStep(1);
-  }, [canManageAll, clearDraft, step, clearTornoMedicion]);
+  }, [canChooseLocality, clearDraft, step, clearTornoMedicion]);
 
   return {
     step,
@@ -701,6 +744,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     secLoading,
     rol,
     canManageAll,
+    canChooseLocality,
     userCompanyName,
     showFromOpts,
     setShowFromOpts,

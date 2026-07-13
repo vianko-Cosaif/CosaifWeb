@@ -1,5 +1,5 @@
 // src/app/administrador/movimientos/page.tsx
-import MovimientosPanel from "@/app/Components/movimientos/MovimientosPanel";
+import CoordinatorMovimientosPageClient from "@/app/coordinador/movimientos/CoordinatorMovimientosPageClient";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -12,13 +12,13 @@ export default async function Page() {
   if (!token) redirect("/login?loc=admin");
 
   return (
-    <section className="mx-auto w-full max-w-7xl p-4 sm:p-6">
-      <MovimientosPanel
+    <section className="mx-auto w-full max-w-[1500px] p-4 sm:p-6">
+      <CoordinatorMovimientosPageClient
         apiBase={MOVIMIENTOS_API_BASE}
+        token={token}
         rol="ADMINISTRADOR"
-        empresaIdUsuario={null}      // <— front NO limita por empresa
-        puedeCrear
-        intervaloAutoMs={15000}
+        empresaIdUsuario={null}
+        localidadIdUsuario={null}
       />
     </section>
   );

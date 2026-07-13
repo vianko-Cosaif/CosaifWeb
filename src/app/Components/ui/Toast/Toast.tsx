@@ -116,7 +116,6 @@ export function ToastProvider({
         const next = [item, ...t].slice(0, maxToasts);
         // Si truncamos, limpia temporizador del último
         if (next.length !== t.length + 1) {
-          const last = next[next.length - 1];
           const cut = t.find((x) => !next.some((y) => y.id === x.id));
           if (cut) {
             const tm = timers.current.get(cut.id);

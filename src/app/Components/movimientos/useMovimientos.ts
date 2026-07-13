@@ -3,6 +3,8 @@ import {
   useRealtimeMovimientos,
   type RealtimeMovementEvent,
 } from "@/app/hooks/useRealtimeMovimientos";
+import type { AppRole } from "@/lib/accessControl";
+import { cachedFetchJson } from "@/lib/clientRequestCache";
 
 /* ================== CONFIGURACIÓN ================== */
 const DEFAULT_API_BASE =
@@ -82,11 +84,7 @@ function normalizeFechaHasta(input: string): string {
 }
 
 /* ================== TIPOS ================== */
-export type Rol =
-  | "ADMINISTRADOR"
-  | "COORDINADOR"
-  | "SUPERVISOR"
-  | "CLIENTE";
+export type Rol = AppRole;
 
 export type Ambito = "actuales" | "pasados";
 export type FechaCampo = "solicitud" | "inicio" | "fin" | "creacion";
@@ -107,6 +105,9 @@ const DEFAULT_FECHA_CAMPO: FechaCampo = "solicitud";
 
 export interface Movement {
   id: number;
+  idTecnico?: number | null;
+  folioLocalidad?: number | null;
+  folioLocalidadLabel?: string | null;
   locomotora: number | string;
 
   localidadId: number;
@@ -122,10 +123,15 @@ export interface Movement {
   estado: string;
 
   clienteId: number;
+  clienteNombre?: string;
   supervisorId: number | null;
+  supervisorNombre?: string;
   coordinadorId: number | null;
+  coordinadorNombre?: string;
   operadorId: number | null;
+  operadorNombre?: string;
   maquinistaId: number | null;
+  maquinistaNombre?: string;
   empresaId: number;
   empresaNombre?: string;
 
@@ -186,6 +192,12 @@ interface EmpresaDTO {
   nombre?: string | null;
 }
 
+interface UsuarioDTO {
+  id?: number;
+  nombre?: string | null;
+  rol?: string | null;
+}
+
 interface LocalidadDTO {
   id?: number;
   nombre?: string | null;
@@ -200,6 +212,9 @@ interface ViaDTO {
 
 interface MovementDTO {
   id: number;
+  idTecnico?: number | null;
+  folioLocalidad?: number | null;
+  folioLocalidadLabel?: string | null;
 
   locomotiveNumber?: number | string | null;
   locomotora?: number | string | null;
@@ -217,10 +232,20 @@ interface MovementDTO {
   estado?: string | null;
 
   clienteId?: number | null;
+  clienteNombre?: string | null;
+  cliente?: UsuarioDTO | null;
   supervisorId?: number | null;
+  supervisorNombre?: string | null;
+  supervisor?: UsuarioDTO | null;
   coordinadorId?: number | null;
+  coordinadorNombre?: string | null;
+  coordinador?: UsuarioDTO | null;
   operadorId?: number | null;
+  operadorNombre?: string | null;
+  operador?: UsuarioDTO | null;
   maquinistaId?: number | null;
+  maquinistaNombre?: string | null;
+  maquinista?: UsuarioDTO | null;
 
   empresaId?: number | null;
   empresaNombre?: string | null;
@@ -271,7 +296,7 @@ interface MovimientosEnvelope {
 /* ================== CONSTANTES DE NEGOCIO ================== */
 
 const SORT_KEY_MAP: Record<CampoOrden, keyof Movement> = {
-  id: "id",
+  id: "folioLocalidad",
   locomotora: "locomotora",
   inicio: "fechaInicio",
   fin: "fechaFin",
@@ -315,6 +340,17 @@ function normalizarNombre(value: unknown): string {
   return "—";
 }
 
+function normalizarNombreUsuario(
+  directo: unknown,
+  usuario: UsuarioDTO | null | undefined
+): string {
+  const nombreDirecto = typeof directo === "string" ? directo.trim() : "";
+  if (nombreDirecto) return nombreDirecto;
+  const nombreUsuario = typeof usuario?.nombre === "string" ? usuario.nombre.trim() : "";
+  if (nombreUsuario) return nombreUsuario;
+  return "—";
+}
+
 function esMovementDTOArray(value: unknown): value is MovementDTO[] {
   return Array.isArray(value);
 }
@@ -355,9 +391,13 @@ function mapearDTO(dto: MovementDTO): Movement {
     typeof dto.localidad === "object" && dto.localidad !== null
       ? (dto.localidad as LocalidadDTO)
       : undefined;
+  const folioLocalidad = dto.folioLocalidad ?? null;
 
   return {
     id: dto.id,
+    idTecnico: dto.idTecnico ?? dto.id,
+    folioLocalidad,
+    folioLocalidadLabel: dto.folioLocalidadLabel ?? (folioLocalidad ? `#${folioLocalidad}` : null),
     locomotora: dto.locomotiveNumber ?? dto.locomotora ?? "S/N",
 
     localidadId: dto.localidadId ?? 0,
@@ -373,10 +413,18 @@ function mapearDTO(dto: MovementDTO): Movement {
     estado: dto.estado ?? "DESCONOCIDO",
 
     clienteId: dto.clienteId ?? 0,
+    clienteNombre: normalizarNombreUsuario(dto.clienteNombre, dto.cliente),
     supervisorId: dto.supervisorId ?? null,
+    supervisorNombre: normalizarNombreUsuario(dto.supervisorNombre, dto.supervisor),
     coordinadorId: dto.coordinadorId ?? null,
+    coordinadorNombre: normalizarNombreUsuario(dto.coordinadorNombre, dto.coordinador),
     operadorId: dto.operadorId ?? null,
+    operadorNombre: normalizarNombreUsuario(dto.operadorNombre, dto.operador),
     maquinistaId: dto.maquinistaId ?? null,
+    maquinistaNombre: normalizarNombreUsuario(
+      dto.maquinistaNombre,
+      dto.maquinista ?? dto.operador
+    ),
     empresaId: dto.empresaId ?? 0,
 
     empresaNombre: empresaNombreFinal,
@@ -402,6 +450,10 @@ function obtenerValorOrdenable(
   movement: Movement,
   key: SortableKey
 ): SortableValue {
+  if (key === "folioLocalidad") {
+    return movement.folioLocalidad ?? movement.id;
+  }
+
   const raw = movement[key];
 
   if (
@@ -559,6 +611,7 @@ export function useMovimientos({
       filtros.locomotivePrefix && String(filtros.locomotivePrefix).trim()
     );
     const hasFechas = Boolean(filtros.desde || filtros.hasta);
+    const hasCustomSort = filtros.campoOrden !== "id" || filtros.direccionOrden !== "desc";
 
     return (
       ambito === "pasados" ||
@@ -567,7 +620,8 @@ export function useMovimientos({
       hasPrioridad ||
       hasLocoNum ||
       hasLocoPrefix ||
-      hasFechas
+      hasFechas ||
+      hasCustomSort
     );
   }, [
     ambito,
@@ -578,6 +632,8 @@ export function useMovimientos({
     filtros.locomotivePrefix,
     filtros.desde,
     filtros.hasta,
+    filtros.campoOrden,
+    filtros.direccionOrden,
   ]);
 
   /* ---------- HEADERS AUTH ---------- */
@@ -596,6 +652,8 @@ export function useMovimientos({
 
     qs.set("page", String(filtros.pagina));
     qs.set("pageSize", String(filtros.tamPagina));
+    qs.set("sortBy", filtros.campoOrden);
+    qs.set("sortDir", filtros.direccionOrden);
 
     if (shouldUseBuscar) {
       if (filtros.busqueda.trim()) qs.set("q", filtros.busqueda.trim());
@@ -641,6 +699,8 @@ export function useMovimientos({
     filtros.desde,
     filtros.hasta,
     filtros.fechaCampo,
+    filtros.campoOrden,
+    filtros.direccionOrden,
     ambito,
     shouldUseBuscar,
   ]);
@@ -672,9 +732,11 @@ export function useMovimientos({
       setter: (d: OpcionCatalogo[]) => void
     ) => {
       try {
-        const res = await fetch(url, { headers: authHeaders });
-        if (!res.ok) return;
-        const data: unknown = await res.json();
+        const data = await cachedFetchJson<unknown>(
+          url,
+          { headers: authHeaders },
+          { ttlMs: 5 * 60_000 }
+        );
         if (esOpcionCatalogoArray(data)) {
           setter(data);
         } else if (
@@ -695,7 +757,7 @@ export function useMovimientos({
   }, [authHeaders, urlEmpresas, urlLocalidades]);
 
   /* ---------- Fetch de movimientos (filtros backend + orden local) ---------- */
-  const fetchMovimientos = useCallback(async () => {
+  const fetchMovimientos = useCallback(async (force = false) => {
     if (abortRef.current) {
       abortRef.current.abort();
     }
@@ -704,16 +766,11 @@ export function useMovimientos({
 
     setCargando(true);
     try {
-      const res = await fetch(`${urlListado}?${queryString}`, {
-        headers: authHeaders,
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        throw new Error(`Error HTTP ${res.status}`);
-      }
-
-      const data: unknown = await res.json();
+      const data = await cachedFetchJson<unknown>(
+        `${urlListado}?${queryString}`,
+        { headers: authHeaders, signal: controller.signal },
+        { ttlMs: 10_000, force }
+      );
       const { items: dtoItems, total: totalItems } = extraerItemsYTotal(data);
 
       // Mapear DTO → Movement
@@ -838,7 +895,7 @@ export function useMovimientos({
       const jitterMs = 700 + Math.floor(Math.random() * 1_300);
       realtimeRefreshTimerRef.current = window.setTimeout(() => {
         realtimeRefreshTimerRef.current = null;
-        fetchMovimientos();
+        fetchMovimientos(true);
       }, jitterMs);
     },
     [eventMatchesCurrentScope, fetchMovimientos]
@@ -850,7 +907,7 @@ export function useMovimientos({
     return filtros.localidadId != null ? Number(filtros.localidadId) : null;
   }, [rol, filtros.localidadId]);
 
-  useRealtimeMovimientos({
+  const realtimeStatus = useRealtimeMovimientos({
     enabled: true,
     localidadId: realtimeLocalidadId,
     onEvent: scheduleRealtimeRefresh,
@@ -864,18 +921,20 @@ export function useMovimientos({
     };
   }, []);
 
-  /* ---------- Auto-refresh ---------- */
   useEffect(() => {
     fetchMovimientos();
+  }, [fetchMovimientos]);
 
-    if (ambito !== "actuales") {
+  /* ---------- Polling de respaldo cuando realtime no esta conectado ---------- */
+  useEffect(() => {
+    if (ambito !== "actuales" || realtimeStatus === "connected") {
       return;
     }
 
     const intervalMs = autoRefreshMs ?? DEFAULT_AUTO_REFRESH_MS;
     const intervalId = setInterval(fetchMovimientos, intervalMs);
     return () => clearInterval(intervalId);
-  }, [fetchMovimientos, ambito, autoRefreshMs]);
+  }, [fetchMovimientos, ambito, autoRefreshMs, realtimeStatus]);
 
   /* ---------- Pull to refresh ---------- */
   const onRefresh = useCallback(() => {
@@ -908,7 +967,7 @@ export function useMovimientos({
     setFiltros,
     empresas,
     localidades,
-    recargar: fetchMovimientos,
+    recargar: () => fetchMovimientos(true),
 
     data: filas,
     loading: cargando,

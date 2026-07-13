@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import { Movimiento } from "../../Movimiento";
 import type { MovementFormData } from "../../movimientos.shared";
 import {
@@ -27,6 +28,7 @@ import {
   type DynamicCopyPasteTarget,
   type DynamicTableColumn,
 } from "@/app/Components/dynamic-table";
+import { LocomotiveWheelMap } from "@/app/Components/locomotive-wheel-selector/LocomotiveWheelMap";
 
 /**
  * Props del Step 2 especializado para servicio Torno.
@@ -46,6 +48,7 @@ type StepTwoTornoProps = {
   ) => void;
   companyName?: string;
   hideTypeSelector?: boolean;
+  variant?: "classic" | "mobile";
 };
 
 type TornoCopyCell = {
@@ -300,7 +303,9 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
     updateTornoMedicion,
     companyName,
     hideTypeSelector = false,
+    variant = "classic",
   } = props;
+  const isMobileVariant = variant === "mobile";
 
   const profile = useMemo(() => resolveTornoProfile(companyName), [companyName]);
   const profileMeta = TORNO_PROFILE_META[profile];
@@ -330,6 +335,70 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
   const [pasteFeedback, setPasteFeedback] = useState<TornoPasteFeedback | null>(null);
   const [mobileCopyModalOpen, setMobileCopyModalOpen] = useState(false);
   const [mobileAccordionPosition, setMobileAccordionPosition] = useState<TornoWheelPosition | null>(null);
+
+  // Estados para la vista interactiva (Visual)
+  const [entryMode, setEntryMode] = useState<"table" | "visual">(
+    isMobileVariant ? "visual" : "table"
+  );
+  const [selectedVisualPosition, setSelectedVisualPosition] = useState<TornoWheelPosition>("L1");
+  const [visualViewMode, setVisualViewMode] = useState<"top" | "left" | "right">("top");
+
+  const [screenOrientation, setScreenOrientation] = useState<"horizontal" | "vertical">("vertical");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const updateOrientation = () => {
+      setScreenOrientation(window.innerWidth > window.innerHeight ? "horizontal" : "vertical");
+    };
+
+    updateOrientation();
+    window.addEventListener("resize", updateOrientation);
+    window.addEventListener("orientationchange", updateOrientation);
+    return () => {
+      window.removeEventListener("resize", updateOrientation);
+      window.removeEventListener("orientationchange", updateOrientation);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isMobileVariant) setEntryMode("visual");
+  }, [isMobileVariant]);
+
+  function positionToWheelId(pos: TornoWheelPosition): string {
+    const side = pos.startsWith("L") ? "L" : "R";
+    const axle = Number(pos.slice(1));
+    return `A${axle}-${side}`;
+  }
+
+  function wheelIdToPosition(id: string): TornoWheelPosition {
+    const match = /^A(\d+)-(L|R)$/.exec(id);
+    if (!match) return "L1";
+    return `${match[2]}${match[1]}` as TornoWheelPosition;
+  }
+
+  const hasPositionMeasures = React.useCallback((pos: TornoWheelPosition) => {
+    const row = tornoMedicion.rows[pos];
+    if (!row) return false;
+    return Object.values(row).some((val) => Boolean(val?.whole || val?.num || val?.den));
+  }, [tornoMedicion.rows]);
+
+  const wheelOverrides = useMemo(() => {
+    return positions.map((pos) => {
+      const hasMeasures = hasPositionMeasures(pos);
+      return {
+        id: positionToWheelId(pos),
+        label: pos,
+        status: hasMeasures ? ("completed" as const) : ("available" as const),
+        observations: hasMeasures ? "Medidas capturadas" : "Pendiente de captura",
+      };
+    });
+  }, [positions, hasPositionMeasures]);
+
+  useEffect(() => {
+    if (selectedVisualPosition && !positions.includes(selectedVisualPosition)) {
+      setSelectedVisualPosition(positions[0] ?? "L1");
+    }
+  }, [positions, selectedVisualPosition]);
 
   useEffect(() => {
     if (!positions.includes(mobilePosition)) {
@@ -649,43 +718,47 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
         ) : null}
 
         <div className="mb-4 flex min-w-0 flex-wrap items-start gap-4 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/50">
-          <div className="min-w-0">
-            <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Ruedas</div>
-            <div className="inline-flex max-w-full overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
-              {TORNO_WHEEL_COUNT_OPTIONS.map((count) => (
-                <button
-                  key={count}
-                  onClick={() => setTornoWheelCount(count)}
-                  className={Movimiento.clsx(
-                    "px-3 py-1.5 text-xs font-semibold transition-colors duration-200 sm:px-4 sm:text-sm",
-                    tornoMedicion.wheelCount === count
-                      ? "bg-emerald-600 text-white"
-                      : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                  )}
-                >
-                  {count}
-                </button>
-              ))}
+          <GuidedTarget id="torno-wheel-count">
+            <div className="min-w-0">
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Ruedas</div>
+              <div className="inline-flex max-w-full overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+                {TORNO_WHEEL_COUNT_OPTIONS.map((count) => (
+                  <button
+                    key={count}
+                    onClick={() => setTornoWheelCount(count)}
+                    className={Movimiento.clsx(
+                      "px-3 py-1.5 text-xs font-semibold transition-colors duration-200 sm:px-4 sm:text-sm",
+                      tornoMedicion.wheelCount === count
+                        ? "bg-emerald-600 text-white"
+                        : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                    )}
+                  >
+                    {count}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          </GuidedTarget>
 
           {!hideTypeSelector ? (
-            <div className="min-w-0">
-              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Tipo</div>
-              <div className="flex max-w-full flex-wrap gap-2">
-                <CompactChoice
-                  label="MD Trabajando"
-                  active={form.movementType === "MD_TRABAJANDO"}
-                  onClick={() => setForm((p) => ({ ...p, movementType: "MD_TRABAJANDO", direccionEmpuje: "Sin_Solicitar", pushPull: "" }))}
-                />
-                <CompactChoice
-                  label="Remolcada"
-                  active={form.movementType === "REMOLCADA"}
-                  onClick={() => setForm((p) => ({ ...p, movementType: "REMOLCADA" }))}
-                />
+            <GuidedTarget id="torno-movement-type">
+              <div className="min-w-0">
+                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Tipo</div>
+                <div className="flex max-w-full flex-wrap gap-2">
+                  <CompactChoice
+                    label="MD Trabajando"
+                    active={form.movementType === "MD_TRABAJANDO"}
+                    onClick={() => setForm((p) => ({ ...p, movementType: "MD_TRABAJANDO", direccionEmpuje: "Sin_Solicitar", pushPull: "" }))}
+                  />
+                  <CompactChoice
+                    label="Remolcada"
+                    active={form.movementType === "REMOLCADA"}
+                    onClick={() => setForm((p) => ({ ...p, movementType: "REMOLCADA" }))}
+                  />
+                </div>
+                {errors.movementType ? <div className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.movementType}</div> : null}
               </div>
-              {errors.movementType ? <div className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.movementType}</div> : null}
-            </div>
+            </GuidedTarget>
           ) : null}
 
           {form.movementType === "REMOLCADA" ? (
@@ -708,117 +781,251 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
           ) : null}
         </div>
 
-        <div className="min-w-0 lg:hidden">
-          <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-            {positions.map((position) => (
-              <button
-                key={`mobile_${position}`}
-                onClick={() => setMobilePosition(position)}
-                className={Movimiento.clsx(
-                  "shrink-0 rounded-full border px-3 py-1 text-xs font-semibold",
-                  mobilePosition === position
-                    ? "border-emerald-600 bg-emerald-600 text-white"
-                    : "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                )}
-              >
-                {position}
-              </button>
-            ))}
-          </div>
-          <div className="mb-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => startRowCopySelection(mobilePosition)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              Copiar fila {mobilePosition}
-            </button>
-          </div>
-
-          <div className="grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-950/60">
-            {fieldDefs.map((field) => {
-              const measure = selectedMobileRow[field.key] ?? EMPTY_TORNO_VALUE;
-              return (
-                <div key={`mobile_field_${field.key}`} className="min-w-0 rounded-lg border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-950/40">
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <span className="min-w-0 flex-1 break-words text-xs font-semibold text-slate-700 dark:text-slate-200">
-                      {field.label}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => startColumnCopySelection(field.key)}
-                      className="shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-                    >
-                      Col.
-                    </button>
-                    <span className="shrink-0 text-[11px] text-slate-500 dark:text-slate-400">{formatTornoMeasure(measure) || "-"}</span>
-                  </div>
-                  <MeasurePartsInput
-                    position={mobilePosition}
-                    field={field.key}
-                    value={measure}
-                    onChange={(part, value) => updateTornoMedicion(mobilePosition, field.key, part, value)}
-                    copyModeActive={false}
-                    isCopySource={mobileCopyModalOpen && copySourceId === getCopyCellId(mobilePosition, field.key)}
-                    isCopyTarget={false}
-                    isRecentlyPasted={pastedCells.has(getCopyCellId(mobilePosition, field.key))}
-                    onStartCopy={startMobileCopySelection}
-                    onToggleCopyTarget={toggleCopyTarget}
-                  />
-                </div>
-              );
-            })}
-          </div>
+        {/* Switcher para cambiar entre Vista de Tabla y Vista Visual */}
+        <div className="mb-5 flex gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+          <button
+            type="button"
+            onClick={() => setEntryMode("table")}
+            className={Movimiento.clsx(
+              "px-3 py-2 text-xs font-bold rounded-lg border transition-colors select-none",
+              entryMode === "table"
+                ? "border-emerald-600 bg-emerald-600 text-white"
+                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            )}
+          >
+            Vista de Tabla
+          </button>
+          <button
+            type="button"
+            onClick={() => setEntryMode("visual")}
+            className={Movimiento.clsx(
+              "px-3 py-2 text-xs font-bold rounded-lg border transition-colors select-none",
+              entryMode === "visual"
+                ? "border-emerald-600 bg-emerald-600 text-white"
+                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            )}
+          >
+            Vista de Locomotora (Visual)
+          </button>
         </div>
 
-        {profile === "wabtec" ? (
-          <div className="hidden min-w-0 gap-4 lg:grid lg:grid-cols-2">
-            <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40">
-              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
-                Izquierdo
+        <GuidedTarget id="torno-measures-table">
+          <div className="min-w-0">
+            {entryMode === "table" ? (
+              <>
+                <div className="min-w-0 lg:hidden">
+                  <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+                    {positions.map((position) => (
+                      <button
+                        key={`mobile_${position}`}
+                        onClick={() => setMobilePosition(position)}
+                        className={Movimiento.clsx(
+                          "shrink-0 rounded-full border px-3 py-1 text-xs font-semibold",
+                          mobilePosition === position
+                            ? "border-emerald-600 bg-emerald-600 text-white"
+                            : "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                        )}
+                      >
+                        {position}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => startRowCopySelection(mobilePosition)}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      Copiar fila {mobilePosition}
+                    </button>
+                  </div>
+
+                  <div className="grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-950/60">
+                    {fieldDefs.map((field) => {
+                      const measure = selectedMobileRow[field.key] ?? EMPTY_TORNO_VALUE;
+                      return (
+                        <div key={`mobile_field_${field.key}`} className="min-w-0 rounded-lg border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-950/40">
+                          <div className="mb-1 flex items-center justify-between gap-2">
+                            <span className="min-w-0 flex-1 break-words text-xs font-semibold text-slate-700 dark:text-slate-200">
+                              {field.label}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => startColumnCopySelection(field.key)}
+                              className="shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                            >
+                              Col.
+                            </button>
+                            <span className="shrink-0 text-[11px] text-slate-500 dark:text-slate-400">{formatTornoMeasure(measure) || "-"}</span>
+                          </div>
+                          <MeasurePartsInput
+                            position={mobilePosition}
+                            field={field.key}
+                            value={measure}
+                            onChange={(part, value) => updateTornoMedicion(mobilePosition, field.key, part, value)}
+                            copyModeActive={false}
+                            isCopySource={mobileCopyModalOpen && copySourceId === getCopyCellId(mobilePosition, field.key)}
+                            isCopyTarget={false}
+                            isRecentlyPasted={pastedCells.has(getCopyCellId(mobilePosition, field.key))}
+                            onStartCopy={startMobileCopySelection}
+                            onToggleCopyTarget={toggleCopyTarget}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {profile === "wabtec" ? (
+                  <div className="hidden min-w-0 gap-4 lg:grid lg:grid-cols-2">
+                    <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40">
+                      <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+                        Izquierdo
+                      </div>
+                      <DynamicTable
+                        data={leftDesktopRows}
+                        columns={desktopColumns}
+                        rowKey={(row) => row.position}
+                        height={Math.min(560, 110 + leftDesktopRows.length * 56)}
+                        rowHeight={56}
+                        headerHeight={44}
+                        emptyText="Sin posiciones"
+                        stickyFirstColumn
+                      />
+                    </div>
+                    <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40">
+                      <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+                        Derecho
+                      </div>
+                      <DynamicTable
+                        data={rightDesktopRows}
+                        columns={desktopColumns}
+                        rowKey={(row) => row.position}
+                        height={Math.min(560, 110 + rightDesktopRows.length * 56)}
+                        rowHeight={56}
+                        headerHeight={44}
+                        emptyText="Sin posiciones"
+                        stickyFirstColumn
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="hidden min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40 lg:block">
+                    <DynamicTable
+                      data={desktopRows}
+                      columns={desktopColumns}
+                      rowKey={(row) => row.position}
+                      height={Math.min(620, 120 + desktopRows.length * 56)}
+                      rowHeight={56}
+                      headerHeight={46}
+                      emptyText="Sin posiciones"
+                      getRowType={(row) => (row.position.startsWith("L") ? "left" : "right")}
+                      stickyFirstColumn
+                    />
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                {/* Panel izquierdo: Diagrama SVG */}
+                <div className="lg:col-span-6 border border-slate-200 dark:border-slate-800 rounded-xl p-4 bg-slate-50/50 dark:bg-slate-900/10">
+                  <div className="flex gap-2 mb-4 justify-center">
+                    {(["top", "left", "right"] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setVisualViewMode(mode)}
+                        className={Movimiento.clsx(
+                          "px-3 py-1.5 text-xs font-bold rounded-lg border transition-colors select-none",
+                          visualViewMode === mode
+                            ? "border-emerald-600 bg-emerald-600 text-white"
+                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                        )}
+                      >
+                        {mode === "top" ? "Superior" : mode === "left" ? "Costado Izq." : "Costado Der."}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex justify-center max-w-full overflow-hidden">
+                    <LocomotiveWheelMap
+                      wheelCount={tornoMedicion.wheelCount}
+                      viewMode={visualViewMode}
+                      selectedWheelId={selectedVisualPosition ? positionToWheelId(selectedVisualPosition) : undefined}
+                      wheels={wheelOverrides}
+                      disabled={false}
+                      orientation={screenOrientation}
+                      onWheelSelect={(wheel) => {
+                        const nextPos = wheelIdToPosition(wheel.id);
+                        if (nextPos) setSelectedVisualPosition(nextPos);
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Panel derecho: Formulario de captura de medidas */}
+                <div className="lg:col-span-6 border border-slate-200 dark:border-slate-800 rounded-xl p-5 bg-white dark:bg-slate-950">
+                  <div className="mb-4 flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 gap-3">
+                    <div>
+                      <h4 className="text-base font-black text-slate-800 dark:text-slate-200">
+                        Capturar Rueda {selectedVisualPosition || "L1"}
+                      </h4>
+                      <span className="text-xs text-slate-400">
+                        Eje {selectedVisualPosition ? selectedVisualPosition.slice(1) : "1"} / {selectedVisualPosition?.startsWith("L") ? "Izquierda" : "Derecha"}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => selectedVisualPosition && startRowCopySelection(selectedVisualPosition)}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      Copiar fila {selectedVisualPosition}
+                    </button>
+                  </div>
+
+                  <div className="grid gap-3">
+                    {fieldDefs.map((field) => {
+                      const cellId = getCopyCellId(selectedVisualPosition || "L1", field.key);
+                      const measure = (selectedVisualPosition ? tornoMedicion.rows[selectedVisualPosition] : null)?.[field.key] ?? EMPTY_TORNO_VALUE;
+                      return (
+                        <div 
+                          key={`visual_field_${field.key}`}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg border border-slate-100 bg-slate-50/50 dark:border-slate-800/60 dark:bg-slate-900/10"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                              {field.label}
+                            </span>
+                            <span className="block text-[10px] text-slate-400 mt-0.5">
+                              {formatTornoMeasure(measure) || "Sin registrar"}
+                            </span>
+                          </div>
+                          <div className="shrink-0">
+                            <MeasurePartsInput
+                              position={selectedVisualPosition || "L1"}
+                              field={field.key}
+                              value={measure}
+                              onChange={(part, value) => {
+                                if (selectedVisualPosition) {
+                                  updateTornoMedicion(selectedVisualPosition, field.key, part, value);
+                                }
+                              }}
+                              copyModeActive={!!copyState}
+                              isCopySource={copySourceId === cellId}
+                              isCopyTarget={selectedTargetIds.has(cellId)}
+                              isRecentlyPasted={pastedCells.has(cellId)}
+                              onStartCopy={startCopySelection}
+                              onToggleCopyTarget={toggleCopyTarget}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-              <DynamicTable
-                data={leftDesktopRows}
-                columns={desktopColumns}
-                rowKey={(row) => row.position}
-                height={Math.min(560, 110 + leftDesktopRows.length * 56)}
-                rowHeight={56}
-                headerHeight={44}
-                emptyText="Sin posiciones"
-                stickyFirstColumn
-              />
-            </div>
-            <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40">
-              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
-                Derecho
-              </div>
-              <DynamicTable
-                data={rightDesktopRows}
-                columns={desktopColumns}
-                rowKey={(row) => row.position}
-                height={Math.min(560, 110 + rightDesktopRows.length * 56)}
-                rowHeight={56}
-                headerHeight={44}
-                emptyText="Sin posiciones"
-                stickyFirstColumn
-              />
-            </div>
+            )}
           </div>
-        ) : (
-          <div className="hidden min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40 lg:block">
-            <DynamicTable
-              data={desktopRows}
-              columns={desktopColumns}
-              rowKey={(row) => row.position}
-              height={Math.min(620, 120 + desktopRows.length * 56)}
-              rowHeight={56}
-              headerHeight={46}
-              emptyText="Sin posiciones"
-              getRowType={(row) => (row.position.startsWith("L") ? "left" : "right")}
-              stickyFirstColumn
-            />
-          </div>
-        )}
+        </GuidedTarget>
 
         {copyState ? (
           <DynamicTableCopyPasteDialog<TornoWheelPosition, TornoMeasurementField, TornoMeasurementValue>

@@ -1,9 +1,13 @@
 import React, { useMemo } from "react";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import type { MovementFormData } from "../../movimientos.shared";
 import {
   formatTornoMeasure,
   getTornoPositions,
   EMPTY_TORNO_ROW,
+  EMPTY_TORNO_VALUE,
+  type TornoMeasurementField,
+  type TornoMeasurementValue,
   type TornoMedicionState,
 } from "../tornoMedicion.types";
 import {
@@ -14,8 +18,7 @@ import { DynamicTable, type DynamicTableColumn } from "@/app/Components/dynamic-
 
 type TornoTableRow = {
   position: string;
-  [key: string]: any;
-};
+} & Partial<Record<TornoMeasurementField, TornoMeasurementValue>>;
 
 type StepFourTornoProps = {
   form: MovementFormData;
@@ -53,10 +56,34 @@ export default function StepFourTorno(props: StepFourTornoProps) {
     () => new Intl.DateTimeFormat("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date()),
     []
   );
+  const tableData: TornoTableRow[] = positions.map((position) => ({
+    position,
+    ...(tornoMedicion.rows[position] ?? EMPTY_TORNO_ROW),
+  }));
+  const tableColumns: DynamicTableColumn<TornoTableRow>[] = [
+    {
+      key: "position",
+      title: "Pos.",
+      width: 70,
+      align: "center",
+      render: ({ row }) => <span className="font-bold text-slate-800 dark:text-slate-200">{row.position}</span>,
+    },
+    ...fieldDefs.map((field): DynamicTableColumn<TornoTableRow> => ({
+      key: field.key,
+      title: field.label,
+      width: 120,
+      align: "center",
+      render: ({ row }) => {
+        const val = formatTornoMeasure(row[field.key] ?? EMPTY_TORNO_VALUE);
+        return <span className={val ? "text-slate-700 dark:text-slate-200" : "text-slate-400 dark:text-slate-500"}>{val || "-"}</span>;
+      },
+    })),
+  ];
 
   return (
-    <div className="grid gap-4">
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-xl shadow-slate-200/40 dark:border-slate-800 dark:bg-[#0d1117] dark:text-slate-100 dark:shadow-zinc-900/30 sm:p-5">
+    <div className="grid min-w-0 gap-4">
+      <GuidedTarget id="create-movement-torno-pdf-summary">
+      <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 text-slate-900 shadow-xl shadow-slate-200/40 dark:border-slate-800 dark:bg-[#0d1117] dark:text-slate-100 dark:shadow-zinc-900/30 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-700">
           <div>
             <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Resumen de Medidas</h3>
@@ -71,31 +98,13 @@ export default function StepFourTorno(props: StepFourTornoProps) {
           </div>
         </div>
 
-        <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+        <p className="mt-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 sm:hidden">
+          Desliza horizontalmente para consultar todas las medidas.
+        </p>
+        <div className="mt-2 w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 sm:mt-3">
           <DynamicTable
-            data={positions.map((pos) => ({
-              position: pos,
-              ...(tornoMedicion.rows[pos] ?? EMPTY_TORNO_ROW),
-            }))}
-            columns={[
-              {
-                key: "position",
-                title: "Pos.",
-                width: 70,
-                align: "center",
-                render: ({ row }) => <span className="font-bold text-slate-800 dark:text-slate-200">{row.position}</span>,
-              },
-              ...fieldDefs.map((field) => ({
-                key: field.key,
-                title: field.label,
-                width: 120,
-                align: "center" as const,
-                render: ({ row }: { row: any }) => {
-                  const val = formatTornoMeasure(row[field.key]);
-                  return <span className={val ? "text-slate-700 dark:text-slate-200" : "text-slate-400 dark:text-slate-500"}>{val || "-"}</span>;
-                },
-              })),
-            ]}
+            data={tableData}
+            columns={tableColumns}
             rowKey={(row) => row.position}
             height={Math.min(420, 110 + positions.length * 46)}
             rowHeight={46}
@@ -110,7 +119,9 @@ export default function StepFourTorno(props: StepFourTornoProps) {
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{form.comments?.trim() || "Sin comentarios."}</p>
         </div>
       </section>
+      </GuidedTarget>
 
+      <GuidedTarget id="create-movement-torno-pdf-actions">
       <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={onEditMedicion}
@@ -129,6 +140,7 @@ export default function StepFourTorno(props: StepFourTornoProps) {
           <span className="text-xs text-slate-600 dark:text-slate-300">{tornoPdfStatus}</span>
         ) : null}
       </div>
+      </GuidedTarget>
     </div>
   );
 }

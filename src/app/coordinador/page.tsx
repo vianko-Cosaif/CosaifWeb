@@ -1,10 +1,16 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import RailQueueBoard from "./RailQueueBoard";
+import dynamic from "next/dynamic";
 import { DynamicBanner } from "@/app/Components/DynamicBanner";
-import { getClientCookie, setClientCookie } from "@/lib/cookies";
+import { getClientCookie } from "@/lib/cookies";
 import { syncFirebaseNotificationLocalidad } from "@/lib/firebase";
+import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
+
+const RailQueueBoard = dynamic(() => import("./RailQueueBoard"));
+const CoordinatorTorreonDashboard = dynamic(
+  () => import("./torreon/CoordinatorTorreonDashboard")
+);
 
 const CoordinadorPage: React.FC = () => {
   const [localidadId, setLocalidadId] = useState<number | null>(null);
@@ -12,38 +18,35 @@ const CoordinadorPage: React.FC = () => {
   useEffect(() => {
     const raw =
       getClientCookie("locId") ??
-      (typeof window !== "undefined" ? localStorage.getItem("locId") : null);
+      (typeof window !== "undefined" ? window.localStorage.getItem("locId") : null);
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) return;
 
-    let num = raw ? Number(raw) : NaN;
-
-    // si no hay locId válido, usamos 1 y lo dejamos grabado
-    if (!Number.isFinite(num) || num <= 0) {
-      num = 1;
-      try {
-        localStorage.setItem("locId", "1");
-      } catch { }
-      setClientCookie("locId", "1", {
-        path: "/",
-        sameSite: "lax",
-        maxAge: 60 * 60 * 24 * 365,
-      });
-    }
-
-    setLocalidadId(num);
-    window.dispatchEvent(new CustomEvent("cosaif:localidad-change", { detail: { localidadId: num } }));
-    void syncFirebaseNotificationLocalidad(num).catch((error) => {
+    setLocalidadId(parsed);
+    window.dispatchEvent(
+      new CustomEvent("cosaif:localidad-change", { detail: { localidadId: parsed } })
+    );
+    void syncFirebaseNotificationLocalidad(parsed).catch((error) => {
       console.warn("No se pudo sincronizar localidad FCM.", error);
     });
   }, []);
 
   return (
     <section className="w-full min-w-0">
-      {localidadId && (
-        <div className="mx-auto w-full max-w-[1400px] space-y-6 sm:space-y-8 min-w-0">
+      {localidadId ? (
+        <div className="mx-auto w-full max-w-[1500px] min-w-0 space-y-6 sm:space-y-8">
           <DynamicBanner />
-          <RailQueueBoard localidadId={localidadId} />
+          {isTorreonLocalidadId(localidadId) ? (
+            <CoordinatorTorreonDashboard
+              key={localidadId}
+              localidadId={localidadId}
+              showBanner={false}
+            />
+          ) : (
+            <RailQueueBoard key={localidadId} localidadId={localidadId} />
+          )}
         </div>
-      )}
+      ) : null}
     </section>
   );
 };

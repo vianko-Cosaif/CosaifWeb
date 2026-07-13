@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import { Movimiento } from "../../Movimiento";
 import {
   ALTA_PASSWORDS,
@@ -10,7 +11,7 @@ import {
 } from "../../movimientos.shared";
 import { Field, Select, inputBase } from "./ui";
 import ScheduledTornoActivationModal, { type ScheduledTornoMovement } from "./ScheduledTornoActivationModal";
-import { GuidedTarget } from "../../../Components/GuidedManualAtom";
+
 
 type SelectionMode = "de_via" | "para_via";
 
@@ -27,6 +28,7 @@ type StepOneProps = {
   localidades: Localidad[];
   vias: Via[];
   canManageAll: boolean;
+  canChooseLocality: boolean;
   userCompanyName: string;
   showFromOpts: boolean;
   setShowFromOpts: (v: boolean) => void;
@@ -48,6 +50,7 @@ type StepOneProps = {
   scheduledTornoLoading?: boolean;
   onRefreshScheduledTorno?: () => Promise<void> | void;
   onActivateScheduledTorno: (movement: ScheduledTornoMovement) => Promise<void> | void;
+  visualSection?: "context" | "service" | "locomotive" | "route";
 };
 
 const toDatetimeLocalValue = (value?: string) => {
@@ -73,11 +76,12 @@ const fromDatetimeLocalValue = (value: string) => {
  */
 export default function StepOne(props: StepOneProps) {
   const {
-    form, setForm, errors, empresas, localidades, vias, canManageAll, userCompanyName,
+    form, setForm, errors, empresas, localidades, vias, canManageAll, canChooseLocality, userCompanyName,
     showFromOpts, setShowFromOpts, showToOpts, setShowToOpts, selectionMode, setSelectionMode,
     tapToggle, sectionsByVia, secLoading, ensureSections, fromSection, toSection,
     setFromSection, setToSection, viaName, companyName, scheduledTornoMovements = [],
     scheduledTornoLoading = false, onRefreshScheduledTorno, onActivateScheduledTorno,
+    visualSection,
   } = props;
 
   const [altaOpen, setAltaOpen] = useState(false);
@@ -276,39 +280,46 @@ export default function StepOne(props: StepOneProps) {
   const empresaLabel =
     empresas.find((e) => e.id === form.empresaId)?.nombre ||
     userCompanyName || (Number.isFinite(Number(form.empresaId)) ? `ID ${form.empresaId}` : "");
+  const showSection = (section: NonNullable<StepOneProps["visualSection"]>) =>
+    !visualSection || visualSection === section;
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      {canManageAll ? (
-        <Select
-          label="Empresa"
-          value={form.empresaId ?? ""}
-          onChange={(v) => setForm((p) => ({ ...p, empresaId: v ? Number(v) : null }))}
-          options={empresas.map((e) => ({ label: e.nombre, value: String(e.id) }))}
-          error={errors.empresaId}
-        />
-      ) : (
-        <Field label="Empresa" value={empresaLabel} disabled />
-      )}
+      {showSection("context") ? (
+        <>
+          {canChooseLocality ? (
+            <Select
+              label="Empresa"
+              value={form.empresaId ?? ""}
+              onChange={(v) => setForm((p) => ({ ...p, empresaId: v ? Number(v) : null }))}
+              options={empresas.map((e) => ({ label: e.nombre, value: String(e.id) }))}
+              error={errors.empresaId}
+            />
+          ) : (
+            <Field label="Empresa" value={empresaLabel} disabled />
+          )}
 
-      {canManageAll ? (
-        <Select
-          label="Localidad"
-          value={form.selectedLocalityId ?? ""}
-          onChange={(v) => setForm((p) => ({ ...p, selectedLocalityId: v ? Number(v) : null, fromTrack: null, toTrack: null }))}
-          options={localidades.map((l) => ({ label: l.nombre, value: String(l.id) }))}
-          error={errors.selectedLocalityId}
-        />
-      ) : (
-        <Field
-          label="Localidad"
-          value={localidades.find((l) => l.id === form.selectedLocalityId)?.nombre || (form.selectedLocalityId ? `ID ${form.selectedLocalityId}` : "")}
-          disabled
-          error={errors.selectedLocalityId}
-        />
-      )}
+          {canManageAll ? (
+            <Select
+              label="Localidad"
+              value={form.selectedLocalityId ?? ""}
+              onChange={(v) => setForm((p) => ({ ...p, selectedLocalityId: v ? Number(v) : null, fromTrack: null, toTrack: null }))}
+              options={localidades.map((l) => ({ label: l.nombre, value: String(l.id) }))}
+              error={errors.selectedLocalityId}
+            />
+          ) : (
+            <Field
+              label="Localidad"
+              value={localidades.find((l) => l.id === form.selectedLocalityId)?.nombre || (form.selectedLocalityId ? `ID ${form.selectedLocalityId}` : "")}
+              disabled
+              error={errors.selectedLocalityId}
+            />
+          )}
+        </>
+      ) : null}
 
-      <div className="sm:col-span-2">
+      {showSection("service") ? <div className="sm:col-span-2">
+        <GuidedTarget id="create-movement-torno-service">
         <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Servicio</span>
         <div className="flex flex-wrap gap-2">
           {(["Lavado", "Torno"] as const).map((svc) => {
@@ -340,9 +351,10 @@ export default function StepOne(props: StepOneProps) {
           })}
           {form.service ? <span className="self-center text-xs text-slate-500 dark:text-slate-400">Doble clic para desmarcar</span> : null}
         </div>
-      </div>
+        </GuidedTarget>
+      </div> : null}
 
-      {form.service === "Torno" ? (
+      {showSection("service") && form.service === "Torno" ? (
         <GuidedTarget id="create-movement-torno-schedule" className="sm:col-span-2">
           <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/50">
             <label className="flex items-center gap-2">
@@ -387,8 +399,9 @@ export default function StepOne(props: StepOneProps) {
         </GuidedTarget>
       ) : null}
 
-      {form.service && (
+      {showSection("service") && form.service && (
         <div className="sm:col-span-2">
+          <GuidedTarget id="create-movement-torno-selection-mode">
           <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Modo de seleccion</span>
           <div className="flex flex-wrap gap-2">
             <button
@@ -415,10 +428,11 @@ export default function StepOne(props: StepOneProps) {
             </button>
         
           </div>
+          </GuidedTarget>
         </div>
       )}
 
-      <label className="mb-3 mt-1 flex items-center gap-2">
+      {showSection("service") ? <label className="mb-3 mt-1 flex items-center gap-2">
         <input
           type="checkbox"
           className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 dark:border-slate-700"
@@ -428,111 +442,123 @@ export default function StepOne(props: StepOneProps) {
         <span className="text-sm text-slate-700 dark:text-slate-200">
           Prioridad alta
         </span>
-      </label>
-      {form.priority === false && (
+      </label> : null}
+      {showSection("service") && form.priority === false && (
         <div className="text-xs text-slate-500 dark:text-slate-400 -mt-2 mb-2">
           Para activar ALTA se requiere contrasena segun la empresa.
         </div>
       )}
 
-      <Field
-        label="Numero de locomotora"
-        type="text"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        value={form.locomotiveNumber ? String(form.locomotiveNumber) : ""}
-        onChange={(e) => {
-          const value = e.target.value;
-          if (value === "" || /^\d+$/.test(value)) {
-            setForm((p) => ({ ...p, locomotiveNumber: value }));
-          }
-        }}
-        className=""
-        disabled={false}
-        error={errors.locomotiveNumber}
-      />
-      <div className="sm:col-span-2 -mt-2">
-        <ScheduledTornoActivationModal
-          enabled={form.service === "Torno"}
-          locomotiveNumber={form.locomotiveNumber}
-          viaOrigenId={form.fromTrack}
-          localidadId={form.selectedLocalityId}
-          scheduledMovements={scheduledTornoMovements}
-          loading={scheduledTornoLoading}
-          companyName={companyName}
-          onRefresh={onRefreshScheduledTorno}
-          onActivate={onActivateScheduledTorno}
-        />
-      </div>
-
-      {(!form.service || selectionMode === "de_via") && (
-        <div className="sm:col-span-2">
-          <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">De via</span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => { setShowFromOpts(!showFromOpts); if (form.fromTrack) ensureSections(form.fromTrack); }}
-              className={Movimiento.clsx(
-                "min-w-[220px] rounded-md border px-3 py-2 text-left transition-colors duration-200",
-                form.fromTrack
-                  ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-500 dark:text-emerald-300"
-                  : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-              )}
-            >
-              {form.fromTrack ? `Via ${viaName(form.fromTrack)}` : "Selecciona una via"}
-            </button>
-            {errors.fromTrack ? <span className="self-center text-xs text-rose-600 dark:text-rose-400">{errors.fromTrack}</span> : null}
+      {showSection("locomotive") ? (
+        <>
+          <GuidedTarget id="create-movement-locomotive">
+            <Field
+              label="Numero de locomotora"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={form.locomotiveNumber ? String(form.locomotiveNumber) : ""}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value === "" || /^\d+$/.test(value)) {
+                  setForm((p) => ({ ...p, locomotiveNumber: value }));
+                }
+              }}
+              className=""
+              disabled={false}
+              error={errors.locomotiveNumber}
+            />
+          </GuidedTarget>
+          <div className="sm:col-span-2 -mt-2">
+            <ScheduledTornoActivationModal
+              enabled={form.service === "Torno"}
+              locomotiveNumber={form.locomotiveNumber}
+              viaOrigenId={form.fromTrack}
+              localidadId={form.selectedLocalityId}
+              scheduledMovements={scheduledTornoMovements}
+              loading={scheduledTornoLoading}
+              companyName={companyName}
+              onRefresh={onRefreshScheduledTorno}
+              onActivate={onActivateScheduledTorno}
+            />
           </div>
+        </>
+      ) : null}
 
-          {showFromOpts && (
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {Movimiento.TrackFilter(vias, selectionMode, "de_via", form.service)
-                .map((v) => (
-                  <div key={v.id}>
-                    {viaOption(v)}
+      {showSection("route") && (
+        <GuidedTarget id="create-movement-route" className="sm:col-span-2">
+          <>
+            {(!form.service || selectionMode === "de_via") && (
+              <div className="mb-4">
+                <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">De via</span>
+                <div className="flex min-w-0 flex-col gap-2 min-[420px]:flex-row">
+                  <button
+                    onClick={() => { setShowFromOpts(!showFromOpts); if (form.fromTrack) ensureSections(form.fromTrack); }}
+                    className={Movimiento.clsx(
+                      "w-full min-w-0 rounded-md border px-3 py-2 text-left transition-colors duration-200 min-[420px]:w-auto min-[420px]:min-w-[220px]",
+                      form.fromTrack
+                        ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-500 dark:text-emerald-300"
+                        : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                    )}
+                  >
+                    {form.fromTrack ? `Via ${viaName(form.fromTrack)}` : "Selecciona una via"}
+                  </button>
+                  {errors.fromTrack ? <span className="self-center text-xs text-rose-600 dark:text-rose-400">{errors.fromTrack}</span> : null}
+                </div>
+
+                {showFromOpts && (
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    {Movimiento.TrackFilter(vias, selectionMode, "de_via", form.service)
+                      .map((v) => (
+                        <div key={v.id}>
+                          {viaOption(v)}
+                        </div>
+                      ))}
                   </div>
-                ))}
-            </div>
-          )}
+                )}
 
-          <SectionsPills kind="from" viaId={form.fromTrack} />
-        </div>
-      )}
+                <SectionsPills kind="from" viaId={form.fromTrack} />
+              </div>
+            )}
 
-      {(!form.service || selectionMode === "para_via") && (
-        <div className="sm:col-span-2">
-          <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Para via</span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => { setShowToOpts(!showToOpts); if (form.toTrack) ensureSections(form.toTrack); }}
-              className={Movimiento.clsx(
-                "min-w-[220px] rounded-md border px-3 py-2 text-left transition-colors duration-200",
-                form.toTrack
-                  ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-500 dark:text-emerald-300"
-                  : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-              )}
-            >
-              {form.toTrack ? `Via ${viaName(form.toTrack)}` : "Selecciona una via"}
-            </button>
-            {errors.toTrack ? <span className="self-center text-xs text-rose-600 dark:text-rose-400">{errors.toTrack}</span> : null}
-          </div>
+            {(!form.service || selectionMode === "para_via") && (
+              <div>
+                <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Para via</span>
+                <div className="flex min-w-0 flex-col gap-2 min-[420px]:flex-row">
+                  <button
+                    onClick={() => { setShowToOpts(!showToOpts); if (form.toTrack) ensureSections(form.toTrack); }}
+                    className={Movimiento.clsx(
+                      "w-full min-w-0 rounded-md border px-3 py-2 text-left transition-colors duration-200 min-[420px]:w-auto min-[420px]:min-w-[220px]",
+                      form.toTrack
+                        ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-500 dark:text-emerald-300"
+                        : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                    )}
+                  >
+                    {form.toTrack ? `Via ${viaName(form.toTrack)}` : "Selecciona una via"}
+                  </button>
+                  {errors.toTrack ? <span className="self-center text-xs text-rose-600 dark:text-rose-400">{errors.toTrack}</span> : null}
+                </div>
 
-          {showToOpts && (
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {Movimiento.TrackFilter(vias, selectionMode, "para_via", form.service)
-                .map((v) => (
-                  <div key={v.id}>
-                    {viaOptionTo(v)}
+                {showToOpts && (
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    {Movimiento.TrackFilter(vias, selectionMode, "para_via", form.service)
+                      .map((v) => (
+                        <div key={v.id}>
+                          {viaOptionTo(v)}
+                        </div>
+                      ))}
                   </div>
-                ))}
-            </div>
-          )}
-          <SectionsPills kind="to" viaId={form.toTrack} />
-        </div>
+                )}
+                <SectionsPills kind="to" viaId={form.toTrack} />
+              </div>
+            )}
+          </>
+        </GuidedTarget>
       )}
 
       {altaOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-2 sm:items-center sm:p-4">
+          <div className="max-h-[calc(100dvh-1rem)] w-full max-w-sm overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900 sm:p-4">
             <div className="text-base font-semibold text-slate-800 dark:text-slate-100">Confirmar prioridad ALTA</div>
             <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               Ingresa la contrasena de ALTA para la empresa seleccionada.

@@ -5,125 +5,31 @@ import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import { S } from "./RailQueueBoardCliente.styles";
 import QueueSegmentedFilter, { type QueueSegmentedFilterOption } from "./components/QueueSegmentedFilter";
-import TornoMeasuresViewerModal from "../movimientos/torno/TornoMeasuresViewerModal";
-import { parseTornoMedicionFromApi } from "../movimientos/torno/tornoMeasureParser";
-import { DEFAULT_TORNO_MEDICION_STATE, type TornoMedicionState } from "../movimientos/crear/tornoMedicion.types";
 import { useRealtimeBoardRefresh } from "../hooks/useRealtimeBoardRefresh";
+import { useTornoMeasuresModal } from "@/features/torno-measures";
+import {
+  API_XAPI_BASE,
+  codeFrom,
+  fetchJson,
+  fmtLoco as formatLoco,
+  formatQueueDate as fmtDate,
+  movementIdFrom,
+} from "@/features/rail-queue/utils";
+import {
+  useLocalStorageBoolean,
+  useToasts,
+  useVisibleInterval,
+} from "@/features/rail-queue/hooks";
+import type {
+  QueueEntityKind,
+  QueueStatusKind,
+  Ronda,
+  RondaInfo,
+} from "@/features/rail-queue/types";
+import { peekCachedJson } from "@/lib/clientRequestCache";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/xapi";
-
-/* ═══════════ TYPES ═══════════ */
-type Ronda = {
-  id: number;
-  rondaNumero: number;
-  orden: number;
-  concluido: boolean;
-  empresa?: { id: number; nombre: string } | null;
-  movimiento?: {
-    id?: number;
-    viaOrigen?: { nombre?: string | null } | null;
-    viaDestino?: { nombre?: string | null } | null;
-    lavado?: boolean;
-    torno?: boolean;
-    estado?: string | null;
-    prioridad?: "BAJA" | "ALTA" | null;
-    locomotiveNumber?: number | string | null;
-    locomotora?: string | null;
-    fechaSolicitud?: string | null;
-    fechaInicio?: string | null;
-    fechaFin?: string | null;
-    instrucciones?: string | null;
-  } | null;
-  movimientoId?: number | null;
-  createdAt?: string | null;
-};
-
-type RondaInfo = {
-  empresa: { id: number; nombre: string };
-  movimiento: {
-    id?: number;
-    viaOrigen?: { nombre?: string | null } | null;
-    viaDestino?: { nombre?: string | null } | null;
-    lavado: boolean;
-    torno: boolean;
-    estado?: string;
-    prioridad?: "BAJA" | "ALTA";
-    locomotiveNumber?: number | string;
-    locomotora?: string | null;
-    fechaSolicitud?: string | null;
-    fechaInicio?: string | null;
-    fechaFin?: string | null;
-    instrucciones?: string | null;
-  };
-  movimientoId?: number;
-};
-
-type ToastKind = "move" | "new" | "done" | "warning";
-type Toast = { id: number; text: string; kind: ToastKind };
-type QueueEntityKind = "movimientos" | "torneados";
-type QueueStatusKind = "pendientes" | "terminados";
-
-type MeasuresModalState = {
-  open: boolean;
-  loading: boolean;
-  error: string | null;
-  tornoMedicion: TornoMedicionState;
-  locomotiveLabel?: string;
-  companyName?: string;
-};
-
-/* ═══════════ UTILS ═══════════ */
-const codeFrom = (inf?: RondaInfo, fallbackId?: number) =>
-  String(inf?.movimientoId ?? inf?.movimiento?.id ?? fallbackId ?? "—");
-
-const fmtLoco = (v: unknown) => {
-  if (v == null) return "—";
-  const s = String(v).replace(/\D+/g, "");
-  return s ? s.padStart(4, "0") : "—";
-};
-
-function fmtDate(iso?: string | null) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat("es-MX", {
-    hour: "2-digit", minute: "2-digit", day: "numeric", month: "short",
-    hour12: true, timeZone: "America/Mexico_City",
-  }).format(d);
-}
-
-async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const r = await fetch(url, { cache: "no-store", credentials: "include", mode: "same-origin", signal });
-  if (!r.ok) throw new Error(`${r.status}`);
-  return (await r.json()) as T;
-}
-
-function useVisibleInterval(fn: () => void, delay: number | null, deps: readonly unknown[] = []) {
-  useEffect(() => {
-    if (!delay) return;
-    const id = window.setInterval(() => { if (document.visibilityState === "visible") fn(); }, delay);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [delay, ...deps]);
-}
-
-function useLocalStorageBoolean(key: string, initial = false) {
-  const [v, setV] = useState<boolean>(initial);
-  useEffect(() => { if (typeof window !== "undefined") { const item = window.localStorage.getItem(key); if (item !== null) setV(item === "1"); } }, [key]);
-  useEffect(() => { if (typeof window !== "undefined") window.localStorage.setItem(key, v ? "1" : "0"); }, [key, v]);
-  return [v, setV] as const;
-}
-
-function useToasts() {
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const push = (text: string, kind: ToastKind) => {
-    const id = Date.now() + Math.random();
-    setToasts(t => [...t, { id, text, kind }]);
-    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 5000);
-  };
-  const dismiss = (id: number) => setToasts(t => t.filter(x => x.id !== id));
-  return { toasts, push, dismiss };
-}
+const API_BASE = API_XAPI_BASE;
+const fmtLoco = (value: unknown) => formatLoco(value, "—");
 
 /* ═══════════ SVG ICONS ═══════════ */
 // All monochrome, 16px default, currentColor
@@ -162,6 +68,10 @@ const EditRondas = dynamic(() => import("../Components/EditRondas"), {
   ssr: false,
   loading: () => <div className="p-10 text-center text-sm text-slate-500">Cargando editor...</div>,
 });
+const TornoMeasuresViewerModal = dynamic(
+  () => import("../movimientos/torno/TornoMeasuresViewerModal"),
+  { ssr: false }
+);
 
 const ENTITY_OPTIONS: QueueSegmentedFilterOption<QueueEntityKind>[] = [
   { label: "Movimientos", value: "movimientos" },
@@ -180,24 +90,22 @@ export default function RailQueueBoard({
   localidadId: number;
   autoMs?: number;
 }) {
-  const [items, setItems] = useState<Ronda[]>([]);
-  const [info, setInfo] = useState<Record<number, RondaInfo>>({});
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [openEditor, setOpenEditor] = useState(false);
   const [activeEntity, setActiveEntity] = useState<QueueEntityKind>("movimientos");
   const [activeStatus, setActiveStatus] = useState<QueueStatusKind>("pendientes");
+  const roundsUrl = `/api/cliente/rondas?localidadId=${localidadId}&estado=${activeStatus}&entity=${activeEntity}`;
+  const initialItems = peekCachedJson<Ronda[]>(roundsUrl) ?? [];
+  const [items, setItems] = useState<Ronda[]>(() => initialItems);
+  const [info, setInfo] = useState<Record<number, RondaInfo>>({});
+  const [loading, setLoading] = useState(initialItems.length === 0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [openEditor, setOpenEditor] = useState(false);
   const [polling, setPolling] = useLocalStorageBoolean("rail-queue:polling", true);
   const [soundOn, setSoundOn] = useLocalStorageBoolean("rail-queue:soundOn", false);
 
   const bellRef = useRef<HTMLAudioElement | null>(null);
   const { toasts, push: pushToast, dismiss } = useToasts();
-  const [measuresModal, setMeasuresModal] = useState<MeasuresModalState>({
-    open: false,
-    loading: false,
-    error: null,
-    tornoMedicion: DEFAULT_TORNO_MEDICION_STATE,
-  });
+  const { measuresModal, openMeasuresModal, closeMeasuresModal } =
+    useTornoMeasuresModal(API_BASE);
   const prevIdsRef = useRef<number[]>([]);
   const lastCurrentId = useRef<number | null>(null);
   const firstLoad = useRef(true);
@@ -212,10 +120,12 @@ export default function RailQueueBoard({
     if (showRefreshing) setRefreshing(true); else setLoading(true);
 
     try {
-      const data = await fetchJson<Ronda[]>(
-        `/api/cliente/rondas?localidadId=${localidadId}&estado=${activeStatus}&entity=${activeEntity}`,
-        ac.signal
+      const responseData = await fetchJson<Ronda[]>(
+        roundsUrl,
+        ac.signal,
+        { force: showRefreshing, ttlMs: 20_000 }
       );
+      const data = [...responseData];
       data.sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden);
 
       const nextIds = data.map(d => d.id);
@@ -249,7 +159,7 @@ export default function RailQueueBoard({
     }
   }
 
-  useRealtimeBoardRefresh({
+  const realtimeStatus = useRealtimeBoardRefresh({
     enabled: Boolean(localidadId),
     realtimeLocalidadId: localidadId,
     scopeLocalidadId: localidadId,
@@ -257,59 +167,24 @@ export default function RailQueueBoard({
   });
 
   useEffect(() => {
-    firstLoad.current = true; prevIdsRef.current = []; setInfo({}); setItems([]); setLoading(true); load();
+    firstLoad.current = true;
+    prevIdsRef.current = [];
+    if (!items.length) setLoading(true);
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localidadId, activeStatus, activeEntity]);
 
-  useVisibleInterval(() => polling && load(), polling ? autoMs || null : null, [autoMs, localidadId, polling, activeStatus, activeEntity]);
+  useVisibleInterval(
+    () => polling && load(),
+    polling && realtimeStatus !== "connected" ? Math.min(autoMs, 30_000) : null,
+    [autoMs, localidadId, polling, activeStatus, activeEntity, realtimeStatus]
+  );
 
   useEffect(() => {
     const curId = items[0]?.id ?? null;
     if (soundOn && curId && lastCurrentId.current && curId !== lastCurrentId.current) bellRef.current?.play().catch(() => { });
     lastCurrentId.current = curId;
   }, [items, soundOn]);
-
-  const closeMeasuresModal = () => {
-    setMeasuresModal((prev) => ({ ...prev, open: false, error: null }));
-  };
-
-  const openMeasuresModal = async (args: {
-    movementId?: number | null;
-    locomotiveLabel?: string;
-    companyName?: string;
-  }) => {
-    const movementId = Number(args.movementId);
-    if (!Number.isFinite(movementId) || movementId <= 0) return;
-
-    setMeasuresModal({
-      open: true,
-      loading: true,
-      error: null,
-      tornoMedicion: DEFAULT_TORNO_MEDICION_STATE,
-      locomotiveLabel: args.locomotiveLabel,
-      companyName: args.companyName,
-    });
-
-    try {
-      const response = await fetch(`${API_BASE}/movimientos/${movementId}/edicion`, {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-      });
-      if (!response.ok) throw new Error(`No se pudo cargar medidas (${response.status}).`);
-      const payload = await response.json();
-      setMeasuresModal((prev) => ({
-        ...prev,
-        loading: false,
-        tornoMedicion: parseTornoMedicionFromApi(payload),
-        locomotiveLabel: String(payload?.movimiento?.locomotiveNumber ?? args.locomotiveLabel ?? ""),
-        companyName: payload?.movimiento?.empresa?.nombre ?? args.companyName,
-      }));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "No se pudieron cargar las medidas.";
-      setMeasuresModal((prev) => ({ ...prev, loading: false, error: message }));
-    }
-  };
 
   const entityItems = items;
   const entityOptions = useMemo<QueueSegmentedFilterOption<QueueEntityKind>[]>(
@@ -363,7 +238,7 @@ export default function RailQueueBoard({
 
       {/* ─── CONTENT ─── */}
       <main className={S.Layout.main}>
-        <section className="lg:col-span-12 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-white/[0.06] dark:bg-[#161b22] sm:flex-row sm:items-center sm:justify-between">
+        <section className="flex flex-col gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-2 shadow-[var(--app-shadow-sm)] sm:flex-row sm:items-center sm:justify-between lg:col-span-12">
           <QueueSegmentedFilter
             ariaLabel="Tipo de listado"
             options={entityOptions}
@@ -398,10 +273,10 @@ export default function RailQueueBoard({
                 ))}
               </div>
             ) : items.length === 0 ? (
-              <div className="flex min-h-[300px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm dark:border-white/[0.08] dark:bg-[#161b22]">
+              <div className="flex min-h-[300px] flex-col items-center justify-center rounded-lg border border-dashed border-[var(--app-border-strong)] bg-[var(--app-surface)] p-8 text-center shadow-[var(--app-shadow-sm)]">
                 <div className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Sin registros</div>
                 <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{emptyMessage}</div>
-                <button type="button" onClick={() => load(true)} className="mt-5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-950">
+                <button type="button" onClick={() => load(true)} className="mt-5 rounded-md bg-[var(--app-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--app-accent-hover)]">
                   Actualizar
                 </button>
               </div>
@@ -430,10 +305,10 @@ export default function RailQueueBoard({
             {loading ? (
               <div className={S.Layout.skeleton} />
             ) : !current ? (
-              <div className="flex min-h-[360px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm dark:border-white/[0.08] dark:bg-[#161b22]">
+              <div className="flex min-h-[360px] flex-col items-center justify-center rounded-lg border border-dashed border-[var(--app-border-strong)] bg-[var(--app-surface)] p-8 text-center shadow-[var(--app-shadow-sm)]">
                 <div className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Sin registros</div>
                 <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{emptyMessage}</div>
-                <button type="button" onClick={() => load(true)} className="mt-5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-950">
+                <button type="button" onClick={() => load(true)} className="mt-5 rounded-md bg-[var(--app-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--app-accent-hover)]">
                   Actualizar
                 </button>
               </div>
@@ -476,7 +351,7 @@ export default function RailQueueBoard({
           <motion.div
             initial={{ opacity: 0, scale: 0.97 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-5xl h-[90vh] shadow-2xl rounded-xl overflow-hidden bg-white dark:bg-slate-900"
+            className="h-[90vh] w-full max-w-5xl overflow-hidden rounded-lg bg-[var(--app-surface)] shadow-[var(--app-shadow-md)]"
             onClick={e => e.stopPropagation()}
           >
             <EditRondas localidadId={localidadId} onClose={() => setOpenEditor(false)} onSaved={() => { setOpenEditor(false); load(true); }} />
@@ -484,18 +359,20 @@ export default function RailQueueBoard({
         </div>
       )}
 
-      <audio ref={bellRef} src="/sounds/notification.mp3" preload="auto" />
+      <audio ref={bellRef} src="/sounds/notification.mp3" preload="none" />
 
-      <TornoMeasuresViewerModal
-        open={measuresModal.open && !measuresModal.loading && !measuresModal.error}
-        onClose={closeMeasuresModal}
-        tornoMedicion={measuresModal.tornoMedicion}
-        locomotiveLabel={measuresModal.locomotiveLabel}
-        companyName={measuresModal.companyName}
-      />
+      {measuresModal.open && !measuresModal.loading && !measuresModal.error ? (
+        <TornoMeasuresViewerModal
+          open
+          onClose={closeMeasuresModal}
+          tornoMedicion={measuresModal.tornoMedicion}
+          locomotiveLabel={measuresModal.locomotiveLabel}
+          companyName={measuresModal.companyName}
+        />
+      ) : null}
       {measuresModal.open && (measuresModal.loading || measuresModal.error) ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/35 p-4">
-          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+          <div className="w-full max-w-md rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-4 shadow-[var(--app-shadow-md)]">
             {measuresModal.loading ? (
               <p className="text-sm text-slate-600 dark:text-slate-300">Cargando medidas de torno...</p>
             ) : (
@@ -541,6 +418,8 @@ function HeroCard({
   const loco = fmtLoco(info?.movimiento?.locomotora || info?.movimiento?.locomotiveNumber);
   const orig = info?.movimiento?.viaOrigen?.nombre || "—";
   const dest = info?.movimiento?.viaDestino?.nombre || "—";
+  const movementId = movementIdFrom(item, info);
+  const canViewMeasures = Boolean(info?.movimiento?.torno && movementId);
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className={S.Card.root}>
@@ -620,7 +499,19 @@ function HeroCard({
             <span className="flex items-center gap-1"><Ic.Calendar /> Creado</span>
             <span className="font-semibold tabular-nums">{fmtDate(item.createdAt)}</span>
           </div>
-          {null}
+          {canViewMeasures && (
+            <button
+              type="button"
+              onClick={() => onViewMeasures({
+                movementId,
+                locomotiveLabel: loco,
+                companyName: info?.empresa?.nombre,
+              })}
+              className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200 dark:hover:bg-emerald-900/40"
+            >
+              Ver mediciones
+            </button>
+          )}
         </div>
       </div>
     </motion.div>
@@ -633,7 +524,7 @@ function QueueCard({
   info,
   prev,
   idx,
-  onViewMeasures: _onViewMeasures,
+  onViewMeasures,
   showRoundDivider = true,
 }: {
   item: Ronda;
@@ -646,6 +537,8 @@ function QueueCard({
   const hi = info?.movimiento?.prioridad === "ALTA";
   const newRound = idx === 0 || item.rondaNumero !== prev?.rondaNumero;
   const loco = fmtLoco(info?.movimiento?.locomotora || info?.movimiento?.locomotiveNumber);
+  const movementId = movementIdFrom(item, info);
+  const canViewMeasures = Boolean(info?.movimiento?.torno && movementId);
 
   return (
     <Fragment>
@@ -706,9 +599,20 @@ function QueueCard({
           </div>
           <span className={S.List.date}>{fmtDate(item.createdAt)}</span>
         </div>
-        {null}
+        {canViewMeasures && (
+          <button
+            type="button"
+            onClick={() => onViewMeasures({
+              movementId,
+              locomotiveLabel: loco,
+              companyName: info?.empresa?.nombre,
+            })}
+            className="mt-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            Ver mediciones
+          </button>
+        )}
       </motion.div>
     </Fragment>
   );
 }
-

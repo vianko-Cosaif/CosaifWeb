@@ -17,8 +17,8 @@ import type { UserSession } from "./controller.types";
  * - Envia movimientos.
  */
 
-/** Roles con capacidad para elegir empresa/localidad libremente. */
-const ADMIN_OR_COORD = ["ADMINISTRADOR", "COORDINADOR"];
+const COMPANY_MANAGER_ROLES = ["ADMINISTRADOR", "COORDINADOR"];
+const LOCALITY_MANAGER_ROLES = ["ADMINISTRADOR"];
 type StoredUser = {
   id?: number;
   rol?: string;
@@ -81,7 +81,11 @@ export function useCrearMovimientoSession(setForm: Dispatch<SetStateAction<Movem
   const [user, setUser] = useState<UserSession>(null);
 
   const canManageAll = useMemo(
-    () => ADMIN_OR_COORD.includes(String(rol).toUpperCase()),
+    () => COMPANY_MANAGER_ROLES.includes(String(rol).toUpperCase()),
+    [rol]
+  );
+  const canChooseLocality = useMemo(
+    () => LOCALITY_MANAGER_ROLES.includes(String(rol).toUpperCase()),
     [rol]
   );
 
@@ -102,7 +106,8 @@ export function useCrearMovimientoSession(setForm: Dispatch<SetStateAction<Movem
     setUser(u || null);
     setUserCompanyName(u?.empresa?.nombre || "");
 
-    const isAdminOrCoord = ADMIN_OR_COORD.includes(String(role).toUpperCase());
+    const canChooseCompany = COMPANY_MANAGER_ROLES.includes(String(role).toUpperCase());
+    const canChooseAssignedLocality = LOCALITY_MANAGER_ROLES.includes(String(role).toUpperCase());
 
     const resolvedUserId = Number.isFinite(Number(u?.id))
       ? Number(u?.id)
@@ -112,12 +117,12 @@ export function useCrearMovimientoSession(setForm: Dispatch<SetStateAction<Movem
       ...baseInitialForm,
       creadoPorId: resolvedUserId,
       clienteId: resolvedUserId,
-      empresaId: isAdminOrCoord
+      empresaId: canChooseCompany
         ? null
         : (Number.isFinite(Number(u?.empresaId ?? u?.empresa?.id))
           ? Number(u?.empresaId ?? u?.empresa?.id)
           : (Number.isFinite(empCookie) ? empCookie : null)),
-      selectedLocalityId: isAdminOrCoord ? null : (Number.isFinite(locCookie) ? locCookie : null),
+      selectedLocalityId: canChooseAssignedLocality ? null : (Number.isFinite(locCookie) ? locCookie : null),
     };
 
     setForm((prev) => ({
@@ -125,29 +130,31 @@ export function useCrearMovimientoSession(setForm: Dispatch<SetStateAction<Movem
       ...prev,
       creadoPorId: base.creadoPorId ?? prev.creadoPorId,
       clienteId: base.clienteId ?? prev.clienteId,
-      empresaId: !isAdminOrCoord ? (base.empresaId ?? prev.empresaId) : prev.empresaId,
-      selectedLocalityId: !isAdminOrCoord ? (base.selectedLocalityId ?? prev.selectedLocalityId) : prev.selectedLocalityId,
+      empresaId: !canChooseCompany ? (base.empresaId ?? prev.empresaId) : prev.empresaId,
+      selectedLocalityId: !canChooseAssignedLocality ? (base.selectedLocalityId ?? prev.selectedLocalityId) : prev.selectedLocalityId,
     }));
   }, [setForm]);
 
   /** Reaplica localidad bloqueada para roles con alcance restringido. */
   const enforceLockedLocality = useCallback(() => {
     setRol(getRoleClient());
-    if (!canManageAll) {
+    if (!canChooseLocality) {
       const locCookie = Number(Movimiento.getCookie("locId") || NaN);
       setForm((p) => ({
         ...p,
         selectedLocalityId: Number.isFinite(locCookie) ? locCookie : p.selectedLocalityId,
       }));
     }
-  }, [canManageAll, setForm]);
+  }, [canChooseLocality, setForm]);
 
   return {
     rol,
     user,
     userCompanyName,
     canManageAll,
-    adminRoles: ADMIN_OR_COORD,
+    canChooseLocality,
+    adminRoles: COMPANY_MANAGER_ROLES,
+    localityAdminRoles: LOCALITY_MANAGER_ROLES,
     initFormLocked,
     enforceLockedLocality,
   };

@@ -14,9 +14,12 @@ function serviceWorkerSource() {
     appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID ?? "",
     measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID ?? "",
   };
+  const runtimeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
+  const appEnv = process.env.NEXT_PUBLIC_APP_ENV || process.env.NEXT_PUBLIC_VERCEL_ENV || runtimeEnv;
 
   return `
 const firebaseConfig = ${JSON.stringify(firebaseConfig)};
+const notificationRuntime = ${JSON.stringify({ runtimeEnv, appEnv })};
 const requiredConfig = [
   firebaseConfig.apiKey,
   firebaseConfig.authDomain,
@@ -48,8 +51,8 @@ if (requiredConfig.every(hasValue)) {
       body: notification.body || data.body || "",
       icon: notification.icon || data.icon || "/icons/cosaif-192.png",
       badge: data.badge || "/icons/cosaif-192.png",
-      data: { ...data, url },
-      tag,
+      data: { ...data, url, runtimeEnv: notificationRuntime.runtimeEnv, appEnv: notificationRuntime.appEnv },
+      tag: notificationRuntime.runtimeEnv + ":" + tag,
       renotify: true,
       requireInteraction: true,
     });

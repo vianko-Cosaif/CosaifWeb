@@ -23,6 +23,7 @@
     "@react-three/fiber": "^9.3.0",
     "@react-three/postprocessing": "^3.0.4",
     "@tanstack/react-virtual": "^3.13.12",
+    "antd": "^6.5.0",
     "clsx": "^2.1.1",
     "firebase": "^12.14.0",
     "framer-motion": "^12.23.12",

@@ -1,27 +1,48 @@
 // src/lib/routePolicy.ts
+import {
+  APP_ROLES,
+  canUseWeb,
+  getRoleCapabilities,
+  normalizeAppRole,
+  type AppRole,
+} from "./accessControl";
 
 /** =========================
  *  Roles soportados
  *  ========================= */
-export const ALL_ROLES = ["CLIENTE", "ADMINISTRADOR", "SUPERVISOR", "COORDINADOR"] as const;
-export type Role = (typeof ALL_ROLES)[number];
+export const ALL_ROLES = APP_ROLES;
+export type Role = AppRole;
 
 export const DEFAULT_HOME = "/cliente";
 
 /** Áreas por rol (regex de guard) */
 export const AREAS_REGEX: Record<Role, RegExp> = {
   CLIENTE: /^\/cliente(\/|$)/i,
+  CLIENTE_ADMIN: /^\/cliente(\/|$)/i,
+  CLIENTE_COOR: /^\/cliente(\/|$)/i,
+  ARRASTRE_TORREON: /^\/cliente\/torreon(\/|$)/i,
   ADMINISTRADOR: /^\/administrador(\/|$)/i,
   SUPERVISOR: /^\/supervisor(\/|$)/i,
   COORDINADOR: /^\/coordinador(\/|$)/i,
+  MAQUINISTA: /^\/__unsupported_web_role(\/|$)/i,
+  MAQUINISTA_ARRASTRE: /^\/__unsupported_web_role(\/|$)/i,
+  TORNO: /^\/__unsupported_web_role(\/|$)/i,
+  LAVADO: /^\/__unsupported_web_role(\/|$)/i,
 };
 
 /** Home por rol */
 export const HOME_BY_ROLE: Record<Role, string> = {
   CLIENTE: "/cliente",
+  CLIENTE_ADMIN: "/cliente",
+  CLIENTE_COOR: "/cliente",
+  ARRASTRE_TORREON: "/cliente/torreon",
   ADMINISTRADOR: "/administrador",
   SUPERVISOR: "/supervisor",
   COORDINADOR: "/coordinador",
+  MAQUINISTA: "/login",
+  MAQUINISTA_ARRASTRE: "/login",
+  TORNO: "/login",
+  LAVADO: "/login",
 };
 
 /** Prefijos SIEMPRE abiertos (assets/proxy/health/login) */
@@ -32,6 +53,7 @@ export const OPEN_PREFIXES = [
   "/robots.txt",
   "/sitemap.xml",
   "/api/auth",
+  "/bff",
   "/xapi",
 ] as const;
 
@@ -41,8 +63,7 @@ export const OPEN_PREFIXES = [
 export const policyVersion = 2;
 
 export function normalizeRole(input?: string | null): Role | null {
-  const r = (input || "").toUpperCase().trim();
-  return (ALL_ROLES as readonly string[]).includes(r) ? (r as Role) : null;
+  return normalizeAppRole(input);
 }
 
 export function isAssetPath(pathname: string): boolean {
@@ -72,8 +93,8 @@ export function isAllowedInArea(pathname: string, role: Role): boolean {
 
 /** Home destino según rol (fallback a DEFAULT_HOME) */
 export function homeFor(role?: string | null): string {
-  const r = normalizeRole(role);
-  return (r && HOME_BY_ROLE[r]) || DEFAULT_HOME;
+  const capabilities = getRoleCapabilities(role);
+  return capabilities.canUseWeb ? capabilities.home : "/login";
 }
 
 /** =========================
@@ -109,6 +130,7 @@ export function evaluateRoute(input: {
 
   const role = normalizeRole(roleRaw);
   const authed = !!isAuthenticated && !!role;
+  const webAllowed = role ? canUseWeb(role) : false;
 
   if (isOpenPath(pathname)) {
     if (pathname === "/login" && authed) {
@@ -142,6 +164,10 @@ export function evaluateRoute(input: {
     };
   }
 
+  if (!webAllowed) {
+    return { allow: false, redirectTo: "/login", reason: "CROSS_AREA" };
+  }
+
   const inAny = isInAnyArea(pathname);
   const hereOk = role ? isAllowedInArea(pathname, role) : false;
   if (inAny && !hereOk) {
@@ -169,22 +195,14 @@ export type UserMeta = {
   rol?: string | null;
 };
 
-/** CLIENTE bloqueado; ADMINISTRADOR/COORDINADOR libres */
+/** Solo administradores pueden operar sin una localidad forzada. */
 export function getFilterPolicy(user: UserMeta): FilterPolicy {
-  const role = normalizeRole(user.rol);
-  if (role === "CLIENTE") {
-    return {
-      forcedEmpresaId: user.empresaId ?? undefined,
-      forcedLocalidadId: user.localidadId ?? undefined,
-      canEditEmpresa: false,
-      canEditLocalidad: false,
-      canEditDates: true,
-      canSearch: true,
-    };
-  }
+  const capabilities = getRoleCapabilities(user.rol);
   return {
-    canEditEmpresa: true,
-    canEditLocalidad: true,
+    forcedEmpresaId: capabilities.canViewAllCompanies ? undefined : user.empresaId ?? undefined,
+    forcedLocalidadId: capabilities.canSwitchLocalidad ? undefined : user.localidadId ?? undefined,
+    canEditEmpresa: capabilities.canViewAllCompanies,
+    canEditLocalidad: capabilities.canSwitchLocalidad,
     canEditDates: true,
     canSearch: true,
   };

@@ -56,9 +56,10 @@ export function ImageGallery({
   }, [prev, next]);
 
   // Process images with proxy if needed
-  const processedImages = images.map((img) =>
-    /^https?:\/\//i.test(img) ? viaProxy(img) : viaProxy(`/incidentes/imagen/${encodeURIComponent(img)}`)
-  );
+  const processedImages = images.map((img) => {
+    if (img.startsWith("/api/torreon/imagenes/")) return img;
+    return /^https?:\/\//i.test(img) ? viaProxy(img) : viaProxy(`/incidentes/imagen/${encodeURIComponent(img)}`);
+  });
 
   return (
     <div className="space-y-4 sm:space-y-6">

@@ -5,7 +5,7 @@ import { getClientCookie, getEmpresaIdClient, getLocIdClient, getRoleClient } fr
 import IncidentMonitor from "./IncidentMonitor";
 
 const DEFAULT_API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL || "/bff";
+  process.env.NEXT_PUBLIC_INCIDENT_API_BASE || "/api";
 
 type ScopeMode = "auto" | "cliente" | "localidad" | "admin";
 
@@ -73,12 +73,9 @@ export default function ScopedIncidentMonitor({
     refreshScope();
     window.addEventListener("storage", onStorage);
     window.addEventListener("cosaif:localidad-change", refreshScope);
-    const interval = window.setInterval(refreshScope, 1500);
-
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("cosaif:localidad-change", refreshScope);
-      window.clearInterval(interval);
     };
   }, [scope]);
 

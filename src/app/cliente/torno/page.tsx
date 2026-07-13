@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import TornoModule from "@/app/torno/components/TornoModule";
+import { isClienteAreaRole } from "@/lib/torreonLocalidad";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ export default async function Page() {
   const role = cookieStore.get("role")?.value?.toUpperCase();
 
   if (!token) redirect("/login?loc=cliente");
-  if (role && role !== "CLIENTE") redirect("/");
+  if (role && !isClienteAreaRole(role)) redirect("/");
 
   return (
     <Suspense fallback={<div className="h-28 animate-pulse rounded-md border border-slate-200 bg-white" />}>

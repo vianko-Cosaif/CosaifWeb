@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import { Movimiento } from "../../Movimiento";
 import { MovementFormData } from "../../movimientos.shared";
 import { inputBase } from "./ui";
@@ -62,6 +63,7 @@ export default function StepThree({
 
   return (
     <div className="grid gap-4 relative">
+      <GuidedTarget id="create-movement-step3-summary">
       <div className="rounded-lg border p-3 text-sm dark:border-slate-700">
         <div className="font-semibold mb-2 text-slate-800 dark:text-slate-100">Resumen</div>
         <ul className="grid gap-1 text-slate-700 dark:text-slate-300">
@@ -79,7 +81,9 @@ export default function StepThree({
           <li>Servicio: {form.service || "-"}</li>
         </ul>
       </div>
+      </GuidedTarget>
 
+      <GuidedTarget id="create-movement-step3-comments">
       <label className="mb-3 block">
         <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Comentarios / instrucciones</span>
         <textarea
@@ -91,20 +95,23 @@ export default function StepThree({
         />
         {showHint && <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">Se anadira: {sectionHint.trim()}</span>}
       </label>
+      </GuidedTarget>
 
-      <button
-        onClick={handleSubmitClick}
-        disabled={sending}
-        data-guide-action="create-movement-submit"
-        className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-        title="Ctrl/Cmd + Enter para enviar"
-      >
-        {sending ? "Enviando..." : (submitLabel || "Confirmar solicitud")}
-      </button>
+      <GuidedTarget id="create-movement-submit" className="inline-flex">
+        <button
+          onClick={handleSubmitClick}
+          disabled={sending}
+          data-guide-action="create-movement-submit"
+          className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+          title="Ctrl/Cmd + Enter para enviar"
+        >
+          {sending ? "Enviando..." : (submitLabel || "Confirmar solicitud")}
+        </button>
+      </GuidedTarget>
 
       {showAgendadoModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 p-2 sm:items-center sm:p-4">
+          <div className="max-h-[calc(100dvh-1rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-slate-800 dark:bg-slate-900 sm:p-6">
             <div className="mb-4 flex flex-col items-center">
               <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30">
                 <svg className="h-7 w-7 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -113,7 +120,7 @@ export default function StepThree({
               </div>
               <h3 className="text-xl font-bold text-slate-900 dark:text-white text-center">Movimiento Agendado</h3>
             </div>
-            
+
             <p className="text-sm text-slate-600 dark:text-slate-300 text-center mb-6 leading-relaxed">
               El movimiento de torno queda agendado para el <strong className="text-slate-900 dark:text-white">{formattedScheduledDate}</strong>.<br/><br/>
               <strong className="text-slate-900 dark:text-white">Si no se activa antes de 10 minutos despues de esa fecha se perdera la calendarizacion.</strong>

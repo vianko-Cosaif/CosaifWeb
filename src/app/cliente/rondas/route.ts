@@ -2,6 +2,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { normalizeHttpOrigin } from "@/lib/serverOrigin";
 
 export const dynamic = "force-dynamic";
 
@@ -28,10 +29,47 @@ type RondaOut = RondaBase & {
   createdAt?: string | null;
 };
 
+type UnknownRecord = Record<string, unknown>;
+type MovimientoRecord = NonNullable<RondaOut["movimiento"]> & {
+  empresa?: { id?: number | string | null; nombre?: string | null } | null;
+  localidad?: { id?: number | string | null; nombre?: string | null } | null;
+  localidadId?: number | string | null;
+  Lavado?: boolean | null;
+};
+type MovimientoDetailRecord = MovimientoRecord & { movimiento?: MovimientoRecord | null };
+type RondaInfoRecord = {
+  empresa?: { id?: number | string | null; nombre?: string | null } | null;
+  movimiento?: MovimientoRecord | null;
+  movimientoId?: number | string | null;
+};
+
 type TornoServiceRecord = {
+  id?: number | string | null;
   servicioId?: number | string | null;
   rondaServicioId?: number | string | null;
   movimientoId?: number | string | null;
+  ruedaSolicitudId?: number | string | null;
+  localidadId?: number | string | null;
+  numeroLocomotora?: number | string | null;
+  locomotiveNumber?: number | string | null;
+  locomotora?: number | string | null;
+  movimiento?: {
+    id?: number | string | null;
+    localidadId?: number | string | null;
+    localidad?: { id?: number | string | null } | null;
+    fechaSolicitud?: string | null;
+  } | null;
+  servicio?: {
+    id?: number | string | null;
+    movimientoId?: number | string | null;
+    ruedaSolicitudId?: number | string | null;
+  } | null;
+  rondaServicio?: {
+    id?: number | string | null;
+    servicioId?: number | string | null;
+    movimientoId?: number | string | null;
+    ruedaSolicitudId?: number | string | null;
+  } | null;
   status?: string | null;
   historialStatus?: string | null;
   inicio?: string | null;
@@ -40,44 +78,65 @@ type TornoServiceRecord = {
   actualizadoEn?: string | null;
 };
 
+function asRecord(input: unknown): UnknownRecord {
+  return input && typeof input === "object" ? (input as UnknownRecord) : {};
+}
+
 function normalize(input: unknown): RondaBase[] {
-  const anyInput = input as any;
+  const record = asRecord(input);
   const src: unknown[] = Array.isArray(input)
     ? (input as unknown[])
-    : Array.isArray(anyInput?.data)
-    ? (anyInput.data as unknown[])
-    : Array.isArray(anyInput?.rows)
-    ? (anyInput.rows as unknown[])
+    : Array.isArray(record.data)
+    ? record.data
+    : Array.isArray(record.rows)
+    ? record.rows
     : [];
 
-  const mapped: RondaBase[] = (src as unknown[]).map((x: any): RondaBase => ({
-    id: Number(x.id ?? x.rondaId ?? x.ronda?.id),
-    rondaNumero: Number(x.rondaNumero ?? x.numero ?? x.num ?? x.ronda?.numero ?? 0),
-    orden: Number(x.orden ?? x.order ?? 0),
-    concluido: Boolean(
-      x.concluido ??
-        x.finalizado ??
-        x.terminado ??
-        (typeof x.estado === "string" ? x.estado.toUpperCase() === "CONCLUIDO" : x.estado === true)
-    ),
-  }));
+  const mapped: RondaBase[] = src.map((x): RondaBase => {
+    const item = asRecord(x);
+    const ronda = asRecord(item.ronda);
+    return {
+      id: Number(item.id ?? item.rondaId ?? ronda.id),
+      rondaNumero: Number(item.rondaNumero ?? item.numero ?? item.num ?? ronda.numero ?? 0),
+      orden: Number(item.orden ?? item.order ?? 0),
+      concluido: Boolean(
+        item.concluido ??
+          item.finalizado ??
+          item.terminado ??
+          (typeof item.estado === "string" ? item.estado.toUpperCase() === "CONCLUIDO" : item.estado === true)
+      ),
+    };
+  });
 
   return mapped.filter((r: RondaBase) => Number.isFinite(r.id));
 }
 
-function extractArray(input: unknown): any[] {
-  const anyInput = input as any;
+function extractArray(input: unknown): UnknownRecord[] {
+  const record = asRecord(input);
   return Array.isArray(input)
-    ? input as any[]
-    : Array.isArray(anyInput?.data)
-    ? anyInput.data
-    : Array.isArray(anyInput?.items)
-    ? anyInput.items
-    : Array.isArray(anyInput?.rows)
-    ? anyInput.rows
-    : Array.isArray(anyInput?.value)
-    ? anyInput.value
+    ? input.filter((item): item is UnknownRecord => Boolean(item && typeof item === "object"))
+    : Array.isArray(record.data)
+    ? record.data.filter((item): item is UnknownRecord => Boolean(item && typeof item === "object"))
+    : Array.isArray(record.items)
+    ? record.items.filter((item): item is UnknownRecord => Boolean(item && typeof item === "object"))
+    : Array.isArray(record.rows)
+    ? record.rows.filter((item): item is UnknownRecord => Boolean(item && typeof item === "object"))
+    : Array.isArray(record.value)
+    ? record.value.filter((item): item is UnknownRecord => Boolean(item && typeof item === "object"))
     : [];
+}
+
+function asNumber(input: unknown): number | null {
+  const value = Number(input);
+  return Number.isFinite(value) ? value : null;
+}
+
+function firstPositiveNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    const parsed = asNumber(value);
+    if (parsed && parsed > 0) return parsed;
+  }
+  return null;
 }
 
 function isTornoConcluido(status?: string | null) {
@@ -110,6 +169,13 @@ function getTornoQueueCreatedTime(item: RondaOut): number {
   return Number.isFinite(numericId) ? numericId : Number.MAX_SAFE_INTEGER;
 }
 
+function getApiBase(origin: string) {
+  const raw = String(process.env.API_ORIGIN || process.env.NEXT_PUBLIC_API_URL || "").trim();
+  if (!raw) return `${origin}/bff`.replace(/\/+$/, "");
+  if (raw.startsWith("/")) return `${origin}${raw}`.replace(/\/+$/, "");
+  return normalizeHttpOrigin(raw).replace(/\/+$/, "");
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams, origin } = new URL(req.url);
@@ -123,11 +189,13 @@ export async function GET(req: Request) {
     const token = c.get(process.env.JWT_COOKIE_NAME ?? "token")?.value ?? "";
     const empresaId = Number(c.get("empresaId")?.value) || null;
 
-    const base = process.env.NEXT_PUBLIC_API_URL || `${origin}/bff`;
+    const base = getApiBase(origin);
 
     if (entity === "torneados") {
       const statusParam = concluido ? "CONCLUIDO,CANCELADO" : "SOLICITADO,EN_PROCESO,DETENIDO";
-      const r = await fetch(`${base}/torno/rondas-servicio/historial?status=${encodeURIComponent(statusParam)}`, {
+      const qs = new URLSearchParams({ status: statusParam, localidadId: loc });
+      if (empresaId) qs.set("empresaId", String(empresaId));
+      const r = await fetch(`${base}/torno/rondas-servicio/historial?${qs.toString()}`, {
         cache: "no-store",
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
@@ -136,48 +204,79 @@ export async function GET(req: Request) {
       const records = extractArray(raw) as TornoServiceRecord[];
 
       const out = await Promise.all(records.map(async (record, index): Promise<RondaOut | null> => {
+        const movimientoRecord = record.movimiento ?? {};
+        const servicioRecord = record.servicio ?? {};
+        const rondaServicioRecord = record.rondaServicio ?? {};
         const status = String(record.historialStatus ?? record.status ?? "SOLICITADO").toUpperCase();
-        const movimientoId = Number(record.movimientoId);
-        const servicioId = Number(record.servicioId ?? record.rondaServicioId ?? index + 1);
-        if (!Number.isFinite(movimientoId) || !Number.isFinite(servicioId)) return null;
+        const movimientoId = firstPositiveNumber(
+          record.movimientoId,
+          movimientoRecord.id,
+          servicioRecord.movimientoId,
+          servicioRecord.ruedaSolicitudId,
+          rondaServicioRecord.movimientoId,
+          rondaServicioRecord.ruedaSolicitudId,
+          record.ruedaSolicitudId,
+        );
+        const servicioId = firstPositiveNumber(
+          record.servicioId,
+          record.rondaServicioId,
+          record.id,
+          servicioRecord.id,
+          rondaServicioRecord.id,
+          rondaServicioRecord.servicioId,
+          index + 1,
+        );
+        if (!servicioId) return null;
 
         let movimiento: RondaOut["movimiento"] = {
-          id: movimientoId,
+          id: movimientoId ?? undefined,
           torno: true,
           estado: status,
-          fechaSolicitud: record.creadoEn ?? null,
+          locomotiveNumber: record.numeroLocomotora ?? record.locomotiveNumber ?? record.locomotora ?? null,
+          locomotora: record.locomotora == null ? null : String(record.locomotora),
+          fechaSolicitud: record.creadoEn ?? movimientoRecord.fechaSolicitud ?? null,
           fechaInicio: record.inicio ?? null,
           fechaFin: record.fin ?? null,
         };
         let empresa: RondaOut["empresa"] = null;
+        let localidadMovimientoId = firstPositiveNumber(
+          record.localidadId,
+          movimientoRecord.localidadId,
+          movimientoRecord.localidad?.id,
+        );
 
-        try {
-          const rr = await fetch(`${base}/movimientos/${encodeURIComponent(String(movimientoId))}/edicion`, {
-            cache: "no-store",
-            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-          });
-          if (rr.ok) {
-            const detail = (await readTextAsJsonSafe(rr)) as any;
-            const mv = detail?.movimiento ?? detail;
-            empresa = mv?.empresa ? { id: Number(mv.empresa.id ?? 0), nombre: String(mv.empresa.nombre ?? "—") } : null;
-            movimiento = {
-              id: mv?.id ?? movimientoId,
-              viaOrigen: mv?.viaOrigen ?? null,
-              viaDestino: mv?.viaDestino ?? null,
-              lavado: Boolean(mv?.lavado),
-              torno: true,
-              estado: status,
-              prioridad: mv?.prioridad ?? null,
-              locomotiveNumber: mv?.locomotiveNumber ?? mv?.locomotora ?? null,
-              locomotora: mv?.locomotora ?? null,
-              fechaSolicitud: mv?.fechaSolicitud ?? record.creadoEn ?? null,
-              fechaInicio: record.inicio ?? mv?.fechaInicio ?? null,
-              fechaFin: record.fin ?? mv?.fechaFin ?? null,
-            };
+        if (movimientoId) {
+          try {
+            const rr = await fetch(`${base}/movimientos/${encodeURIComponent(String(movimientoId))}/edicion`, {
+              cache: "no-store",
+              headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            });
+            if (rr.ok) {
+              const detail = (await readTextAsJsonSafe(rr)) as MovimientoDetailRecord;
+              const mv = detail?.movimiento ?? detail;
+              localidadMovimientoId = firstPositiveNumber(mv?.localidad?.id, mv?.localidadId) ?? localidadMovimientoId;
+              empresa = mv?.empresa ? { id: Number(mv.empresa.id ?? 0), nombre: String(mv.empresa.nombre ?? "—") } : null;
+              movimiento = {
+                id: mv?.id ?? movimientoId,
+                viaOrigen: mv?.viaOrigen ?? null,
+                viaDestino: mv?.viaDestino ?? null,
+                lavado: Boolean(mv?.lavado),
+                torno: true,
+                estado: status,
+                prioridad: mv?.prioridad ?? null,
+                locomotiveNumber: mv?.locomotiveNumber ?? mv?.locomotora ?? null,
+                locomotora: mv?.locomotora ?? null,
+                fechaSolicitud: mv?.fechaSolicitud ?? record.creadoEn ?? null,
+                fechaInicio: record.inicio ?? mv?.fechaInicio ?? null,
+                fechaFin: record.fin ?? mv?.fechaFin ?? null,
+              };
+            }
+          } catch {
+            // El servicio de torno puede listarse aun si el detalle del movimiento no responde.
           }
-        } catch {
-          // El servicio de torno puede listarse aun si el detalle del movimiento no responde.
         }
+
+        if (localidadMovimientoId && Number(loc) !== localidadMovimientoId) return null;
 
         return {
           id: -Math.abs(servicioId),
@@ -245,14 +344,14 @@ export async function GET(req: Request) {
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
           });
           if (!rr.ok) return [r.id, null] as const;
-          const info = (await readTextAsJsonSafe(rr)) as any;
+          const info = (await readTextAsJsonSafe(rr)) as RondaInfoRecord;
           return [r.id, info] as const;
         } catch {
           return [r.id, null] as const;
         }
       })
     );
-    const infoMap = new Map<number, any>(infoPairs);
+    const infoMap = new Map<number, RondaInfoRecord | null>(infoPairs);
 
     let out: RondaOut[] = baseList.map((r) => {
       const inf = infoMap.get(r.id);
@@ -278,7 +377,7 @@ export async function GET(req: Request) {
               instrucciones: mv.instrucciones ?? null,
             }
           : null,
-        movimientoId: inf?.movimientoId ?? mv?.id ?? null,
+        movimientoId: firstPositiveNumber(inf?.movimientoId, mv?.id),
       };
     });
 
@@ -303,7 +402,7 @@ export async function POST(req: Request) {
 
     const c = await cookies();
     const token = c.get(process.env.JWT_COOKIE_NAME ?? "token")?.value ?? "";
-    const base = process.env.NEXT_PUBLIC_API_URL || `${origin}/bff`;
+    const base = getApiBase(origin);
 
     if (action === "swap") {
       const rondaAId = Number(body?.rondaAId);

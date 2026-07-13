@@ -1,4 +1,5 @@
 import React from "react";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import { Movimiento } from "../../Movimiento";
 import { MovementFormData } from "../../movimientos.shared";
 
@@ -54,6 +55,7 @@ export default function StepTwo({ form, setForm, errors, isService }: StepTwoPro
   );
 
   return (
+    <GuidedTarget id="create-movement-step2-general">
     <div className="grid gap-6">
       <div>
         <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">Tipo de movimiento</div>
@@ -72,6 +74,7 @@ export default function StepTwo({ form, setForm, errors, isService }: StepTwoPro
         {errors.movementType && <div className="mt-1 text-xs text-rose-600">{errors.movementType}</div>}
       </div>
 
+      <div className="grid gap-6">
       {!isService && (
         <>
           <div>
@@ -189,6 +192,8 @@ export default function StepTwo({ form, setForm, errors, isService }: StepTwoPro
           {errors.direccionEmpuje && <div className="mt-1 text-xs text-rose-600">{errors.direccionEmpuje}</div>}
         </div>
       )}
+      </div>
     </div>
+    </GuidedTarget>
   );
 }

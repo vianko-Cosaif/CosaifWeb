@@ -28,7 +28,8 @@ import {
   Ronda,
   InfoExtra,
   apiSwapMovimientos,
-  apiCancelarMovimiento
+  apiCancelarMovimiento,
+  apiOrdenMovimiento
 } from '@/app/hooks/useEditRonda';
 import { onThemeChange } from '@/lib/theme';
 
@@ -151,6 +152,7 @@ function RondaCardContent({
 }) {
   const [open, setOpen] = useState(false);
   const badgeClass = priorityBadge(ronda.movimiento?.prioridad);
+  const isTorreon = ronda.source === 'torreon';
 
   return (
     <div className={`group relative rounded-lg border ${THEME.border} ${THEME.surface} p-3 mb-2 transition-all hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600`}>
@@ -237,9 +239,12 @@ function RondaCardContent({
           <div className="flex items-center justify-end gap-2 pt-2">
             <button
               onClick={onCancelRequest}
-              disabled={isCancelling}
+              disabled={isCancelling || isTorreon}
+              title={isTorreon ? 'Movimiento de Torreon en solo lectura' : undefined}
               className={`px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 transition-colors ${isCancelling
                 ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                : isTorreon
+                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-500'
                 : 'text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/10'
                 }`}
             >
@@ -248,7 +253,12 @@ function RondaCardContent({
             </button>
             <button
               onClick={onSwapRequest}
-              className="px-3 py-1.5 rounded text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition-colors"
+              disabled={isTorreon}
+              title={isTorreon ? 'Ronda de Torreon en solo lectura' : undefined}
+              className={`px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 transition-colors ${isTorreon
+                ? 'bg-slate-100 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-500'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200'
+              }`}
             >
               <ArrowLeftRight size={14} /> Mover
             </button>
@@ -414,6 +424,10 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
 
   /* ===== Actions ===== */
   const handleSwapRequest = useCallback((ronda: Ronda) => {
+    if (ronda.source === 'torreon') {
+      alert('Para Torreon arrastra el movimiento a su nueva posicion.');
+      return;
+    }
     // if (hasRealChanges) { alert('Guarda los cambios antes de continuar.'); return; } // Allow swap? No, complex state.
     setSwapModal({ visible: true, base: ronda });
   }, []);
@@ -422,7 +436,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
     const base = swapModal.base;
     if (!base || !otra || !user) return;
     try {
-      await apiSwapMovimientos(base.id, otra.id);
+      await apiSwapMovimientos(base.id, otra.id, localidadId);
       const swappedA: Ronda = { ...base, movimiento: { ...otra.movimiento } };
       const swappedB: Ronda = { ...otra, movimiento: { ...base.movimiento } };
 
@@ -439,7 +453,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
       console.error(e);
       alert(errorMessage(e, 'Error al intercambiar'));
     }
-  }, [swapModal.base, setGroupedByRonda, setList, user]);
+  }, [localidadId, swapModal.base, setGroupedByRonda, setList, user]);
 
   const handleCancelRequest = useCallback(async (item: Ronda) => {
     if (!confirm('¿Cancelar este movimiento? Solo se permite si pertenece a tu empresa.')) return;
@@ -447,7 +461,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
       const mid = item.movimiento?.id;
       if (!mid) throw new Error('ID inválido');
       setCancellingId(mid);
-      await apiCancelarMovimiento(mid);
+      await apiCancelarMovimiento(mid, undefined, localidadId);
 
       setGroupedByRonda(prev => {
         const copy = { ...prev };
@@ -462,7 +476,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
     } finally {
       setCancellingId(null);
     }
-  }, [setGroupedByRonda, setList]);
+  }, [localidadId, setGroupedByRonda, setList]);
 
 
   // Drag End Handler - STRICT SWAP LOGIC (LIVE UPDATE)
@@ -477,9 +491,49 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
 
     if (activeId === overId) return;
 
+    const activeItem = todasLasRondas.find((r) => r.id === activeId);
+    const overItem = todasLasRondas.find((r) => r.id === overId);
+    if (!activeItem || !overItem) return;
+
+    if (activeItem?.source === 'torreon' || overItem?.source === 'torreon') {
+      if (activeItem.source !== 'torreon' || overItem.source !== 'torreon' || activeItem.rondaNumero !== overItem.rondaNumero) {
+        alert('Torreon solo permite reordenar dentro de su misma ronda.');
+        return;
+      }
+
+      const currentList = [...(groupedByRonda[activeItem.rondaNumero] || [])]
+        .sort((a, b) => a.orden - b.orden || a.id - b.id);
+      const oldIndex = currentList.findIndex((item) => item.id === activeId);
+      const newIndex = currentList.findIndex((item) => item.id === overId);
+      if (oldIndex < 0 || newIndex < 0) return;
+
+      try {
+        await apiOrdenMovimiento(activeId, newIndex + 1, localidadId);
+
+        const nextList = [...currentList];
+        const [moved] = nextList.splice(oldIndex, 1);
+        nextList.splice(newIndex, 0, moved);
+        const normalized = nextList.map((item, index) => ({ ...item, orden: index + 1 }));
+
+        setGroupedByRonda((prev) => ({
+          ...prev,
+          [activeItem.rondaNumero]: normalized,
+        }));
+        setList((prev) => {
+          const byId = new Map(normalized.map((item) => [item.id, item]));
+          return prev.map((item) => byId.get(item.id) ?? item);
+        });
+        showToast('Orden actualizado');
+      } catch (e: unknown) {
+        console.error(e);
+        alert('Error al reordenar: ' + errorMessage(e, 'Error desconocido'));
+      }
+      return;
+    }
+
     // Call API immediately
     try {
-      await apiSwapMovimientos(activeId, overId);
+      await apiSwapMovimientos(activeId, overId, localidadId);
 
       // Update local state ONLY on success (or optimistically revert on failure)
       // For now, we update local state optimistically or re-fetch?
@@ -581,7 +635,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
             <div>
               <h2 className={`text-lg font-bold leading-tight ${THEME.text}`}>Editor de Rondas</h2>
               <p className={`text-xs ${THEME.textMuted}`}>
-                <span className="font-semibold text-blue-600 dark:text-blue-400">Arrastra desde los 6 puntos (⋮⋮)</span> para intercambiar lugares.
+                <span className="font-semibold text-blue-600 dark:text-blue-400">Arrastra desde los 6 puntos (⋮⋮)</span> para ajustar la cola.
               </p>
             </div>
           </div>
