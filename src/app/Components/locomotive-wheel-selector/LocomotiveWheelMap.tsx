@@ -598,6 +598,18 @@ function WheelNode({
   const getPoint = (x: number, y: number) => {
     return rotateCoordinates ? { x: y, y: x } : { x, y };
   };
+  const wheelPoint = getPoint(wheel.x, wheel.y);
+  const topLabelWidth = 64;
+  const topLabelHeight = 26;
+  const topLabelCenter = rotateCoordinates
+    ? {
+        x: wheelPoint.x,
+        y: wheelPoint.y + (wheel.side === 'left' ? -54 : 54),
+      }
+    : {
+        x: wheelPoint.x + (wheel.side === 'left' ? -58 : 58),
+        y: wheelPoint.y,
+      };
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -738,11 +750,27 @@ function WheelNode({
             </>
           ) : (
             <>
-              <text {...getTextProps(wheel.x, wheel.y + sideLabelOffset)} textAnchor="middle" fontFamily="sans-serif" fontSize="11" fontWeight="900" fill={theme.colors.text} className="select-none">
-                {wheel.side === 'left' ? 'IZQ' : 'DER'}
-              </text>
-              <text {...getTextProps(wheel.x, wheel.y + axleLabelOffset)} textAnchor="middle" fontFamily="sans-serif" fontSize="9" fontWeight="700" fill={theme.colors.textMuted} className="select-none">
-                {`Eje ${wheel.axleIndex}`}
+              <rect
+                x={topLabelCenter.x - topLabelWidth / 2}
+                y={topLabelCenter.y - topLabelHeight / 2}
+                width={topLabelWidth}
+                height={topLabelHeight}
+                rx="8"
+                fill={theme.colors.surface}
+                stroke={theme.colors.border}
+                strokeWidth="1"
+              />
+              <text
+                x={topLabelCenter.x}
+                y={topLabelCenter.y + 4}
+                textAnchor="middle"
+                fontFamily="sans-serif"
+                fontSize="10"
+                fontWeight="900"
+                fill={theme.colors.text}
+                className="select-none"
+              >
+                {`${wheel.side === 'left' ? 'IZQ' : 'DER'} E${wheel.axleIndex}`}
               </text>
             </>
           )}
@@ -830,13 +858,16 @@ export function LocomotiveWheelMap({
       ? 380
       : 640;
 
+  const topHorizontalMode = viewMode === 'top' && renderOrientation === 'horizontal';
   const getTitleProps = () => {
+    if (topHorizontalMode) return { x: 24, y: 22 };
     return renderOrientation === 'horizontal'
       ? { x: VIEWBOX_HEIGHT / 2, y: 34 }
       : { x: VIEWBOX_WIDTH / 2, y: 34 };
   };
 
   const getSubTitleProps = () => {
+    if (topHorizontalMode) return { x: 24, y: 40 };
     return renderOrientation === 'horizontal'
       ? { x: VIEWBOX_HEIGHT / 2, y: 54 }
       : { x: VIEWBOX_WIDTH / 2, y: 54 };
@@ -937,7 +968,7 @@ export function LocomotiveWheelMap({
       </style>
       <text
         {...getTitleProps()}
-        textAnchor="middle"
+        textAnchor={topHorizontalMode ? 'start' : 'middle'}
         fontFamily="sans-serif"
         fontSize="13"
         fontWeight="900"
@@ -950,7 +981,7 @@ export function LocomotiveWheelMap({
 
       <text
         {...getSubTitleProps()}
-        textAnchor="middle"
+        textAnchor={topHorizontalMode ? 'start' : 'middle'}
         fontFamily="sans-serif"
         fontSize="10"
         fontWeight="700"
