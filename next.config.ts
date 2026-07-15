@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 import path from "node:path";
 
 const nextConfig: NextConfig = {
+  // Evita que `next build` reemplace los módulos de un `next dev` activo.
+  distDir: process.env.NODE_ENV === "development" ? ".next-dev" : ".next",
   outputFileTracingRoot: path.resolve(__dirname),
   productionBrowserSourceMaps: false,
   eslint: { ignoreDuringBuilds: true },

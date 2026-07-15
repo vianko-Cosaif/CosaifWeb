@@ -19,9 +19,9 @@ export function isTorreonArrastreEvent(event: RealtimeMovementEvent) {
 }
 
 export function realtimeStatusLabel(status: RealtimeConnectionStatus) {
-  if (status === "connected") return "Tiempo real";
+  if (status === "connected") return "Conectado";
   if (status === "connecting") return "Conectando";
-  return "Sin conexion";
+  return "Sin conexión";
 }
 
 export function realtimeArrastreSnapshot(event: RealtimeMovementEvent): Arrastre | null {

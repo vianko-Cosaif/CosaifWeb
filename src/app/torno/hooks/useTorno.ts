@@ -8,6 +8,7 @@ import {
   configureNavajas,
   createNavajaChange,
   createParentIncident,
+  getNavajaStats,
   getTornoHistoryDetail,
   listLocalidadesLite,
   listNavajaChanges,
@@ -29,6 +30,7 @@ import type {
   TornoListResult,
   TornoLocalidadLite,
   TornoNavajaChange,
+  TornoNavajaStats,
   TornoPermissions,
   TornoReopenPayload,
   TornoResolvePayload,
@@ -340,6 +342,7 @@ export function useNavajaChanges(enabled: boolean, filters: TornoFilters = {}) {
     ...filters,
   });
   const [result, setResult] = useState<TornoListResult<TornoNavajaChange>>(emptyList);
+  const [stats, setStats] = useState<TornoNavajaStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -361,12 +364,17 @@ export function useNavajaChanges(enabled: boolean, filters: TornoFilters = {}) {
       else setLoading(true);
       setError(null);
       try {
-        const next = await listNavajaChanges(listFilters);
+        const [next, nextStats] = await Promise.all([
+          listNavajaChanges(listFilters),
+          getNavajaStats({ localidadId: listFilters.localidadId }),
+        ]);
         if (seq !== reqSeq.current) return;
         setResult(next);
+        setStats(nextStats);
       } catch (err: any) {
         if (seq !== reqSeq.current) return;
         setResult(emptyList);
+        setStats(null);
         setError(err?.message ?? "No se pudo cargar Cambio de Navajas");
       } finally {
         if (seq === reqSeq.current) {
@@ -424,6 +432,7 @@ export function useNavajaChanges(enabled: boolean, filters: TornoFilters = {}) {
   return {
     items: result.items,
     meta: result.meta,
+    stats,
     localidades,
     loading,
     refreshing,

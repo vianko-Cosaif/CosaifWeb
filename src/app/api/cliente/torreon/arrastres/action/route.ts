@@ -43,6 +43,10 @@ function canSeeAllEmpresas(role: string) {
   return ["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR"].includes(role);
 }
 
+function canOperatePatio(role: string) {
+  return ["COORDINADOR", "SUPERVISOR"].includes(role);
+}
+
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
@@ -204,7 +208,27 @@ export async function POST(req: NextRequest) {
     const arrastre = await getArrastreForAccess(arrastreId, role, empresaId);
 
     if (action === "INICIAR_VAGON" || action === "FINALIZAR_VAGON") {
-      return jsonError("El cliente no puede iniciar ni finalizar vagones", 403);
+      if (!canOperatePatio(role)) {
+        return jsonError("Solo coordinación puede iniciar o finalizar vagones", 403);
+      }
+
+      const vagonId = asPositiveInt(body.vagonId);
+      if (!vagonId) return jsonError("Vagón inválido", 400);
+      const path = action === "INICIAR_VAGON"
+        ? `/arrastres/${arrastreId}/vagones/${vagonId}/iniciar`
+        : `/arrastres/${arrastreId}/vagones/${vagonId}/finalizar`;
+      const data = await fetchTorreonMsJson(path, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(action === "INICIAR_VAGON" ? { iniciadoPorId: userId } : {}),
+          ...(body.confirmarIncidente ? { confirmarIncidente: true } : {}),
+          ...(typeof body.comentarioOperacion === "string" && body.comentarioOperacion.trim()
+            ? { comentarioOperacion: body.comentarioOperacion.trim() }
+            : {}),
+        }),
+      });
+      return NextResponse.json(data, { status: 200 });
     }
 
     if (action === "EDITAR_VAGON") {
@@ -222,7 +246,8 @@ export async function POST(req: NextRequest) {
       const viaDestino = body.viaDestino ?? body.viaDestinoNombre ?? body.viaId;
       const seccionDestino = body.seccionDestino ?? body.seccionDestinoNombre ?? body.seccionId;
 
-      if (numeroVagon) payload.numeroVagon = numeroVagon;
+      if (!numeroVagon) return jsonError("El número de vagón es obligatorio", 400);
+      payload.numeroVagon = numeroVagon;
       if (carga) {
         if (carga !== "VACIO" && carga !== "LLENO") return jsonError("Carga invalida", 400);
         payload.carga = carga;

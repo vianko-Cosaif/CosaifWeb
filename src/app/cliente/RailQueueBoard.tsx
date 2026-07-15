@@ -237,7 +237,7 @@ export default function RailQueueBoard({
       </header>
 
       {/* ─── CONTENT ─── */}
-      <main className={S.Layout.main}>
+      <div className={S.Layout.main}>
         <section className="flex flex-col gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-2 shadow-[var(--app-shadow-sm)] sm:flex-row sm:items-center sm:justify-between lg:col-span-12">
           <QueueSegmentedFilter
             ariaLabel="Tipo de listado"
@@ -343,7 +343,7 @@ export default function RailQueueBoard({
         </aside>
           </>
         )}
-      </main>
+      </div>
 
       {/* ─── MODAL ─── */}
       {openEditor && (

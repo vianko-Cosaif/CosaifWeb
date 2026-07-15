@@ -10,8 +10,8 @@ export function Header({
 }: {
   title: string;
   subtitle: string;
-  refreshing: boolean;
-  onRefresh: () => void;
+  refreshing?: boolean;
+  onRefresh?: () => void;
   action?: ReactNode;
 }) {
   return (
@@ -22,7 +22,7 @@ export function Header({
       </div>
       <div className="flex flex-wrap gap-2">
         {action}
-        <button
+        {onRefresh ? <button
           type="button"
           onClick={onRefresh}
           disabled={refreshing}
@@ -30,7 +30,7 @@ export function Header({
         >
           <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
           Actualizar
-        </button>
+        </button> : null}
       </div>
     </div>
   );
@@ -38,11 +38,13 @@ export function Header({
 
 export function ModuleHeader({
   title,
+  subtitle = "Operación ferroviaria",
   chip,
   total,
   icon: Icon,
 }: {
   title: string;
+  subtitle?: string;
   chip?: string;
   total: number;
   icon: LucideIcon;
@@ -58,7 +60,7 @@ export function ModuleHeader({
             {title}
           </h1>
           <p className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
-            Gestion ferroviaria
+            {subtitle}
             {chip && (
               <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
                 {chip}

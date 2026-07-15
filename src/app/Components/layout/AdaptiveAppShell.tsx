@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { DynamicBanner } from "@/app/Components/DynamicBanner";
 import SidebarMenu from "@/app/Components/Menu/Menu";
 import RealtimeActivityCenter from "@/app/Components/layout/RealtimeActivityCenter";
 
@@ -38,22 +39,17 @@ export default function AdaptiveAppShell({
       <div className="relative z-10 flex min-h-svh min-w-0 flex-1 flex-col overflow-x-hidden">
         {beforeMain}
 
-        <a
-          href="#app-main"
-          className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-[max(0.5rem,env(safe-area-inset-top))] focus:z-50 focus:rounded-md focus:border focus:bg-white focus:px-3 focus:py-2 focus:text-slate-900 dark:focus:bg-slate-800 dark:focus:text-slate-100"
-        >
-          Saltar al contenido
-        </a>
-
         <main
-          id="app-main"
+          id="main"
+          tabIndex={-1}
           className={cn(
             "relative z-10 mx-auto w-full max-w-full flex-1 overflow-x-hidden px-3 py-4",
-            "pt-[calc(env(safe-area-inset-top)+4.5rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)]",
-            "sm:px-5 md:max-w-screen-2xl md:p-8 md:pt-[calc(env(safe-area-inset-top)+1rem)]",
+            "pt-[calc(env(safe-area-inset-top)+4.5rem)] pb-[calc(env(safe-area-inset-bottom)+6rem)]",
+            "sm:px-5 md:max-w-screen-2xl md:p-8 md:pt-[calc(env(safe-area-inset-top)+4.5rem)] md:pb-8",
             contentClassName
           )}
         >
+          <DynamicBanner className="mb-5 sm:mb-6" />
           <div className="contents">{children}</div>
         </main>
 

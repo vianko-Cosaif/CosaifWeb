@@ -3,7 +3,7 @@ import { Movimiento } from "../Movimiento";
 import { API_BASE, DOUBLE_TAP_MS, baseInitialForm, roleBase, type MovementFormData, type Seccion } from "../movimientos.shared";
 import type { CrearMovimientoController, CrearMovimientoStep, LocomotoraBloqueada } from "./controller.types";
 import { applyCatalogDefaults, resolveIds, validateStep1Data, validateStep2Data } from "./crearMovimiento.domain";
-import { getRoleClient, readStoredUserClient, useCrearMovimientoSession } from "./useCrearMovimientoSession";
+import { getRoleClient, readNumericCookieClient, readStoredUserClient, useCrearMovimientoSession } from "./useCrearMovimientoSession";
 import { useCrearMovimientoCatalogos } from "./useCrearMovimientoCatalogos";
 import { useCrearMovimientoDraft } from "./useCrearMovimientoDraft";
 import { useCrearMovimientoOutbox } from "./useCrearMovimientoOutbox";
@@ -173,9 +173,9 @@ export function useCrearMovimientoController(): CrearMovimientoController {
    * Se evalua en memoria y no produce side effects.
    */
   const resolvedIds = useMemo(() => {
-    const cookieEmp = Number(Movimiento.getCookie("empresaId") || NaN);
-    const cookieLoc = Number(Movimiento.getCookie("locId") || NaN);
-    const cookieUserId = Number(Movimiento.getCookie("userId") || NaN);
+    const cookieEmp = readNumericCookieClient("empresaId", "empId");
+    const cookieLoc = readNumericCookieClient("locId", "localidadId");
+    const cookieUserId = readNumericCookieClient("userId", "uid");
 
     return resolveIds({
       rol,
@@ -212,7 +212,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
 
         const role = getRoleClient();
         const userSnapshot = readStoredUserClient();
-        const cookieEmp = Number(Movimiento.getCookie("empresaId") || NaN);
+        const cookieEmp = readNumericCookieClient("empresaId", "empId");
 
         setForm((prev) => {
           const withDefaults = applyCatalogDefaults({
@@ -635,7 +635,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     ? (["Paso 1 de 4", "Paso 2 de 4", "Paso 3 de 4", "Paso 4 de 4"] as const)[step - 1]
     : (["Paso 1 de 3", "Paso 2 de 3", "Paso 3 de 3"] as const)[Math.min(step, 3) - 1];
 
-  const lockedClienteMissingData = !canChooseLocality && !Number.isFinite(Number(Movimiento.getCookie("locId") || NaN));
+  const lockedClienteMissingData = !canChooseLocality && !Number.isFinite(readNumericCookieClient("locId", "localidadId"));
 
   /** Shortcut de envio en step final. */
   useEffect(() => {
@@ -708,6 +708,9 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     clearDraft();
     setForm((prev) => ({
       ...baseInitialForm,
+      creadoPorId: prev.creadoPorId,
+      clienteId: prev.clienteId,
+      empresaId: canManageAll ? null : prev.empresaId,
       selectedLocalityId: canChooseLocality ? null : prev.selectedLocalityId,
     }));
     setFromSection(undefined);
@@ -727,7 +730,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     setShowFromOpts(false);
     setShowToOpts(false);
     if (step >= 3) setStep(1);
-  }, [canChooseLocality, clearDraft, step, clearTornoMedicion]);
+  }, [canChooseLocality, canManageAll, clearDraft, step, clearTornoMedicion]);
 
   return {
     step,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { AlertTriangle, History, ShieldCheck, TriangleAlert, Wrench, X } from "lucide-react";
 import IncidentTree from "./IncidentTree";
 import NavajasPanel from "./NavajasPanel";
@@ -17,24 +17,35 @@ import { cn } from "../lib/tornoFormat";
 
 type View = "historial" | "incidentes" | "navajas";
 type Notice = { type: "success" | "error" | "info"; message: string };
+const TORNO_VIEW_STORAGE_KEY = "cosaif:torno:view";
 
 const moduleCanvasClass =
   "relative isolate -mx-4 -mt-4 min-h-svh max-w-none overflow-x-hidden bg-[var(--app-bg)] px-3 pb-6 pt-5 sm:-mx-6 sm:-mt-6 sm:px-5 sm:pb-7 md:-mx-8 md:-mt-8 md:px-6 md:py-6";
 
 export default function TornoModule({ roleHint }: { roleHint?: TornoRole }) {
-  const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
   const session = useTornoSession();
   const role = roleHint ?? session.role;
   const permissions = useMemo(() => getTornoPermissions(role), [role]);
   const [notice, setNotice] = useState<Notice | null>(null);
 
-  const initialView = normalizeView(searchParams.get("view"), permissions);
+  const initialView = normalizeView(
+    searchParams.get("view") ?? readStoredView(),
+    permissions,
+  );
   const [view, setView] = useState<View>(initialView);
 
   useEffect(() => {
-    setView(normalizeView(searchParams.get("view"), permissions));
+    const requestedView = searchParams.get("view");
+    if (requestedView) {
+      const nextView = normalizeView(requestedView, permissions);
+      setView(nextView);
+      storeView(nextView);
+      hideSearchParam("view", searchParams);
+      return;
+    }
+
+    setView((current) => normalizeView(current, permissions));
   }, [searchParams, permissions]);
 
   const historyFilters = useMemo(
@@ -47,22 +58,34 @@ export default function TornoModule({ roleHint }: { roleHint?: TornoRole }) {
 
   const history = useTornoHistory(historyFilters);
   const incidents = useTornoIncidents({ enabled: permissions.canViewIncidents && view === "incidentes" });
-  const navajas = useNavajaChanges(permissions.canViewNavajas && view === "navajas");
+  const navajaFilters = useMemo(
+    () => ({ localidadId: role === "COORDINADOR" ? session.localidadId : null }),
+    [role, session.localidadId],
+  );
+  const navajas = useNavajaChanges(permissions.canViewNavajas && view === "navajas", navajaFilters);
   const createdById = session.user?.id;
 
   const showNotice = useCallback((type: Notice["type"], message: string) => {
     setNotice({ type, message });
+    emitActivity({
+      title: type === "error" ? "Accion con error" : type === "success" ? "Accion completada" : "Aviso",
+      description: message,
+      source: "Torno",
+    });
     window.setTimeout(() => setNotice(null), 4500);
   }, []);
 
   const goView = useCallback(
     (next: View) => {
-      const params = new URLSearchParams();
-      params.set("view", next);
-      router.push(`${pathname}?${params.toString()}`);
       setView(next);
+      storeView(next);
+      emitActivity({
+        title: "Cambio de vista",
+        description: `Modulo Torno: ${viewLabel(next)}`,
+        source: "Torno",
+      });
     },
-    [pathname, router],
+    [],
   );
 
   const tornoController = useTornoController({
@@ -124,7 +147,10 @@ export default function TornoModule({ roleHint }: { roleHint?: TornoRole }) {
             onResolveParent={permissions.canResolveParentIncident ? resolveParent : undefined}
             onReopenParent={permissions.canResolveParentIncident ? reopenParent : undefined}
             onResolveChild={permissions.canResolveChildIncident ? resolveChild : undefined}
-            onNavajas={() => goView("navajas")}
+            onNavajas={() => {
+              history.closeDetail();
+              goView("navajas");
+            }}
           />
         </div>
       </section>
@@ -240,6 +266,7 @@ export default function TornoModule({ roleHint }: { roleHint?: TornoRole }) {
               permissions={permissions}
               items={navajas.items}
               meta={navajas.meta}
+              stats={navajas.stats}
               loading={navajas.loading}
               refreshing={navajas.refreshing}
               localidades={navajas.localidades}
@@ -259,6 +286,43 @@ function normalizeView(input: string | null, permissions: { canViewIncidents: bo
   if (input === "incidentes" && permissions.canViewIncidents) return "incidentes";
   if (input === "navajas" && permissions.canViewNavajas) return "navajas";
   return "historial";
+}
+
+function viewLabel(view: View) {
+  if (view === "incidentes") return "Incidentes";
+  if (view === "navajas") return "Navajas";
+  return "Servicios";
+}
+
+function readStoredView() {
+  if (typeof window === "undefined") return null;
+  return window.sessionStorage.getItem(TORNO_VIEW_STORAGE_KEY);
+}
+
+function storeView(view: View) {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.setItem(TORNO_VIEW_STORAGE_KEY, view);
+}
+
+function hideSearchParam(paramName: string, searchParams: ReturnType<typeof useSearchParams>) {
+  if (typeof window === "undefined" || !searchParams.has(paramName)) return;
+  const nextParams = new URLSearchParams(searchParams.toString());
+  nextParams.delete(paramName);
+  const nextSearch = nextParams.toString();
+  const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
+  window.history.replaceState(window.history.state, "", nextUrl);
+}
+
+function emitActivity(detail: { title: string; description?: string; source?: string }) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("cosaif:activity-event", {
+      detail: {
+        ...detail,
+        eventId: `torno-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      },
+    }),
+  );
 }
 
 function NoticeBlock({ notice, onClose }: { notice: Notice; onClose: () => void }) {

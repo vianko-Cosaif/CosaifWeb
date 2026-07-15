@@ -110,15 +110,15 @@ function formatTorreonRef(snapshot: unknown, fallbackPrefix: string, id: unknown
 
 function formatTorreonVia(movimiento: UnknownRecord, prefix: "Origen" | "Destino") {
   const key = prefix === "Origen" ? "Origen" : "Destino";
-  const via = formatTorreonRef(movimiento[`via${key}NombreSnapshot`], "Via", movimiento[`via${key}Id`]);
-  const seccion = formatTorreonRef(movimiento[`seccion${key}NombreSnapshot`], "Seccion", movimiento[`seccion${key}Id`]);
+  const via = formatTorreonRef(movimiento[`via${key}NombreSnapshot`], "Vía", movimiento[`via${key}Id`]);
+  const seccion = formatTorreonRef(movimiento[`seccion${key}NombreSnapshot`], "Sección", movimiento[`seccion${key}Id`]);
   if (via && seccion) return `${via} / ${seccion}`;
   return via || seccion || null;
 }
 
 function formatTorreonZona(viaId: unknown, seccionId: unknown) {
-  const via = formatTorreonRef(null, "Via", viaId);
-  const seccion = formatTorreonRef(null, "Seccion", seccionId);
+  const via = formatTorreonRef(null, "Vía", viaId);
+  const seccion = formatTorreonRef(null, "Sección", seccionId);
   if (via && seccion) return `${via} / ${seccion}`;
   return via || seccion || null;
 }
@@ -181,7 +181,7 @@ function mapTorreonIncidente(input: UnknownRecord) {
 
   return {
     id: asNumber(input.id) ?? input.id,
-    descripcion: cleanText(input.motivo) || (isArrastre ? "Incidente de arrastre Torreon" : "Incidente Torreon"),
+    descripcion: cleanText(input.motivo) || (isArrastre ? "Incidente de arrastre Torreón" : "Incidente de ronda natural en Torreón"),
     motivo: cleanText(input.motivo),
     solucion: cleanText(input.solucion),
     estado: cleanText(input.estado) || "ABIERTO",
@@ -204,7 +204,7 @@ function mapTorreonIncidente(input: UnknownRecord) {
     fotos,
     usuario: {
       id: asNumber(input.creadoPorId),
-      nombre: input.creadoPorId ? `Usuario ${input.creadoPorId}` : "Torreon",
+      nombre: input.creadoPorId ? `Usuario ${input.creadoPorId}` : "Torreón",
     },
     resueltoPor: input.resueltoPorId
       ? {
@@ -249,7 +249,7 @@ function getTorreonSearchParams(req: NextRequest, cookieStore: Awaited<ReturnTyp
   const cookieEmpresaId = readEmpresaId(cookieStore);
   const cookieLocalidadId = readLocalidadId(cookieStore);
 
-  const localidadId = incoming.get("localidadId") || (cookieLocalidadId ? String(cookieLocalidadId) : "");
+  const localidadId = incoming.get("localidadId") || (role === "ADMINISTRADOR" ? "" : cookieLocalidadId ? String(cookieLocalidadId) : "");
   if (localidadId) params.set("localidadId", localidadId);
 
   const estado = incoming.get("estado");

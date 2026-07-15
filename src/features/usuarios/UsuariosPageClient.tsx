@@ -60,8 +60,12 @@ export default function UsuariosPageClient({
   const [statusTarget, setStatusTarget] = useState<UserData>();
   const [toasts, setToasts] = useState<Toast[]>([]);
   const abortRef = useRef<AbortController | undefined>(undefined);
+  const requestVersionRef = useRef(0);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(() => () => {
+    requestVersionRef.current += 1;
+    abortRef.current?.abort();
+  }, []);
 
   const actorRole = String(sessionRole || getCookie("role")).trim().toUpperCase();
   const actorLocalidadId = Number(sessionLocalidadId ?? getCookie("locId") ?? Number.NaN);
@@ -99,6 +103,8 @@ export default function UsuariosPageClient({
   }, []);
 
   const load = useCallback(async () => {
+    const requestVersion = requestVersionRef.current + 1;
+    requestVersionRef.current = requestVersion;
     setLoading(true);
     setErr(undefined);
     abortRef.current?.abort();
@@ -117,6 +123,8 @@ export default function UsuariosPageClient({
         fetchJSON<unknown>(`${apiBase}/empresas`, { signal: controller.signal }).catch(() => []),
         fetchJSON<unknown>(`${apiBase}/localidades`, { signal: controller.signal }).catch(() => []),
       ]);
+      if (controller.signal.aborted || requestVersion !== requestVersionRef.current) return;
+
       const loadedUsers = readCollection<UserData>(list, ["usuarios"]);
       setUsuarios(
         isCoordinator
@@ -129,12 +137,16 @@ export default function UsuariosPageClient({
       setEmpresas(readCollection<Empresa>(emps, ["empresas"]));
       setLocalidades(readCollection<Localidad>(locs, ["localidades"]));
     } catch (error) {
+      if (controller.signal.aborted || requestVersion !== requestVersionRef.current) return;
+
       const message = error instanceof Error ? error.message : "Error al cargar datos";
       setErr(message);
       setUsuarios([]);
       addToast("error", message);
     } finally {
-      setLoading(false);
+      if (requestVersion === requestVersionRef.current) {
+        setLoading(false);
+      }
     }
   }, [actorLocalidadId, addToast, apiBase, isCoordinator]);
 

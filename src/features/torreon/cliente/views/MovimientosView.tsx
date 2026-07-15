@@ -66,9 +66,9 @@ export function MovimientosView({
 }: Props) {
   const editableSolicitudIds = useMemo(() => visibleArrastres.filter(canReorderSolicitud).map((arrastre) => arrastre.id), [visibleArrastres]);
   return (
-    <section className="w-full overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 text-slate-900 shadow-xl shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:shadow-black/30">
+    <section className="w-full overflow-x-hidden overflow-y-visible rounded-2xl border border-slate-200/80 bg-white/95 text-slate-900 shadow-xl shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:shadow-black/30">
       <div className="flex min-h-[calc(100svh-7rem)] flex-col gap-5 px-3 py-4 sm:px-5 sm:py-6 lg:px-7">
-        <ModuleHeader title="Movimientos" chip={ambito === "actuales" ? "Actuales" : "Pasados"} total={visibleArrastres.length} icon={TrainFront} />
+        <ModuleHeader title="Seguimiento de arrastres" subtitle="Solicitudes, turnos y avance" chip={ambito === "actuales" ? "Activos" : "Historial"} total={visibleArrastres.length} icon={TrainFront} />
         <div className="h-px bg-gradient-to-r from-transparent via-emerald-300/40 to-transparent" />
         {feedback}
         <MovimientoToolbar
@@ -92,8 +92,8 @@ export function MovimientosView({
             rows={visibleArrastres}
             dailyCounters={dailyCounters}
             busyAction={busyAction}
-            title="Terminal de rondas"
-            subtitle="Cola operativa"
+            title={ambito === "actuales" ? "Solicitudes activas" : "Historial de arrastres"}
+            subtitle={ambito === "actuales" ? "Seguimiento" : "Operaciones anteriores"}
             pageSize={6}
             editableSolicitudIds={editableSolicitudIds}
             canPrioritizeByIncident={canPrioritizeByIncident}
@@ -106,8 +106,8 @@ export function MovimientosView({
           />
         ) : (
           <EmptyState
-            text={ambito === "actuales" ? "No hay rondas activas" : "No hay rondas pasadas"}
-            hint={search ? "Ajusta la busqueda o cambia de pestana" : "Cuando se soliciten arrastres apareceran aqui"}
+            text={ambito === "actuales" ? "No tienes arrastres activos" : "No hay arrastres en el historial"}
+            hint={search ? "Ajusta la búsqueda o cambia de pestaña" : "Crea una solicitud para comenzar el seguimiento"}
           />
         )}
       </div>

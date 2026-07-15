@@ -64,8 +64,8 @@ function LocalidadSwitch({
     <section className="mb-4 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/90">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Operacion</p>
-          <h1 className="mt-1 text-xl font-bold text-slate-950 dark:text-white">Entidad operativa</h1>
+          <p className="text-xs font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Seguimiento</p>
+          <h1 className="mt-1 text-xl font-bold text-slate-950 dark:text-white">Localidad que deseas consultar</h1>
         </div>
         <div className="flex max-w-full flex-wrap gap-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
           <button
@@ -165,7 +165,7 @@ export default function CoordinatorMovimientosPageClient({
   if (!isAdmin && !assignedLocalidadId) {
     return (
       <section className="mx-auto w-full max-w-[900px] rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm font-medium text-amber-900">
-        Tu usuario no tiene una localidad asignada. Vuelve a iniciar sesion o solicita que se configure tu localidad.
+        Tu usuario no tiene una localidad asignada. Vuelve a iniciar sesión o solicita que se configure tu localidad.
       </section>
     );
   }
@@ -205,6 +205,7 @@ export default function CoordinatorMovimientosPageClient({
                 key={`arrastres-${activeLocalidadId}`}
                 localidadId={activeLocalidadId}
                 variant="movimientos"
+                rol={rol}
               />
             )}
           </div>

@@ -53,7 +53,7 @@ export function ClientMovementGuideProvider({ children }: { children: ReactNode 
         }
 
         if (action.eventName === "guide:navigate-create-movement") {
-          router.push("/movimientos/crear");
+          window.location.assign("/movimientos/crear");
         }
       };
 

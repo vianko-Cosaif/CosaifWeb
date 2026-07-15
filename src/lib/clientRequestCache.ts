@@ -9,6 +9,7 @@ type CachedFetchOptions = {
   ttlMs?: number;
   force?: boolean;
   key?: string;
+  timeoutMs?: number;
 };
 
 const responseCache = new Map<string, CacheEntry>();
@@ -72,7 +73,11 @@ export async function cachedFetchJson<T>(
   if (!pending) {
     const sharedInit = { ...init };
     delete sharedInit.signal;
-    pending = fetch(url, sharedInit)
+    const controller = new AbortController();
+    const timeoutMs = Math.max(1_000, options.timeoutMs ?? 12_000);
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+    pending = fetch(url, { ...sharedInit, signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
           const message = await response.text().catch(() => "");
@@ -85,6 +90,7 @@ export async function cachedFetchJson<T>(
         return data;
       })
       .finally(() => {
+        window.clearTimeout(timeoutId);
         pendingRequests.delete(key);
       });
     pendingRequests.set(key, pending);

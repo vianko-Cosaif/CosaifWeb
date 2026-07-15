@@ -31,6 +31,23 @@ const requiredFirebaseValues = [
 
 let firebaseAppInstance: FirebaseApp | undefined;
 let messagingSupportPromise: Promise<boolean> | undefined;
+let notificationTokenPromise: Promise<string | undefined> | undefined;
+let tokenRegistrationPromise: Promise<void> | undefined;
+let tokenRegistrationKey: string | undefined;
+let lastRegisteredTokenKey: string | undefined;
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} excedió el tiempo de espera`)), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
 
 function hasValue(value: string | undefined) {
   return Boolean(value && !value.startsWith("TU_"));
@@ -100,8 +117,10 @@ async function getFirebaseMessagingServiceWorker() {
   const policy = getNotificationRuntimePolicy();
   const serviceWorkerUrl = `${FIREBASE_MESSAGING_SW_URL}?runtime=${encodeURIComponent(policy.runtimeEnv)}&appEnv=${encodeURIComponent(policy.appEnv)}`;
 
-  const existingRegistration = await navigator.serviceWorker.getRegistration(
-    FIREBASE_MESSAGING_SW_SCOPE
+  const existingRegistration = await withTimeout(
+    navigator.serviceWorker.getRegistration(FIREBASE_MESSAGING_SW_SCOPE),
+    6_000,
+    "Firebase Service Worker"
   );
 
   if (existingRegistration) {
@@ -109,9 +128,13 @@ async function getFirebaseMessagingServiceWorker() {
     return existingRegistration;
   }
 
-  return navigator.serviceWorker.register(serviceWorkerUrl, {
-    scope: FIREBASE_MESSAGING_SW_SCOPE,
-  });
+  return withTimeout(
+    navigator.serviceWorker.register(serviceWorkerUrl, {
+      scope: FIREBASE_MESSAGING_SW_SCOPE,
+    }),
+    8_000,
+    "Registro de Firebase Service Worker"
+  );
 }
 
 export async function getFirebaseMessaging(): Promise<Messaging | undefined> {
@@ -128,7 +151,7 @@ export async function getFirebaseMessaging(): Promise<Messaging | undefined> {
   return getMessaging(app);
 }
 
-export async function requestFirebaseNotificationToken(options: { requestPermission?: boolean } = {}): Promise<string | undefined> {
+async function createFirebaseNotificationToken(options: { requestPermission?: boolean }): Promise<string | undefined> {
   if (typeof window === "undefined") return undefined;
   if (!("Notification" in window)) return undefined;
   const policy = getNotificationRuntimePolicy();
@@ -159,12 +182,26 @@ export async function requestFirebaseNotificationToken(options: { requestPermiss
     return undefined;
   }
 
-  const token = await getToken(messaging, {
-    vapidKey,
-    serviceWorkerRegistration,
-  });
+  const token = await withTimeout(
+    getToken(messaging, {
+      vapidKey,
+      serviceWorkerRegistration,
+    }),
+    12_000,
+    "Token de Firebase"
+  );
 
   return token;
+}
+
+export function requestFirebaseNotificationToken(options: { requestPermission?: boolean } = {}): Promise<string | undefined> {
+  if (notificationTokenPromise) return notificationTokenPromise;
+
+  const pending = createFirebaseNotificationToken(options).finally(() => {
+    if (notificationTokenPromise === pending) notificationTokenPromise = undefined;
+  });
+  notificationTokenPromise = pending;
+  return pending;
 }
 
 export async function registerFirebaseNotificationToken(
@@ -192,17 +229,44 @@ export async function registerFirebaseNotificationToken(
   if (accessToken) body.accessToken = accessToken;
   if (activeLocalidadId) body.localidadId = activeLocalidadId;
 
-  const response = await fetch("/api/fcm/register", {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+  const registrationKey = `${token}:${activeLocalidadId ?? "global"}:${policy.runtimeEnv}:${policy.appEnv}`;
+  if (lastRegisteredTokenKey === registrationKey) return;
+  if (tokenRegistrationPromise && tokenRegistrationKey === registrationKey) {
+    return tokenRegistrationPromise;
+  }
+
+  tokenRegistrationKey = registrationKey;
+  const registration = (async () => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10_000);
+    let response: Response;
+
+    try {
+      response = await fetch("/api/fcm/register", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+
+    if (!response.ok) {
+      const details = await response.text().catch(() => "");
+      throw new Error(`No se pudo registrar token FCM (${response.status}) ${details}`);
+    }
+    lastRegisteredTokenKey = registrationKey;
+  })().finally(() => {
+    if (tokenRegistrationPromise === registration) {
+      tokenRegistrationPromise = undefined;
+      tokenRegistrationKey = undefined;
+    }
   });
 
-  if (!response.ok) {
-    const details = await response.text().catch(() => "");
-    throw new Error(`No se pudo registrar token FCM (${response.status}) ${details}`);
-  }
+  tokenRegistrationPromise = registration;
+  return registration;
 }
 
 export async function syncFirebaseNotificationLocalidad(localidadId?: number | string) {

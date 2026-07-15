@@ -460,8 +460,8 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
   }, []);
 
   const handleNuevo = useCallback(() => {
-    router.push("/movimientos/crear");
-  }, [router]);
+    window.location.assign("/movimientos/crear");
+  }, []);
 
   /* ================== RENDER ================== */
 
@@ -474,7 +474,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
         bg-[var(--app-surface)]
         text-[var(--app-text)]
         shadow-[var(--app-shadow-sm)]
-        overflow-hidden
+        overflow-x-hidden overflow-y-visible
         touch-manipulation
       "
     >
@@ -574,7 +574,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
               bg-[var(--app-surface)]
               px-1 py-1.5 sm:px-3 sm:py-3 lg:px-4 lg:py-4
               flex flex-col
-              overflow-hidden
+              overflow-x-hidden overflow-y-visible
               shadow-sm
             "
           >

@@ -13,7 +13,7 @@ export const metadata: Metadata = {
     default: "Cosaif",
     template: "%s | Cosaif",
   },
-  description: "Operaci�n ferroviaria sin fricci�n",
+  description: "Operación ferroviaria sin fricción",
   applicationName: "Cosaif",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
@@ -69,7 +69,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             Saltar al contenido
           </a>
 
-          <main id="main">{children}</main>
+          {children}
           <FirebaseNotificationPrompt />
           <PwaInstallPrompt />
         </ClientMovementGuideProvider>

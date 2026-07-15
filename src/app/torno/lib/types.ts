@@ -252,6 +252,30 @@ export type TornoNavajaChange = {
   original?: unknown;
 };
 
+export type TornoNavajaStats = {
+  totalCambios: number;
+  concluidos: number;
+  pendientes: number;
+  cambiosUltimos30Dias: number;
+  navajasDistintas: number;
+  navajasConfiguradas: number;
+  coberturaNavajas: number;
+  conEvidencia: number;
+  coberturaEvidencia: number;
+  primeraFechaCambio?: string | null;
+  ultimaFechaCambio?: string | null;
+  topNavajas: Array<{
+    localidadId: string | number;
+    numeroNavaja: number;
+    total: number;
+    ultimaFechaCambio?: string | null;
+  }>;
+  tendenciaMensual: Array<{
+    periodo: string;
+    total: number;
+  }>;
+};
+
 export type TornoLocalidadLite = {
   id: string | number;
   nombre: string;

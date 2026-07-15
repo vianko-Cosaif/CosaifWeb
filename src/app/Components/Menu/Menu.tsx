@@ -30,6 +30,7 @@ import { ClientMovementGuideButton } from "@/app/Components/GuidedManualAtom/Cli
 import { buildNavigationForRole, isNavigationItemActive, type AppNavigationItem } from "@/lib/appNavigation";
 import { getRoleClient } from "@/lib/cookies";
 import { getRoleCapabilities, normalizeAppRole, type AppRole, type NavModuleId } from "@/lib/accessControl";
+import { clearAuthenticatedSession } from "@/lib/sessionLogout";
 
 /* ==========================================================================
    INTERFACES & TYPES
@@ -77,15 +78,15 @@ const HELP_GUIDE_CATALOG: HelpSuggestion[] = [
   },
   {
     id: "client-guide-button-flow",
-    label: "Wizard del boton Guia",
-    description: "Mismo flujo del boton Guia: acompana al cliente desde Movimientos hasta confirmar la solicitud.",
+    label: "Wizard del botón Guía",
+    description: "Mismo flujo del botón Guía: acompaña al cliente desde Movimientos hasta confirmar la solicitud.",
     keywords: ["guia", "boton", "wizard", "cliente", "movimiento", "paso", "confirmar"],
     roles: ["CLIENTE"],
     action: "client-create-movement",
   },
   {
     id: "create-movement-torno",
-    label: "Como crear un movimiento con torno",
+    label: "Cómo crear un movimiento con torno",
     description: "Asistente para el flujo con mediciones de ruedas, PDF y cierre del movimiento.",
     keywords: ["movimiento", "torno", "ruedas", "medicion", "pdf", "calendarizar", "wizard"],
     action: "legacy-create-movement-torno",
@@ -190,6 +191,8 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpQuery, setHelpQuery] = useState("");
   const [session, setSession] = useState<UserSession | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
   const [mounted, setMounted] = useState(false);
   const helpPanelRef = useRef<HTMLDivElement | null>(null);
 
@@ -333,13 +336,28 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
       icon: NAV_ICONS[item.id],
     }));
   }, [appRole, capabilities.isClientLike]);
+  const mobileNavigation = useMemo(() => {
+    const preferred = [
+      navigation.find((item) => item.id === "dashboard"),
+      navigation.find((item) => item.id === "torreon_arrastres") ?? navigation.find((item) => item.id === "movimientos"),
+      navigation.find((item) => item.id === "incidentes") ?? navigation.find((item) => item.id === "reporteria"),
+    ].filter((item): item is NavigationItem => Boolean(item));
+    return preferred.filter((item, index) => preferred.findIndex((candidate) => candidate.id === item.id) === index);
+  }, [navigation]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT";
-    document.cookie = "role=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT";
-    router.replace("/login");
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    setLogoutError("");
+
+    try {
+      await clearAuthenticatedSession();
+      router.replace("/login");
+      router.refresh();
+    } catch {
+      setLogoutError("No se pudo cerrar la sesión. Inténtalo de nuevo.");
+      setLoggingOut(false);
+    }
   };
 
   if (!mounted) return null;
@@ -403,12 +421,13 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
       {/* MOBILE TRIGGER */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="fixed left-4 top-[calc(env(safe-area-inset-top)+1rem)] z-40 flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-sm transition-colors hover:bg-[var(--app-surface-muted)] active:scale-95 md:hidden"
+        className="fixed left-4 top-[calc(env(safe-area-inset-top)+1rem)] z-40 flex h-11 items-center justify-center gap-2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 shadow-sm transition-colors hover:bg-[var(--app-surface-muted)] active:scale-95 md:hidden"
         aria-label="Abrir menú"
         aria-expanded={mobileOpen}
         aria-controls="cosaif-sidebar"
       >
         <MenuIcon className="h-5 w-5 text-[var(--app-text-muted)]" />
+        <span className="text-sm font-black text-[var(--app-text)]">COSAIF</span>
       </button>
 
       {/* MOBILE OVERLAY */}
@@ -422,6 +441,34 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
           setHelpOpen(false);
         }}
       />
+
+      {!mobileOpen ? (
+        <nav aria-label="Navegación principal" className="fixed inset-x-3 bottom-[max(.75rem,env(safe-area-inset-bottom))] z-40 grid grid-cols-4 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[var(--app-shadow-md)] md:hidden">
+          {mobileNavigation.map((item) => {
+            const active = isNavigationItemActive(pathname, item);
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => router.push(item.href)}
+                className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-black transition ${active ? "bg-[var(--app-accent-soft)] text-[var(--app-accent)]" : "text-[var(--app-text-muted)]"}`}
+                aria-current={active ? "page" : undefined}
+              >
+                <item.icon className="h-5 w-5" aria-hidden />
+                <span className="max-w-full truncate">{item.label}</span>
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-black text-[var(--app-text-muted)] transition hover:bg-[var(--app-surface-muted)]"
+          >
+            <MenuIcon className="h-5 w-5" aria-hidden />
+            Más
+          </button>
+        </nav>
+      ) : null}
 
       {/* SIDEBAR CONTAINER */}
       <aside
@@ -571,9 +618,9 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
                 aria-label="Panel de ayuda"
               >
                 <div className="border-b border-[var(--app-border)] px-4 py-3">
-                  <p className="text-sm font-semibold text-[var(--app-text)]">Asistente de guias</p>
+                  <p className="text-sm font-semibold text-[var(--app-text)]">Asistente de guías</p>
                   <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">
-                    Busca un proceso y lanza la guia o wizard correspondiente.
+                    Busca un proceso y lanza la guía o wizard correspondiente.
                   </p>
                 </div>
                 <div className="px-4 py-5">
@@ -611,7 +658,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
                       ))
                     ) : (
                       <div className="rounded-xl border border-dashed border-[var(--app-border)] bg-[var(--app-surface-subtle)] px-3 py-4 text-xs text-[var(--app-text-muted)]">
-                        No encontre una guia con esa busqueda. Intenta con movimiento, torno o PDF.
+                        No encontré una guía con esa búsqueda. Intenta con movimiento, torno o PDF.
                       </div>
                     )}
                   </div>
@@ -645,6 +692,11 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
             </div>
           </div>
           {/* LOGOUT + VERSION */}
+          {logoutError && showExpandedSidebar ? (
+            <p role="alert" className="mb-2 text-xs leading-5 text-rose-600 dark:text-rose-300">
+              {logoutError}
+            </p>
+          ) : null}
           <div className={cn("flex items-center", isOpen ? "justify-between" : "flex-col gap-3 justify-center")}>
             {(isOpen || mobileOpen) && (
               <span className="select-none font-mono text-[10px] text-[var(--app-text-soft)]">
@@ -654,15 +706,17 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
 
             <button
               onClick={handleLogout}
+              disabled={loggingOut}
               className={cn(
-                "group flex items-center gap-2 rounded-lg p-2 text-[var(--app-text-muted)] transition-colors hover:bg-rose-50 hover:text-rose-600 active:scale-95 dark:hover:bg-rose-950/30 dark:hover:text-rose-300",
+                "group flex items-center gap-2 rounded-lg p-2 text-[var(--app-text-muted)] transition-colors hover:bg-rose-50 hover:text-rose-600 active:scale-95 disabled:cursor-wait disabled:opacity-60 dark:hover:bg-rose-950/30 dark:hover:text-rose-300",
                 !isOpen && !mobileOpen && "justify-center"
               )}
-              title="Cerrar Sesión"
+              title={loggingOut ? "Cerrando sesión" : "Cerrar sesión"}
+              aria-busy={loggingOut}
             >
               <LogOut className="h-5 w-5 transition-transform group-hover:-translate-x-0.5" />
               {(isOpen || mobileOpen) && (
-                <span className="text-sm font-medium">Salir</span>
+                <span className="text-sm font-medium">{loggingOut ? "Saliendo…" : "Salir"}</span>
               )}
             </button>
           </div>

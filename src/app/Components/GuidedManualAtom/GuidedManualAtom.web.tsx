@@ -590,11 +590,12 @@ export const GuidedManualProvider = ({
   useEffect(() => {
     if (!isOpen) return;
     const previous = document.body.style.overflow;
-    document.body.style.overflow = currentStep?.mode === 'wizard' ? previous : 'hidden';
+    const hasTrackedTarget = Boolean(currentStep?.targetId || currentStep?.selector);
+    document.body.style.overflow = currentStep?.mode === 'wizard' || hasTrackedTarget ? previous : 'hidden';
     return () => {
       document.body.style.overflow = previous;
     };
-  }, [currentStep?.mode, isOpen]);
+  }, [currentStep?.mode, currentStep?.selector, currentStep?.targetId, isOpen]);
 
   useEffect(() => {
     if (currentIndex >= manualSteps.length && manualSteps.length > 0) {
@@ -1393,7 +1394,13 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
     : null;
 
   return (
-    <div data-guided-manual-overlay="true" style={overlayStyle}>
+    <div
+      data-guided-manual-overlay="true"
+      style={overlayStyle}
+      onWheel={isWizardStep ? undefined : handleBlockedWheel}
+      onTouchStart={isWizardStep ? undefined : handleBlockedTouchStart}
+      onTouchMove={isWizardStep ? undefined : handleBlockedTouchMove}
+    >
 
       {globalDisableAppElements && globalDisableAppElements.length > 0 && (
         <style>
@@ -1424,7 +1431,7 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
       {targetRect && <div style={getGuidedManualAtomWebJsx0Style(s, highlightStyle)} />}
       <div
         ref={panelRef}
-        onWheel={handleBlockedWheel}
+        onWheel={isWizardStep ? handleBlockedWheel : undefined}
         style={getGuidedManualAtomWebJsx1Style(s, {
           ...panelStyle,
           background: tone.panelBg,

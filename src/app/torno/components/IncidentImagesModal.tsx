@@ -78,7 +78,7 @@ export default function IncidentImagesModal({
           </button>
         </header>
 
-        <main className="relative min-h-0 flex-1 overflow-hidden bg-slate-950">
+        <div className="relative min-h-0 flex-1 overflow-hidden bg-slate-950">
           {current ? (
             <div className="grid h-full w-full place-items-center p-3 sm:p-6">
               <div className="h-full max-h-full w-full max-w-7xl overflow-hidden rounded-md border border-white/10 bg-slate-900 shadow-2xl shadow-black/40">
@@ -119,7 +119,7 @@ export default function IncidentImagesModal({
               </button>
             </>
           )}
-        </main>
+        </div>
 
         {safeImages.length > 1 && (
           <footer className="shrink-0 overflow-x-auto border-t border-white/10 bg-slate-950/90 px-3 py-3">

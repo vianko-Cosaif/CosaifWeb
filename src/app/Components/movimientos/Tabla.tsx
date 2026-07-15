@@ -449,7 +449,7 @@ function TablaInner({
 
   return (
     <div className="flex h-full w-full flex-col space-y-3 sm:space-y-4 font-sans">
-      <div className="relative w-full overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-sm transition-all">
+      <div className="relative w-full overflow-x-hidden overflow-y-visible rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-sm transition-all">
         {/* Loader Overlay */}
         {cargando && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-[2px] transition-opacity duration-300 dark:bg-slate-950/60">
@@ -463,7 +463,7 @@ function TablaInner({
         )}
 
         {/* Mobile/Tablet cards */}
-        <div className="xl:hidden px-2 py-3 space-y-3">
+        <div className="touch-pan-y space-y-3 px-2 py-3 xl:hidden">
           {!tieneFilas ? (
             <div className="py-10 text-center">
               <div className="mx-auto w-fit rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 p-5">

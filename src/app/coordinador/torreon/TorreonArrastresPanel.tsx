@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
   ClipboardList,
+  ArrowRight,
+  AlertTriangle,
   Hash,
   RefreshCw,
   Search,
@@ -38,6 +40,7 @@ import {
   type Arrastre,
   type ArrastreFechaCampo,
   type ArrastreStatus,
+  type VagonArrastre,
   type VagonStatusFilter,
 } from "@/features/torreon/arrastres";
 import { useRealtimeBoardRefresh } from "@/app/hooks/useRealtimeBoardRefresh";
@@ -47,11 +50,13 @@ import TorreonIncidentDetailModal, { type TorreonIncidentDetail } from "./Torreo
 
 type Props = {
   localidadId: number;
-  variant?: "dashboard" | "movimientos";
+  variant?: "summary" | "dashboard" | "movimientos";
   embedded?: boolean;
+  onOpen?: () => void;
+  rol?: "ADMINISTRADOR" | "COORDINADOR";
 };
 
-export default function TorreonArrastresPanel({ localidadId, variant = "dashboard", embedded = false }: Props) {
+export default function TorreonArrastresPanel({ localidadId, variant = "dashboard", embedded = false, onOpen, rol = "COORDINADOR" }: Props) {
   const [arrastres, setArrastres] = useState<Arrastre[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -72,6 +77,7 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
   } | null>(null);
   const [resolvingIncident, setResolvingIncident] = useState(false);
   const [priorityBusyId, setPriorityBusyId] = useState<number | null>(null);
+  const [busyVagonKey, setBusyVagonKey] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
 
   const load = useCallback(async (showRefresh = false) => {
@@ -90,16 +96,16 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
       };
 
       const [activeData, historyData] = await Promise.all([
-        fetch(buildUrl("activos", variant === "dashboard" ? 80 : 160), {
+        fetch(buildUrl("activos", variant === "movimientos" ? 160 : 80), {
           cache: "no-store",
           credentials: "include",
         }).then((response) => response.json()).catch(() => []),
-        variant === "dashboard"
-          ? Promise.resolve([])
-          : fetch(buildUrl("historial", 160), {
+        variant === "movimientos"
+          ? fetch(buildUrl("historial", 160), {
               cache: "no-store",
               credentials: "include",
-            }).then((response) => response.json()).catch(() => []),
+            }).then((response) => response.json()).catch(() => [])
+          : Promise.resolve([]),
       ]);
 
       setArrastres(sortArrastres([
@@ -179,7 +185,7 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
 
   const todayKey = localDateKey(new Date());
   const dashboardArrastres = useMemo(() => arrastres.filter(isLiveArrastre), [arrastres]);
-  const metricRows = variant === "dashboard" ? dashboardArrastres : arrastres;
+  const metricRows = variant === "movimientos" ? arrastres : dashboardArrastres;
   const dailyCounters = useMemo(() => buildDailyCounters(arrastres), [arrastres]);
 
   const stats = useMemo(() => {
@@ -205,7 +211,7 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
   const visible = useMemo(() => {
     const from = desde ? Date.parse(desde) : null;
     const to = hasta ? Date.parse(hasta) : null;
-    return (variant === "dashboard" ? dashboardArrastres : arrastres)
+    return (variant === "movimientos" ? arrastres : dashboardArrastres)
       .filter((arrastre) => status === "TODOS" || normalizeStatus(arrastre.estado) === status)
       .filter((arrastre) => (
         vagonStatus === "TODOS" ||
@@ -238,7 +244,7 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
   const dashboardRows = useMemo(() => activeRows.slice(0, 8), [activeRows]);
 
   const selectedRows = variant === "movimientos" && scope === "pasados" ? historyRows : activeRows;
-  const rows = variant === "dashboard" ? dashboardRows : selectedRows;
+  const rows = variant === "movimientos" ? selectedRows : dashboardRows;
   const selectedMode: "active" | "history" = variant === "movimientos" && scope === "pasados" ? "history" : "active";
   const scopeOptions = useMemo(() => [
     { value: "actuales" as const, label: "Actuales", count: activeRows.length },
@@ -247,11 +253,11 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const paginatedRows = useMemo(() => {
-    if (variant === "dashboard") return rows;
+    if (variant !== "movimientos") return rows;
     const start = (safePage - 1) * pageSize;
     return rows.slice(start, start + pageSize);
   }, [pageSize, rows, safePage, variant]);
-  const headerCount = variant === "dashboard" ? rows.length : selectedRows.length;
+  const headerCount = variant === "movimientos" ? selectedRows.length : rows.length;
 
   const applyToday = (field: ArrastreFechaCampo) => {
     const now = new Date();
@@ -314,28 +320,86 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
     }
   }, [load]);
 
+  const operateVagon = useCallback(async (action: "INICIAR_VAGON" | "FINALIZAR_VAGON", arrastre: Arrastre, vagon: VagonArrastre) => {
+    const key = `${arrastre.id}:${vagon.id}`;
+    setBusyVagonKey(key);
+    setActionMessage(null);
+    try {
+      const response = await fetch("/api/cliente/torreon/arrastres/action", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, arrastreId: arrastre.id, vagonId: vagon.id }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof data?.error === "string" ? data.error : "No se pudo actualizar el vagón");
+      setActionMessage({ type: "ok", text: action === "INICIAR_VAGON" ? "Vagón iniciado. La cola ya está actualizada." : "Vagón finalizado. Se mostró el siguiente pendiente." });
+      await load(true);
+    } catch (error) {
+      setActionMessage({ type: "error", text: error instanceof Error ? error.message : "No se pudo actualizar el vagón" });
+    } finally {
+      setBusyVagonKey(null);
+    }
+  }, [load]);
+
+  if (variant === "summary") {
+    const attention = stats.detenidos + stats.incidentesAbiertos;
+    return (
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
+              <ClipboardList className="h-5 w-5" aria-hidden />
+            </span>
+            <div>
+              <p className="text-xs font-black uppercase tracking-wide text-slate-400">Operación actual</p>
+              <h2 className="mt-1 text-xl font-black text-slate-950 dark:text-white">Arrastres</h2>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Solicitudes y vagones que esperan atención.</p>
+            </div>
+          </div>
+          <TorreonRealtimeBadge status={realtimeStatus} />
+        </div>
+
+        <div className="mt-5 grid grid-cols-3 gap-2">
+          <SummaryValue label="En espera" value={stats.solicitados} />
+          <SummaryValue label="En movimiento" value={stats.proceso} />
+          <SummaryValue label="Por atender" value={attention} alert={attention > 0} />
+        </div>
+
+        <button
+          type="button"
+          onClick={onOpen}
+          className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-emerald-700 dark:bg-white dark:text-slate-950 dark:hover:bg-emerald-300"
+        >
+          Ver cola de arrastres
+          <ArrowRight className="h-4 w-4" aria-hidden />
+        </button>
+      </section>
+    );
+  }
+
   return (
     <section className={embedded ? "min-w-0" : "overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"}>
       {!embedded ? <div className="border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950 sm:px-5">
         <ModuleHeader
-          eyebrow="Torreon"
-          title={variant === "dashboard" ? "Arrastres activos" : "Arrastres"}
-          subtitle={variant === "dashboard" ? `Cola viva · ${fmtDateKey(todayKey)}` : "Consulta operativa e historial de arrastres"}
+          eyebrow="Torreón"
+          title={variant === "dashboard" ? "Cola de arrastres" : "Seguimiento de arrastres"}
+          subtitle={variant === "dashboard" ? `Operación actual · ${fmtDateKey(todayKey)}` : "Solicitudes activas e historial"}
           icon={ClipboardList}
           actions={
             <>
-              {variant === "dashboard" ? <TorreonRealtimeBadge status={realtimeStatus} /> : null}
+              <TorreonRealtimeBadge status={realtimeStatus} />
               <span className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
                 <Hash className="h-4 w-4 text-emerald-600" />
-                {headerCount} movimiento{headerCount === 1 ? "" : "s"}
+                {headerCount} solicitud{headerCount === 1 ? "" : "es"}
             </span>
-            <Button
+            {realtimeStatus !== "connected" ? <Button
               onClick={() => load(true)}
               loading={refreshing}
               leftIcon={<RefreshCw className="h-4 w-4" aria-hidden />}
               >
-                Actualizar
-              </Button>
+                Reintentar
+              </Button> : null}
             </>
           }
         />
@@ -357,15 +421,15 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
                   <Hash className="h-3.5 w-3.5 text-emerald-600" />
                   {headerCount} registro{headerCount === 1 ? "" : "s"}
                 </span>
-                <Button
+                {realtimeStatus !== "connected" ? <Button
                   type="button"
                   variant="secondary"
                   onClick={() => load(true)}
                   loading={refreshing}
                   leftIcon={<RefreshCw className="h-4 w-4" aria-hidden />}
                 >
-                  Actualizar
-                </Button>
+                  Reintentar
+                </Button> : null}
               </div>
             </div>
             <SearchInput
@@ -513,8 +577,8 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
               </h3>
               <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                 {selectedMode === "history"
-                  ? "Arrastres concluidos y cancelados."
-                  : "Arrastres solicitados, en proceso o detenidos."}
+                  ? "Arrastres finalizados y cancelados."
+                  : "Arrastres en espera, en movimiento o pausados."}
               </p>
             </div>
             <span className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
@@ -542,6 +606,9 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
               busyArrastreId={priorityBusyId}
               canPrioritizeByIncident={hasOpenIncidentInQueue}
               onPrioritizeArrastre={selectedMode === "active" ? prioritizeArrastre : undefined}
+              busyVagonKey={busyVagonKey}
+              onStartVagon={rol === "COORDINADOR" && selectedMode === "active" ? (arrastre, vagon) => operateVagon("INICIAR_VAGON", arrastre, vagon) : undefined}
+              onFinishVagon={rol === "COORDINADOR" && selectedMode === "active" ? (arrastre, vagon) => operateVagon("FINALIZAR_VAGON", arrastre, vagon) : undefined}
               onIncidentSelect={(incident, arrastre) => setSelectedIncident({
                 arrastreId: arrastre.id,
                 incident,
@@ -551,7 +618,7 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
             />
           ) : (
             <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-slate-200 text-sm font-semibold text-slate-500 dark:border-slate-700 dark:text-slate-400">
-              {selectedMode === "history" ? "Sin arrastres pasados para mostrar." : "Sin arrastres vivos para mostrar."}
+              {selectedMode === "history" ? "No hay arrastres en el historial." : "No hay arrastres activos en este momento."}
             </div>
           )}
         </div>
@@ -577,5 +644,17 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
         />
       )}
     </section>
+  );
+}
+
+function SummaryValue({ label, value, alert = false }: { label: string; value: number; alert?: boolean }) {
+  return (
+    <div className={`rounded-xl border p-3 ${alert ? "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30" : "border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950"}`}>
+      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400">
+        {alert ? <AlertTriangle className="h-3.5 w-3.5 text-amber-600" aria-hidden /> : null}
+        {label}
+      </div>
+      <p className="mt-1 text-2xl font-black tabular-nums text-slate-950 dark:text-white">{value}</p>
+    </div>
   );
 }

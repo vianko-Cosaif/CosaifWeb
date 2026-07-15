@@ -9,16 +9,18 @@ import {
   type Ronda,
   type RondaInfo,
 } from "@/features/rail-queue";
+import { operationStatusLabel } from "@/features/torreon/operationCopy";
 import type { MovimientoNatural } from "../types";
 
 type Props = {
   rows: MovimientoNatural[];
   loading: boolean;
   error: string | null;
+  realtimeConnected?: boolean;
   onRefresh: () => void;
 };
 
-export function TorreonNaturalRailBoard({ rows, loading, error, onRefresh }: Props) {
+export function TorreonNaturalRailBoard({ rows, loading, error, realtimeConnected = false, onRefresh }: Props) {
   const { items, info } = adaptTorreonQueue(rows);
   const current = items[0];
   const currentInfo = current ? info[current.id] : undefined;
@@ -33,20 +35,22 @@ export function TorreonNaturalRailBoard({ rows, loading, error, onRefresh }: Pro
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-2 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-            LIVE
+            <span className={`h-2 w-2 rounded-full bg-emerald-500 ${realtimeConnected ? "animate-pulse" : ""}`} />
+            {realtimeConnected ? "Actualizado en vivo" : "Actualización manual"}
           </span>
           <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Rondas naturales de Torreón</span>
         </div>
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={loading}
-          className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} aria-hidden />
-          Actualizar
-        </button>
+        {!realtimeConnected ? (
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={loading}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} aria-hidden />
+            {loading ? "Actualizando…" : "Actualizar"}
+          </button>
+        ) : null}
       </div>
 
       <div className={S.section}>
@@ -60,13 +64,9 @@ export function TorreonNaturalRailBoard({ rows, loading, error, onRefresh }: Pro
           <div className={S.leftCol}>
             <div className={S.leftHeader}>
               <div>
-                <h2 className={S.title}>Tablero de Rondas</h2>
-                <div className={S.subtitle}>Orden Actual · Current Move</div>
+                <h2 className={S.title}>Orden de rondas</h2>
+                <div className={S.subtitle}>Movimiento que se atiende ahora</div>
               </div>
-              <button type="button" onClick={onRefresh} disabled={loading} className={S.refreshPill}>
-                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} aria-hidden />
-                {loading ? "Actualizando..." : "Actualizar"}
-              </button>
             </div>
 
             <div className={S.currentCard}>
@@ -90,14 +90,14 @@ export function TorreonNaturalRailBoard({ rows, loading, error, onRefresh }: Pro
                   </div>
 
                   <div className={S.infoGrid}>
-                    <BoardInfo icon={ArrowUpLeft} label="Via origen" value={origin} />
-                    <BoardInfo icon={ArrowDownRight} label="Via destino" value={destination} />
-                    <BoardInfo icon={Route} label="Movimiento" value={currentMovement?.prioridad || "Prioridad normal"} />
+                    <BoardInfo icon={ArrowUpLeft} label="Vía de origen" value={origin} />
+                    <BoardInfo icon={ArrowDownRight} label="Vía de destino" value={destination} />
+                    <BoardInfo icon={Route} label="Atención" value={formatPriority(currentMovement?.prioridad)} />
                   </div>
 
                   <div className={S.badgeGrid}>
-                    <BoardBadge label="Estado" value={currentMovement?.estado || "—"} />
-                    <BoardBadge label="Prioridad" value={currentMovement?.prioridad || "—"} />
+                    <BoardBadge label="Estado" value={operationStatusLabel(currentMovement?.estado)} />
+                    <BoardBadge label="Prioridad" value={formatPriority(currentMovement?.prioridad)} />
                     <BoardBadge label="Orden" value={String(current.orden)} />
                     <BoardBadge label="Ronda" value={String(current.rondaNumero)} />
                   </div>
@@ -132,7 +132,7 @@ export function TorreonNaturalRailBoard({ rows, loading, error, onRefresh }: Pro
             <div className={S.asideHeader}>
               <h3 className={S.asideTitle}>
                 <Clock3 className="h-5 w-5" aria-hidden />
-                Próximas Órdenes
+                Siguientes rondas
               </h3>
               <span className={S.asideCount}>{next.length}/5</span>
             </div>
@@ -236,8 +236,8 @@ function NextOrder({ item, info }: { item: Ronda; info: RondaInfo }) {
         <KeyValue label="Destino" value={movement.viaDestino?.nombre || "—"} />
       </div>
       <div className={S.kvGrid}>
-        <KeyValue label="Estado" value={movement.estado || "—"} strong />
-        <KeyValue label="Prioridad" value={movement.prioridad || "—"} />
+        <KeyValue label="Estado" value={operationStatusLabel(movement.estado)} strong />
+        <KeyValue label="Prioridad" value={formatPriority(movement.prioridad)} />
       </div>
       <p className={S.nextExtra}>
         <span className="font-semibold">Creado: </span>{formatBoardDate(item.createdAt ?? movement.fechaSolicitud)}
@@ -300,6 +300,10 @@ function NextSkeleton() {
 
 function formatBoardDate(value?: string | null) {
   return formatDateTimeMX(value, { fallback: "Sin fecha", dateStyle: "short" });
+}
+
+function formatPriority(value?: string | null) {
+  return String(value || "").toUpperCase() === "ALTA" ? "Alta" : "Normal";
 }
 
 function toPositiveNumber(value: number | string, fallback: number) {

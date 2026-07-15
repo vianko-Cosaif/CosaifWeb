@@ -25,7 +25,7 @@ export function EditVagonModal({ draft, busy, onChange, onClose, onSubmit }: Pro
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <EditField label="Numero" value={draft.numeroVagon} onChange={(value) => onChange({ numeroVagon: value })} placeholder="Numero de vagon" />
+          <EditField label="Número de vagón *" value={draft.numeroVagon} onChange={(value) => onChange({ numeroVagon: value })} placeholder="Ej. FRT-204" required />
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-600">Carga</label>
             <select value={draft.carga} onChange={(event) => onChange({ carga: event.target.value as CargaVagon })} className={fieldClass()}>
@@ -52,11 +52,11 @@ export function EditVagonModal({ draft, busy, onChange, onClose, onSubmit }: Pro
   );
 }
 
-function EditField({ label, value, onChange, placeholder, numeric }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; numeric?: boolean }) {
+function EditField({ label, value, onChange, placeholder, numeric, required = false }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; numeric?: boolean; required?: boolean }) {
   return (
     <div>
       <label className="mb-1 block text-xs font-semibold text-slate-600">{label}</label>
-      <input value={value} onChange={(event) => onChange(event.target.value)} className={fieldClass()} inputMode={numeric ? "numeric" : undefined} placeholder={placeholder} />
+      <input value={value} onChange={(event) => onChange(event.target.value)} className={fieldClass()} inputMode={numeric ? "numeric" : undefined} placeholder={placeholder} required={required} />
     </div>
   );
 }

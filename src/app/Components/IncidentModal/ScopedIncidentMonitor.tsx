@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { getClientCookie, getEmpresaIdClient, getLocIdClient, getRoleClient } from "@/lib/cookies";
-import IncidentMonitor from "./IncidentMonitor";
+
+const IncidentMonitor = dynamic(() => import("./IncidentMonitor"), { ssr: false });
 
 const DEFAULT_API_BASE =
   process.env.NEXT_PUBLIC_INCIDENT_API_BASE || "/api";
@@ -37,6 +39,8 @@ export default function ScopedIncidentMonitor({
 }: ScopedIncidentMonitorProps) {
   const [empresaId, setEmpresaId] = useState<number | null>(null);
   const [localidadId, setLocalidadId] = useState<number | null>(null);
+  const [scopeReady, setScopeReady] = useState(false);
+  const [monitorReady, setMonitorReady] = useState(false);
 
   useEffect(() => {
     const refreshScope = () => {
@@ -53,17 +57,20 @@ export default function ScopedIncidentMonitor({
       if (resolvedScope === "admin") {
         setEmpresaId(null);
         setLocalidadId(null);
+        setScopeReady(true);
         return;
       }
 
       if (resolvedScope === "cliente") {
         setEmpresaId(getEmpresaIdClient());
         setLocalidadId(getStoredLocalidadId());
+        setScopeReady(true);
         return;
       }
 
       setEmpresaId(null);
       setLocalidadId(getStoredLocalidadId());
+      setScopeReady(true);
     };
 
     const onStorage = (event: StorageEvent) => {
@@ -78,6 +85,14 @@ export default function ScopedIncidentMonitor({
       window.removeEventListener("cosaif:localidad-change", refreshScope);
     };
   }, [scope]);
+
+  useEffect(() => {
+    if (!scopeReady) return;
+    const timeoutId = window.setTimeout(() => setMonitorReady(true), 900);
+    return () => window.clearTimeout(timeoutId);
+  }, [scopeReady]);
+
+  if (!scopeReady || !monitorReady) return null;
 
   return (
     <IncidentMonitor

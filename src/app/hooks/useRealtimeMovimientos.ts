@@ -274,6 +274,7 @@ async function connectStream(url: string, token: number) {
   streamState.abortController?.abort();
   const abortController = new AbortController();
   streamState.abortController = abortController;
+  const connectionTimeoutId = window.setTimeout(() => abortController.abort(), 10_000);
 
   try {
     const response = await fetch(url, {
@@ -283,6 +284,7 @@ async function connectStream(url: string, token: number) {
       cache: "no-store",
       signal: abortController.signal,
     });
+    window.clearTimeout(connectionTimeoutId);
 
     if (!response.ok) throw new Error(`Realtime SSE HTTP ${response.status}`);
     if (streamState.connectionToken !== token || !streamState.running) {
@@ -299,11 +301,12 @@ async function connectStream(url: string, token: number) {
       console.warn("[realtime] SSE cerrada:", error);
     }
   } finally {
+    window.clearTimeout(connectionTimeoutId);
     if (streamState.abortController === abortController) {
       streamState.abortController = null;
     }
     if (streamState.connectionToken === token) setRealtimeStatus("disconnected");
-    if (!abortController.signal.aborted && streamState.connectionToken === token) scheduleReconnect();
+    if (streamState.running && streamState.connectionToken === token) scheduleReconnect();
   }
 }
 
@@ -319,11 +322,20 @@ function webSocketAllowedForPage(rawUrl: string): string {
 }
 
 async function resolveWebSocketUrl(configUrl: string): Promise<string> {
-  const response = await fetch(configUrl, {
-    method: "GET",
-    credentials: "include",
-    cache: "no-store",
-  });
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 6_000);
+  let response: Response;
+
+  try {
+    response = await fetch(configUrl, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 
   if (!response.ok) throw new Error(`Realtime WS config HTTP ${response.status}`);
   const payload = (await response.json()) as { url?: string | null; transport?: string; reason?: string };

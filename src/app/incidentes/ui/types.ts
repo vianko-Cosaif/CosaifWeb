@@ -5,6 +5,9 @@ export type IncidenteRow = {
   estatus?: string;
   estadoRaw?: string;
   empresa?: string;
+  empresaId?: number | null;
+  localidad?: string;
+  localidadId?: number | null;
   locomotora?: string | number;
   origen?: string;
   destino?: string;
@@ -12,6 +15,7 @@ export type IncidenteRow = {
   usuario?: string;
   fuente?: string;
   tipoIncidente?: string;
+  fechaISO?: string;
   _original?: any;
 };
 

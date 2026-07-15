@@ -67,6 +67,27 @@ export default function PwaInstallPrompt() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    if (process.env.NODE_ENV !== "production") {
+      if ("serviceWorker" in navigator) {
+        void navigator.serviceWorker.getRegistrations().then((registrations) =>
+          Promise.all(
+            registrations
+              .filter((registration) => {
+                const scriptUrl = registration.active?.scriptURL || registration.waiting?.scriptURL || registration.installing?.scriptURL;
+                return scriptUrl ? new URL(scriptUrl).pathname === "/sw.js" : false;
+              })
+              .map((registration) => registration.unregister())
+          )
+        );
+      }
+      if ("caches" in window) {
+        void window.caches.keys().then((keys) =>
+          Promise.all(keys.filter((key) => key.startsWith("cosaif-pwa-")).map((key) => window.caches.delete(key)))
+        );
+      }
+      return;
+    }
+
     const dismissedAt = Number(window.localStorage.getItem(DISMISSED_KEY) || 0);
     const dismissedRecently = dismissedAt > 0 && Date.now() - dismissedAt < DISMISS_MS;
     setDismissed(dismissedRecently || isStandalone());

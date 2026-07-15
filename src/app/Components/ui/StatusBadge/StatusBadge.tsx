@@ -53,7 +53,22 @@ const dotClasses: Record<StatusTone, string> = {
 
 export function normalizeStatusLabel(status?: string | null) {
   const normalized = String(status || "").trim().toUpperCase();
-  return normalized ? normalized.replaceAll("_", " ") : "SIN ESTADO";
+  const labels: Record<string, string> = {
+    SOLICITADO: "En espera",
+    PENDIENTE: "Pendiente",
+    EN_PROCESO: "En movimiento",
+    PROCESO: "En movimiento",
+    DETENIDO: "Pausado",
+    BLOQUEADO: "Bloqueado",
+    CONCLUIDO: "Finalizado",
+    COMPLETADO: "Finalizado",
+    CANCELADO: "Cancelado",
+    ABIERTO: "Abierto",
+    RESUELTO: "Resuelto",
+    CERRADO: "Cerrado",
+    ACTIVO: "Activo",
+  };
+  return labels[normalized] || (normalized ? normalized.replaceAll("_", " ") : "Sin estado");
 }
 
 export function getStatusTone(status?: string | null): StatusTone {
@@ -89,7 +104,7 @@ export default function StatusBadge({
   return (
     <span
       className={cn(
-        "inline-flex w-fit items-center rounded-md border font-black uppercase tracking-[0.02em]",
+        "inline-flex w-fit items-center rounded-md border font-black tracking-[0.02em]",
         toneClasses[resolvedTone],
         sizeClasses[size],
         className

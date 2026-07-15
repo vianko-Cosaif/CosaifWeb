@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { DynamicBanner } from "@/app/Components/DynamicBanner";
 import { getClientCookie } from "@/lib/cookies";
 import { syncFirebaseNotificationLocalidad } from "@/lib/firebase";
 import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
@@ -35,12 +34,10 @@ const CoordinadorPage: React.FC = () => {
     <section className="w-full min-w-0">
       {localidadId ? (
         <div className="mx-auto w-full max-w-[1500px] min-w-0 space-y-6 sm:space-y-8">
-          <DynamicBanner />
           {isTorreonLocalidadId(localidadId) ? (
             <CoordinatorTorreonDashboard
               key={localidadId}
               localidadId={localidadId}
-              showBanner={false}
             />
           ) : (
             <RailQueueBoard key={localidadId} localidadId={localidadId} />

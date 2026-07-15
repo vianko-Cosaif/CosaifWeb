@@ -129,7 +129,7 @@ export default function EmpresaLocomotorasReport() {
       { title: "Total locomotoras", value: fmtMaybeInt(totalLocos), accent: "emerald" as const },
       { title: usuario, value: fmtMaybeInt(totalUsuario), accent: "amber" as const },
     ];
-  }, [report.resumen]);
+  }, [report.resumen, report.usuarioObjetivo]);
 
   return (
     <div className="space-y-6">
@@ -234,7 +234,7 @@ export default function EmpresaLocomotorasReport() {
           </div>
         </aside>
 
-        <main className="space-y-6 min-w-0">
+        <div className="space-y-6 min-w-0">
           <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-sm">
             <div className="flex flex-wrap gap-2">
               {(["resumen", "movimientos", "jesus"] as TabKey[]).map((k) => (
@@ -310,7 +310,7 @@ export default function EmpresaLocomotorasReport() {
           <div className="text-xs text-slate-400">
             {report.fetchedAt ? `Actualizado: ${report.fetchedAt.toLocaleString("es-MX")}` : "Sin carga inicial"}
           </div>
-        </main>
+        </div>
       </div>
     </div>
   );

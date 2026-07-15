@@ -47,7 +47,7 @@ function RailWorker({ mode }: { mode: "walking" | "chasing" }) {
 
 export default function NotFound() {
   return (
-    <main className={`${styles.center} ${ubuntu.className}`}>
+    <main id="main" tabIndex={-1} className={`${styles.center} ${ubuntu.className}`}>
       <div className={styles.skyGlow} aria-hidden />
       <div className={styles.stars} aria-hidden />
 

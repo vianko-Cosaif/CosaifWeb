@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { buildArrastreFolio, buildDailyCounters, type Arrastre, type IncidenteArrastre, type VagonArrastre } from "@/features/torreon/arrastres";
+import {
+  ARRASTRE_MAX_CAPACITY,
+  ARRASTRE_MIN_VAGONES,
+  arrastreVagonCapacity,
+  buildArrastreFolio,
+  buildDailyCounters,
+  type Arrastre,
+  type IncidenteArrastre,
+  type VagonArrastre,
+} from "@/features/torreon/arrastres";
 import {
   CrearView,
   DashboardView,
@@ -21,6 +30,7 @@ import {
   type Ambito,
   type ClienteArrastreIncidentRow,
   type EditVagonDraft,
+  type OperationalVia,
   type TorreonPanelView,
   type VagonDraft,
 } from "@/features/torreon/cliente";
@@ -79,6 +89,9 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
   const [ambito, setAmbito] = useState<Ambito>("actuales");
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("");
+  const [operationalVias, setOperationalVias] = useState<OperationalVia[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [editingVagon, setEditingVagon] = useState<EditVagonDraft | null>(null);
   const [selectedIncident, setSelectedIncident] = useState<{
     incident: TorreonIncidentDetail;
@@ -170,6 +183,63 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (view !== "crear") return;
+    let alive = true;
+    setCatalogLoading(true);
+    setCatalogError(null);
+
+    fetch(`/api/torreon/arrastre-catalogo?localidadId=${localidadId}`, {
+      cache: "no-store",
+      credentials: "include",
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(String(payload?.message || payload?.error || "No se pudo cargar el catálogo de vías de Arrastre"));
+        return normalizeArray<{
+          id?: number;
+          numero?: number;
+          nombre?: string;
+          ocupada?: boolean;
+          secciones?: Array<{ id?: number; numero?: number; nombre?: string | null; ocupada?: boolean }>;
+        }>(payload);
+      })
+      .then((rows) => {
+        if (!alive) return;
+        const vias = rows
+          .map((via) => ({
+            id: Number(via.id),
+            numero: Number(via.numero) || 0,
+            nombre: String(via.nombre || `Vía ${via.numero || ""}`).trim(),
+            ocupada: Boolean(via.ocupada),
+            secciones: (Array.isArray(via.secciones) ? via.secciones : [])
+              .map((section) => ({
+                id: Number(section.id),
+                numero: Number(section.numero) || 0,
+                nombre: String(section.nombre || `Sección ${section.numero || ""}`).trim(),
+                ocupada: Boolean(section.ocupada),
+              }))
+              .filter((section) => Number.isFinite(section.id) && section.id > 0),
+          }))
+          .filter((via) => Number.isFinite(via.id) && via.id > 0 && via.nombre)
+          .sort((left, right) => left.numero - right.numero || left.nombre.localeCompare(right.nombre, "es-MX"));
+        setOperationalVias(vias);
+        if (!vias.length) setCatalogError("El administrador aún no ha configurado las vías del patio de Arrastre de Torreón.");
+      })
+      .catch((error) => {
+        if (!alive) return;
+        setOperationalVias([]);
+        setCatalogError(error instanceof Error ? error.message : "No se pudo cargar el catálogo de vías de Arrastre");
+      })
+      .finally(() => {
+        if (alive) setCatalogLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [localidadId, view]);
+
   const realtimeStatus = useRealtimeBoardRefresh({
     enabled: canViewArrastres,
     realtimeLocalidadId: localidadId,
@@ -231,16 +301,21 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
   }, [arrastres]);
 
   const draftCapacity = useMemo(() => (
-    draftVagones.reduce((total, vagon) => total + (vagon.carga === "LLENO" ? 2 : 1), 0)
+    draftVagones.reduce((total, vagon) => total + arrastreVagonCapacity(vagon.carga), 0)
   ), [draftVagones]);
 
   function updateDraftVagon(tempId: number, patch: Partial<VagonDraft>) {
-    setDraftVagones((prev) => prev.map((vagon) => vagon.tempId === tempId ? { ...vagon, ...patch } : vagon));
+    setDraftVagones((prev) => {
+      const next = prev.map((vagon) => vagon.tempId === tempId ? { ...vagon, ...patch } : vagon);
+      const nextCapacity = next.reduce((total, vagon) => total + arrastreVagonCapacity(vagon.carga), 0);
+      return nextCapacity <= ARRASTRE_MAX_CAPACITY ? next : prev;
+    });
   }
 
   function addDraftVagon() {
     setDraftVagones((prev) => {
-      if (prev.length >= 8) return prev;
+      const currentCapacity = prev.reduce((total, vagon) => total + arrastreVagonCapacity(vagon.carga), 0);
+      if (prev.length >= ARRASTRE_MAX_CAPACITY || currentCapacity >= ARRASTRE_MAX_CAPACITY) return prev;
       const nextId = Math.max(0, ...prev.map((vagon) => vagon.tempId)) + 1;
       return [...prev, makeVagonDraft(nextId)];
     });
@@ -319,6 +394,12 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
     if (!editingVagon) return;
     setMessage(null);
 
+    const numeroVagon = editingVagon.numeroVagon.trim();
+    if (!numeroVagon) {
+      setMessage({ type: "error", text: "El número de vagón es obligatorio" });
+      return;
+    }
+
     const viaOrigen = editingVagon.viaOrigenId?.trim() || "";
     const seccionOrigen = editingVagon.seccionOrigenId?.trim() || "";
     const viaDestino = editingVagon.viaId.trim();
@@ -355,7 +436,7 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
           action: "EDITAR_VAGON",
           arrastreId: editingVagon.arrastreId,
           vagonId: editingVagon.vagonId,
-          numeroVagon: editingVagon.numeroVagon.trim() || undefined,
+          numeroVagon,
           carga: editingVagon.carga,
           viaOrigen,
           seccionOrigen,
@@ -385,28 +466,54 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
       return;
     }
 
-    const vagones = draftVagones.map((vagon) => ({
-      numeroVagon: vagon.numeroVagon.trim() || undefined,
-      carga: vagon.carga,
-      viaOrigen: vagon.viaOrigenId.trim(),
-      seccionOrigen: vagon.seccionOrigenId.trim(),
-      viaDestino: vagon.viaId.trim(),
-      seccionDestino: vagon.seccionId.trim(),
-    }));
-
-    if (vagones.some((vagon) => (
-      !vagon.viaOrigen ||
-      !vagon.seccionOrigen ||
-      !vagon.viaDestino ||
-      !vagon.seccionDestino
-    ))) {
-      setMessage({ type: "error", text: "Cada vagon necesita origen y destino con via/seccion" });
+    if (draftVagones.length < ARRASTRE_MIN_VAGONES) {
+      setMessage({ type: "error", text: "Agrega al menos un vagón" });
       return;
     }
 
-    const capacidad = vagones.reduce((total, vagon) => total + (vagon.carga === "LLENO" ? 2 : 1), 0);
-    if (capacidad > 8) {
-      setMessage({ type: "error", text: "Capacidad excedida: lleno cuenta 2, vacio cuenta 1, maximo 8" });
+    const vagones = draftVagones.map((vagon) => {
+      const viaOrigen = operationalVias.find((via) => via.id === Number(vagon.viaOrigenId));
+      const seccionOrigen = viaOrigen?.secciones.find((section) => section.id === Number(vagon.seccionOrigenId));
+      const viaDestino = operationalVias.find((via) => via.id === Number(vagon.viaId));
+      const seccionDestino = viaDestino?.secciones.find((section) => section.id === Number(vagon.seccionId));
+      return {
+        numeroVagon: vagon.numeroVagon.trim(),
+        carga: vagon.carga,
+        viaOrigenId: viaOrigen?.id,
+        seccionOrigenId: seccionOrigen?.id,
+        viaId: viaDestino?.id,
+        seccionId: seccionDestino?.id,
+        viaOrigenNombre: viaOrigen?.nombre,
+        seccionOrigenNombre: seccionOrigen?.nombre,
+        viaDestinoNombre: viaDestino?.nombre,
+        seccionDestinoNombre: seccionDestino?.nombre,
+      };
+    });
+
+    if (vagones.some((vagon) => !vagon.numeroVagon)) {
+      setMessage({ type: "error", text: "Captura el número de cada vagón antes de continuar." });
+      return;
+    }
+
+    const normalizedNumbers = vagones.map((vagon) => vagon.numeroVagon.toLocaleUpperCase("es-MX"));
+    if (new Set(normalizedNumbers).size !== normalizedNumbers.length) {
+      setMessage({ type: "error", text: "No repitas el mismo número de vagón dentro de la solicitud." });
+      return;
+    }
+
+    if (vagones.some((vagon) => (
+      !vagon.viaOrigenId ||
+      !vagon.seccionOrigenId ||
+      !vagon.viaId ||
+      !vagon.seccionId
+    ))) {
+      setMessage({ type: "error", text: "Selecciona origen y destino del catálogo exclusivo del patio de Arrastre." });
+      return;
+    }
+
+    const capacidad = vagones.reduce((total, vagon) => total + arrastreVagonCapacity(vagon.carga), 0);
+    if (capacidad > ARRASTRE_MAX_CAPACITY) {
+      setMessage({ type: "error", text: "Capacidad excedida: lleno cuenta 2, vacío cuenta 1, máximo 8" });
       return;
     }
 
@@ -640,6 +747,7 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
             dailyCounters={dailyCounters}
             loading={loading}
             refreshing={refreshing}
+            audience={arrastreOnly ? "arrastre" : "cliente"}
             onMovimientos={() => router.push("/cliente/torreon/movimientos")}
             onCrear={() => router.push("/cliente/torreon/crear")}
             onRefresh={() => load(true)}
@@ -684,6 +792,9 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
             draftVagones={draftVagones}
             draftCapacity={draftCapacity}
             busyAction={busyAction}
+            vias={operationalVias}
+            catalogLoading={catalogLoading}
+            catalogError={catalogError}
             onRefresh={() => load(true)}
             onGoMovimientos={() => router.push("/cliente/torreon/movimientos")}
             onInstruccionesChange={setInstrucciones}

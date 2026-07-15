@@ -281,7 +281,7 @@ export default function RailQueueBoardPage({
   );
 
   return (
-    <main ref={boardRef} className={S.main}>
+    <div ref={boardRef} className={S.main}>
       {/* TOASTS */}
       <div className={S.toastsWrap}>
         <div className={S.toastsList}>
@@ -750,7 +750,7 @@ export default function RailQueueBoardPage({
           </div>
         </div>
       )}
-    </main>
+    </div>
   );
 }
 

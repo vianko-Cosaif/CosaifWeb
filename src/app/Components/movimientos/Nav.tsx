@@ -3,7 +3,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import type { Ambito } from "./useMovimientos";
-import { Search, RefreshCw, Plus, X, Clock } from "lucide-react";
+import { RefreshCw, Plus, Clock } from "lucide-react";
 import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import Button from "@/app/Components/ui/Button";
 import SearchInput from "@/app/Components/ui/SearchInput";
@@ -15,6 +15,7 @@ export interface NavMovimientosProps {
   estaCargando?: boolean;
   contadores?: { actuales: number; pasados: number };
   puedeCrear?: boolean;
+  realtimeConnected?: boolean;
   onCambiarAmbito: (nuevo: Ambito) => void;
   onBuscar: (texto: string) => void;
   onToggleAuto: (activo: boolean) => void;
@@ -31,6 +32,7 @@ export default function Nav({
   estaCargando = false,
   contadores,
   puedeCrear = false,
+  realtimeConnected = false,
   onCambiarAmbito,
   onBuscar,
   onToggleAuto,
@@ -80,19 +82,25 @@ export default function Nav({
           <TabBoton
             activo={ambito === "actuales"}
             onClick={() => onCambiarAmbito("actuales")}
-            etiqueta="Actuales"
+            etiqueta="Activos"
             conteo={totalActuales}
           />
           <TabBoton
             activo={ambito === "pasados"}
             onClick={() => onCambiarAmbito("pasados")}
-            etiqueta="Pasados"
+            etiqueta="Historial"
             conteo={totalPasados}
           />
         </div>
 
         {/* Controls */}
         <div className="flex items-center gap-2 sm:gap-2 justify-between sm:justify-end">
+          {realtimeConnected ? (
+            <span className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/35 dark:text-emerald-300">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              Al día
+            </span>
+          ) : <>
           <label className="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-slate-500 dark:text-slate-400 group min-h-[44px] sm:min-h-0 px-2 touch-manipulation">
             <div className="relative">
               <input
@@ -122,6 +130,7 @@ export default function Nav({
           >
             <span className="hidden sm:inline">{estaCargando ? "Actualizando…" : "Actualizar"}</span>
           </Button>
+          </>}
 
           {puedeCrear && (
             <GuidedTarget id="movimientos-new-button" className="inline-flex">
@@ -135,7 +144,7 @@ export default function Nav({
                   disabled={estaCargando}
                   leftIcon={<Plus size={18} aria-hidden />}
                 >
-                  <span>Nuevo</span>
+                  <span>Nuevo movimiento</span>
                 </Button>
               </GuidedTarget>
             </GuidedTarget>

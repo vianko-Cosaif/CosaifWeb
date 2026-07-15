@@ -3,6 +3,11 @@ export type CatalogWarning = {
   message: string;
 };
 
+export type CatalogCompany = {
+  id: number;
+  nombre: string;
+};
+
 export type CatalogSection = {
   id: number;
   numero: number;
@@ -42,6 +47,8 @@ export type TrackDraft = {
   numero: number;
   nombre: string;
   secciones: number;
+  minimumSections?: number;
+  occupiedSections?: number;
 };
 
 export type LocationPayload = {
@@ -51,8 +58,18 @@ export type LocationPayload = {
     estado: string;
   };
   vias: TrackDraft[];
+  viasEliminadas: number[];
   torno: {
     configurar: boolean;
     cantidadNavajas: number;
   };
+};
+
+export type LocationSaveResult = {
+  localidad: {
+    id: number;
+    nombre: string;
+    estado: string;
+  };
+  warnings: CatalogWarning[];
 };

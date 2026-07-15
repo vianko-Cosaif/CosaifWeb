@@ -347,6 +347,17 @@ export default function IncidentMonitor({
   });
 
   const activeCount = Array.isArray(activeIncidents) ? activeIncidents.length : 0;
+  const showLegacyMonitorWidget = false;
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("cosaif:incident-monitor-status", {
+      detail: {
+        activeCount,
+        connected: isMonitoring && !error,
+        lastCheck: lastCheck?.toISOString() ?? null,
+      },
+    }));
+  }, [activeCount, error, isMonitoring, lastCheck]);
 
   const scheduleRealtimeIncidentCheck = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -550,7 +561,7 @@ export default function IncidentMonitor({
         />
       )}
 
-      {!isMobile && (
+      {showLegacyMonitorWidget && !isMobile && (
         <div className="fixed inset-0 pointer-events-none z-[1040]" ref={constraintsRef}>
           <motion.div
             drag
@@ -639,7 +650,7 @@ export default function IncidentMonitor({
         </div>
       )}
 
-      {isMobile && (
+      {showLegacyMonitorWidget && isMobile && (
         <>
           <button
             type="button"

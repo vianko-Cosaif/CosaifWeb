@@ -24,16 +24,33 @@ function mergeHeaders(...sets: (HeadersInit | undefined)[]): Headers {
 
 async function fetchWithTimeout(url: string, init: RequestInit = {}) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let timedOut = false;
+  const abortFromCaller = () => {
+    controller.abort(init.signal?.reason ?? new DOMException("La solicitud fue cancelada.", "AbortError"));
+  };
+
+  if (init.signal?.aborted) abortFromCaller();
+  else init.signal?.addEventListener("abort", abortFromCaller, { once: true });
+
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort(new DOMException("La solicitud excedió el tiempo de espera.", "TimeoutError"));
+  }, FETCH_TIMEOUT_MS);
   try {
     return await fetch(url, {
       ...init,
-      signal: init.signal ?? controller.signal,
+      signal: controller.signal,
       credentials: "include",
       cache: "no-store",
     });
+  } catch (error) {
+    if (timedOut) {
+      throw new Error("La solicitud tardó demasiado. Intenta nuevamente.");
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
+    init.signal?.removeEventListener("abort", abortFromCaller);
   }
 }
 

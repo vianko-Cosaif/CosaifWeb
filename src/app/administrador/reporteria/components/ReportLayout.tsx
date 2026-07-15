@@ -146,13 +146,13 @@ export default function ReportLayout({
           localidades={filters.localidades}
         />
 
-        <main className="space-y-6">
+        <div className="space-y-6">
           <TabsBar tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
           {children}
           <div className="text-xs text-[var(--muted)]">
             {fetchedAt ? `Actualizado: ${fetchedAt.toLocaleString("es-MX")}` : "Sin carga inicial"}
           </div>
-        </main>
+        </div>
       </div>
 
       <style jsx global>{`

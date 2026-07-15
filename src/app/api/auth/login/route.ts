@@ -1,5 +1,4 @@
 import "server-only";
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 const JWT  = process.env.JWT_COOKIE_NAME  ?? "token";
@@ -36,10 +35,4 @@ export async function POST(req: Request) {
   }
 
   return res;
-}
-
-// Ejemplo de lectura (solo lectura)
-export async function GET() {
-  const c = await cookies();
-  return NextResponse.json({ token: c.get(JWT)?.value ?? null });
 }

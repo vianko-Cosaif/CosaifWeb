@@ -2,7 +2,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import RailQueueBoardAdmin from "./RailQueueBoardAdmin";
-import { DynamicBanner } from "@/app/Components/DynamicBanner";
 
 export const dynamic = "force-dynamic";
 
@@ -14,11 +13,10 @@ export default async function Page() {
   if (role !== "ADMINISTRADOR") redirect("/");
 
   return (
-    <main className="min-h-svh md:min-h-dvh bg-slate-50 dark:bg-neutral-950">
-      <section className="mx-auto w-full max-w-screen-2xl px-4 sm:px-6 md:px-8 lg:px-12 xl:px-16 2xl:px-20 py-6 sm:py-8 md:py-12 lg:py-16 pt-[calc(env(safe-area-inset-top)+1rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)]">
-        <DynamicBanner className="mb-6" />
+    <div className="min-h-svh md:min-h-dvh bg-slate-50 dark:bg-neutral-950">
+      <section className="mx-auto w-full max-w-screen-2xl px-2 py-2 sm:px-4 sm:py-4 lg:px-6">
         <RailQueueBoardAdmin />
       </section>
-    </main>
+    </div>
   );
 }

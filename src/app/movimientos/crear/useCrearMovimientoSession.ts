@@ -17,15 +17,32 @@ import type { UserSession } from "./controller.types";
  * - Envia movimientos.
  */
 
-const COMPANY_MANAGER_ROLES = ["ADMINISTRADOR", "COORDINADOR"];
+const COMPANY_MANAGER_ROLES = ["ADMINISTRADOR"];
 const LOCALITY_MANAGER_ROLES = ["ADMINISTRADOR"];
 type StoredUser = {
   id?: number;
   rol?: string;
   role?: string;
   empresaId?: number | null;
+  localidadId?: number | null;
   empresa?: { id?: number; nombre?: string } | null;
 };
+
+function firstPositiveNumber(...values: unknown[]) {
+  for (const value of values) {
+    const numberValue = Number(value);
+    if (Number.isFinite(numberValue) && numberValue > 0) return numberValue;
+  }
+  return null;
+}
+
+export function readNumericCookieClient(...names: string[]) {
+  for (const name of names) {
+    const value = firstPositiveNumber(Movimiento.getCookie(name));
+    if (value != null) return value;
+  }
+  return NaN;
+}
 
 function readUserFromStorage(storage: Storage | null): StoredUser | null {
   if (!storage) return null;
@@ -97,9 +114,9 @@ export function useCrearMovimientoSession(setForm: Dispatch<SetStateAction<Movem
     const role = getRoleClient();
     setRol(role);
 
-    const locCookie = Number(Movimiento.getCookie("locId") || NaN);
-    const empCookie = Number(Movimiento.getCookie("empresaId") || NaN);
-    const userIdCookie = Number(Movimiento.getCookie("userId") || NaN);
+    const locCookie = readNumericCookieClient("locId", "localidadId");
+    const empCookie = readNumericCookieClient("empresaId", "empId");
+    const userIdCookie = readNumericCookieClient("userId", "uid");
 
     const u = readStoredUserClient();
 
@@ -109,20 +126,16 @@ export function useCrearMovimientoSession(setForm: Dispatch<SetStateAction<Movem
     const canChooseCompany = COMPANY_MANAGER_ROLES.includes(String(role).toUpperCase());
     const canChooseAssignedLocality = LOCALITY_MANAGER_ROLES.includes(String(role).toUpperCase());
 
-    const resolvedUserId = Number.isFinite(Number(u?.id))
-      ? Number(u?.id)
-      : (Number.isFinite(userIdCookie) ? userIdCookie : null);
+    const resolvedUserId = firstPositiveNumber(u?.id, userIdCookie);
+    const resolvedEmpresaId = firstPositiveNumber(u?.empresaId, u?.empresa?.id, empCookie);
+    const resolvedLocalidadId = firstPositiveNumber(u?.localidadId, locCookie);
 
     const base: MovementFormData = {
       ...baseInitialForm,
       creadoPorId: resolvedUserId,
       clienteId: resolvedUserId,
-      empresaId: canChooseCompany
-        ? null
-        : (Number.isFinite(Number(u?.empresaId ?? u?.empresa?.id))
-          ? Number(u?.empresaId ?? u?.empresa?.id)
-          : (Number.isFinite(empCookie) ? empCookie : null)),
-      selectedLocalityId: canChooseAssignedLocality ? null : (Number.isFinite(locCookie) ? locCookie : null),
+      empresaId: canChooseCompany ? null : resolvedEmpresaId,
+      selectedLocalityId: canChooseAssignedLocality ? null : resolvedLocalidadId,
     };
 
     setForm((prev) => ({
@@ -139,10 +152,12 @@ export function useCrearMovimientoSession(setForm: Dispatch<SetStateAction<Movem
   const enforceLockedLocality = useCallback(() => {
     setRol(getRoleClient());
     if (!canChooseLocality) {
-      const locCookie = Number(Movimiento.getCookie("locId") || NaN);
+      const locCookie = readNumericCookieClient("locId", "localidadId");
+      const storedUser = readStoredUserClient();
+      const localidadId = firstPositiveNumber(storedUser?.localidadId, locCookie);
       setForm((p) => ({
         ...p,
-        selectedLocalityId: Number.isFinite(locCookie) ? locCookie : p.selectedLocalityId,
+        selectedLocalityId: localidadId ?? p.selectedLocalityId,
       }));
     }
   }, [canChooseLocality, setForm]);

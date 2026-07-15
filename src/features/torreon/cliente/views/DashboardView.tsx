@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
-import { AlertTriangle, Boxes, CheckCircle2, FileClock, Plus, RefreshCw, TrainFront, Play } from "lucide-react";
-import { DynamicBanner } from "@/app/Components/DynamicBanner";
+import { AlertTriangle, Boxes, FileClock, Plus, RefreshCw, TrainFront, Play } from "lucide-react";
 import type { Arrastre, DailyInfo, IncidenteArrastre } from "@/features/torreon/arrastres";
 import { ArrastreTerminalTable, Metric } from "../components";
 import type { ClienteArrastreStats } from "../types";
@@ -16,6 +15,7 @@ type Props = {
   loading: boolean;
   refreshing: boolean;
   realtimeStatus: RealtimeConnectionStatus;
+  audience: "cliente" | "arrastre";
   onMovimientos: () => void;
   onCrear: () => void;
   onRefresh: () => void;
@@ -31,50 +31,77 @@ function canReorderSolicitud(arrastre: Arrastre) {
   return isArrastreEditable(arrastre.estado) && !hasVagonEnProceso(arrastre);
 }
 
-export function DashboardView({ feedback, stats, activeArrastres, dailyCounters, loading, refreshing, realtimeStatus, onMovimientos, onCrear, onRefresh, onPrioritizeSolicitud, onIncidentSelect }: Props) {
+export function DashboardView({
+  feedback,
+  stats,
+  activeArrastres,
+  dailyCounters,
+  loading,
+  refreshing,
+  realtimeStatus,
+  audience,
+  onMovimientos,
+  onCrear,
+  onRefresh,
+  onPrioritizeSolicitud,
+  onIncidentSelect,
+}: Props) {
   const editableSolicitudIds = activeArrastres.filter(canReorderSolicitud).map((arrastre) => arrastre.id);
   const hasOpenIncident = activeArrastres.some((arrastre) => (arrastre.incidentes || []).some((incident) => statusText(incident.estado) === "ABIERTO"));
 
   return (
     <>
-      <DynamicBanner />
       {feedback}
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-lg font-bold text-slate-900">Control de Patio</h1>
-            <TorreonRealtimeBadge status={realtimeStatus} />
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+        <div className="flex flex-col gap-4 border-b border-slate-200 px-4 py-5 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Torreón · Arrastres</p>
+              <TorreonRealtimeBadge status={realtimeStatus} />
+            </div>
+            <h1 className="mt-2 text-2xl font-black text-slate-950 dark:text-white">
+              {audience === "arrastre" ? "Solicita y sigue tus arrastres" : "Operación de tu empresa"}
+            </h1>
+            <p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
+              {audience === "arrastre"
+                ? "Consulta tu turno, revisa el avance de cada vagón y crea una solicitud nueva."
+                : "Revisa solicitudes activas, bloqueos y el avance de tus vagones en un solo lugar."}
+            </p>
           </div>
+
           <div className="flex flex-wrap gap-2">
-            <DashboardButton onClick={onMovimientos} icon={TrainFront}>Movimientos</DashboardButton>
-            <button type="button" onClick={onCrear} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-3 text-sm font-semibold text-white shadow-sm">
-              <Plus className="h-4 w-4" />
-              Nuevo
+            <DashboardButton onClick={onMovimientos} icon={TrainFront}>Ver seguimiento</DashboardButton>
+            <button type="button" onClick={onCrear} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-emerald-700">
+              <Plus className="h-4 w-4" aria-hidden />
+              Solicitar arrastre
             </button>
-            <button type="button" onClick={onRefresh} disabled={refreshing} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm disabled:opacity-60" title="Actualizar">
-              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-            </button>
+            {realtimeStatus !== "connected" ? (
+              <button type="button" onClick={onRefresh} disabled={refreshing} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-600 shadow-sm disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200" title="Reintentar conexión">
+                <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
+                Reintentar
+              </button>
+            ) : null}
           </div>
         </div>
 
-        <div className="space-y-4 p-4">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-            <Metric icon={FileClock} label="Solicitados" value={stats.solicitados} />
-            <Metric icon={Play} label="En proceso" value={stats.proceso} />
-            <Metric icon={AlertTriangle} label="Detenidos" value={stats.detenidos} />
-            <Metric icon={CheckCircle2} label="Concluidos" value={stats.concluidos} />
+        <div className="space-y-4 p-4 sm:p-6">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Metric icon={FileClock} label="En espera" value={stats.solicitados} />
+            <Metric icon={Play} label="En movimiento" value={stats.proceso} />
+            <Metric icon={AlertTriangle} label="Pausados" value={stats.detenidos} />
             <Metric icon={Boxes} label="Vagones por mover" value={stats.pendientesVagon} />
           </div>
+
           {loading ? (
             <div className="h-72 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
           ) : (
             <ArrastreTerminalTable
               rows={activeArrastres}
               dailyCounters={dailyCounters}
-              title="Terminal de rondas"
-              subtitle="Conjuntos activos"
+              title="Seguimiento activo"
+              subtitle="Tus solicitudes"
               pageSize={5}
-              emptyText="No hay rondas activas por mover."
+              emptyText="No tienes arrastres activos. Puedes crear una solicitud nueva."
               editableSolicitudIds={editableSolicitudIds}
               canPrioritizeByIncident={hasOpenIncident}
               onPrioritizeSolicitud={onPrioritizeSolicitud}
@@ -89,8 +116,8 @@ export function DashboardView({ feedback, stats, activeArrastres, dailyCounters,
 
 function DashboardButton({ children, onClick, icon: Icon }: { children: ReactNode; onClick: () => void; icon: typeof TrainFront }) {
   return (
-    <button type="button" onClick={onClick} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm">
-      <Icon className="h-4 w-4" />
+    <button type="button" onClick={onClick} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+      <Icon className="h-4 w-4" aria-hidden />
       {children}
     </button>
   );

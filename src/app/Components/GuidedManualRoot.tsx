@@ -350,7 +350,7 @@ export default function GuidedManualRoot({ children }: { children: React.ReactNo
         }
 
         if (action.eventName === "guide:navigate-create-movement") {
-          router.push("/movimientos/crear");
+          window.location.assign("/movimientos/crear");
         }
       };
 

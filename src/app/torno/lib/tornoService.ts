@@ -14,6 +14,7 @@ import type {
   TornoMeasurePosition,
   TornoMeasures,
   TornoNavajaChange,
+  TornoNavajaStats,
   TornoPagination,
   TornoReopenPayload,
   TornoResolvePayload,
@@ -458,6 +459,12 @@ function jsonInit(method: string, body: unknown): RequestInit {
   };
 }
 
+function numberField(value?: string | number | null) {
+  if (value == null || value === "") return undefined;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
 async function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -760,6 +767,15 @@ export async function listNavajaChanges(filters: TornoFilters = {}): Promise<Tor
   return { items: rows, meta: metaFrom(raw, rows.length, page, pageSize) };
 }
 
+export async function getNavajaStats(filters: Pick<TornoFilters, "localidadId"> = {}): Promise<TornoNavajaStats> {
+  const params = new URLSearchParams();
+  if (filters.localidadId) params.set("localidadId", String(filters.localidadId));
+  const query = params.toString();
+  return firstJson<TornoNavajaStats>([
+    `${API_BASE}/torno/cambios-navaja/estadisticas${query ? `?${query}` : ""}`,
+  ]);
+}
+
 export async function createNavajaChange(payload: {
   localidadId?: string | number;
   numeroNavaja?: string | number;
@@ -773,10 +789,10 @@ export async function createNavajaChange(payload: {
     {
       url: `${API_BASE}/torno/cambios-navaja`,
       init: jsonInit("POST", {
-        localidadId: payload.localidadId,
-        numeroNavaja: payload.numeroNavaja,
+        localidadId: numberField(payload.localidadId),
+        numeroNavaja: numberField(payload.numeroNavaja),
         comentario: payload.comments,
-        creadoPorId: payload.creadoPorId,
+        creadoPorId: numberField(payload.creadoPorId),
         fechaCambio: payload.fechaCambio,
         ...images,
       }),
@@ -797,7 +813,7 @@ export async function configureNavajas(payload: { localidadId?: string | number;
     {
       url: `${API_BASE}/torno/navajas`,
       init: jsonInit("POST", {
-        localidadId: payload.localidadId,
+        localidadId: numberField(payload.localidadId),
         cantidad: payload.cantidad == null ? undefined : Number(payload.cantidad),
       }),
     },

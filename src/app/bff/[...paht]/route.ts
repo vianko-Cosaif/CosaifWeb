@@ -114,11 +114,21 @@ async function proxy(req: NextRequest) {
   const restrictedCoordinator = role === "COORDINADOR";
   let upstreamPath = req.nextUrl.pathname.replace(/^\/bff/, "");
   const searchParams = new URLSearchParams(req.nextUrl.searchParams);
+  const isCompanyWrite =
+    (upstreamPath === "/empresas" || upstreamPath.startsWith("/empresas/")) &&
+    !["GET", "HEAD"].includes(req.method);
   const isMovementPath = upstreamPath === "/movimientos" || upstreamPath.startsWith("/movimientos/");
   const isMovementListing = upstreamPath.includes("/pendientes") || upstreamPath === "/movimientos/buscar";
   const isUsersCollection = upstreamPath === "/usuarios";
   const isUsersPath = isUsersCollection || upstreamPath.startsWith("/usuarios/");
   const userTarget = upstreamPath.match(/^\/usuarios\/(\d+)(?:\/estado)?$/);
+
+  if (isCompanyWrite && role !== "ADMINISTRADOR") {
+    return NextResponse.json(
+      { message: "Solo un administrador puede gestionar empresas." },
+      { status: 403 }
+    );
+  }
 
   if (restrictedLocality && isMovementPath) {
     if (!Number.isFinite(assignedLocalidadId) || assignedLocalidadId <= 0) {

@@ -15,20 +15,20 @@ type Option = {
 const OPTIONS: Option[] = [
   {
     value: "general",
-    label: "General",
-    description: "Resumen de la operación",
+    label: "Resumen",
+    description: "Lo importante ahora",
     icon: LayoutGrid,
   },
   {
     value: "naturales",
-    label: "Naturales",
-    description: "Locomotoras y rondas",
+    label: "Rondas naturales",
+    description: "Locomotoras del patio",
     icon: TrainFront,
   },
   {
     value: "arrastres",
     label: "Arrastres",
-    description: "Solicitudes y vagones",
+    description: "Vagones y solicitudes",
     icon: Boxes,
   },
 ];

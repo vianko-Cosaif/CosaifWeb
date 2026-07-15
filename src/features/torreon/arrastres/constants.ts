@@ -19,3 +19,10 @@ export const VAGON_STATUS_OPTIONS: Array<{ value: VagonStatusFilter; label: stri
 
 export const OPERATIONAL_STATUSES = new Set(["SOLICITADO", "EN_PROCESO", "DETENIDO"]);
 export const HISTORY_STATUSES = new Set(["CONCLUIDO", "CANCELADO"]);
+
+export const ARRASTRE_MIN_VAGONES = 1;
+export const ARRASTRE_MAX_CAPACITY = 8;
+
+export function arrastreVagonCapacity(carga?: string | null) {
+  return String(carga || "VACIO").toUpperCase() === "LLENO" ? 2 : 1;
+}

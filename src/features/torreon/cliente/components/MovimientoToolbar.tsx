@@ -73,7 +73,7 @@ export function MovimientoToolbar({
             className="inline-flex min-h-[38px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-emerald-500/25 transition hover:from-emerald-600 hover:to-emerald-700"
           >
             <Plus className="h-4 w-4" />
-            Nuevo
+            Solicitar arrastre
           </button>
         </div>
       </div>
@@ -84,7 +84,7 @@ export function MovimientoToolbar({
             type="search"
             value={search}
             onChange={(event) => onSearch(event.target.value)}
-            placeholder="Buscar por arrastre, vagon, estado, via..."
+            placeholder="Buscar por folio, vagón, estado o vía..."
             className="min-h-[44px] w-full rounded-xl border border-slate-200 bg-white/90 py-2.5 pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/30"
           />
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />

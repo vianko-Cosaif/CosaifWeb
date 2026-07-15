@@ -13,36 +13,36 @@ export type AppNavigationItem = {
 
 const MODULE_COPY: Record<NavModuleId, Omit<AppNavigationItem, "id" | "href">> = {
   dashboard: {
-    label: "Dashboard",
-    description: "Resumen operativo",
+    label: "Operación",
+    description: "Qué ocurre ahora",
   },
   movimientos: {
-    label: "Movimientos",
-    description: "Movimientos naturales del patio",
+    label: "Seguimiento",
+    description: "Operaciones actuales e historial",
   },
   torreon_arrastres: {
-    label: "Arrastres",
-    description: "Solicitudes de vagones Torreon",
+    label: "Mis arrastres",
+    description: "Solicitudes y seguimiento de vagones",
   },
   torno: {
     label: "Torno",
     description: "Servicios, historial y navajas",
   },
   configuracion: {
-    label: "Configuracion",
-    description: "Localidades, vias y Torno",
+    label: "Configuración",
+    description: "Empresas y patios natural/arrastre",
   },
   usuarios: {
-    label: "Gestion Usuarios",
-    description: "Altas, roles y desactivacion",
+    label: "Usuarios",
+    description: "Altas, roles y desactivación",
   },
   incidentes: {
     label: "Incidentes",
-    description: "Bloqueos, evidencias y resolucion",
+    description: "Bloqueos, evidencias y resolución",
   },
   reporteria: {
-    label: "Reporteria",
-    description: "Indicadores y cronologia",
+    label: "Reportería",
+    description: "Indicadores y cronología",
   },
 };
 

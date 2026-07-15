@@ -70,26 +70,36 @@ export function useIncidentMonitor({
   localidadId = null,
 }: UseIncidentMonitorArgs = {}): UseIncidentMonitorReturn {
   // Estado del monitoreo
-  const [isMonitoring, setIsMonitoring] = useState(false);
+  const [isMonitoring, setIsMonitoring] = useState(enabled);
   const [lastCheck, setLastCheck] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Datos de incidentes
   const [activeIncidents, setActiveIncidents] = useState<IncidenteEmergente[]>([]);
   const [hasNewIncidents, setHasNewIncidents] = useState(false);
-  const [lastIncidentIds, setLastIncidentIds] = useState<Set<number>>(new Set());
+  const [, setLastIncidentIds] = useState<Set<number>>(new Set());
 
   // Referencias para control de requests
   const requestSeq = useRef(0);
   const isMounted = useRef(true);
+  const requestControllerRef = useRef<AbortController | null>(null);
+  const inFlightRequestRef = useRef<Promise<void> | null>(null);
+  const onIncidentDetectedRef = useRef(onIncidentDetected);
 
   const { handleFetchRequest } = useAuthErrorHandler();
 
   /* ---- Asegurar bandera de montaje correcta ---- */
   useEffect(() => {
+    onIncidentDetectedRef.current = onIncidentDetected;
+  }, [onIncidentDetected]);
+
+  useEffect(() => {
     isMounted.current = true;
     return () => {
       isMounted.current = false;
+      requestControllerRef.current?.abort();
+      requestControllerRef.current = null;
+      inFlightRequestRef.current = null;
     };
   }, []);
 
@@ -123,10 +133,13 @@ export function useIncidentMonitor({
   }, []);
 
   // Función para consultar incidentes activos
-  const checkIncidents = useCallback(async (): Promise<void> => {
+  const runIncidentCheck = useCallback(async (): Promise<void> => {
     if (!isMounted.current) return;
 
     const mySeq = ++requestSeq.current;
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+    const timeoutId = window.setTimeout(() => controller.abort(), 10_000);
     setError(null);
 
     try {
@@ -154,6 +167,7 @@ export function useIncidentMonitor({
         },
         credentials: "include",
         cache: "no-store",
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -192,8 +206,8 @@ export function useIncidentMonitor({
           // Llamar callback para cada nuevo incidente
           newIds.forEach((id) => {
             const incident = adaptedIncidents.find((inc) => inc.id === id);
-            if (incident && onIncidentDetected) {
-              onIncidentDetected(incident);
+            if (incident && onIncidentDetectedRef.current) {
+              onIncidentDetectedRef.current(incident);
             }
           });
         } else if (currentIds.size === 0) {
@@ -209,11 +223,25 @@ export function useIncidentMonitor({
       setLastCheck(new Date());
     } catch (err: any) {
       if (mySeq === requestSeq.current && isMounted.current) {
-        setError(err?.message || "Error al consultar incidentes");
-        console.error("❌ Error en useIncidentMonitor:", err);
+        const timedOut = controller.signal.aborted;
+        setError(timedOut ? "La consulta de incidentes tardó demasiado" : err?.message || "Error al consultar incidentes");
+        if (!timedOut) console.error("Error en useIncidentMonitor:", err);
       }
+    } finally {
+      window.clearTimeout(timeoutId);
+      if (requestControllerRef.current === controller) requestControllerRef.current = null;
     }
-  }, [apiBase, empresaId, localidadId, getAuthHeaders, adaptIncidente, onIncidentDetected, handleFetchRequest]);
+  }, [apiBase, empresaId, localidadId, getAuthHeaders, adaptIncidente, handleFetchRequest]);
+
+  const checkIncidents = useCallback((): Promise<void> => {
+    if (inFlightRequestRef.current) return inFlightRequestRef.current;
+
+    const pendingRequest = runIncidentCheck().finally(() => {
+      if (inFlightRequestRef.current === pendingRequest) inFlightRequestRef.current = null;
+    });
+    inFlightRequestRef.current = pendingRequest;
+    return pendingRequest;
+  }, [runIncidentCheck]);
 
   // Función para verificar ahora (manual)
   const checkNow = useCallback(async (): Promise<void> => {
@@ -230,31 +258,33 @@ export function useIncidentMonitor({
     setError(null);
   }, []);
 
-  // Iniciar monitoreo y forzar primer check inmediato (evita "nunca")
+  // Iniciar monitoreo. El efecto de monitoreo realiza una sola consulta inicial.
   const startMonitoring = useCallback(() => {
     setIsMonitoring(true);
-    // Verificación inmediata al activar monitoreo
-    Promise.resolve().then(() => checkIncidents());
-  }, [checkIncidents]);
+  }, []);
 
   // Detener monitoreo
   const stopMonitoring = useCallback(() => {
     setIsMonitoring(false);
+    requestControllerRef.current?.abort();
   }, []);
 
-  // Verificación inicial cuando está habilitado y monitoreando
+  useEffect(() => {
+    setIsMonitoring(enabled);
+  }, [enabled]);
+
+  // Una sola verificación inicial por ámbito; al cambiar de ámbito se cancela la anterior.
   useEffect(() => {
     if (enabled && isMonitoring) {
-      checkIncidents();
+      void checkIncidents();
     }
+    return () => {
+      requestSeq.current += 1;
+      requestControllerRef.current?.abort();
+      requestControllerRef.current = null;
+      inFlightRequestRef.current = null;
+    };
   }, [enabled, isMonitoring, checkIncidents]);
-
-  // Si lastCheck es null ("nunca"), dispara una verificación
-  useEffect(() => {
-    if (enabled && isMonitoring && lastCheck === null) {
-      checkIncidents();
-    }
-  }, [enabled, isMonitoring, lastCheck, checkIncidents]);
 
   // Re-verificar al recuperar foco o visibilidad (p. ej., al volver a /cliente)
   useEffect(() => {
@@ -283,13 +313,6 @@ export function useIncidentMonitor({
     },
     enabled && isMonitoring ? intervalMs : null
   );
-
-  // Auto-iniciar monitoreo si está habilitado
-  useEffect(() => {
-    if (enabled && !isMonitoring) {
-      startMonitoring();
-    }
-  }, [enabled, isMonitoring, startMonitoring]);
 
   return {
     // Estado

@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { Flag } from "lucide-react";
+import { ArrowRight, Flag, TriangleAlert } from "lucide-react";
 import Nav from "@/app/Components/movimientos/Nav";
 import Filtros from "@/app/Components/movimientos/Filtros";
 import {
@@ -35,8 +34,9 @@ const Tabla = dynamic(() => import("@/app/Components/movimientos/Tabla"), {
 type Props = {
   localidadId: number;
   apiBase?: string;
-  variant?: "dashboard" | "movimientos";
+  variant?: "summary" | "dashboard" | "movimientos";
   rol?: Extract<Rol, "ADMINISTRADOR" | "COORDINADOR">;
+  onOpen?: () => void;
 };
 
 type ExtraFilters = {
@@ -128,18 +128,6 @@ function compareMovements(a: Movement, b: Movement, field: CampoOrden, direction
   return direction === "asc" ? result : -result;
 }
 
-function formatDate(value?: string | null) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString("es-MX", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function durationMinutes(start?: string | null, end?: string | null) {
   const startAt = Date.parse(start ?? "");
   const endAt = Date.parse(end ?? "");
@@ -160,8 +148,8 @@ export default function TorreonNaturalesPanel({
   apiBase,
   variant = "movimientos",
   rol = "COORDINADOR",
+  onOpen,
 }: Props) {
-  const router = useRouter();
   const naturales = useTorreonNaturales(localidadId, apiBase);
   const setNaturalPage = naturales.setPage;
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -219,14 +207,10 @@ export default function TorreonNaturalesPanel({
   }, [ambito, filteredRows.length, naturales.loading]);
 
   const executionSummary = useMemo(() => {
-    const starts = filteredRows.map((row) => row.fechaInicio).filter((value): value is string => Boolean(value)).sort();
-    const ends = filteredRows.map((row) => row.fechaFin).filter((value): value is string => Boolean(value)).sort();
     const durations = filteredRows
       .map((row) => durationMinutes(row.fechaInicio, row.fechaFin))
       .filter((value): value is number => value !== null);
     return {
-      firstStart: starts[0] ?? null,
-      lastEnd: ends[ends.length - 1] ?? null,
       average: durations.length ? Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length) : null,
     };
   }, [filteredRows]);
@@ -246,6 +230,51 @@ export default function TorreonNaturalesPanel({
     setExtraFilters(INITIAL_EXTRA_FILTERS);
   }, [naturales]);
 
+  if (variant === "summary") {
+    const activeRows = naturales.filteredRows.filter((row) => !["CONCLUIDO", "CANCELADO"].includes(normalizeStatus(row.estado)));
+    const attention = activeRows.filter((row) => ["DETENIDO", "BLOQUEADO"].includes(normalizeStatus(row.estado)) || (row.incidentes || []).some((incident) => normalizeStatus(incident.estado) === "ABIERTO")).length;
+    return (
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+              <Flag className="h-5 w-5" aria-hidden />
+            </span>
+            <div>
+              <p className="text-xs font-black uppercase tracking-wide text-slate-400">Operación actual</p>
+              <h2 className="mt-1 text-xl font-black text-slate-950 dark:text-white">Rondas naturales</h2>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Locomotoras y movimientos del patio.</p>
+            </div>
+          </div>
+          <TorreonRealtimeBadge status={realtimeStatus} />
+        </div>
+
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
+            <p className="text-xs font-bold text-slate-500 dark:text-slate-400">Rondas activas</p>
+            <p className="mt-1 text-2xl font-black tabular-nums text-slate-950 dark:text-white">{activeRows.length}</p>
+          </div>
+          <div className={`rounded-xl border p-3 ${attention ? "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30" : "border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950"}`}>
+            <p className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400">
+              {attention ? <TriangleAlert className="h-3.5 w-3.5 text-amber-600" aria-hidden /> : null}
+              Por atender
+            </p>
+            <p className="mt-1 text-2xl font-black tabular-nums text-slate-950 dark:text-white">{attention}</p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onOpen}
+          className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-emerald-700 dark:bg-white dark:text-slate-950 dark:hover:bg-emerald-300"
+        >
+          Ver rondas naturales
+          <ArrowRight className="h-4 w-4" aria-hidden />
+        </button>
+      </section>
+    );
+  }
+
   if (variant === "dashboard") {
     return (
       <div className="space-y-2">
@@ -256,6 +285,7 @@ export default function TorreonNaturalesPanel({
           rows={naturales.filteredRows.slice(0, 8)}
           loading={naturales.loading}
           error={naturales.error}
+          realtimeConnected={realtimeStatus === "connected"}
           onRefresh={() => naturales.load(true)}
         />
       </div>
@@ -267,9 +297,9 @@ export default function TorreonNaturalesPanel({
       <div className="flex min-w-0 flex-col gap-3 px-2 py-3 sm:gap-5 sm:px-5 sm:py-6 lg:px-7 lg:py-8">
         <ModuleHeader
           icon={Flag}
-          title="Movimientos"
-          subtitle="Gestión ferroviaria"
-          badge={ambito === "actuales" ? "Actuales" : "Pasados"}
+          title="Rondas naturales"
+          subtitle="Seguimiento de locomotoras en Torreón"
+          badge={ambito === "actuales" ? "Activas" : "Historial"}
           loading={naturales.loading}
           actions={(
             <>
@@ -292,11 +322,12 @@ export default function TorreonNaturalesPanel({
             estaCargando={naturales.loading}
             contadores={counts}
             puedeCrear
+            realtimeConnected={realtimeStatus === "connected"}
             onCambiarAmbito={changeAmbito}
             onBuscar={naturales.setSearch}
             onToggleAuto={setAutoRefresh}
             onRefrescar={() => naturales.load(true)}
-            onNuevo={() => router.push(`/movimientos/crear?localidadId=${encodeURIComponent(String(localidadId))}`)}
+            onNuevo={() => window.location.assign(`/movimientos/crear?localidadId=${encodeURIComponent(String(localidadId))}`)}
           />
 
           <Filtros
@@ -331,10 +362,8 @@ export default function TorreonNaturalesPanel({
             deshabilitado={naturales.loading}
           />
 
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-2 sm:grid-cols-3">
             <KpiCard label="Total filtrado" value={filteredRows.length} compact />
-            <KpiCard label="Primer inicio visible" value={formatDate(executionSummary.firstStart)} compact />
-            <KpiCard label="Último fin visible" value={formatDate(executionSummary.lastEnd)} compact />
             <KpiCard label="Resolución promedio" value={formatDuration(executionSummary.average)} compact />
             <KpiCard
               label="Orden actual"
@@ -349,8 +378,8 @@ export default function TorreonNaturalesPanel({
             {!filteredRows.length && !naturales.loading ? (
               <DataEmptyState
                 icon={Flag}
-                title={ambito === "actuales" ? "No hay movimientos actuales" : "No hay movimientos pasados"}
-                description="Ajusta los filtros o cambia de pestaña"
+                title={ambito === "actuales" ? "No hay rondas activas" : "No hay rondas en el historial"}
+                description="Ajusta los filtros o cambia de pestaña."
                 className="min-h-[320px] border-0 bg-transparent"
               />
             ) : (

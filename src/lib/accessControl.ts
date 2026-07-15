@@ -52,7 +52,7 @@ const ROLE_LABELS: Record<AppRole, string> = {
   CLIENTE: "Cliente",
   CLIENTE_ADMIN: "Cliente admin",
   CLIENTE_COOR: "Cliente coordinador",
-  ARRASTRE_TORREON: "Arrastre Torreon",
+  ARRASTRE_TORREON: "Arrastre Torreón",
   MAQUINISTA: "Maquinista",
   MAQUINISTA_ARRASTRE: "Maquinista arrastre",
   TORNO: "Tornero",

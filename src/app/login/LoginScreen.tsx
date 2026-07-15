@@ -6,7 +6,7 @@ import { Clock3, ActivitySquare, Workflow, ShieldCheck, Cpu } from "lucide-react
 
 export default function LoginScreen() {
   return (
-    <main className="relative min-h-svh overflow-hidden bg-gradient-to-b from-emerald-50 to-sky-50 dark:from-slate-900 dark:to-slate-950">
+    <main id="main" tabIndex={-1} className="relative min-h-svh overflow-hidden bg-gradient-to-b from-emerald-50 to-sky-50 dark:from-slate-900 dark:to-slate-950">
       {/* Fondo */}
       <div className="hero-beam" />
       <div className="bg-grid pointer-events-none absolute inset-0" />
@@ -30,18 +30,19 @@ export default function LoginScreen() {
               priority
               sizes="(max-width: 1024px) 60vw, 280px"
               className="h-auto w-[200px] sm:w-[260px] md:w-[280px] motion-safe:transition-transform motion-safe:duration-300 hover:scale-[1.02]"
+              style={{ height: "auto" }}
             />
             <span className="hidden sm:inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/70 px-3 py-1 text-[11px] text-emerald-700 shadow-sm dark:border-emerald-900/50 dark:bg-slate-800/70 dark:text-emerald-200">
-              <ShieldCheck className="h-4 w-4" /> SSO corporativo
+              <ShieldCheck className="h-4 w-4" /> Acceso corporativo
             </span>
           </header>
 
           {/* Título (sin 3D) */}
-          <h1
+          <h2
             className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl bg-gradient-to-r from-sky-600 via-cyan-500 to-emerald-600 bg-clip-text text-transparent"
           >
             Operación ferroviaria 
-          </h1>
+          </h2>
 
           <p className="mt-3 text-slate-600 dark:text-slate-300">
             Control de movimientos y rondas. Visibilidad clara de punta a punta.
@@ -90,16 +91,13 @@ export default function LoginScreen() {
         <div className="order-1 lg:order-2">
           <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 shadow-xl backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/70">
             <div className="border-b border-slate-200 bg-slate-50/70 px-6 py-4 dark:border-slate-700/60 dark:bg-slate-800/60">
-              <h2 className="text-center text-lg font-semibold tracking-tight">Iniciar sesión</h2>
+              <h1 className="text-center text-lg font-semibold tracking-tight">Iniciar sesión</h1>
               <p className="text-center text-sm text-slate-600 dark:text-slate-300">Credenciales corporativas</p>
             </div>
             <div className="relative p-5 sm:p-7 md:p-8">
-              <a href="#form" className="sr-only focus:not-sr-only focus:absolute focus:left-5 focus:top-5 focus:rounded-md focus:border focus:bg-white focus:px-3 focus:py-2 focus:text-slate-900 dark:focus:bg-slate-800 dark:focus:text-slate-100">
-                Saltar al formulario
-              </a>
-              <div id="form"><LoginForm /></div>
+              <div id="login-form"><LoginForm /></div>
               <p className="mt-6 text-center text-xs text-slate-500 dark:text-slate-400">
-                Al continuar aceptas los Términos y el Aviso de Privacidad.
+                Acceso exclusivo para personal autorizado.
               </p>
             </div>
           </div>

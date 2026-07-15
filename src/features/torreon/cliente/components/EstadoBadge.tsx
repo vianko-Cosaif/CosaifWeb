@@ -1,4 +1,5 @@
 import { statusText } from "../utils";
+import { operationStatusLabel } from "@/features/torreon/operationCopy";
 
 export function EstadoBadge({ estado }: { estado?: string | null }) {
   const normalized = statusText(estado);
@@ -12,7 +13,7 @@ export function EstadoBadge({ estado }: { estado?: string | null }) {
 
   return (
     <span className={`inline-flex min-w-[92px] justify-center rounded-md border px-2 py-1 text-xs font-semibold ${tone}`}>
-      {normalized.replaceAll("_", " ")}
+      {operationStatusLabel(normalized)}
     </span>
   );
 }

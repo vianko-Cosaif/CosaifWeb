@@ -2,8 +2,23 @@ export type TorreonPanelView = "dashboard" | "movimientos" | "crear" | "incident
 export type Ambito = "actuales" | "pasados";
 export type CargaVagon = "VACIO" | "LLENO";
 
+export type OperationalSection = {
+  id: number;
+  numero: number;
+  nombre: string;
+  ocupada?: boolean;
+};
+
+export type OperationalVia = {
+  id: number;
+  numero: number;
+  nombre: string;
+  ocupada?: boolean;
+  secciones: OperationalSection[];
+};
+
 export type ActionPayload = {
-  action: "CANCELAR" | "PRIORIZAR_SOLICITUD" | "REORDENAR_VAGONES" | "REORDENAR_SOLICITUDES" | "RESOLVER_INCIDENTE";
+  action: "CANCELAR" | "PRIORIZAR_SOLICITUD" | "REORDENAR_VAGONES" | "REORDENAR_SOLICITUDES" | "RESOLVER_INCIDENTE" | "INICIAR_VAGON" | "FINALIZAR_VAGON";
   arrastreId: number;
   arrastreIds?: number[];
   vagonId?: number;

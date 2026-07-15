@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
 import { canResolveTorreonIncidentRole, canViewTorreonArrastreRole } from "@/lib/torreonLocalidad";
 import { toTorreonImageProxyUrl } from "@/lib/torreonImageProxy";
+import { ARRASTRE_MAX_CAPACITY, ARRASTRE_MIN_VAGONES, arrastreVagonCapacity } from "@/features/torreon/arrastres/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -149,15 +150,29 @@ function normalizeVagones(input: unknown) {
     .map((item) => {
       const record = item && typeof item === "object" ? item as Record<string, unknown> : {};
       const carga = String(record.carga || "VACIO").toUpperCase();
+      const viaOrigenId = asText(record.viaOrigenId);
+      const seccionOrigenId = asText(record.seccionOrigenId);
+      const viaDestinoId = asText(record.viaId, record.viaDestinoId);
+      const seccionDestinoId = asText(record.seccionId, record.seccionDestinoId);
+      const viaOrigenNombre = asText(record.viaOrigenNombre, record.viaOrigen, viaOrigenId);
+      const seccionOrigenNombre = asText(record.seccionOrigenNombre, record.seccionOrigen, seccionOrigenId);
+      const viaDestinoNombre = asText(record.viaDestinoNombre, record.viaDestino, viaDestinoId);
+      const seccionDestinoNombre = asText(record.seccionDestinoNombre, record.seccionDestino, seccionDestinoId);
       return {
-        numeroVagon: typeof record.numeroVagon === "string" && record.numeroVagon.trim()
-          ? record.numeroVagon.trim()
-          : undefined,
+        numeroVagon: typeof record.numeroVagon === "string" ? record.numeroVagon.trim() : "",
         carga: carga === "LLENO" ? "LLENO" : "VACIO",
-        viaOrigen: asText(record.viaOrigen, record.viaOrigenNombre, record.viaOrigenId),
-        seccionOrigen: asText(record.seccionOrigen, record.seccionOrigenNombre, record.seccionOrigenId),
-        viaDestino: asText(record.viaDestino, record.viaDestinoNombre, record.viaId),
-        seccionDestino: asText(record.seccionDestino, record.seccionDestinoNombre, record.seccionId),
+        viaOrigenId,
+        seccionOrigenId,
+        viaId: viaDestinoId,
+        seccionId: seccionDestinoId,
+        viaOrigenNombre,
+        seccionOrigenNombre,
+        viaDestinoNombre,
+        seccionDestinoNombre,
+        viaOrigen: viaOrigenNombre,
+        seccionOrigen: seccionOrigenNombre,
+        viaDestino: viaDestinoNombre,
+        seccionDestino: seccionDestinoNombre,
       };
     });
 }
@@ -251,8 +266,18 @@ export async function POST(req: NextRequest) {
     }
 
     const vagones = normalizeVagones(body.vagones);
-    if (vagones.length < 1) return jsonError("Agrega al menos un vagon", 400);
-    if (vagones.length > 8) return jsonError("Maximo 8 vagones por arrastre", 400);
+    if (vagones.length < ARRASTRE_MIN_VAGONES) return jsonError("Agrega al menos un vagón", 400);
+    if (vagones.length > ARRASTRE_MAX_CAPACITY) return jsonError("Máximo 8 vagones por arrastre", 400);
+    if (vagones.some((item) => !item.numeroVagon)) {
+      return jsonError("Cada vagón necesita un número", 400);
+    }
+    if (vagones.some((item) => item.numeroVagon.length > 40)) {
+      return jsonError("El número de vagón no puede superar 40 caracteres", 400);
+    }
+    const normalizedNumbers = vagones.map((item) => item.numeroVagon.toLocaleUpperCase("es-MX"));
+    if (new Set(normalizedNumbers).size !== normalizedNumbers.length) {
+      return jsonError("No repitas el mismo número de vagón", 400);
+    }
     if (vagones.some((item) => (
       !item.viaOrigen ||
       !item.seccionOrigen ||
@@ -262,9 +287,9 @@ export async function POST(req: NextRequest) {
       return jsonError("Cada vagon necesita origen y destino con via/seccion", 400);
     }
 
-    const capacidad = vagones.reduce((total, item) => total + (item.carga === "LLENO" ? 2 : 1), 0);
-    if (capacidad > 8) {
-      return jsonError("Arrastre excede capacidad: vacio=1, lleno=2, maximo=8", 400);
+    const capacidad = vagones.reduce((total, item) => total + arrastreVagonCapacity(item.carga), 0);
+    if (capacidad > ARRASTRE_MAX_CAPACITY) {
+      return jsonError("Arrastre excede capacidad: vacío=1, lleno=2, máximo=8", 400);
     }
 
     const payload = {

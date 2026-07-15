@@ -1,9 +1,11 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, startTransition, type ReactNode } from "react";
+import dynamic from "next/dynamic";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { MapPin, Sparkles } from "lucide-react";
 import { getClientCookie, setClientCookie } from "@/lib/cookies";
 import { syncFirebaseNotificationLocalidad } from "@/lib/firebase";
+import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 import TornoMeasuresViewerModal from "../movimientos/torno/TornoMeasuresViewerModal";
 import { useRealtimeBoardRefresh } from "../hooks/useRealtimeBoardRefresh";
 import { useTornoMeasuresModal } from "@/features/torno-measures";
@@ -33,7 +35,16 @@ import {
 
 const API_BASE = API_BFF_BASE;
 const API_MEASURES = API_XAPI_BASE;
+const ADMIN_MOVEMENTS_LOCALIDAD_KEY = "administrador:movimientosLocalidadId";
 const fmtList = railQueueListFormatter;
+const AdminTorreonDashboard = dynamic(
+  () => import("../coordinador/torreon/CoordinatorTorreonDashboard"),
+  {
+    loading: () => (
+      <div className="min-h-[420px] animate-pulse rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" />
+    ),
+  }
+);
 
 /* ===== Componente Admin ===== */
 export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }: { autoMs?: number; nextCount?: number }) {
@@ -74,8 +85,15 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
     return Number.isFinite(n) && n > 0 ? n : 0; // 0 = TODAS
   });
   const activeLoc = useMemo(() => localidades.find(l => l.id === activeLocId) || null, [localidades, activeLocId]);
+  const activeIsTorreon = activeLocId > 0 && isTorreonLocalidadId(activeLocId);
 
   useEffect(() => {
+    try {
+      localStorage.setItem(
+        ADMIN_MOVEMENTS_LOCALIDAD_KEY,
+        activeLocId > 0 ? String(activeLocId) : "todas"
+      );
+    } catch {}
     if (activeLocId <= 0) return;
     try {
       localStorage.setItem("locId", String(activeLocId));
@@ -235,10 +253,11 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
   }
 
   useRealtimeBoardRefresh({
-    enabled: true,
+    enabled: !activeIsTorreon,
     realtimeLocalidadId: null,
     scopeLocalidadId: activeLocId > 0 ? activeLocId : null,
     onRefresh: () => {
+      if (activeIsTorreon) return;
       if (activeLocId === 0 && localidades.length === 0) return;
       return load(true);
     },
@@ -247,13 +266,23 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
   // init
   useEffect(() => { loadLocalidades(); }, []);
   useEffect(() => {
+    abortRef.current?.abort();
     firstLoad.current = true; prevIdsRef.current = []; setInfo({}); setItems([]); setLoading(true);
+    if (activeIsTorreon) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     if (activeLocId === 0 && localidades.length === 0) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeLocId, localidades.map(l => l.id).join(",")]);
+  }, [activeIsTorreon, activeLocId, localidades.map(l => l.id).join(",")]);
 
-  useVisibleInterval(() => polling && online && load(), polling ? autoMs || null : null, [autoMs, activeLocId, polling, online, localidades.length]);
+  useVisibleInterval(
+    () => !activeIsTorreon && polling && online && load(),
+    !activeIsTorreon && polling ? autoMs || null : null,
+    [activeIsTorreon, autoMs, activeLocId, polling, online, localidades.length]
+  );
 
   // sonidos
   useEffect(() => {
@@ -308,7 +337,7 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
   }, [items, activeLocId]);
 
   return (
-    <main ref={boardRef} className="min-h-svh md:min-h-dvh text-slate-900 dark:text-slate-100">
+    <div ref={boardRef} className="min-h-svh md:min-h-dvh text-slate-900 dark:text-slate-100">
       {/* TOASTS */}
       <ToastStack toasts={toasts} dismiss={dismiss} />
 
@@ -350,10 +379,18 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
 
             {/* status derecha */}
             <div className="flex flex-wrap items-center gap-2">
-              <Badge live={polling} label={`Últ. act: ${timeAgo(lastOkAt.current)}`} />
-              <Btn onClick={() => setSoundOn((s) => !s)} active={soundOn} labelOn="Sonido" labelOff="Silencio" iconOn="🔔" iconOff="🔕" />
-              <Btn onClick={() => setPolling((p) => !p)} active={polling} labelOn="Auto" labelOff="Auto" iconOn="⏸️" iconOff="▶️" />
-              <Btn onClick={() => load(true)} disabled={refreshing} labelOn={refreshing ? "Actualizando…" : "Actualizar"} iconOn={refreshing ? "⟳" : "↻"} />
+              {activeIsTorreon ? (
+                <span className="inline-flex min-h-9 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
+                  <MapPin className="h-3.5 w-3.5" /> Naturales y arrastres de Torreón
+                </span>
+              ) : (
+                <>
+                  <Badge live={polling} label={`Últ. act: ${timeAgo(lastOkAt.current)}`} />
+                  <Btn onClick={() => setSoundOn((s) => !s)} active={soundOn} labelOn="Sonido" labelOff="Silencio" iconOn="🔔" iconOff="🔕" />
+                  <Btn onClick={() => setPolling((p) => !p)} active={polling} labelOn="Auto" labelOff="Auto" iconOn="⏸️" iconOff="▶️" />
+                  <Btn onClick={() => load(true)} disabled={refreshing} labelOn={refreshing ? "Actualizando…" : "Actualizar"} iconOn={refreshing ? "⟳" : "↻"} />
+                </>
+              )}
               <Btn onClick={toggleFullscreen} active={isFs} labelOn={isFs ? "Salir" : "Full"} iconOn="⤢" />
             </div>
           </div>
@@ -362,7 +399,14 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
 
       {/* CONTENIDO */}
       <section className="mx-auto w-full max-w-screen-2xl px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8 pb-[env(safe-area-inset-bottom)]" aria-busy={loading || refreshing}>
-        {activeLocId === 0 ? (
+        {activeIsTorreon && activeLocId > 0 ? (
+          <AdminTorreonDashboard
+            key={`admin-torreon-${activeLocId}`}
+            localidadId={activeLocId}
+            showBanner={false}
+            rol="ADMINISTRADOR"
+          />
+        ) : activeLocId === 0 ? (
           <AllLocalidadesGrid
             localidades={localidades}
             itemsByLoc={itemsByLoc}
@@ -429,7 +473,7 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
           </div>
         </div>
       ) : null}
-    </main>
+    </div>
   );
 }
 

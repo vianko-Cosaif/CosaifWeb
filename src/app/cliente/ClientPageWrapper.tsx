@@ -1,7 +1,6 @@
 "use client";
 import React, { Suspense, lazy } from "react";
 import SelectLocalidad from "@/app/Components/cliente/SelectLocalidad";
-import { DynamicBanner } from "@/app/Components/DynamicBanner";
 import { getRoleCapabilities } from "@/lib/accessControl";
 /* ================= Tipos ================= */
 interface ClientPageWrapperProps {
@@ -94,7 +93,6 @@ export default function ClientPageWrapper({ localidadId, role }: ClientPageWrapp
   return (
     <div className="w-full">
       <div className="mx-auto w-full max-w-[1400px] space-y-6 sm:space-y-8 min-w-0">
-        <DynamicBanner />
         <ErrorBoundary>
           {localidadId ? (
             <Suspense fallback={<LoadingFallback />}>
