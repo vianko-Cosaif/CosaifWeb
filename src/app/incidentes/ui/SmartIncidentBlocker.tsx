@@ -3,6 +3,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState, useId } from "react";
 import { createPortal } from "react-dom";
+import { shouldUseIncidentCountdown } from "@/lib/incidentCountdownPolicy";
 import {
   ImageIcon,
   Info,
@@ -369,6 +370,10 @@ export default function SmartIncidentBlocker({
   const [now, setNow] = useState<number>(Date.now());
   const [fullscreen, setFullscreen] = useState(false);
   const headingId = useId();
+  const countdownAllowed = useMemo(
+    () => shouldUseIncidentCountdown(incident) && shouldUseIncidentCountdown(fetched),
+    [fetched, incident],
+  );
 
   /* Fetch details with abort */
   useEffect(() => {
@@ -400,9 +405,10 @@ export default function SmartIncidentBlocker({
 
   /* Timer tick each 1s */
   useEffect(() => {
+    if (!countdownAllowed) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [countdownAllowed]);
 
   /* Derived */
   const imgs = useMemo(() => {
@@ -420,7 +426,8 @@ export default function SmartIncidentBlocker({
   const leftMs = Math.max(0, WINDOW_DURATION_MS - (now - startMs));
   const pct = Math.round(((WINDOW_DURATION_MS - leftMs) / WINDOW_DURATION_MS) * 100);
   const estado = (fetched?.estado || incident?.estado || "ABIERTO") as keyof typeof ESTADO_COLORS;
-  const showTimer = leftMs > 0 && estado === "ABIERTO";
+  const canActOnIncident = estado === "ABIERTO" && (!countdownAllowed || leftMs > 0);
+  const showTimer = countdownAllowed && canActOnIncident;
 
   /* Actions */
   const doResolve = useCallback(async () => {
@@ -713,7 +720,7 @@ export default function SmartIncidentBlocker({
 
         {/* Footer */}
         <div className="flex flex-col gap-2 border-t border-white/10 bg-white/80 px-4 py-3 backdrop-blur dark:bg-slate-900/80 dark:border-slate-800 sm:flex-row sm:px-6 sm:py-4">
-          {showTimer && estado === "ABIERTO" ? (
+          {canActOnIncident ? (
             <>
               <button
                 onClick={doResolve}

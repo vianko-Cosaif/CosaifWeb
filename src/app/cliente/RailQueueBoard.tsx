@@ -27,6 +27,7 @@ import type {
   RondaInfo,
 } from "@/features/rail-queue/types";
 import { peekCachedJson } from "@/lib/clientRequestCache";
+import { playNotificationSound, preloadNotificationSound, primeNotificationSound } from "@/lib/notificationSound";
 
 const API_BASE = API_XAPI_BASE;
 const fmtLoco = (value: unknown) => formatLoco(value, "—");
@@ -92,7 +93,7 @@ export default function RailQueueBoard({
 }) {
   const [activeEntity, setActiveEntity] = useState<QueueEntityKind>("movimientos");
   const [activeStatus, setActiveStatus] = useState<QueueStatusKind>("pendientes");
-  const roundsUrl = `/api/cliente/rondas?localidadId=${localidadId}&estado=${activeStatus}&entity=${activeEntity}`;
+  const roundsUrl = `/api/cliente/rondas?localidadId=${localidadId}&estado=${activeStatus}&entity=${activeEntity}&alcance=localidad`;
   const initialItems = peekCachedJson<Ronda[]>(roundsUrl) ?? [];
   const [items, setItems] = useState<Ronda[]>(() => initialItems);
   const [info, setInfo] = useState<Record<number, RondaInfo>>({});
@@ -101,16 +102,17 @@ export default function RailQueueBoard({
   const [openEditor, setOpenEditor] = useState(false);
   const [polling, setPolling] = useLocalStorageBoolean("rail-queue:polling", true);
   const [soundOn, setSoundOn] = useLocalStorageBoolean("rail-queue:soundOn", false);
-
-  const bellRef = useRef<HTMLAudioElement | null>(null);
   const { toasts, push: pushToast, dismiss } = useToasts();
   const { measuresModal, openMeasuresModal, closeMeasuresModal } =
     useTornoMeasuresModal(API_BASE);
   const prevIdsRef = useRef<number[]>([]);
-  const lastCurrentId = useRef<number | null>(null);
   const firstLoad = useRef(true);
   const reqSeq = useRef(120);
   const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    preloadNotificationSound();
+  }, []);
 
   async function load(showRefreshing = false) {
     const mySeq = ++reqSeq.current;
@@ -129,11 +131,27 @@ export default function RailQueueBoard({
       data.sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden);
 
       const nextIds = data.map(d => d.id);
-      if (!firstLoad.current && prevIdsRef.current.length && nextIds[0] && nextIds[0] !== prevIdsRef.current[0]) {
-        pushToast("Orden actualizada", "move");
+      if (mySeq !== reqSeq.current) return;
+
+      if (!firstLoad.current && prevIdsRef.current.length) {
+        const previousIds = prevIdsRef.current;
+        const previousSet = new Set(previousIds);
+        const nextSet = new Set(nextIds);
+        const created = nextIds.some((id) => !previousSet.has(id));
+        const removed = previousIds.some((id) => !nextSet.has(id));
+        const reordered = previousIds.length === nextIds.length
+          && previousIds.some((id, index) => nextIds[index] !== id);
+
+        if (nextIds[0] && nextIds[0] !== previousIds[0]) {
+          pushToast("Orden actualizada", "move");
+        }
+        if (soundOn) {
+          if (created) void playNotificationSound("ronda_nueva_creada");
+          else if (removed) void playNotificationSound("ronda_movimiento_concluido");
+          else if (reordered) void playNotificationSound("ronda_orden_actualizada");
+        }
       }
       prevIdsRef.current = nextIds;
-      if (mySeq !== reqSeq.current) return;
       setItems(data);
 
       const map: Record<number, RondaInfo> = {};
@@ -177,14 +195,17 @@ export default function RailQueueBoard({
   useVisibleInterval(
     () => polling && load(),
     polling && realtimeStatus !== "connected" ? Math.min(autoMs, 30_000) : null,
-    [autoMs, localidadId, polling, activeStatus, activeEntity, realtimeStatus]
+    [autoMs, localidadId, polling, activeStatus, activeEntity, realtimeStatus, soundOn]
   );
 
-  useEffect(() => {
-    const curId = items[0]?.id ?? null;
-    if (soundOn && curId && lastCurrentId.current && curId !== lastCurrentId.current) bellRef.current?.play().catch(() => { });
-    lastCurrentId.current = curId;
-  }, [items, soundOn]);
+  function toggleSound() {
+    const next = !soundOn;
+    setSoundOn(next);
+    if (!next) return;
+    void primeNotificationSound().then((ready) => {
+      if (ready) void playNotificationSound("sonido_actualizado");
+    });
+  }
 
   const entityItems = items;
   const entityOptions = useMemo<QueueSegmentedFilterOption<QueueEntityKind>[]>(
@@ -215,14 +236,14 @@ export default function RailQueueBoard({
       {/* ─── HEADER ─── */}
       <header className={S.Layout.header}>
         <div className={S.Header.left}>
-          <h1 className={S.Header.title}>Control de Patio</h1>
+          <h1 className={S.Header.title}>Ronda general de la localidad</h1>
           <span className={S.Header.liveBadge}><span className={S.Header.liveDot} /> EN VIVO</span>
         </div>
         <div className={S.Header.right}>
           <button onClick={() => setPolling(!polling)} className={S.Header.btn(polling)} title="Auto-refresh">
             <span className={`w-1.5 h-1.5 rounded-full ${polling ? "bg-emerald-500 dark:bg-emerald-400 animate-pulse" : "bg-slate-300 dark:bg-slate-600"}`} />
           </button>
-          <button onClick={() => setSoundOn(!soundOn)} className={S.Header.btn(soundOn)} title="Sonido">
+          <button onClick={toggleSound} className={S.Header.btn(soundOn)} title={soundOn ? "Desactivar sonido" : "Activar sonido"} aria-pressed={soundOn}>
             <Ic.Bell on={soundOn} />
           </button>
           <button onClick={() => load(true)} className={S.Header.btn()} title="Actualizar">
@@ -358,8 +379,6 @@ export default function RailQueueBoard({
           </motion.div>
         </div>
       )}
-
-      <audio ref={bellRef} src="/sounds/notification.mp3" preload="none" />
 
       {measuresModal.open && !measuresModal.loading && !measuresModal.error ? (
         <TornoMeasuresViewerModal

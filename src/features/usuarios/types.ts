@@ -8,6 +8,7 @@ export type Rol =
   | "SUPERVISOR"
   | "COORDINADOR"
   | "ADMINISTRADOR"
+  | "COMERCIAL"
   | "MAQUINISTA"
   | "MAQUINISTA_ARRASTRE"
   | "TORNO"

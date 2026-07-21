@@ -128,21 +128,6 @@ function compareMovements(a: Movement, b: Movement, field: CampoOrden, direction
   return direction === "asc" ? result : -result;
 }
 
-function durationMinutes(start?: string | null, end?: string | null) {
-  const startAt = Date.parse(start ?? "");
-  const endAt = Date.parse(end ?? "");
-  if (Number.isNaN(startAt) || Number.isNaN(endAt) || endAt < startAt) return null;
-  return Math.round((endAt - startAt) / 60000);
-}
-
-function formatDuration(minutes: number | null) {
-  if (minutes === null) return "—";
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest ? `${hours} h ${rest} min` : `${hours} h`;
-}
-
 export default function TorreonNaturalesPanel({
   localidadId,
   apiBase,
@@ -205,15 +190,6 @@ export default function TorreonNaturalesPanel({
     if (naturales.loading) return;
     setCounts((current) => ({ ...current, [ambito]: filteredRows.length }));
   }, [ambito, filteredRows.length, naturales.loading]);
-
-  const executionSummary = useMemo(() => {
-    const durations = filteredRows
-      .map((row) => durationMinutes(row.fechaInicio, row.fechaFin))
-      .filter((value): value is number => value !== null);
-    return {
-      average: durations.length ? Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length) : null,
-    };
-  }, [filteredRows]);
 
   const changeAmbito = useCallback((next: Ambito) => {
     naturales.setStatus(next === "actuales" ? "activos" : "concluidos");
@@ -362,9 +338,8 @@ export default function TorreonNaturalesPanel({
             deshabilitado={naturales.loading}
           />
 
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2">
             <KpiCard label="Total filtrado" value={filteredRows.length} compact />
-            <KpiCard label="Resolución promedio" value={formatDuration(executionSummary.average)} compact />
             <KpiCard
               label="Orden actual"
               value={`${extraFilters.campoOrden === "id" ? "Folio" : extraFilters.campoOrden} ${extraFilters.direccionOrden === "asc" ? "ascendente" : "descendente"}`}
@@ -393,6 +368,7 @@ export default function TorreonNaturalesPanel({
                   direccionOrden={extraFilters.direccionOrden}
                   cargando={naturales.loading}
                   rol={rol}
+                  mostrarDuracion={false}
                   onPagina={naturales.setPage}
                   onOrden={(campoOrden, direccionOrden) => setExtraFilters((current) => ({ ...current, campoOrden, direccionOrden }))}
                 />

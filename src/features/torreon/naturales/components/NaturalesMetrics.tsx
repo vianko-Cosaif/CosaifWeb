@@ -1,6 +1,5 @@
-import { AlertTriangle, Camera, CheckCircle2, Clock3, Timer, TrainFront } from "lucide-react";
+import { AlertTriangle, Camera, CheckCircle2, Clock3, TrainFront } from "lucide-react";
 import type { NaturalesMetrics as NaturalesMetricsValue } from "../types";
-import { formatMinutes } from "../utils";
 
 export function NaturalesMetrics({ metrics, compact = false }: { metrics: NaturalesMetricsValue; compact?: boolean }) {
   const items = compact
@@ -16,11 +15,10 @@ export function NaturalesMetrics({ metrics, compact = false }: { metrics: Natura
         { label: "Concluidos", value: metrics.done, icon: CheckCircle2 },
         { label: "Con evidencias", value: metrics.withPhotos, icon: Camera },
         { label: "Con incidente", value: metrics.withIncidents, icon: AlertTriangle },
-        { label: "Resolución prom.", value: formatMinutes(metrics.avg), icon: Timer },
       ];
 
   return (
-    <div className={`mt-4 grid gap-2 sm:grid-cols-2 ${compact ? "xl:grid-cols-4" : "xl:grid-cols-6"}`}>
+    <div className={`mt-4 grid gap-2 sm:grid-cols-2 ${compact ? "xl:grid-cols-4" : "xl:grid-cols-5"}`}>
       {items.map((item) => <Metric key={item.label} {...item} />)}
     </div>
   );

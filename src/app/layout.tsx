@@ -1,4 +1,6 @@
 import "antd/dist/reset.css";
+import "react-data-grid/lib/styles.css";
+import "driver.js/dist/driver.css";
 import "./globals.scss";
 import type { Metadata, Viewport } from "next";
 import { initThemeSSRScript } from "@/lib/theme";

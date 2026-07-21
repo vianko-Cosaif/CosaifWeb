@@ -629,6 +629,7 @@ export async function GET(req: NextRequest) {
     const entity = String(searchParams.get("entity") ?? "movimientos").toLowerCase();
     const estado = String(searchParams.get("estado") ?? searchParams.get("tab") ?? "pendientes").toLowerCase();
     const concluido = estado === "terminados" || estado === "finalizados" || estado === "true";
+    const generalLocalityView = searchParams.get("alcance") === "localidad";
 
     const cookieStore = await cookies();
     const token = cookieStore.get(process.env.JWT_COOKIE_NAME || "token")?.value;
@@ -653,7 +654,7 @@ export async function GET(req: NextRequest) {
     if (entity === "torneados") {
       const statusParam = concluido ? "CONCLUIDO,CANCELADO" : "SOLICITADO,EN_PROCESO,DETENIDO";
       const qs = new URLSearchParams({ status: statusParam, localidadId: localidadIdParam });
-      if (empresaId && !canSeeAllEmpresas(role)) qs.set("empresaId", String(empresaId));
+      if (!generalLocalityView && empresaId && !canSeeAllEmpresas(role)) qs.set("empresaId", String(empresaId));
       const r = await fetch(`${base}/torno/rondas-servicio/historial?${qs.toString()}`, {
         cache: "no-store",
         headers,
@@ -779,13 +780,14 @@ export async function GET(req: NextRequest) {
     }
 
     if (isTorreonLocalidad(localidadIdParam)) {
-      const scopedEmpresaId = canSeeAllEmpresas(role) ? null : empresaId;
-      const canReadTorreon = Boolean(scopedEmpresaId || canSeeAllEmpresas(role));
+      const scopedEmpresaId = generalLocalityView || canSeeAllEmpresas(role) ? null : empresaId;
+      const canReadTorreon = generalLocalityView || Boolean(scopedEmpresaId || canSeeAllEmpresas(role));
       if (!canReadTorreon) return NextResponse.json<RondaOut[]>([], { status: 200 });
 
       let out: RondaOut[] = [];
       try {
         const params = new URLSearchParams({ localidadId: localidadIdParam });
+        if (generalLocalityView) params.set("alcance", "localidad");
         if (concluido) params.set("estado", "CERRADA");
         const raw = await fetchTorreonMsJson(`/rondas?${params.toString()}`);
         out = mapTorreonRondasToOut(raw, concluido, scopedEmpresaId);
@@ -796,7 +798,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(sortRondaQueue(out), { status: 200 });
     }
 
-    const empresaScopeId = canSeeAllEmpresas(role) ? null : empresaId;
+    const empresaScopeId = generalLocalityView || canSeeAllEmpresas(role) ? null : empresaId;
     const out = await fetchCosaifRondasOut({
       base,
       headers,

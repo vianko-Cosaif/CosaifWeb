@@ -13,12 +13,16 @@ import {
   type VagonArrastre,
 } from "@/features/torreon/arrastres";
 import {
+  CancelArrastreModal,
   CrearView,
   DashboardView,
+  EditArrastreModal,
   EditVagonModal,
   IncidentesView,
   MovimientosView,
   arrastreMatchesSearch,
+  canCancelArrastreRequest,
+  canEditArrastreRequest,
   dateKey,
   isClosed,
   makeVagonDraft,
@@ -29,6 +33,9 @@ import {
   type ActionPayload,
   type Ambito,
   type ClienteArrastreIncidentRow,
+  type CancelArrastreDraft,
+  type EditArrastreDraft,
+  type EditArrastreVagonDraft,
   type EditVagonDraft,
   type OperationalVia,
   type TorreonPanelView,
@@ -37,6 +44,7 @@ import {
 import { useRealtimeBoardRefresh } from "@/app/hooks/useRealtimeBoardRefresh";
 import { isTorreonArrastreEvent, realtimeArrastreSnapshot } from "@/features/torreon/realtime";
 import { canViewTorreonArrastreRole, normalizeRoleName } from "@/lib/torreonLocalidad";
+import { playNotificationSound } from "@/lib/notificationSound";
 import TorreonIncidentDetailModal, { type TorreonIncidentDetail } from "@/app/coordinador/torreon/TorreonIncidentDetailModal";
 
 export type { TorreonPanelView } from "@/features/torreon/cliente";
@@ -73,7 +81,7 @@ function hasPendingVagon(arrastre: Arrastre) {
   return (arrastre.vagones || []).some((vagon) => statusText(vagon.estado) === "PENDIENTE");
 }
 
-export default function TorreonClientePanel({ localidadId, role, view = "dashboard" }: TorreonClientePanelProps) {
+export default function TorreonClientePanel({ localidadId, empresaId, role, view = "dashboard" }: TorreonClientePanelProps) {
   const router = useRouter();
   const normalizedRole = normalizeRoleName(role);
   const arrastreOnly = normalizedRole === "ARRASTRE_TORREON";
@@ -92,7 +100,12 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
   const [operationalVias, setOperationalVias] = useState<OperationalVia[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [editingArrastre, setEditingArrastre] = useState<EditArrastreDraft | null>(null);
+  const [editArrastreError, setEditArrastreError] = useState<string | null>(null);
+  const [cancelingArrastre, setCancelingArrastre] = useState<CancelArrastreDraft | null>(null);
+  const [cancelArrastreError, setCancelArrastreError] = useState<string | null>(null);
   const [editingVagon, setEditingVagon] = useState<EditVagonDraft | null>(null);
+  const editingArrastreId = editingArrastre?.arrastreId ?? null;
   const [selectedIncident, setSelectedIncident] = useState<{
     incident: TorreonIncidentDetail;
     arrastreId: number;
@@ -118,6 +131,7 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
           pageSize: String(pageSize),
           includeFotos: "0",
         });
+        if (view === "dashboard") params.set("alcance", "localidad");
         return `/api/cliente/torreon/arrastres?${params.toString()}`;
       };
 
@@ -125,9 +139,11 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
         fetch(buildUrl("activos", 80), { cache: "no-store", credentials: "include" })
           .then((response) => response.json())
           .catch(() => []),
-        fetch(buildUrl("historial", 40), { cache: "no-store", credentials: "include" })
-          .then((response) => response.json())
-          .catch(() => []),
+        view === "dashboard"
+          ? Promise.resolve([])
+          : fetch(buildUrl("historial", 40), { cache: "no-store", credentials: "include" })
+              .then((response) => response.json())
+              .catch(() => []),
       ]);
 
       setArrastres([
@@ -138,9 +154,13 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
       setLoading(false);
       setRefreshing(false);
     }
-  }, [canViewArrastres, localidadId]);
+  }, [canViewArrastres, localidadId, view]);
 
   const refreshArrastreById = useCallback(async (arrastreId: number) => {
+    if (view === "dashboard") {
+      await load(true);
+      return;
+    }
     if (!canViewArrastres || !Number.isFinite(arrastreId) || arrastreId <= 0) {
       await load(true);
       return;
@@ -177,14 +197,14 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
     } finally {
       setRefreshing(false);
     }
-  }, [canViewArrastres, load, localidadId]);
+  }, [canViewArrastres, load, localidadId, view]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   useEffect(() => {
-    if (view !== "crear") return;
+    if (view !== "crear" && !editingArrastreId) return;
     let alive = true;
     setCatalogLoading(true);
     setCatalogError(null);
@@ -238,7 +258,7 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
     return () => {
       alive = false;
     };
-  }, [localidadId, view]);
+  }, [editingArrastreId, localidadId, view]);
 
   const realtimeStatus = useRealtimeBoardRefresh({
     enabled: canViewArrastres,
@@ -246,6 +266,7 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
     scopeLocalidadId: localidadId,
     matchesEvent: isTorreonArrastreEvent,
     onRefresh: ({ event }) => {
+      if (view === "dashboard") return load(true);
       const snapshot = realtimeArrastreSnapshot(event);
       if (snapshot) {
         setArrastres((current) => [snapshot, ...current.filter((item) => item.id !== snapshot.id)]);
@@ -289,20 +310,26 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
   ), [arrastres, dailyCounters]);
 
   const stats = useMemo(() => {
-    const vagones = arrastres.flatMap((arrastre) => arrastre.vagones || []);
+    // El tablero representa la operación actual. No contar vagones históricos
+    // que conservaron PENDIENTE/BLOQUEADO dentro de arrastres ya cerrados.
+    const vagones = activeArrastres.flatMap((arrastre) => arrastre.vagones || []);
     return {
-      total: arrastres.length,
-      solicitados: arrastres.filter((item) => statusText(item.estado) === "SOLICITADO").length,
-      proceso: arrastres.filter((item) => statusText(item.estado) === "EN_PROCESO").length,
-      detenidos: arrastres.filter((item) => statusText(item.estado) === "DETENIDO").length,
-      concluidos: arrastres.filter((item) => statusText(item.estado) === "CONCLUIDO").length,
+      total: activeArrastres.length,
+      solicitados: activeArrastres.filter((item) => statusText(item.estado) === "SOLICITADO").length,
+      proceso: activeArrastres.filter((item) => statusText(item.estado) === "EN_PROCESO").length,
+      detenidos: activeArrastres.filter((item) => statusText(item.estado) === "DETENIDO").length,
+      concluidos: 0,
       pendientesVagon: vagones.filter((item) => ["PENDIENTE", "EN_PROCESO", "BLOQUEADO"].includes(statusText(item.estado))).length,
     };
-  }, [arrastres]);
+  }, [activeArrastres]);
 
   const draftCapacity = useMemo(() => (
     draftVagones.reduce((total, vagon) => total + arrastreVagonCapacity(vagon.carga), 0)
   ), [draftVagones]);
+
+  function canManageArrastre(arrastre: Arrastre) {
+    return Boolean(empresaId) && Number(arrastre.empresaId) === empresaId;
+  }
 
   function updateDraftVagon(tempId: number, patch: Partial<VagonDraft>) {
     setDraftVagones((prev) => {
@@ -364,7 +391,142 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
     });
   }
 
+  function openEditArrastre(arrastre: Arrastre) {
+    if (!canManageArrastre(arrastre)) {
+      setMessage({ type: "error", text: "Esta ronda pertenece a otra empresa. Puedes consultarla, pero no modificarla." });
+      return;
+    }
+    if (!canEditArrastreRequest(arrastre)) {
+      setMessage({
+        type: "error",
+        text: "Solo puedes editar el movimiento completo mientras siga solicitado y todos sus vagones estén pendientes.",
+      });
+      return;
+    }
+
+    const vagones = [...(arrastre.vagones || [])]
+      .sort((left, right) => (left.orden ?? 0) - (right.orden ?? 0) || left.id - right.id)
+      .map<EditArrastreVagonDraft>((vagon, index) => ({
+        tempId: index + 1,
+        vagonId: vagon.id,
+        numeroVagon: vagon.numeroVagon || "",
+        carga: statusText(vagon.carga) === "LLENO" ? "LLENO" : "VACIO",
+        viaOrigenId: vagon.viaOrigenId ? String(vagon.viaOrigenId) : "",
+        seccionOrigenId: vagon.seccionOrigenId ? String(vagon.seccionOrigenId) : "",
+        viaId: vagon.viaId ? String(vagon.viaId) : "",
+        seccionId: vagon.seccionId ? String(vagon.seccionId) : "",
+      }));
+
+    setMessage(null);
+    setEditArrastreError(null);
+    setEditingArrastre({
+      arrastreId: arrastre.id,
+      instrucciones: arrastre.instrucciones || "",
+      motivoEdicion: "",
+      vagones,
+    });
+  }
+
+  function updateEditingArrastreVagon(vagonId: number, patch: Partial<EditArrastreVagonDraft>) {
+    setEditingArrastre((current) => current ? {
+      ...current,
+      vagones: current.vagones.map((vagon) => vagon.vagonId === vagonId ? { ...vagon, ...patch } : vagon),
+    } : current);
+    setEditArrastreError(null);
+  }
+
+  async function submitArrastreEdit() {
+    if (!editingArrastre) return;
+    setEditArrastreError(null);
+
+    const current = arrastres.find((arrastre) => arrastre.id === editingArrastre.arrastreId);
+    if (!current || !canEditArrastreRequest(current)) {
+      setEditArrastreError("El movimiento cambió de estado y ya no puede editarse. Actualiza la lista para consultar su situación actual.");
+      return;
+    }
+
+    const instruccionesEditadas = editingArrastre.instrucciones.trim();
+    if (instruccionesEditadas.length < 3 || instruccionesEditadas.length > 1_000) {
+      setEditArrastreError("Las instrucciones deben tener entre 3 y 1000 caracteres.");
+      return;
+    }
+
+    const vagones = editingArrastre.vagones.map((vagon) => {
+      const viaOrigen = operationalVias.find((via) => via.id === Number(vagon.viaOrigenId));
+      const seccionOrigen = viaOrigen?.secciones.find((section) => section.id === Number(vagon.seccionOrigenId));
+      const viaDestino = operationalVias.find((via) => via.id === Number(vagon.viaId));
+      const seccionDestino = viaDestino?.secciones.find((section) => section.id === Number(vagon.seccionId));
+      return {
+        id: vagon.vagonId,
+        numeroVagon: vagon.numeroVagon.trim(),
+        carga: vagon.carga,
+        viaOrigenId: viaOrigen?.id,
+        seccionOrigenId: seccionOrigen?.id,
+        viaId: viaDestino?.id,
+        seccionId: seccionDestino?.id,
+        viaOrigenNombre: viaOrigen?.nombre,
+        seccionOrigenNombre: seccionOrigen?.nombre,
+        viaDestinoNombre: viaDestino?.nombre,
+        seccionDestinoNombre: seccionDestino?.nombre,
+      };
+    });
+
+    if (vagones.some((vagon) => !vagon.numeroVagon)) {
+      setEditArrastreError("El número es obligatorio en todos los vagones.");
+      return;
+    }
+
+    const numbers = vagones.map((vagon) => vagon.numeroVagon.toLocaleUpperCase("es-MX"));
+    if (new Set(numbers).size !== numbers.length) {
+      setEditArrastreError("No puedes repetir el mismo número de vagón.");
+      return;
+    }
+
+    if (vagones.some((vagon) => !vagon.viaOrigenId || !vagon.seccionOrigenId || !vagon.viaId || !vagon.seccionId)) {
+      setEditArrastreError("Selecciona vía y sección de origen y destino para cada vagón.");
+      return;
+    }
+
+    const capacity = vagones.reduce((total, vagon) => total + arrastreVagonCapacity(vagon.carga), 0);
+    if (capacity > ARRASTRE_MAX_CAPACITY) {
+      setEditArrastreError("Capacidad excedida: vacío usa 1 punto, lleno usa 2 y el máximo es 8.");
+      return;
+    }
+
+    const actionKey = `edit-arrastre:${editingArrastre.arrastreId}`;
+    setBusyAction(actionKey);
+    try {
+      const response = await fetch("/api/cliente/torreon/arrastres/action", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "EDITAR_ARRASTRE",
+          arrastreId: editingArrastre.arrastreId,
+          instrucciones: instruccionesEditadas,
+          motivoEdicion: editingArrastre.motivoEdicion.trim() || undefined,
+          vagones,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(parseErrorMessage(data, "No se pudo editar el movimiento"));
+
+      setEditingArrastre(null);
+      setMessage({ type: "ok", text: "Movimiento actualizado correctamente." });
+      void playNotificationSound("arrastre_editado");
+      await refreshArrastreById(current.id);
+    } catch (error) {
+      setEditArrastreError(error instanceof Error ? error.message : "No se pudo editar el movimiento");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   function openEditVagon(arrastre: Arrastre, vagon: VagonArrastre) {
+    if (!canManageArrastre(arrastre)) {
+      setMessage({ type: "error", text: "Esta ronda pertenece a otra empresa. Puedes consultarla, pero no modificar sus vagones." });
+      return;
+    }
     if (!isArrastreEditable(arrastre.estado)) {
       setMessage({ type: "error", text: `Solo puedes editar arrastres solicitados o detenidos sin vagon en proceso. Estado actual: ${statusText(arrastre.estado)}` });
       return;
@@ -449,6 +611,7 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
 
       setEditingVagon(null);
       setMessage({ type: "ok", text: "Vagon actualizado" });
+      void playNotificationSound("arrastre_vagon_editado");
       await load(true);
     } catch (error) {
       setMessage({ type: "error", text: error instanceof Error ? error.message : "No se pudo editar el vagon" });
@@ -531,6 +694,7 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
       setInstrucciones("");
       setDraftVagones([makeVagonDraft(1)]);
       setMessage({ type: "ok", text: "Arrastre creado" });
+      void playNotificationSound("arrastre_creado");
       router.push("/cliente/torreon/movimientos");
     } catch (error) {
       setMessage({ type: "error", text: error instanceof Error ? error.message : "No se pudo crear el arrastre" });
@@ -587,6 +751,10 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
   }
 
   async function prioritizeSolicitud(arrastre: Arrastre) {
+    if (!canManageArrastre(arrastre)) {
+      setMessage({ type: "error", text: "No puedes cambiar el turno de una ronda perteneciente a otra empresa." });
+      return;
+    }
     if (!hasOpenIncidentInQueue) {
       setMessage({ type: "error", text: "Solo puedes subir una solicitud al frente cuando existe un incidente abierto en la cola." });
       return;
@@ -627,6 +795,7 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
       if (!response.ok) throw new Error(parseErrorMessage(data, "No se pudo operar el arrastre"));
 
       setMessage({ type: "ok", text: "Operacion aplicada" });
+      void playNotificationSound(String(payload.action));
       await load(true);
     } catch (error) {
       if (optimistic) setArrastres(previous);
@@ -636,14 +805,69 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
     }
   }
 
-  async function cancelArrastre(arrastre: Arrastre) {
-    const motivo = window.prompt(`Motivo para cancelar el arrastre ID #${arrastre.id}`, "");
-    if (motivo === null) return;
-    await runAction({
-      action: "CANCELAR",
+  function cancelArrastre(arrastre: Arrastre) {
+    if (!canManageArrastre(arrastre)) {
+      setMessage({ type: "error", text: "Esta ronda pertenece a otra empresa. Puedes consultarla, pero no cancelarla." });
+      return;
+    }
+    if (!canCancelArrastreRequest(arrastre)) {
+      setMessage({ type: "error", text: "No puedes cancelar un movimiento concluido o con un vagón en proceso." });
+      return;
+    }
+
+    setMessage(null);
+    setCancelArrastreError(null);
+    setCancelingArrastre({
       arrastreId: arrastre.id,
-      motivo: motivo.trim() || undefined,
-    }, (current) => current.map((item) => item.id === arrastre.id ? { ...item, estado: "CANCELADO" } : item));
+      referencia: `Movimiento ${buildArrastreFolio(arrastre, dailyCounters.get(arrastre.id))}`,
+      motivo: "",
+    });
+  }
+
+  async function confirmCancelArrastre() {
+    if (!cancelingArrastre) return;
+    const current = arrastres.find((arrastre) => arrastre.id === cancelingArrastre.arrastreId);
+    if (!current || !canCancelArrastreRequest(current)) {
+      setCancelArrastreError("El movimiento cambió de estado y ya no puede cancelarse.");
+      return;
+    }
+
+    const motivo = cancelingArrastre.motivo.trim();
+    if (motivo.length < 3) {
+      setCancelArrastreError("Escribe un motivo de al menos 3 caracteres.");
+      return;
+    }
+
+    const actionKey = `cancel:${cancelingArrastre.arrastreId}`;
+    setBusyAction(actionKey);
+    setCancelArrastreError(null);
+    try {
+      const response = await fetch("/api/cliente/torreon/arrastres/action", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "CANCELAR",
+          arrastreId: cancelingArrastre.arrastreId,
+          motivo,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(parseErrorMessage(data, "No se pudo cancelar el movimiento"));
+
+      const canceledId = cancelingArrastre.arrastreId;
+      setCancelingArrastre(null);
+      setArrastres((currentArrastres) => currentArrastres.map((arrastre) => (
+        arrastre.id === canceledId ? { ...arrastre, estado: "CANCELADO" } : arrastre
+      )));
+      setMessage({ type: "ok", text: "Movimiento cancelado y retirado de la cola." });
+      void playNotificationSound("arrastre_cancelado");
+      await load(true);
+    } catch (error) {
+      setCancelArrastreError(error instanceof Error ? error.message : "No se pudo cancelar el movimiento");
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   function openIncident(incident: IncidenteArrastre, arrastre: Arrastre) {
@@ -713,6 +937,7 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
 
       setSelectedIncident(null);
       setMessage({ type: "ok", text: "Incidente resuelto y bloqueo liberado" });
+      void playNotificationSound("arrastre_incidente_resuelto");
       await load(true);
     } catch (error) {
       const text = error instanceof Error ? error.message : "No se pudo resolver el incidente";
@@ -748,9 +973,13 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
             loading={loading}
             refreshing={refreshing}
             audience={arrastreOnly ? "arrastre" : "cliente"}
+            empresaId={empresaId}
             onMovimientos={() => router.push("/cliente/torreon/movimientos")}
             onCrear={() => router.push("/cliente/torreon/crear")}
             onRefresh={() => load(true)}
+            busyAction={busyAction}
+            onEditArrastre={openEditArrastre}
+            onCancel={cancelArrastre}
             onPrioritizeSolicitud={prioritizeSolicitud}
             onIncidentSelect={openIncident}
           />
@@ -775,6 +1004,7 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
             onDateFilter={setDateFilter}
             onRefresh={() => load(true)}
             onNuevo={() => router.push("/cliente/torreon/crear")}
+            onEditArrastre={openEditArrastre}
             onEditVagon={openEditVagon}
             onPrioritizeSolicitud={prioritizeSolicitud}
             onReorderVagon={reorderVagon}
@@ -829,6 +1059,48 @@ export default function TorreonClientePanel({ localidadId, role, view = "dashboa
             onChange={updateEditingVagon}
             onClose={() => setEditingVagon(null)}
             onSubmit={submitVagonEdit}
+          />
+        )}
+
+        {editingArrastre && (
+          <EditArrastreModal
+            draft={editingArrastre}
+            vias={operationalVias}
+            catalogLoading={catalogLoading}
+            catalogError={catalogError}
+            error={editArrastreError}
+            busy={busyAction === `edit-arrastre:${editingArrastre.arrastreId}`}
+            onInstructionsChange={(value) => {
+              setEditingArrastre((current) => current ? { ...current, instrucciones: value } : current);
+              setEditArrastreError(null);
+            }}
+            onReasonChange={(value) => {
+              setEditingArrastre((current) => current ? { ...current, motivoEdicion: value } : current);
+              setEditArrastreError(null);
+            }}
+            onUpdateVagon={updateEditingArrastreVagon}
+            onClose={() => {
+              setEditingArrastre(null);
+              setEditArrastreError(null);
+            }}
+            onSubmit={submitArrastreEdit}
+          />
+        )}
+
+        {cancelingArrastre && (
+          <CancelArrastreModal
+            draft={cancelingArrastre}
+            busy={busyAction === `cancel:${cancelingArrastre.arrastreId}`}
+            error={cancelArrastreError}
+            onChange={(motivo) => {
+              setCancelingArrastre((current) => current ? { ...current, motivo } : current);
+              setCancelArrastreError(null);
+            }}
+            onClose={() => {
+              setCancelingArrastre(null);
+              setCancelArrastreError(null);
+            }}
+            onConfirm={confirmCancelArrastre}
           />
         )}
 

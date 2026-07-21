@@ -30,6 +30,7 @@ import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 import { SearchInput } from "@/app/Components/ui";
 import { IncidentCatalogSelect, IncidentStatCard } from "@/features/incidentes";
 import { useRealtimeMovimientos, type RealtimeMovementEvent } from "@/app/hooks/useRealtimeMovimientos";
+import { playNotificationSound } from "@/lib/notificationSound";
 
 /** Incidentes son locality-aware: Torreon usa ms_torreon y el resto Cosaif normal. */
 const INCIDENTES = "/api/incidentes";
@@ -724,6 +725,7 @@ export default function IncidenteController() {
             }),
           });
           showNotification("success", "Incidente resuelto correctamente");
+          void playNotificationSound("incidente_resuelto");
         } else {
           await withCreds(
             `${INCIDENTES}/${selectedIncident.id}/cerrar${incidentSourceQuery(selectedIncident)}`,
@@ -736,6 +738,7 @@ export default function IncidenteController() {
           showNotification("success", isTorreonIncident(selectedIncident)
             ? "Incidente cerrado y movimiento cancelado"
             : "Incidente cerrado sin resolución");
+          void playNotificationSound("incidente_cerrado");
         }
 
         detailCache.clear();

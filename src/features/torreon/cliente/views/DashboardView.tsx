@@ -14,11 +14,15 @@ type Props = {
   dailyCounters: Map<number, DailyInfo>;
   loading: boolean;
   refreshing: boolean;
+  busyAction: string | null;
   realtimeStatus: RealtimeConnectionStatus;
   audience: "cliente" | "arrastre";
+  empresaId: number | null;
   onMovimientos: () => void;
   onCrear: () => void;
   onRefresh: () => void;
+  onEditArrastre: (arrastre: Arrastre) => void;
+  onCancel: (arrastre: Arrastre) => void;
   onPrioritizeSolicitud: (arrastre: Arrastre) => void;
   onIncidentSelect: (incident: IncidenteArrastre, arrastre: Arrastre) => void;
 };
@@ -38,16 +42,24 @@ export function DashboardView({
   dailyCounters,
   loading,
   refreshing,
+  busyAction,
   realtimeStatus,
   audience,
+  empresaId,
   onMovimientos,
   onCrear,
   onRefresh,
+  onEditArrastre,
+  onCancel,
   onPrioritizeSolicitud,
   onIncidentSelect,
 }: Props) {
-  const editableSolicitudIds = activeArrastres.filter(canReorderSolicitud).map((arrastre) => arrastre.id);
-  const hasOpenIncident = activeArrastres.some((arrastre) => (arrastre.incidentes || []).some((incident) => statusText(incident.estado) === "ABIERTO"));
+  const manageableArrastres = empresaId
+    ? activeArrastres.filter((arrastre) => Number(arrastre.empresaId) === empresaId)
+    : [];
+  const manageableRowIds = manageableArrastres.map((arrastre) => arrastre.id);
+  const editableSolicitudIds = manageableArrastres.filter(canReorderSolicitud).map((arrastre) => arrastre.id);
+  const hasOpenIncident = manageableArrastres.some((arrastre) => (arrastre.incidentes || []).some((incident) => statusText(incident.estado) === "ABIERTO"));
 
   return (
     <>
@@ -60,12 +72,12 @@ export function DashboardView({
               <TorreonRealtimeBadge status={realtimeStatus} />
             </div>
             <h1 className="mt-2 text-2xl font-black text-slate-950 dark:text-white">
-              {audience === "arrastre" ? "Solicita y sigue tus arrastres" : "Operación de tu empresa"}
+              Ronda general de tu localidad
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
               {audience === "arrastre"
-                ? "Consulta tu turno, revisa el avance de cada vagón y crea una solicitud nueva."
-                : "Revisa solicitudes activas, bloqueos y el avance de tus vagones en un solo lugar."}
+                ? "Consulta el turno completo del patio y el avance de todas las rondas. Solo puedes editar o cancelar las solicitudes de tu empresa."
+                : "Revisa todas las solicitudes activas de tu localidad. Las acciones permanecen limitadas a los movimientos de tu empresa."}
             </p>
           </div>
 
@@ -98,12 +110,16 @@ export function DashboardView({
             <ArrastreTerminalTable
               rows={activeArrastres}
               dailyCounters={dailyCounters}
-              title="Seguimiento activo"
-              subtitle="Tus solicitudes"
+              busyAction={busyAction}
+              title="Ronda general activa"
+              subtitle="Todas las empresas de tu localidad"
               pageSize={5}
-              emptyText="No tienes arrastres activos. Puedes crear una solicitud nueva."
+              emptyText="No hay arrastres activos en tu localidad."
               editableSolicitudIds={editableSolicitudIds}
+              manageableRowIds={manageableRowIds}
               canPrioritizeByIncident={hasOpenIncident}
+              onEditArrastre={onEditArrastre}
+              onCancel={onCancel}
               onPrioritizeSolicitud={onPrioritizeSolicitud}
               onIncidentSelect={onIncidentSelect}
             />

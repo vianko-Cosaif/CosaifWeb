@@ -123,17 +123,46 @@ async function getFirebaseMessagingServiceWorker() {
     "Firebase Service Worker"
   );
 
-  if (existingRegistration) {
+  if (existingRegistration?.active) {
     void existingRegistration.update().catch(() => undefined);
     return existingRegistration;
   }
 
-  return withTimeout(
+  if (existingRegistration) {
+    await existingRegistration.unregister().catch(() => false);
+  }
+
+  const registration = await withTimeout(
     navigator.serviceWorker.register(serviceWorkerUrl, {
       scope: FIREBASE_MESSAGING_SW_SCOPE,
     }),
     8_000,
     "Registro de Firebase Service Worker"
+  );
+
+  if (registration.active) return registration;
+
+  return withTimeout(
+    new Promise<ServiceWorkerRegistration>((resolve) => {
+      const resolveWhenActive = () => {
+        if (registration.active) resolve(registration);
+      };
+      const watchWorker = (worker: ServiceWorker | null) => {
+        if (!worker) return;
+        if (worker.state === "activated") {
+          resolveWhenActive();
+          return;
+        }
+        worker.addEventListener("statechange", resolveWhenActive);
+      };
+
+      watchWorker(registration.installing);
+      watchWorker(registration.waiting);
+      registration.addEventListener("updatefound", () => watchWorker(registration.installing));
+      resolveWhenActive();
+    }),
+    10_000,
+    "Activacion de Firebase Service Worker"
   );
 }
 

@@ -1,6 +1,6 @@
 import { Hash, UserRound } from "lucide-react";
 import type { MovimientoNatural, SortKey } from "../types";
-import { formatDate, formatDuration, getClientLabel, getMovimientoFolio, getOperatorLabel, normalizeStatus, statusClass } from "../utils";
+import { formatDate, getClientLabel, getMovimientoFolio, getOperatorLabel, normalizeStatus, statusClass } from "../utils";
 
 type Props = {
   rows: MovimientoNatural[];
@@ -52,10 +52,9 @@ function ChronologyCard({ row, index }: { row: MovimientoNatural; index: number 
         </span>
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
         <DateBox label="Inicio" value={formatDate(row.fechaInicio)} />
         <DateBox label="Fin" value={formatDate(row.fechaFin)} />
-        <DateBox label="Tiempo" value={formatDuration(row.fechaInicio, row.fechaFin)} />
       </div>
 
       <div className="mt-2 flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-xs font-black text-slate-700 dark:bg-slate-900 dark:text-slate-300">

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
 import { canResolveTorreonIncidentRole, canViewTorreonArrastreRole } from "@/lib/torreonLocalidad";
+import { ARRASTRE_MAX_CAPACITY, ARRASTRE_MIN_VAGONES, arrastreVagonCapacity } from "@/features/torreon/arrastres/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -206,6 +207,76 @@ export async function POST(req: NextRequest) {
     }
 
     const arrastre = await getArrastreForAccess(arrastreId, role, empresaId);
+
+    if (action === "EDITAR_ARRASTRE") {
+      if (statusText(arrastre.estado) !== "SOLICITADO") {
+        return jsonError(`Solo se puede editar una solicitud antes de iniciar. Estado actual: ${statusText(arrastre.estado)}`, 409);
+      }
+      const existingVagones = extractArray(arrastre.vagones);
+      if (existingVagones.some((vagon) => statusText(vagon.estado) !== "PENDIENTE")) {
+        return jsonError("No se puede editar una solicitud que ya tiene vagones operados", 409);
+      }
+
+      const instrucciones = asText(body.instrucciones);
+      if (instrucciones.length < 3 || instrucciones.length > 1_000) {
+        return jsonError("Las instrucciones deben tener entre 3 y 1000 caracteres", 400);
+      }
+      const motivoEdicion = asText(body.motivoEdicion);
+      if (motivoEdicion && (motivoEdicion.length < 3 || motivoEdicion.length > 300)) {
+        return jsonError("El motivo de edición debe tener entre 3 y 300 caracteres", 400);
+      }
+
+      const rawVagones = Array.isArray(body.vagones) ? body.vagones : [];
+      if (rawVagones.length < ARRASTRE_MIN_VAGONES || rawVagones.length > ARRASTRE_MAX_CAPACITY) {
+        return jsonError("La solicitud debe conservar entre 1 y 8 vagones", 400);
+      }
+
+      const vagones = rawVagones.map((item) => {
+        const row = asRecord(item);
+        return {
+          id: asPositiveInt(row.id),
+          numeroVagon: asText(row.numeroVagon),
+          carga: statusText(row.carga),
+          viaOrigenId: asPositiveInt(row.viaOrigenId),
+          seccionOrigenId: asPositiveInt(row.seccionOrigenId),
+          viaId: asPositiveInt(row.viaId),
+          seccionId: asPositiveInt(row.seccionId),
+          viaOrigenNombre: asText(row.viaOrigenNombre),
+          seccionOrigenNombre: asText(row.seccionOrigenNombre),
+          viaDestinoNombre: asText(row.viaDestinoNombre),
+          seccionDestinoNombre: asText(row.seccionDestinoNombre),
+        };
+      });
+
+      if (vagones.some((vagon) => !vagon.id || !vagon.numeroVagon || !vagon.viaOrigenId || !vagon.seccionOrigenId || !vagon.viaId || !vagon.seccionId)) {
+        return jsonError("Cada vagón necesita número, origen y destino completos", 400);
+      }
+      if (vagones.some((vagon) => !["VACIO", "LLENO"].includes(vagon.carga))) {
+        return jsonError("La carga de cada vagón debe ser VACIO o LLENO", 400);
+      }
+      const inputIds = vagones.map((vagon) => vagon.id as number);
+      const existingIds = new Set(existingVagones.map((vagon) => asPositiveInt(vagon.id)).filter((id): id is number => Boolean(id)));
+      if (inputIds.length !== existingIds.size || new Set(inputIds).size !== inputIds.length || inputIds.some((id) => !existingIds.has(id))) {
+        return jsonError("La edición debe incluir todos los vagones existentes", 400);
+      }
+      const numbers = vagones.map((vagon) => vagon.numeroVagon.toLocaleUpperCase("es-MX"));
+      if (new Set(numbers).size !== numbers.length) return jsonError("No repitas el mismo número de vagón", 400);
+      const capacidad = vagones.reduce((total, vagon) => total + arrastreVagonCapacity(vagon.carga), 0);
+      if (capacidad > ARRASTRE_MAX_CAPACITY) return jsonError("Capacidad excedida: vacío=1, lleno=2, máximo=8", 400);
+
+      const data = await fetchTorreonMsJson(`/arrastres/${arrastreId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          instrucciones,
+          vagones,
+          editadoPorId: userId,
+          editadoPorRol: role,
+          ...(motivoEdicion ? { motivoEdicion } : {}),
+        }),
+      });
+      return NextResponse.json(data, { status: 200 });
+    }
 
     if (action === "INICIAR_VAGON" || action === "FINALIZAR_VAGON") {
       if (!canOperatePatio(role)) {

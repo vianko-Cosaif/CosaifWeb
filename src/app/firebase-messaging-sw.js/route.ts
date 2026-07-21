@@ -55,6 +55,7 @@ if (requiredConfig.every(hasValue)) {
       tag: notificationRuntime.runtimeEnv + ":" + tag,
       renotify: true,
       requireInteraction: true,
+      silent: false,
     });
   });
 } else {

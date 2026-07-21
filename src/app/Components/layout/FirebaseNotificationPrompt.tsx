@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Bell, Loader2 } from "lucide-react";
 import { assertSameOriginUrl, getNotificationRuntimePolicy } from "@/lib/notificationRuntime";
+import { preloadNotificationSound, primeNotificationSound } from "@/lib/notificationSound";
 
 type PromptState =
   | "checking"
@@ -38,6 +39,8 @@ export default function FirebaseNotificationPrompt() {
     setState("requesting");
 
     try {
+      const { primeNotificationSound } = await import("@/lib/notificationSound");
+      await primeNotificationSound().catch(() => undefined);
       const {
         registerFirebaseNotificationToken,
         requestFirebaseNotificationToken,
@@ -98,6 +101,33 @@ export default function FirebaseNotificationPrompt() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!policy.enabled) return;
+
+    let audioReady = false;
+    preloadNotificationSound();
+
+    const primeAudio = () => {
+      void primeNotificationSound()
+        .then((ready) => {
+          if (!ready) return;
+          audioReady = true;
+          window.removeEventListener("pointerdown", primeAudio, true);
+          window.removeEventListener("keydown", primeAudio, true);
+        });
+    };
+
+    window.addEventListener("pointerdown", primeAudio, true);
+    window.addEventListener("keydown", primeAudio, true);
+
+    return () => {
+      if (audioReady) return;
+      window.removeEventListener("pointerdown", primeAudio, true);
+      window.removeEventListener("keydown", primeAudio, true);
+    };
+  }, [policy.enabled]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!policy.enabled) return;
     if (browserPermission() !== "granted") return;
 
     let unsubscribe: (() => void) | undefined;
@@ -127,8 +157,16 @@ export default function FirebaseNotificationPrompt() {
             tag,
             renotify: true,
             requireInteraction: true,
+            silent: false,
             data: { ...payload.data, url },
           };
+          void import("@/lib/notificationSound").then(({ playNotificationSound }) =>
+            playNotificationSound([
+              payload.data?.tipo,
+              payload.data?.eventType,
+              payload.data?.source,
+            ].filter(Boolean).join(":"))
+          );
           const notification = new Notification(title, options);
           notification.onclick = (event) => {
             event.preventDefault();

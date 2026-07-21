@@ -1,29 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { LoaderCircle, Wifi, WifiOff } from "lucide-react";
 import type { RealtimeConnectionStatus } from "@/app/hooks/useRealtimeMovimientos";
 import { realtimeStatusLabel } from "@/features/torreon/realtime";
 
 export function TorreonRealtimeBadge({ status }: { status: RealtimeConnectionStatus }) {
-  const [lastEventAt, setLastEventAt] = useState<number | null>(null);
-  const [, setClock] = useState(0);
   const connected = status === "connected";
   const connecting = status === "connecting";
   const Icon = connected ? Wifi : connecting ? LoaderCircle : WifiOff;
-
-  useEffect(() => {
-    const onEvent = () => setLastEventAt(Date.now());
-    window.addEventListener("cosaif:realtime-event", onEvent);
-    const timer = window.setInterval(() => setClock((value) => value + 1), 15_000);
-    return () => {
-      window.removeEventListener("cosaif:realtime-event", onEvent);
-      window.clearInterval(timer);
-    };
-  }, []);
-
-  const secondsAgo = lastEventAt ? Math.floor((Date.now() - lastEventAt) / 1_000) : null;
-  const activityLabel = secondsAgo == null ? "" : secondsAgo < 60 ? " · ahora" : ` · ${Math.floor(secondsAgo / 60)} min`;
 
   return (
     <span
@@ -37,7 +21,7 @@ export function TorreonRealtimeBadge({ status }: { status: RealtimeConnectionSta
       }`}
     >
       <Icon className={`h-3.5 w-3.5 ${connecting ? "animate-spin" : ""}`} aria-hidden />
-      {realtimeStatusLabel(status)}{connected ? activityLabel : ""}
+      {realtimeStatusLabel(status)}
     </span>
   );
 }

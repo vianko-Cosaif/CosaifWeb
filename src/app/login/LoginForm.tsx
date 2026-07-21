@@ -11,6 +11,7 @@ const DEST: Record<string, string> = {
   MAQUINISTA: "/maquinista",
   OPERADOR: "/operador",
   ADMINISTRADOR: "/administrador",
+  COMERCIAL: "/comercial",
   COORDINADOR: "/coordinador",
 };
 
@@ -159,6 +160,12 @@ export default function LoginForm() {
         return;
       }
 
+      const capabilities = getRoleCapabilities(role);
+      if (!capabilities.canUseWeb) {
+        setErr(`El acceso web para el rol ${capabilities.label} todavía no está habilitado.`);
+        return;
+      }
+
       const notificationsReady = await prepareNotificationAfterLogin();
       if (!notificationsReady) {
         return;
@@ -203,13 +210,12 @@ export default function LoginForm() {
       } catch {}
 
       // 5) Redirección por rol, sin query ?loc
-      const capabilities = getRoleCapabilities(role);
       const shouldEnterTorreon =
         role === "ARRASTRE_TORREON" ||
         (role === "CLIENTE" && !capabilities.canSwitchLocalidad && isTorreonLocalidadId(localidadId));
       const destBase = isClienteAreaRole(role) && shouldEnterTorreon
         ? "/cliente/torreon"
-        : DEST[role] || "/cliente";
+        : DEST[role] || capabilities.home;
       window.location.assign(destBase);
     } catch {
       setErr("No hay conexión con el servicio");

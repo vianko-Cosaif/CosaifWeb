@@ -21,6 +21,11 @@ import {
   CircleHelp,
   Search,
   Boxes,
+  ContactRound,
+  FileSpreadsheet,
+  FileText,
+  HandCoins,
+  PackageCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { GuidedTarget, useGuidedManualApi } from "@/app/Components/GuidedManualAtom";
@@ -35,7 +40,7 @@ import { clearAuthenticatedSession } from "@/lib/sessionLogout";
 /* ==========================================================================
    INTERFACES & TYPES
    ========================================================================== */
-export type Rol = "ADMINISTRADOR" | "COORDINADOR" | "SUPERVISOR" | "CLIENTE";
+export type Rol = "ADMINISTRADOR" | "COMERCIAL" | "COORDINADOR" | "SUPERVISOR" | "CLIENTE";
 
 interface UserSession {
   id: number;
@@ -111,6 +116,7 @@ function readStoredSession(): UserSession | null {
 function inferRoleFromPath(pathname: string | null): AppRole | null {
   const path = String(pathname || "").toLowerCase();
   if (path.startsWith("/administrador")) return "ADMINISTRADOR";
+  if (path.startsWith("/comercial")) return "COMERCIAL";
   if (path.startsWith("/coordinador")) return "COORDINADOR";
   if (path.startsWith("/supervisor")) return "SUPERVISOR";
   if (path.startsWith("/cliente/torreon")) return "ARRASTRE_TORREON";
@@ -146,6 +152,11 @@ const ROLE_CONFIG: Record<
     icon: ShieldHalf,
     label: "Administrador",
   },
+  COMERCIAL: {
+    ...COMMON_ROLE_STYLE,
+    icon: BarChart3,
+    label: "Comercial",
+  },
   COORDINADOR: {
     ...COMMON_ROLE_STYLE,
     icon: Train,
@@ -172,6 +183,12 @@ const NAV_ICONS: Record<NavModuleId, LucideIcon> = {
   usuarios: Users,
   incidentes: TriangleAlert,
   reporteria: BarChart3,
+  commercial_general: BarChart3,
+  commercial_clients: ContactRound,
+  commercial_contracts: FileText,
+  commercial_packages: PackageCheck,
+  commercial_collections: HandCoins,
+  commercial_reports: FileSpreadsheet,
 };
 
 function cn(...classes: (string | undefined | null | false)[]) {
@@ -278,6 +295,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
   const capabilities = useMemo(() => getRoleCapabilities(appRole), [appRole]);
   const normRol = useMemo<Rol>(() => {
     if (capabilities.area === "administrador") return "ADMINISTRADOR";
+    if (capabilities.area === "comercial") return "COMERCIAL";
     if (capabilities.area === "coordinador") return "COORDINADOR";
     if (capabilities.area === "supervisor") return "SUPERVISOR";
     return "CLIENTE";
@@ -337,13 +355,14 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
     }));
   }, [appRole, capabilities.isClientLike]);
   const mobileNavigation = useMemo(() => {
+    if (capabilities.area === "comercial") return navigation.slice(0, 3);
     const preferred = [
       navigation.find((item) => item.id === "dashboard"),
       navigation.find((item) => item.id === "torreon_arrastres") ?? navigation.find((item) => item.id === "movimientos"),
       navigation.find((item) => item.id === "incidentes") ?? navigation.find((item) => item.id === "reporteria"),
     ].filter((item): item is NavigationItem => Boolean(item));
     return preferred.filter((item, index) => preferred.findIndex((candidate) => candidate.id === item.id) === index);
-  }, [navigation]);
+  }, [navigation, capabilities.area]);
 
   const handleLogout = async () => {
     if (loggingOut) return;

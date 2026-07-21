@@ -49,6 +49,23 @@ export type EditVagonDraft = {
   seccionId: string;
 };
 
+export type EditArrastreVagonDraft = VagonDraft & {
+  vagonId: number;
+};
+
+export type EditArrastreDraft = {
+  arrastreId: number;
+  instrucciones: string;
+  motivoEdicion: string;
+  vagones: EditArrastreVagonDraft[];
+};
+
+export type CancelArrastreDraft = {
+  arrastreId: number;
+  referencia: string;
+  motivo: string;
+};
+
 export type ClienteArrastreStats = {
   total: number;
   solicitados: number;

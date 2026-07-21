@@ -1,10 +1,10 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, ArrowDown, ArrowUp, Ban, ChevronDown, ChevronRight, ChevronsUp } from "lucide-react";
-import { buildArrastreFolio, fmtMinutes, getPrimaryIncident, type Arrastre, type DailyInfo, type IncidenteArrastre, type VagonArrastre } from "@/features/torreon/arrastres";
+import { AlertTriangle, ArrowDown, ArrowUp, Ban, ChevronDown, ChevronRight, ChevronsUp, Pencil } from "lucide-react";
+import { buildArrastreFolio, getPrimaryIncident, type Arrastre, type DailyInfo, type IncidenteArrastre, type VagonArrastre } from "@/features/torreon/arrastres";
 import { operationStatusHint } from "@/features/torreon/operationCopy";
 import { EmptyState } from "../EmptyState";
 import { EstadoBadge } from "../EstadoBadge";
-import { isArrastreEditable, statusText } from "../../utils";
+import { canCancelArrastreRequest, canEditArrastreRequest, statusText } from "../../utils";
 import { Direction, getCurrentVagon, getStats, vagonLabel } from "./helpers";
 import { RondaDetail } from "./RondaDetail";
 import { RondaRow } from "./RondaRow";
@@ -19,7 +19,9 @@ type Props = {
   pageSize?: number;
   emptyText?: string;
   editableSolicitudIds?: number[];
+  manageableRowIds?: number[];
   canPrioritizeByIncident?: boolean;
+  onEditArrastre?: (arrastre: Arrastre) => void;
   onEditVagon?: (arrastre: Arrastre, vagon: VagonArrastre) => void;
   onPrioritizeSolicitud?: (arrastre: Arrastre) => void;
   onReorderVagon?: (arrastre: Arrastre, vagon: VagonArrastre, direction: Direction) => void;
@@ -37,7 +39,9 @@ export function ArrastreTerminalTable({
   pageSize = 8,
   emptyText = "No hay rondas para mostrar.",
   editableSolicitudIds = [],
+  manageableRowIds,
   canPrioritizeByIncident = false,
+  onEditArrastre,
   onEditVagon,
   onPrioritizeSolicitud,
   onReorderVagon,
@@ -47,6 +51,10 @@ export function ArrastreTerminalTable({
 }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<number>>(() => new Set());
   const [page, setPage] = useState(1);
+  const manageableIds = useMemo(
+    () => manageableRowIds ? new Set(manageableRowIds) : null,
+    [manageableRowIds],
+  );
 
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -98,8 +106,8 @@ export function ArrastreTerminalTable({
               const primaryIncident = getPrimaryIncident(arrastre);
               const current = getCurrentVagon(arrastre);
               const stats = getStats(arrastre);
-              const canChange = isArrastreEditable(arrastre.estado);
-              const waitMinutes = arrastre.resumen?.solicitudTotalMin;
+              const canCancel = canCancelArrastreRequest(arrastre);
+              const canManage = !manageableIds || manageableIds.has(arrastre.id);
 
               return (
                 <article key={arrastre.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -108,11 +116,14 @@ export function ArrastreTerminalTable({
                       <div>
                         <p className="text-xs font-black uppercase tracking-wide text-slate-400">Turno {arrastre.ordenSolicitud || solicitudIndex + 1}</p>
                         <h3 className="mt-1 font-mono text-lg font-black text-slate-950 dark:text-white">{buildArrastreFolio(arrastre, dailyInfo)}</h3>
+                        <p className={`mt-1 text-xs font-black ${canManage ? "text-emerald-700 dark:text-emerald-300" : "text-slate-400"}`}>
+                          {canManage ? "Tu empresa" : "Otra empresa · solo consulta"}
+                        </p>
                       </div>
                       <EstadoBadge estado={arrastre.estado} />
                     </div>
 
-                    <p className="mt-2 text-xs font-bold text-slate-500 dark:text-slate-400">{operationStatusHint(arrastre.estado)}{Number.isFinite(Number(waitMinutes)) ? ` · ${fmtMinutes(waitMinutes)} acumulados` : ""}</p>
+                    <p className="mt-2 text-xs font-bold text-slate-500 dark:text-slate-400">{operationStatusHint(arrastre.estado)}</p>
 
                     <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-800 dark:bg-emerald-950/30">
                       <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-300">{statusText(current?.estado) === "EN_PROCESO" ? "En movimiento ahora" : "Siguiente vagón"}</p>
@@ -132,8 +143,9 @@ export function ArrastreTerminalTable({
                       {expanded ? <ChevronDown className="h-4 w-4" aria-hidden /> : <ChevronRight className="h-4 w-4" aria-hidden />}
                     </button>
 
-                    {(onPrioritizeSolicitud || onReorderSolicitud || onCancel || (primaryIncident && onIncidentSelect)) ? (
+                    {canManage && (onEditArrastre || onPrioritizeSolicitud || onReorderSolicitud || onCancel || (primaryIncident && onIncidentSelect)) ? (
                       <div className="mt-3 grid grid-cols-2 gap-2">
+                        {onEditArrastre ? <MobileAction label="Editar movimiento" disabled={!canEditArrastreRequest(arrastre) || busyAction != null} onClick={() => onEditArrastre(arrastre)}><Pencil className="h-4 w-4" /></MobileAction> : null}
                         {onPrioritizeSolicitud ? <MobileAction label="Priorizar" disabled={!canPrioritizeSolicitud(arrastre, solicitudIndex) || busyAction != null} onClick={() => onPrioritizeSolicitud(arrastre)}><ChevronsUp className="h-4 w-4" /></MobileAction> : null}
                         {onReorderSolicitud ? (
                           <div className="grid grid-cols-2 gap-2">
@@ -142,7 +154,7 @@ export function ArrastreTerminalTable({
                           </div>
                         ) : null}
                         {primaryIncident && onIncidentSelect ? <MobileAction label="Ver incidente" warning disabled={busyAction != null} onClick={() => onIncidentSelect(primaryIncident, arrastre)}><AlertTriangle className="h-4 w-4" /></MobileAction> : null}
-                        {onCancel ? <MobileAction label="Cancelar" danger disabled={!canChange || busyAction != null} onClick={() => onCancel(arrastre)}><Ban className="h-4 w-4" /></MobileAction> : null}
+                        {onCancel ? <MobileAction label="Cancelar" danger disabled={!canCancel || busyAction != null} onClick={() => onCancel(arrastre)}><Ban className="h-4 w-4" /></MobileAction> : null}
                       </div>
                     ) : null}
                   </div>
@@ -172,6 +184,7 @@ export function ArrastreTerminalTable({
                   const expanded = expandedIds.has(arrastre.id);
                   const dailyInfo = dailyCounters.get(arrastre.id);
                   const solicitudIndex = editableSolicitudIds.indexOf(arrastre.id);
+                  const canManage = !manageableIds || manageableIds.has(arrastre.id);
 
                   return (
                     <Fragment key={arrastre.id}>
@@ -183,11 +196,13 @@ export function ArrastreTerminalTable({
                         canMoveSolicitudUp={solicitudIndex > 0}
                         canMoveSolicitudDown={solicitudIndex >= 0 && solicitudIndex < editableSolicitudIds.length - 1}
                         canPrioritizeSolicitud={canPrioritizeSolicitud(arrastre, solicitudIndex)}
+                        isManaged={canManage}
                         onToggle={() => toggle(arrastre.id)}
-                        onPrioritizeSolicitud={onPrioritizeSolicitud}
-                        onReorderSolicitud={onReorderSolicitud}
-                        onCancel={onCancel}
-                        onIncidentSelect={onIncidentSelect}
+                        onPrioritizeSolicitud={canManage ? onPrioritizeSolicitud : undefined}
+                        onReorderSolicitud={canManage ? onReorderSolicitud : undefined}
+                        onEditArrastre={canManage ? onEditArrastre : undefined}
+                        onCancel={canManage ? onCancel : undefined}
+                        onIncidentSelect={canManage ? onIncidentSelect : undefined}
                       />
                       {expanded && (
                         <tr className="bg-slate-50/70 dark:bg-slate-900/50">

@@ -4,6 +4,7 @@
 export type SameSite = "lax" | "strict" | "none";
 export type Role =
   | "ADMINISTRADOR"
+  | "COMERCIAL"
   | "COORDINADOR"
   | "SUPERVISOR"
   | "CLIENTE"
@@ -144,11 +145,11 @@ export function setLocIdClient(id: number): void {
 
 export function getRoleClient(): Role | null {
   const v = (getClientCookie("role") ?? "").toUpperCase();
-  return v === "ADMINISTRADOR" || v === "COORDINADOR" || v === "SUPERVISOR" || v === "CLIENTE" || v === "CLIENTE_ADMIN" || v === "CLIENTE_COOR" || v === "ARRASTRE_TORREON" || v === "MAQUINISTA" || v === "MAQUINISTA_ARRASTRE" || v === "TORNO" || v === "LAVADO" ? (v as Role) : null;
+  return v === "ADMINISTRADOR" || v === "COMERCIAL" || v === "COORDINADOR" || v === "SUPERVISOR" || v === "CLIENTE" || v === "CLIENTE_ADMIN" || v === "CLIENTE_COOR" || v === "ARRASTRE_TORREON" || v === "MAQUINISTA" || v === "MAQUINISTA_ARRASTRE" || v === "TORNO" || v === "LAVADO" ? (v as Role) : null;
 }
 export async function getRoleServer(): Promise<Role | null> {
   const v = ((await getServerCookie("role")) ?? "").toUpperCase();
-  return v === "ADMINISTRADOR" || v === "COORDINADOR" || v === "SUPERVISOR" || v === "CLIENTE" || v === "CLIENTE_ADMIN" || v === "CLIENTE_COOR" || v === "ARRASTRE_TORREON" || v === "MAQUINISTA" || v === "MAQUINISTA_ARRASTRE" || v === "TORNO" || v === "LAVADO" ? (v as Role) : null;
+  return v === "ADMINISTRADOR" || v === "COMERCIAL" || v === "COORDINADOR" || v === "SUPERVISOR" || v === "CLIENTE" || v === "CLIENTE_ADMIN" || v === "CLIENTE_COOR" || v === "ARRASTRE_TORREON" || v === "MAQUINISTA" || v === "MAQUINISTA_ARRASTRE" || v === "TORNO" || v === "LAVADO" ? (v as Role) : null;
 }
 
 

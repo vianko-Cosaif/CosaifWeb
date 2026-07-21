@@ -44,6 +44,30 @@ const MODULE_COPY: Record<NavModuleId, Omit<AppNavigationItem, "id" | "href">> =
     label: "Reportería",
     description: "Indicadores y cronología",
   },
+  commercial_general: {
+    label: "Reporte general",
+    description: "Volumen por periodo y localidad",
+  },
+  commercial_clients: {
+    label: "Clientes",
+    description: "Expedientes y contactos comerciales",
+  },
+  commercial_contracts: {
+    label: "Contratos",
+    description: "Vigencias y reglas por movimiento",
+  },
+  commercial_packages: {
+    label: "Reglas y paquetes",
+    description: "Movimientos incluidos por periodo",
+  },
+  commercial_collections: {
+    label: "Cortes y saldos",
+    description: "Cierres de periodo y saldo opcional",
+  },
+  commercial_reports: {
+    label: "Reportería Excel",
+    description: "Construcción de reportes a la medida",
+  },
 };
 
 function hrefForModule(role: string | null | undefined, moduleId: NavModuleId) {
@@ -61,6 +85,12 @@ function hrefForModule(role: string | null | undefined, moduleId: NavModuleId) {
   }
   if (moduleId === "incidentes") return `${base}/incidentes`;
   if (moduleId === "reporteria") return `${base}/reporteria`;
+  if (moduleId === "commercial_general") return "/comercial/reporte-general";
+  if (moduleId === "commercial_clients") return "/comercial/clientes";
+  if (moduleId === "commercial_contracts") return "/comercial/contratos";
+  if (moduleId === "commercial_packages") return "/comercial/paquetes";
+  if (moduleId === "commercial_collections") return "/comercial/cobranza";
+  if (moduleId === "commercial_reports") return "/comercial/reporteria";
 
   return capabilities.home;
 }

@@ -1,5 +1,6 @@
 export const APP_ROLES = [
   "ADMINISTRADOR",
+  "COMERCIAL",
   "COORDINADOR",
   "SUPERVISOR",
   "CLIENTE",
@@ -13,7 +14,7 @@ export const APP_ROLES = [
 ] as const;
 
 export type AppRole = (typeof APP_ROLES)[number];
-export type RoleArea = "administrador" | "coordinador" | "supervisor" | "cliente" | "unsupported";
+export type RoleArea = "administrador" | "comercial" | "coordinador" | "supervisor" | "cliente" | "unsupported";
 export type NavModuleId =
   | "dashboard"
   | "movimientos"
@@ -22,7 +23,13 @@ export type NavModuleId =
   | "configuracion"
   | "usuarios"
   | "incidentes"
-  | "reporteria";
+  | "reporteria"
+  | "commercial_general"
+  | "commercial_clients"
+  | "commercial_contracts"
+  | "commercial_packages"
+  | "commercial_collections"
+  | "commercial_reports";
 
 export type RoleCapabilities = {
   area: RoleArea;
@@ -47,6 +54,7 @@ export type RoleCapabilities = {
 
 const ROLE_LABELS: Record<AppRole, string> = {
   ADMINISTRADOR: "Administrador",
+  COMERCIAL: "Comercial",
   COORDINADOR: "Coordinador",
   SUPERVISOR: "Supervisor",
   CLIENTE: "Cliente",
@@ -78,6 +86,27 @@ const ADMIN_CAPABILITIES: RoleCapabilities = {
   canViewReports: true,
   canViewTorno: false,
   navModules: ["dashboard", "movimientos", "configuracion", "usuarios", "incidentes", "reporteria"],
+};
+
+const COMERCIAL_CAPABILITIES: RoleCapabilities = {
+  area: "comercial",
+  home: "/comercial/reporte-general",
+  label: ROLE_LABELS.COMERCIAL,
+  isClientLike: false,
+  isOperationalOnly: false,
+  canUseWeb: true,
+  canCreateMovements: false,
+  canViewMovementDuration: true,
+  canViewAllCompanies: true,
+  canViewCompanyWide: true,
+  canSwitchLocalidad: true,
+  canViewNaturalMovements: false,
+  canViewTorreonArrastres: false,
+  canCreateTorreonArrastres: false,
+  canManageUsers: false,
+  canViewReports: true,
+  canViewTorno: false,
+  navModules: ["commercial_general", "commercial_clients", "commercial_contracts", "commercial_packages", "commercial_collections", "commercial_reports"],
 };
 
 const COORDINADOR_CAPABILITIES: RoleCapabilities = {
@@ -192,6 +221,7 @@ const UNSUPPORTED_CAPABILITIES: RoleCapabilities = {
 
 const CAPABILITIES_BY_ROLE: Record<AppRole, RoleCapabilities> = {
   ADMINISTRADOR: ADMIN_CAPABILITIES,
+  COMERCIAL: COMERCIAL_CAPABILITIES,
   COORDINADOR: COORDINADOR_CAPABILITIES,
   SUPERVISOR: SUPERVISOR_CAPABILITIES,
   CLIENTE: CLIENT_CAPABILITIES,

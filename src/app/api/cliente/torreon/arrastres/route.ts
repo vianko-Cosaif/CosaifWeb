@@ -23,6 +23,14 @@ function readEmpresaId(cookieStore: CookieStore) {
   );
 }
 
+function readLocalidadId(cookieStore: CookieStore) {
+  return (
+    Number(cookieStore.get("locId")?.value) ||
+    Number(cookieStore.get("localidadId")?.value) ||
+    null
+  );
+}
+
 function readUserId(cookieStore: CookieStore) {
   return (
     Number(cookieStore.get("userId")?.value) ||
@@ -188,17 +196,37 @@ export async function GET(req: NextRequest) {
     const estado = searchParams.get("estado");
     const vista = searchParams.get("vista");
     const id = asNumber(searchParams.get("id"));
+    const auditId = asNumber(searchParams.get("auditId"));
     const page = searchParams.get("page");
     const pageSize = searchParams.get("pageSize");
     const includeFotos = searchParams.get("includeFotos");
     const cookieStore = await cookies();
     const role = readRole(cookieStore);
     const empresaId = readEmpresaId(cookieStore);
+    const sessionLocalidadId = readLocalidadId(cookieStore);
+    const generalLocalityView = searchParams.get("alcance") === "localidad" && !id && !auditId;
     if (!canViewTorreonArrastreRole(role) && !canResolveTorreonIncidentRole(role)) {
       return NextResponse.json([], { status: 200 });
     }
 
-    const scopedEmpresaId = canSeeAllEmpresas(role) ? null : empresaId;
+    if (
+      generalLocalityView &&
+      !canSeeAllEmpresas(role) &&
+      sessionLocalidadId &&
+      sessionLocalidadId !== Number(localidadId)
+    ) {
+      return jsonError("No autorizado para consultar otra localidad", 403);
+    }
+
+    if (auditId) {
+      if (role !== "ADMINISTRADOR") return jsonError("Solo administración puede consultar la bitácora de ediciones", 403);
+      const detail = mapArrastre(unwrapDetail(await fetchTorreonMsJson(`/arrastres/${auditId}?includeFotos=false`))) as ArrastreRecord;
+      if (asNumber(detail.localidadId) !== Number(localidadId)) return jsonError("Bitácora fuera de la localidad seleccionada", 403);
+      const data = await fetchTorreonMsJson(`/arrastres/${auditId}/ediciones`);
+      return NextResponse.json(extractArray(data), { status: 200 });
+    }
+
+    const scopedEmpresaId = generalLocalityView || canSeeAllEmpresas(role) ? null : empresaId;
 
     if (!canSeeAllEmpresas(role) && !scopedEmpresaId) {
       return NextResponse.json([], { status: 200 });
@@ -228,6 +256,7 @@ export async function GET(req: NextRequest) {
     if (page) qs.set("page", page);
     if (pageSize) qs.set("pageSize", pageSize);
     if (includeFotos) qs.set("includeFotos", includeFotos);
+    if (generalLocalityView) qs.set("alcance", "localidad");
     if (scopedEmpresaId) qs.set("empresaId", String(scopedEmpresaId));
 
     const data = await fetchTorreonMsJson(`/arrastres?${qs.toString()}`);

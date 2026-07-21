@@ -263,6 +263,7 @@ interface IncidentMonitorProps {
   onIncidentContinued?: (incident: IncidenteEmergente) => void;
   mobileMaxWidth?: number;
   autoOpenNewIncidents?: boolean;
+  countdownEnabled?: boolean;
 }
 
 /* ========== Componente ========== */
@@ -277,6 +278,7 @@ export default function IncidentMonitor({
   onIncidentContinued,
   mobileMaxWidth = 768,
   autoOpenNewIncidents = true,
+  countdownEnabled = true,
 }: IncidentMonitorProps) {
   // Keep first client render identical to SSR; resolve cookie-based fallback after mount.
   const [empresaId, setEmpresaId] = useState<number | null>(empresaIdProp ?? null);
@@ -558,6 +560,7 @@ export default function IncidentMonitor({
           onResolve={handleResolve}
           onSkip={handleSkip}
           onContinue={handleContinue}
+          countdownEnabled={countdownEnabled}
         />
       )}
 

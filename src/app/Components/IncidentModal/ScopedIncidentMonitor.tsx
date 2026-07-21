@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { getClientCookie, getEmpresaIdClient, getLocIdClient, getRoleClient } from "@/lib/cookies";
+import { isTorreonLocalidadId, normalizeRoleName } from "@/lib/torreonLocalidad";
 
 const IncidentMonitor = dynamic(() => import("./IncidentMonitor"), { ssr: false });
 
@@ -41,10 +42,12 @@ export default function ScopedIncidentMonitor({
   const [localidadId, setLocalidadId] = useState<number | null>(null);
   const [scopeReady, setScopeReady] = useState(false);
   const [monitorReady, setMonitorReady] = useState(false);
+  const [countdownEnabled, setCountdownEnabled] = useState(true);
 
   useEffect(() => {
     const refreshScope = () => {
       const role = getRoleClient();
+      const normalizedRole = normalizeRoleName(role);
       const resolvedScope =
         scope === "auto"
           ? role === "ADMINISTRADOR"
@@ -54,23 +57,26 @@ export default function ScopedIncidentMonitor({
               : "localidad"
           : scope;
 
-      if (resolvedScope === "admin") {
-        setEmpresaId(null);
-        setLocalidadId(null);
+      const applyScope = (nextEmpresaId: number | null, nextLocalidadId: number | null) => {
+        setEmpresaId(nextEmpresaId);
+        setLocalidadId(nextLocalidadId);
+        setCountdownEnabled(
+          !normalizedRole.includes("TORREON") && !isTorreonLocalidadId(nextLocalidadId),
+        );
         setScopeReady(true);
+      };
+
+      if (resolvedScope === "admin") {
+        applyScope(null, null);
         return;
       }
 
       if (resolvedScope === "cliente") {
-        setEmpresaId(getEmpresaIdClient());
-        setLocalidadId(getStoredLocalidadId());
-        setScopeReady(true);
+        applyScope(getEmpresaIdClient(), getStoredLocalidadId());
         return;
       }
 
-      setEmpresaId(null);
-      setLocalidadId(getStoredLocalidadId());
-      setScopeReady(true);
+      applyScope(null, getStoredLocalidadId());
     };
 
     const onStorage = (event: StorageEvent) => {
@@ -102,6 +108,7 @@ export default function ScopedIncidentMonitor({
       empresaId={empresaId}
       localidadId={localidadId}
       autoOpenNewIncidents={autoOpenNewIncidents}
+      countdownEnabled={countdownEnabled}
     />
   );
 }

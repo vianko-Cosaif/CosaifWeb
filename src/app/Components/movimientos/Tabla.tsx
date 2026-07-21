@@ -76,6 +76,7 @@ interface TablaProps {
   onOrden: (c: CampoOrden, d: DireccionOrden) => void;
   onEditar?: (id: number) => void;
   rol?: Rol;
+  mostrarDuracion?: boolean;
 }
 
 /* ================== COMPONENTE PRINCIPAL ================== */
@@ -93,9 +94,10 @@ function TablaInner({
   onOrden,
   onEditar,
   rol,
+  mostrarDuracion = true,
 }: TablaProps) {
   const clienteSoloIds = isClientLikeRole(rol);
-  const puedeVerDuracion = canViewMovementDuration(rol);
+  const puedeVerDuracion = mostrarDuracion && canViewMovementDuration(rol);
   const NO_EDIT_STATES = useMemo(
     () => new Set(["DETENIDO", "EN_PROCESO", "CONCLUIDO"]),
     []

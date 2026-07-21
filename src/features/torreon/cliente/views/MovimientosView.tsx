@@ -23,6 +23,7 @@ type Props = {
   onDateFilter: (value: string) => void;
   onRefresh: () => void;
   onNuevo: () => void;
+  onEditArrastre: (arrastre: Arrastre) => void;
   onEditVagon: (arrastre: Arrastre, vagon: VagonArrastre) => void;
   onPrioritizeSolicitud: (arrastre: Arrastre) => void;
   onReorderVagon: (arrastre: Arrastre, vagon: VagonArrastre, direction: "up" | "down") => void;
@@ -57,6 +58,7 @@ export function MovimientosView({
   onDateFilter,
   onRefresh,
   onNuevo,
+  onEditArrastre,
   onEditVagon,
   onPrioritizeSolicitud,
   onReorderVagon,
@@ -97,6 +99,7 @@ export function MovimientosView({
             pageSize={6}
             editableSolicitudIds={editableSolicitudIds}
             canPrioritizeByIncident={canPrioritizeByIncident}
+            onEditArrastre={onEditArrastre}
             onEditVagon={onEditVagon}
             onPrioritizeSolicitud={onPrioritizeSolicitud}
             onReorderVagon={onReorderVagon}

@@ -1,6 +1,6 @@
-import { AlertTriangle, ArrowDown, ArrowUp, Ban, ChevronsUp, ChevronDown, ChevronRight } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Ban, ChevronsUp, ChevronDown, ChevronRight, Pencil } from "lucide-react";
 import { buildArrastreFolio, fmtDate, getPrimaryIncident, type Arrastre, type DailyInfo, type IncidenteArrastre, type VagonArrastre } from "@/features/torreon/arrastres";
-import { isArrastreEditable, statusText } from "../../utils";
+import { canCancelArrastreRequest, canEditArrastreRequest, statusText } from "../../utils";
 import { EstadoBadge } from "../EstadoBadge";
 import { Direction, getCurrentVagon, getNextVagones, getStats, vagonLabel } from "./helpers";
 import { IconButton } from "./TerminalControls";
@@ -13,9 +13,11 @@ type Props = {
   canMoveSolicitudUp: boolean;
   canMoveSolicitudDown: boolean;
   canPrioritizeSolicitud: boolean;
+  isManaged: boolean;
   onToggle: () => void;
   onPrioritizeSolicitud?: (arrastre: Arrastre) => void;
   onReorderSolicitud?: (arrastre: Arrastre, direction: Direction) => void;
+  onEditArrastre?: (arrastre: Arrastre) => void;
   onCancel?: (arrastre: Arrastre) => void;
   onIncidentSelect?: (incident: IncidenteArrastre, arrastre: Arrastre) => void;
 };
@@ -28,9 +30,11 @@ export function RondaRow({
   canMoveSolicitudUp,
   canMoveSolicitudDown,
   canPrioritizeSolicitud,
+  isManaged,
   onToggle,
   onPrioritizeSolicitud,
   onReorderSolicitud,
+  onEditArrastre,
   onCancel,
   onIncidentSelect,
 }: Props) {
@@ -39,7 +43,7 @@ export function RondaRow({
   const stats = getStats(arrastre);
   const currentStatus = current ? statusText(current.estado) : "";
   const currentLabel = currentStatus === "EN_PROCESO" ? "REALIZANDO" : current ? "SIGUE" : "SIN PENDIENTES";
-  const canChange = isArrastreEditable(arrastre.estado);
+  const canCancel = canCancelArrastreRequest(arrastre);
   const primaryIncident = getPrimaryIncident(arrastre);
   const incidentCount = arrastre.incidentes?.length || 0;
 
@@ -60,6 +64,9 @@ export function RondaRow({
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-bold text-slate-400">
           <span>ID #{arrastre.id}</span>
           {dailyInfo && <span>Ronda {dailyInfo.index}/{dailyInfo.total}</span>}
+          <span className={isManaged ? "text-emerald-700 dark:text-emerald-300" : "text-slate-400"}>
+            {isManaged ? "Tu empresa" : "Solo consulta"}
+          </span>
         </div>
       </td>
       <td className="px-3 py-3">
@@ -125,8 +132,13 @@ export function RondaRow({
               </IconButton>
             </>
           )}
+          {onEditArrastre && (
+            <IconButton title="Editar movimiento" disabled={!canEditArrastreRequest(arrastre) || busyAction != null} onClick={() => onEditArrastre(arrastre)}>
+              <Pencil className="h-4 w-4" />
+            </IconButton>
+          )}
           {onCancel && (
-            <IconButton title="Cancelar ronda" tone="danger" disabled={!canChange || busyAction != null} onClick={() => onCancel(arrastre)}>
+            <IconButton title="Cancelar movimiento" tone="danger" disabled={!canCancel || busyAction != null} onClick={() => onCancel(arrastre)}>
               <Ban className="h-4 w-4" />
             </IconButton>
           )}

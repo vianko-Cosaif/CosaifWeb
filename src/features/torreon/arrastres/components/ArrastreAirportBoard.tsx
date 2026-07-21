@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowRight, Boxes, Radio } from "lucide-react";
+import { AlertTriangle, ArrowRight, Boxes, History, Radio } from "lucide-react";
 import { operationStatusLabel } from "@/features/torreon/operationCopy";
 import type { Arrastre, DailyInfo, IncidenteArrastre, VagonArrastre } from "../types";
 import {
@@ -16,9 +16,10 @@ type Props = {
   rows: Arrastre[];
   dailyCounters: Map<number, DailyInfo>;
   onIncidentSelect?: (incident: IncidenteArrastre, arrastre: Arrastre) => void;
+  onAuditSelect?: (arrastre: Arrastre) => void;
 };
 
-export default function ArrastreAirportBoard({ rows, dailyCounters, onIncidentSelect }: Props) {
+export default function ArrastreAirportBoard({ rows, dailyCounters, onIncidentSelect, onAuditSelect }: Props) {
   return (
     <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-100 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
@@ -49,6 +50,7 @@ export default function ArrastreAirportBoard({ rows, dailyCounters, onIncidentSe
               index={index}
               dailyInfo={dailyCounters.get(arrastre.id)}
               onIncidentSelect={onIncidentSelect}
+              onAuditSelect={onAuditSelect}
             />
           ))}
         </div>
@@ -73,7 +75,7 @@ export default function ArrastreAirportBoard({ rows, dailyCounters, onIncidentSe
                 <th className="px-3 py-3">Ahora</th>
                 <th className="px-3 py-3">Avance</th>
                 <th className="px-3 py-3">Siguientes</th>
-                <th className="px-3 py-3 text-right">Inc.</th>
+                <th className="px-3 py-3 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-950">
@@ -84,6 +86,7 @@ export default function ArrastreAirportBoard({ rows, dailyCounters, onIncidentSe
                   index={index}
                   dailyInfo={dailyCounters.get(arrastre.id)}
                   onIncidentSelect={onIncidentSelect}
+                  onAuditSelect={onAuditSelect}
                 />
               ))}
             </tbody>
@@ -95,7 +98,7 @@ export default function ArrastreAirportBoard({ rows, dailyCounters, onIncidentSe
   );
 }
 
-function AirportMobileCard({ arrastre, index, dailyInfo, onIncidentSelect }: { arrastre: Arrastre; index: number; dailyInfo?: DailyInfo; onIncidentSelect?: (incident: IncidenteArrastre, arrastre: Arrastre) => void }) {
+function AirportMobileCard({ arrastre, index, dailyInfo, onIncidentSelect, onAuditSelect }: { arrastre: Arrastre; index: number; dailyInfo?: DailyInfo; onIncidentSelect?: (incident: IncidenteArrastre, arrastre: Arrastre) => void; onAuditSelect?: (arrastre: Arrastre) => void }) {
   const vagones = arrastre.vagones || [];
   const current = getCurrentVagon(vagones);
   const stats = getVagonStats(vagones);
@@ -130,6 +133,12 @@ function AirportMobileCard({ arrastre, index, dailyInfo, onIncidentSelect }: { a
           Ver incidente
         </button>
       ) : null}
+      {onAuditSelect ? (
+        <button type="button" onClick={() => onAuditSelect(arrastre)} className="mt-2 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 text-sm font-black text-violet-700 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-200">
+          <History className="h-4 w-4" aria-hidden />
+          Bitácora de ediciones
+        </button>
+      ) : null}
     </article>
   );
 }
@@ -145,11 +154,13 @@ function AirportArrastreRow({
   index,
   dailyInfo,
   onIncidentSelect,
+  onAuditSelect,
 }: {
   arrastre: Arrastre;
   index: number;
   dailyInfo?: DailyInfo;
   onIncidentSelect?: (incident: IncidenteArrastre, arrastre: Arrastre) => void;
+  onAuditSelect?: (arrastre: Arrastre) => void;
 }) {
   const vagones = arrastre.vagones || [];
   const current = getCurrentVagon(vagones);
@@ -228,6 +239,7 @@ function AirportArrastreRow({
         )}
       </td>
       <td className="px-3 py-3 text-right">
+        <div className="flex justify-end gap-2">
         {primaryIncident && onIncidentSelect ? (
           <button
             type="button"
@@ -238,9 +250,15 @@ function AirportArrastreRow({
             <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
             {incidentCount}
           </button>
-        ) : (
+        ) : !onAuditSelect ? (
           <span className="font-mono text-xs font-bold text-slate-300 dark:text-slate-700">--</span>
-        )}
+        ) : null}
+        {onAuditSelect ? (
+          <button type="button" title="Ver bitácora de ediciones" aria-label="Ver bitácora de ediciones" onClick={() => onAuditSelect(arrastre)} className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-200">
+            <History className="h-4 w-4" />
+          </button>
+        ) : null}
+        </div>
       </td>
     </tr>
   );

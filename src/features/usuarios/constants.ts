@@ -22,10 +22,11 @@ export const LOCAL_COORDINATOR_ROLE_OPTIONS: Rol[] = [
   "MAQUINISTA_ARRASTRE",
 ];
 
-export const ADMIN_ROLE_OPTIONS: Rol[] = ["ADMINISTRADOR", ...USER_ROLE_OPTIONS];
+export const ADMIN_ROLE_OPTIONS: Rol[] = ["ADMINISTRADOR", "COMERCIAL", ...USER_ROLE_OPTIONS];
 
 export const ROLE_LABELS: Record<Rol, string> = {
   ADMINISTRADOR: "Administrador",
+  COMERCIAL: "Comercial",
   COORDINADOR: "Coordinador",
   SUPERVISOR: "Supervisor",
   TORNO: "Tornero",
@@ -42,6 +43,8 @@ export const roleBadge = (role: Rol) =>
   ({
     ADMINISTRADOR:
       "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/35 dark:text-indigo-300",
+    COMERCIAL:
+      "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/35 dark:text-rose-300",
     COORDINADOR:
       "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 dark:border-fuchsia-800 dark:bg-fuchsia-950/35 dark:text-fuchsia-300",
     SUPERVISOR:
@@ -70,6 +73,11 @@ export const roleAccent = (role: Rol) =>
       ring: "ring-indigo-500/20",
       grad: "from-indigo-600 to-violet-600",
       text: "text-indigo-700 dark:text-indigo-300",
+    },
+    COMERCIAL: {
+      ring: "ring-rose-500/20",
+      grad: "from-rose-600 to-pink-600",
+      text: "text-rose-700 dark:text-rose-300",
     },
     COORDINADOR: {
       ring: "ring-fuchsia-500/20",

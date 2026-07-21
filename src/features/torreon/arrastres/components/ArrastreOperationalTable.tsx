@@ -8,18 +8,17 @@ import {
   ChevronUp,
   Clock3,
   CircleCheckBig,
+  History,
   ListChecks,
   MapPin,
   Play,
   Route,
-  TimerReset,
 } from "lucide-react";
 import StatusBadge from "@/app/Components/ui/StatusBadge";
 import type { Arrastre, DailyInfo, IncidenteArrastre, VagonArrastre } from "../types";
 import {
   buildArrastreFolio,
   fmtDate,
-  fmtMinutes,
   fmtTime,
   getArrastreTimeline,
   getPrimaryIncident,
@@ -40,6 +39,7 @@ type Props = {
   onFinishVagon?: (arrastre: Arrastre, vagon: VagonArrastre) => void;
   busyVagonKey?: string | null;
   onIncidentSelect?: (incident: IncidenteArrastre, arrastre: Arrastre) => void;
+  onAuditSelect?: (arrastre: Arrastre) => void;
 };
 
 export default function ArrastreOperationalTable({
@@ -54,6 +54,7 @@ export default function ArrastreOperationalTable({
   onFinishVagon,
   busyVagonKey = null,
   onIncidentSelect,
+  onAuditSelect,
 }: Props) {
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
   const isHistoryMode = mode === "history";
@@ -100,6 +101,7 @@ export default function ArrastreOperationalTable({
                 {!activeVagon && nextVagon && onStartVagon ? <OperationalVagonButton label={`Iniciar ${getVagonName(nextVagon)}`} loading={busyVagonKey === `${arrastre.id}:${nextVagon.id}`} onClick={() => onStartVagon(arrastre, nextVagon)} /> : null}
                 {activeVagon && onFinishVagon ? <OperationalVagonButton label={`Finalizar ${getVagonName(activeVagon)}`} finish loading={busyVagonKey === `${arrastre.id}:${activeVagon.id}`} onClick={() => onFinishVagon(arrastre, activeVagon)} /> : null}
                 {primaryIncident ? <IncidentButton count={arrastre.incidentes?.length || 0} onClick={() => onIncidentSelect?.(primaryIncident, arrastre)} /> : null}
+                {onAuditSelect ? <AuditButton expanded onClick={() => onAuditSelect(arrastre)} /> : null}
               </div>
 
               {isOpen ? (
@@ -223,6 +225,7 @@ export default function ArrastreOperationalTable({
                             onClick={(event) => { event.stopPropagation(); onIncidentSelect?.(primaryIncident, arrastre); }}
                           />
                         ) : null}
+                        {onAuditSelect ? <AuditButton onClick={() => onAuditSelect(arrastre)} /> : null}
                       </div>
                     </td>
                   </tr>
@@ -360,6 +363,22 @@ function IncidentButton({
   );
 }
 
+function AuditButton({ expanded = false, onClick }: { expanded?: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      title="Ver bitácora de ediciones"
+      aria-label="Ver bitácora de ediciones"
+      onClick={(event) => { event.stopPropagation(); onClick(); }}
+      onKeyDown={(event) => event.stopPropagation()}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg border border-violet-200 bg-violet-50 font-black text-violet-700 transition hover:border-violet-300 hover:bg-violet-100 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-200 ${expanded ? "min-h-11 px-3 text-xs" : "h-8 w-8"}`}
+    >
+      <History className="h-4 w-4" />
+      {expanded ? "Bitácora" : null}
+    </button>
+  );
+}
+
 function TableDate({ value, tone = "neutral" }: { value?: string | null; tone?: "neutral" | "success" }) {
   return (
     <div className="min-w-0">
@@ -423,10 +442,9 @@ function ResultCell({ text }: { text: string }) {
 function ArrastreTimelineSummary({ arrastre }: { arrastre: Arrastre }) {
   const timeline = getArrastreTimeline(arrastre);
   return (
-    <div className="grid gap-2 md:grid-cols-3">
+    <div className="grid gap-2 md:grid-cols-2">
       <TimelineTile icon={Clock3} label="Inicio primer vagon" value={fmtDate(timeline.inicio)} />
       <TimelineTile icon={ListChecks} label="Fin ultimo vagon" value={fmtDate(timeline.fin)} />
-      <TimelineTile icon={TimerReset} label="Tiempo total" value={fmtMinutes(timeline.totalMin)} emphasis />
     </div>
   );
 }
@@ -435,12 +453,10 @@ function TimelineTile({
   icon: Icon,
   label,
   value,
-  emphasis = false,
 }: {
   icon: ElementType;
   label: string;
   value: string;
-  emphasis?: boolean;
 }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
@@ -448,7 +464,7 @@ function TimelineTile({
         <Icon className="h-3.5 w-3.5" />
         {label}
       </div>
-      <p className={`mt-1 text-sm font-black ${emphasis ? "text-emerald-700 dark:text-emerald-300" : "text-slate-900 dark:text-slate-100"}`}>
+      <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">
         {value}
       </p>
     </div>
@@ -476,7 +492,7 @@ function VagonDetailTable({ vagones }: { vagones: VagonArrastre[] }) {
         </h4>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1040px] text-left text-sm">
+        <table className="w-full min-w-[920px] text-left text-sm">
           <thead className="border-b border-slate-200 bg-white text-xs uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
             <tr>
               <th className="px-3 py-2">Orden</th>
@@ -486,7 +502,6 @@ function VagonDetailTable({ vagones }: { vagones: VagonArrastre[] }) {
               <th className="px-3 py-2">Estado</th>
               <th className="px-3 py-2">Inicio</th>
               <th className="px-3 py-2">Fin</th>
-              <th className="px-3 py-2">Operacion</th>
               <th className="px-3 py-2">Comentario</th>
             </tr>
           </thead>
@@ -507,7 +522,6 @@ function VagonDetailTable({ vagones }: { vagones: VagonArrastre[] }) {
                 <td className="px-3 py-2"><StatusBadge status={vagon.estado} /></td>
                 <td className="px-3 py-2 text-slate-600 dark:text-slate-400">{fmtDate(vagon.fechaInicio)}</td>
                 <td className="px-3 py-2 text-slate-600 dark:text-slate-400">{fmtDate(vagon.fechaFin)}</td>
-                <td className="px-3 py-2 text-slate-600 dark:text-slate-400">{fmtMinutes(vagon.metricas?.operacionMin)}</td>
                 <td className="max-w-xs px-3 py-2 text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
                   {vagon.comentario?.trim() || "--"}
                 </td>

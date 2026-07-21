@@ -7,6 +7,18 @@ export const statusText = (estado?: string | null) => normalizeStatus(estado) ||
 export const isClosed = (estado?: string | null) => ["CONCLUIDO", "CANCELADO"].includes(statusText(estado));
 export const isArrastreEditable = (estado?: string | null) => ["SOLICITADO", "DETENIDO"].includes(statusText(estado));
 
+export function canEditArrastreRequest(arrastre: Arrastre) {
+  const vagones = arrastre.vagones || [];
+  return statusText(arrastre.estado) === "SOLICITADO"
+    && vagones.length > 0
+    && vagones.every((vagon) => statusText(vagon.estado) === "PENDIENTE");
+}
+
+export function canCancelArrastreRequest(arrastre: Arrastre) {
+  return !isClosed(arrastre.estado)
+    && !(arrastre.vagones || []).some((vagon) => statusText(vagon.estado) === "EN_PROCESO");
+}
+
 export function arrastreMatchesSearch(arrastre: Arrastre, query: string) {
   const text = query.trim().toLowerCase();
   if (!text) return true;
@@ -47,7 +59,10 @@ export function fieldClass() {
 
 export function parseErrorMessage(input: unknown, fallback: string) {
   if (input && typeof input === "object" && "error" in input) {
-    return String((input as { error?: unknown }).error || fallback);
+    const payload = input as { error?: unknown; message?: unknown };
+    const error = String(payload.error || fallback).trim();
+    const detail = String(payload.message || "").trim();
+    return detail && detail !== error ? `${error}. ${detail}` : error;
   }
   return fallback;
 }

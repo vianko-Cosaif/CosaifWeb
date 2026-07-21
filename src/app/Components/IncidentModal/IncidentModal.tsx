@@ -1,25 +1,20 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import React, { useCallback, useEffect, useState, useMemo } from "react";
 import {
-  AlertTriangle,
   X,
   Clock,
   Building,
   Train,
   MapPin,
-  CheckCircle2,
   FastForward,
-  ChevronLeft,
-  ChevronRight,
   Info,
   TimerReset,
   ImageIcon,
 } from "lucide-react";
 import type { IncidenteEmergente } from "@/app/hooks/useIncidentMonitor";
+import { shouldUseIncidentCountdown } from "@/lib/incidentCountdownPolicy";
 import ConfirmationModal from "../ConfirmationModal";
-import { ImageWithAuth } from "./ImageWithAuth";
 import { ImageGallery } from "./ImageGallery";
 
 /* ================= Tipos ================= */
@@ -30,6 +25,7 @@ interface IncidentModalProps {
   onResolve: (incident: IncidenteEmergente, comments?: string) => void;
   onSkip: (incident: IncidenteEmergente) => void;
   onContinue: (incident: IncidenteEmergente) => void;
+  countdownEnabled?: boolean;
 }
 
 /* ================= Constantes ================= */
@@ -95,6 +91,7 @@ export default function IncidentModal({
   onResolve,
   onSkip,
   onContinue,
+  countdownEnabled = true,
 }: IncidentModalProps) {
   const [resolution, setResolution] = useState("");
   const [now, setNow] = useState<number>(Date.now());
@@ -103,20 +100,29 @@ export default function IncidentModal({
   const [tab, setTab] = useState<0 | 1>(0);
   const [imageIndex, setImageIndex] = useState(0);
   const [fullscreen, setFullscreen] = useState(false);
+  const countdownAllowed = countdownEnabled && shouldUseIncidentCountdown(incident);
 
   // Timer para actualizar cada segundo
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !countdownAllowed) return;
 
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [isOpen]);
+  }, [countdownAllowed, isOpen]);
 
   // Calcular tiempo restante
   const startMs = new Date(incident.fechaInicio).getTime();
   const leftMs = Math.max(0, WINDOW_DURATION_MS - (now - startMs));
   const pct = Math.round(((WINDOW_DURATION_MS - leftMs) / WINDOW_DURATION_MS) * 100);
-  const showTimer = leftMs > 0 && incident.estado === "ABIERTO";
+  const canActOnIncident = incident.estado === "ABIERTO" && (!countdownAllowed || leftMs > 0);
+  const showTimer = countdownAllowed && canActOnIncident;
+  const statusDotClass = showTimer
+    ? urgencyFor(pct).bar
+    : incident.estado === "ABIERTO"
+      ? "bg-amber-300"
+      : incident.estado === "RESUELTO"
+        ? "bg-emerald-300"
+        : "bg-slate-300";
 
   // Obtener imágenes
   const images = useMemo(() => {
@@ -196,7 +202,7 @@ export default function IncidentModal({
         <div className="bg-gradient-to-r from-emerald-700 to-emerald-900 px-4 sm:px-5 py-3 sm:py-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <div className={cn("h-3 w-3 rounded-full flex-shrink-0", urgencyFor(pct).bar)} />
+              <div className={cn("h-3 w-3 rounded-full flex-shrink-0", statusDotClass)} />
               <h1 id="incident-title" className="truncate text-base sm:text-lg font-bold text-white">
                 {truncate(incident.descripcion, 100)}
               </h1>
@@ -383,7 +389,7 @@ export default function IncidentModal({
 
         {/* Footer */}
         <div className="flex flex-col sm:flex-row gap-2 border-t bg-white dark:bg-slate-900 px-4 sm:px-5 py-3">
-          {showTimer && incident.estado === "ABIERTO" && tab === 0 ? (
+          {canActOnIncident && tab === 0 ? (
             <>
               <button
                 onClick={() => setIsSkipConfirmOpen(true)}

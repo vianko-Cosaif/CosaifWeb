@@ -91,7 +91,7 @@ export default function UsuariosPageClient({
     (user: UserData) => {
       if (!isCoordinator) return true;
       const userLocalidadId = Number(user.localidad?.id ?? user.localidadId);
-      return user.rol !== "ADMINISTRADOR" && userLocalidadId === actorLocalidadId;
+      return !["ADMINISTRADOR", "COMERCIAL"].includes(user.rol) && userLocalidadId === actorLocalidadId;
     },
     [actorLocalidadId, isCoordinator]
   );
@@ -130,7 +130,7 @@ export default function UsuariosPageClient({
         isCoordinator
           ? loadedUsers.filter((user) => {
               const userLocalidadId = Number(user.localidad?.id ?? user.localidadId);
-              return user.rol !== "ADMINISTRADOR" && userLocalidadId === actorLocalidadId;
+              return !["ADMINISTRADOR", "COMERCIAL"].includes(user.rol) && userLocalidadId === actorLocalidadId;
             })
           : loadedUsers
       );

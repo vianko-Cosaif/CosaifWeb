@@ -69,6 +69,38 @@ export type Arrastre = {
   } | null;
 };
 
+export type ArrastreAuditSnapshotVagon = {
+  id: number;
+  orden?: number | null;
+  numeroVagon?: string | null;
+  carga?: string | null;
+  viaOrigenId?: number | null;
+  seccionOrigenId?: number | null;
+  viaId?: number | null;
+  seccionId?: number | null;
+  viaOrigenNombre?: string | null;
+  seccionOrigenNombre?: string | null;
+  viaDestinoNombre?: string | null;
+  seccionDestinoNombre?: string | null;
+};
+
+export type ArrastreAuditSnapshot = {
+  instrucciones?: string | null;
+  vagones?: ArrastreAuditSnapshotVagon[];
+};
+
+export type ArrastreEditAudit = {
+  id: number;
+  arrastreId: number;
+  editadoPorId: number;
+  editadoPorRol: string;
+  editadoPorNombre?: string | null;
+  motivo?: string | null;
+  antes: ArrastreAuditSnapshot;
+  despues: ArrastreAuditSnapshot;
+  fechaEdicion: string;
+};
+
 export type DailyInfo = {
   index: number;
   total: number;

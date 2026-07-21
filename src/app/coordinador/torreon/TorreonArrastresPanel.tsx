@@ -20,6 +20,7 @@ import SearchInput from "@/app/Components/ui/SearchInput";
 import SegmentedControl from "@/app/Components/ui/SegmentedControl";
 import {
   ArrastreOperationalTable,
+  ArrastreAuditModal,
   ArrastreAirportBoard,
   ArrastreStatusStrip,
   STATUS_OPTIONS,
@@ -38,6 +39,7 @@ import {
   sortByFolioOrder,
   toLocalDateTimeInput,
   type Arrastre,
+  type ArrastreEditAudit,
   type ArrastreFechaCampo,
   type ArrastreStatus,
   type VagonArrastre,
@@ -46,6 +48,7 @@ import {
 import { useRealtimeBoardRefresh } from "@/app/hooks/useRealtimeBoardRefresh";
 import { TorreonRealtimeBadge } from "@/features/torreon/components/TorreonRealtimeBadge";
 import { isTorreonArrastreEvent, realtimeArrastreSnapshot } from "@/features/torreon/realtime";
+import { playNotificationSound } from "@/lib/notificationSound";
 import TorreonIncidentDetailModal, { type TorreonIncidentDetail } from "./TorreonIncidentDetailModal";
 
 type Props = {
@@ -79,6 +82,12 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
   const [priorityBusyId, setPriorityBusyId] = useState<number | null>(null);
   const [busyVagonKey, setBusyVagonKey] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+  const [auditState, setAuditState] = useState<{
+    arrastreId: number;
+    entries: ArrastreEditAudit[];
+    loading: boolean;
+    error: string | null;
+  } | null>(null);
 
   const load = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true);
@@ -287,6 +296,7 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
       }
 
       setSelectedIncident(null);
+      void playNotificationSound("arrastre_incidente_resuelto");
       await load(true);
     } finally {
       setResolvingIncident(false);
@@ -312,6 +322,7 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
       }
 
       setActionMessage({ type: "ok", text: "Solicitud subida al frente de la cola operativa." });
+      void playNotificationSound("arrastre_prioridad_actualizada");
       await load(true);
     } catch (error) {
       setActionMessage({ type: "error", text: error instanceof Error ? error.message : "No se pudo subir la solicitud al frente" });
@@ -334,6 +345,7 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(typeof data?.error === "string" ? data.error : "No se pudo actualizar el vagón");
       setActionMessage({ type: "ok", text: action === "INICIAR_VAGON" ? "Vagón iniciado. La cola ya está actualizada." : "Vagón finalizado. Se mostró el siguiente pendiente." });
+      void playNotificationSound(action);
       await load(true);
     } catch (error) {
       setActionMessage({ type: "error", text: error instanceof Error ? error.message : "No se pudo actualizar el vagón" });
@@ -341,6 +353,25 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
       setBusyVagonKey(null);
     }
   }, [load]);
+
+  const openAudit = useCallback(async (arrastre: Arrastre) => {
+    setAuditState({ arrastreId: arrastre.id, entries: [], loading: true, error: null });
+    try {
+      const params = new URLSearchParams({ localidadId: String(localidadId), auditId: String(arrastre.id) });
+      const response = await fetch(`/api/cliente/torreon/arrastres?${params.toString()}`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const data = await response.json().catch(() => []);
+      if (!response.ok) {
+        const record = data && typeof data === "object" ? data as { error?: unknown } : {};
+        throw new Error(String(record.error || "No se pudo cargar la bitácora"));
+      }
+      setAuditState({ arrastreId: arrastre.id, entries: extractArray<ArrastreEditAudit>(data), loading: false, error: null });
+    } catch (error) {
+      setAuditState({ arrastreId: arrastre.id, entries: [], loading: false, error: error instanceof Error ? error.message : "No se pudo cargar la bitácora" });
+    }
+  }, [localidadId]);
 
   if (variant === "summary") {
     const attention = stats.detenidos + stats.incidentesAbiertos;
@@ -597,6 +628,7 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
                 title: `Arrastre ${buildArrastreFolio(arrastre, dailyCounters.get(arrastre.id))}`,
                 subtitle: `Movimiento de arrastre #${arrastre.id}`,
               })}
+              onAuditSelect={rol === "ADMINISTRADOR" ? openAudit : undefined}
             />
           ) : rows.length ? (
             <ArrastreOperationalTable
@@ -615,6 +647,7 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
                 title: `Arrastre ${buildArrastreFolio(arrastre, dailyCounters.get(arrastre.id))}`,
                 subtitle: `Movimiento de arrastre #${arrastre.id}`,
               })}
+              onAuditSelect={rol === "ADMINISTRADOR" ? openAudit : undefined}
             />
           ) : (
             <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-slate-200 text-sm font-semibold text-slate-500 dark:border-slate-700 dark:text-slate-400">
@@ -643,6 +676,15 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
           onClose={() => setSelectedIncident(null)}
         />
       )}
+      {auditState ? (
+        <ArrastreAuditModal
+          arrastreId={auditState.arrastreId}
+          entries={auditState.entries}
+          loading={auditState.loading}
+          error={auditState.error}
+          onClose={() => setAuditState(null)}
+        />
+      ) : null}
     </section>
   );
 }

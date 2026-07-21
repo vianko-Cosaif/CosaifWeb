@@ -10,13 +10,12 @@ import {
   Clock3,
   Eye,
   MapPin,
-  Timer,
+  Route,
   UserRound,
 } from "lucide-react";
 import type { MovimientoNatural, SelectedIncident } from "../types";
 import {
   formatDate,
-  formatDuration,
   getClientLabel,
   getIncidentList,
   getMovimientoFolio,
@@ -248,7 +247,7 @@ function NaturalDetailRow({
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <Detail label="Solicitud" value={formatDate(row.fechaSolicitud)} icon={Clock3} />
-            <Detail label="Tipo" value={row.tipoMovimiento || "Movimiento natural"} icon={Timer} />
+            <Detail label="Tipo" value={row.tipoMovimiento || "Movimiento natural"} icon={Route} />
             <Detail label="Responsable" value={row.supervisorNombre || row.coordinadorNombre || "Sin responsable"} icon={UserRound} />
             <Detail label="Posición" value={`Ronda ${row.rondaNumero || "--"} · Orden ${row.ordenRonda || "--"}`} icon={MapPin} />
           </div>
@@ -275,14 +274,11 @@ function NaturalDetailRow({
             </button>
           </div>
         </div>
-        <div className="mt-3 flex flex-col gap-2 border-t border-slate-200 pt-3 text-sm dark:border-slate-800 sm:flex-row sm:items-start sm:justify-between">
+        <div className="mt-3 border-t border-slate-200 pt-3 text-sm dark:border-slate-800">
           <p className="font-semibold text-slate-600 dark:text-slate-300">
             <span className="font-black text-slate-800 dark:text-slate-100">Instrucciones:</span>{" "}
             {row.instrucciones || "Sin instrucciones adicionales."}
           </p>
-          <span className="shrink-0 rounded-md bg-white px-2.5 py-1 text-xs font-black text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-            Resolución {formatDuration(row.fechaInicio, row.fechaFin)}
-          </span>
         </div>
       </td>
     </tr>
