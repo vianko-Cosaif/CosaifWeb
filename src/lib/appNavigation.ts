@@ -57,8 +57,8 @@ const MODULE_COPY: Record<NavModuleId, Omit<AppNavigationItem, "id" | "href">> =
     description: "Vigencias y reglas por movimiento",
   },
   commercial_packages: {
-    label: "Reglas y paquetes",
-    description: "Movimientos incluidos por periodo",
+    label: "Movimientos contratados",
+    description: "Cantidades incluidas y consumo por periodo",
   },
   commercial_collections: {
     label: "Cortes y saldos",
