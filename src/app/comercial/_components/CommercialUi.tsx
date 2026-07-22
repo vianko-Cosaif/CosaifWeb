@@ -20,7 +20,13 @@ export function MetricCard({ icon: Icon, label, value, detail, tone = "slate" }:
 
 export function StateBadge({ value }: { value: string }) {
   const normalized = value.toUpperCase();
-  const color = ["VIGENTE", "PAGADO", "CONCLUIDO", "APROBADO"].includes(normalized) ? "bg-emerald-100 text-emerald-800" : ["CANCELADO", "VENCIDO"].includes(normalized) ? "bg-rose-100 text-rose-800" : ["DETENIDO", "PARCIAL", "EN_REVISION"].includes(normalized) ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-700";
+  const color = ["VIGENTE", "PAGADO", "CONCLUIDO", "APROBADO"].includes(normalized)
+    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/55 dark:text-emerald-200"
+    : ["CANCELADO", "VENCIDO"].includes(normalized)
+      ? "bg-rose-100 text-rose-800 dark:bg-rose-950/55 dark:text-rose-200"
+      : ["DETENIDO", "PARCIAL", "EN_REVISION"].includes(normalized)
+        ? "bg-amber-100 text-amber-800 dark:bg-amber-950/55 dark:text-amber-200"
+        : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200";
   return <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${color}`}>{humanize(value)}</span>;
 }
 
@@ -29,11 +35,15 @@ export function Pagination({ page, pages, total, onChange }: { page: number; pag
 }
 
 export function LoadingPanel({ text = "Organizando información comercial…" }: { text?: string }) {
-  return <section className="commercial-card grid min-h-72 place-items-center p-8"><div className="text-center"><Loader2 className="mx-auto h-9 w-9 animate-spin text-emerald-600"/><p className="mt-3 text-sm font-black text-[var(--app-text)]">{text}</p></div></section>;
+  return <section className="commercial-card grid min-h-72 place-items-center p-8"><div className="text-center"><Loader2 className="mx-auto h-9 w-9 animate-spin text-emerald-600 dark:text-emerald-300"/><p className="mt-3 text-sm font-black text-[var(--app-text)]">{text}</p></div></section>;
 }
 
 export function Notice({ title, text, tone = "blue" }: { title: string; text: string; tone?: "blue" | "amber" | "rose" }) {
-  const tones = { blue: "border-blue-200 bg-blue-50 text-blue-900", amber: "border-amber-200 bg-amber-50 text-amber-900", rose: "border-rose-200 bg-rose-50 text-rose-900" };
+  const tones = {
+    blue: "border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900/70 dark:bg-blue-950/30 dark:text-blue-100",
+    amber: "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100",
+    rose: "border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-900/70 dark:bg-rose-950/30 dark:text-rose-100",
+  };
   return <section className={`rounded-2xl border p-4 ${tones[tone]}`}><p className="text-sm font-black">{title}</p><p className="mt-1 text-xs leading-5 opacity-80">{text}</p></section>;
 }
 
@@ -42,7 +52,7 @@ export function EmptyPanel({ title, text }: { title: string; text: string }) {
 }
 
 export function Modal({ title, description, onClose, children }: { title: string; description: string; onClose: () => void; children: React.ReactNode }) {
-  return <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true"><button className="absolute inset-0" onClick={onClose} aria-label="Cerrar"/><section className="commercial-card relative max-h-[92vh] w-full max-w-2xl overflow-y-auto"><header className="sticky top-0 z-10 flex items-start justify-between border-b border-[var(--app-border)] bg-[var(--app-surface)] p-5"><div><h2 className="text-xl font-black text-[var(--app-text)]">{title}</h2><p className="mt-1 text-sm text-[var(--app-text-muted)]">{description}</p></div><button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-xl hover:bg-[var(--app-surface-muted)]"><X className="h-5 w-5"/></button></header>{children}</section></div>;
+  return <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true"><button className="absolute inset-0" onClick={onClose} aria-label="Cerrar"/><section className="commercial-card relative max-h-[92vh] w-full max-w-2xl overflow-y-auto"><header className="sticky top-0 z-10 flex items-start justify-between border-b border-[var(--app-border)] bg-[var(--app-surface)] p-5"><div><h2 className="text-xl font-black text-[var(--app-text)]">{title}</h2><p className="mt-1 text-sm text-[var(--app-text-muted)]">{description}</p></div><button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-xl text-[var(--app-text)] hover:bg-[var(--app-surface-muted)]"><X className="h-5 w-5"/></button></header>{children}</section></div>;
 }
 
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {

@@ -13,12 +13,17 @@ export type CommercialOperation = {
   localidad: string;
   locomotiveNumber: number | null;
   wagons: number;
+  requestedQuantity?: number;
+  viaOrigen?: string | null;
+  viaDestino?: string | null;
+  requestedBy?: string;
   status: string;
   completed: boolean;
   cancelled: boolean;
   stopped: boolean;
   services: Array<"MOVIMIENTO" | "LAVADO" | "TORNEADO">;
   requestedAt: string;
+  startedAt?: string | null;
   completedAt: string | null;
   operationAt: string;
   incidents: number;
@@ -35,8 +40,10 @@ export type AnalyticsSummary = {
     referenceDate: string;
     period: CommercialPeriod;
     periodLabel: string;
+    dateBasis?: "FECHA_SOLICITUD";
     torreonAvailable: boolean;
     readOnly: boolean;
+    selectedMonthKeys?: string[];
   };
   catalogs: {
     companies: Array<{ id: number; nombre: string }>;
@@ -86,6 +93,20 @@ export type AnalyticsSummary = {
     completed: number;
   }>;
   contractBreakdown: Array<{
+    empresaId: number;
+    localidadId: number;
+    empresa: string;
+    localidad: string;
+    origin: "NATURAL" | "ARRASTRE";
+    service: "MOVIMIENTO" | "LAVADO" | "TORNEADO";
+    status: string;
+    count: number;
+    wagons: number;
+    incidents: number;
+  }>;
+  contractTrend: Array<{
+    bucketKey: string;
+    bucketLabel: string;
     empresaId: number;
     localidadId: number;
     empresa: string;
@@ -161,9 +182,21 @@ export type Contract = {
   paquetes?: Array<{
     id: number;
     nombre: string;
+    servicio: "MOVIMIENTO" | "LAVADO" | "TORNEADO" | "DETENCION" | "CANCELACION" | "OTRO";
+    origenOperacion: "NATURAL" | "ARRASTRE" | null;
     unidad: "EVENTO" | "MOVIMIENTO" | "VAGON" | "SERVICIO" | "HORA" | "DIA" | "LOCOMOTORA" | "TARIFA_FIJA";
     periodicidad: "UNICO" | "SEMANAL" | "MENSUAL" | "BIMESTRAL" | "SEMESTRAL" | "ANUAL" | "VIGENCIA_COMPLETA";
+    localidadId: number | null;
+    estadosIncluidos: string[];
     cantidadIncluida: string | null;
+    tarifaExcedenteId: number | null;
+    montoPaquete: string | null;
+    importeExcedente: string | null;
+    moneda: string;
+    vigenciaInicio: string;
+    vigenciaFin: string | null;
+    activo: boolean;
+    tarifaExcedente?: { id: number; concepto: string; importeUnitario: string; moneda: string } | null;
   }>;
   _count?: { tarifas: number; planes: number; paquetes: number };
 };
@@ -208,11 +241,18 @@ export type BillingCut = {
   moneda: string;
   facturaFolio: string | null;
   notas: string | null;
+  aprobadoPorId?: number | null;
+  aprobadoAt?: string | null;
+  createdById?: number;
+  updatedById?: number;
+  createdAt?: string;
+  updatedAt?: string;
   cliente: Pick<CrmClient, "id" | "empresaId" | "empresaNombre" | "diasCredito">;
   contrato?: Pick<Contract, "id" | "folio" | "nombre" | "diaCorte"> | null;
-  pagos: Array<{ id: number; monto: string; fechaPago: string; referencia: string | null; metodo: string | null }>;
-  detalles?: Array<{ id: number; localidadId: number | null; servicio: string; fuente: string; cantidad: string; fechaServicio: string }>;
-  cobranza: { total: number | null; pagado: number; saldo: number | null; vencido: boolean; montoPendienteCaptura: boolean };
+  pagos: Array<{ id: number; monto: string; fechaPago: string; referencia: string | null; metodo: string | null; registradoPorId?: number; createdAt?: string }>;
+  historial?: Array<{ id: number; accion: string; estadoAnterior: string | null; estadoNuevo: string | null; actorId: number; actorNombre: string | null; actorRol: string; cambios: Record<string, unknown> | null; createdAt: string }>;
+  detalles?: Array<{ id: number; localidadId: number | null; servicio: string; fuente: string; fuenteId?: string; referencia?: string | null; cantidad: string; importeUnitario?: string | null; subtotal?: string | null; estadoCobro?: string; fechaServicio: string }>;
+  cobranza: { total: number | null; pagado: number; saldo: number | null; vencido: boolean; porVencer: boolean; montoPendienteCaptura: boolean };
 };
 
 export type CollectionSummary = {
@@ -220,6 +260,7 @@ export type CollectionSummary = {
   cobrado: number;
   porCobrar: number;
   vencido: number;
+  porVencer: number;
   cortes: number;
   cortesSinMonto: number;
   promesasPago: number;

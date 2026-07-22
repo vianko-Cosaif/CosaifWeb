@@ -24,7 +24,9 @@ export function formatMoney(value?: number | string | null, currency = "MXN") {
 
 export function formatDate(value?: string | null) {
   if (!value) return "—";
-  return new Intl.DateTimeFormat("es-MX", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(value));
+  const calendarDate = value.match(/^(\d{4}-\d{2}-\d{2})/)?.[1];
+  const date = calendarDate ? new Date(`${calendarDate}T12:00:00.000Z`) : new Date(value);
+  return new Intl.DateTimeFormat("es-MX", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(date);
 }
 
 export function humanize(value?: string | null) {

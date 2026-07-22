@@ -235,12 +235,18 @@ async function proxy(req: NextRequest) {
       });
     }
 
+    const responseHeaders: Record<string, string> = {
+      "content-type": contentType,
+      "cache-control": "no-store",
+    };
+    const contentDisposition = r.headers.get("content-disposition");
+    const contentLength = r.headers.get("content-length");
+    if (contentDisposition) responseHeaders["content-disposition"] = contentDisposition;
+    if (contentLength) responseHeaders["content-length"] = contentLength;
+
     return new NextResponse(responseBody, {
       status: r.status,
-      headers: {
-        "content-type": contentType,
-        "cache-control": "no-store",
-      },
+      headers: responseHeaders,
     });
   } catch (error) {
     const status = getErrorStatus(error);
