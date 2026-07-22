@@ -101,8 +101,53 @@ export default function TornoMeasureCopyPasteDialog<Position extends string, Fie
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[100010] flex items-end justify-center overflow-hidden bg-black/45 p-2 sm:items-center sm:p-3">
-      <div className="flex max-h-[calc(100dvh-1rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
+    <div className="torno-copy-dialog-overlay fixed inset-0 z-[100010] flex items-end justify-center overflow-hidden bg-black/45 p-2 sm:items-center sm:p-3">
+      <style jsx global>{`
+        @keyframes tornoCopyOverlayIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes tornoCopyPanelIn {
+          from { opacity: 0; transform: translate3d(0, 22px, 0) scale(0.985); }
+          to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+        }
+        @keyframes tornoCopyRowIn {
+          from { opacity: 0; transform: translate3d(0, 8px, 0); }
+          to { opacity: 1; transform: translate3d(0, 0, 0); }
+        }
+        .torno-copy-dialog-overlay {
+          animation: tornoCopyOverlayIn 160ms ease-out both;
+        }
+        .torno-copy-dialog-card {
+          animation: tornoCopyPanelIn 220ms cubic-bezier(.2,.8,.2,1) both;
+          will-change: transform, opacity;
+        }
+        .torno-copy-wheel-row {
+          animation: tornoCopyRowIn 180ms ease-out both;
+          transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+        }
+        .torno-copy-target {
+          transition: transform 140ms ease, background-color 140ms ease, border-color 140ms ease;
+        }
+        .torno-copy-target:hover {
+          transform: translateX(2px);
+        }
+        .torno-copy-target:active {
+          transform: scale(0.985);
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .torno-copy-dialog-overlay,
+          .torno-copy-dialog-card,
+          .torno-copy-wheel-row {
+            animation: none !important;
+          }
+          .torno-copy-target {
+            transition: none !important;
+            transform: none !important;
+          }
+        }
+      `}</style>
+      <div className="torno-copy-dialog-card flex max-h-[calc(100dvh-1rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
         <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
@@ -133,14 +178,18 @@ export default function TornoMeasureCopyPasteDialog<Position extends string, Fie
           </div>
 
           <div className="grid gap-2">
-            {positions.map((position) => {
+            {positions.map((position, positionIndex) => {
               const isOpen = expandedPositions.includes(position);
               const wheelTargetIds = fields.map((field) => targetId(position, field.key)).filter((id) => id !== sourceId);
               const selectedCount = wheelTargetIds.filter((id) => targets.includes(id)).length;
               const allSelected = wheelTargetIds.length > 0 && wheelTargetIds.every((id) => targets.includes(id));
 
               return (
-                <div key={`copy_${position}`} className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40">
+                <div
+                  key={`copy_${position}`}
+                  className="torno-copy-wheel-row overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40"
+                  style={{ animationDelay: `${Math.min(140, positionIndex * 18)}ms` }}
+                >
                   <div className="flex min-w-0 flex-col gap-2 px-2 py-2 min-[420px]:flex-row min-[420px]:items-center sm:px-3">
                     <button
                       type="button"
@@ -202,7 +251,7 @@ export default function TornoMeasureCopyPasteDialog<Position extends string, Fie
                             <label
                               key={`copy_field_${position}_${field.key}`}
                               className={Movimiento.clsx(
-                                "flex items-center gap-3 rounded-lg border px-3 py-2 transition-colors",
+                                "torno-copy-target flex items-center gap-3 rounded-lg border px-3 py-2 transition-colors",
                                 isSourceCell
                                   ? "cursor-not-allowed border-emerald-200 bg-emerald-50/80 dark:border-emerald-800 dark:bg-emerald-900/20"
                                   : checked

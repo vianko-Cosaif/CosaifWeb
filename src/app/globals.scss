@@ -431,11 +431,57 @@
 @keyframes loader{ 0%{background-position:0 0;} 100%{background-position:200% 0;} }
 @keyframes fadeUp{ from{opacity:0; transform:translateY(8px) scale(.98);} to{opacity:1; transform:translateY(0) scale(1);} }
 @keyframes shakeX{ 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
+@keyframes cosaifSoftEnter{ from{opacity:0; transform:translate3d(0,10px,0) scale(.99);} to{opacity:1; transform:translate3d(0,0,0) scale(1);} }
+@keyframes cosaifSoftPulse{ 0%,100%{filter:brightness(1); transform:scale(1);} 50%{filter:brightness(1.04); transform:scale(1.006);} }
 
 .reveal{ animation:fadeUp .45s ease-out both; animation-delay:var(--d,0s); }
 .shake{ animation:shakeX .34s ease-in-out; }
 
+.cosaif-motion-panel{
+  animation:cosaifSoftEnter .24s cubic-bezier(.2,.8,.2,1) both;
+  will-change:transform, opacity;
+}
+.cosaif-motion-card{
+  animation:cosaifSoftEnter .22s cubic-bezier(.2,.8,.2,1) both;
+  transition:border-color .18s ease, box-shadow .18s ease, transform .18s ease, background-color .18s ease;
+  will-change:transform;
+}
+.cosaif-motion-card:hover{
+  transform:translateY(-1px);
+  box-shadow:0 16px 36px rgba(15,23,42,.08);
+}
+.dark .cosaif-motion-card:hover{
+  box-shadow:0 16px 36px rgba(0,0,0,.24);
+}
+.cosaif-motion-button{
+  transition:transform .14s ease, box-shadow .14s ease, background-color .14s ease, border-color .14s ease, opacity .14s ease;
+}
+.cosaif-motion-button:active{
+  transform:scale(.975);
+}
+.cosaif-motion-progress{
+  transition:width .36s cubic-bezier(.2,.8,.2,1);
+}
+.cosaif-motion-emphasis{
+  animation:cosaifSoftPulse 2.2s ease-in-out infinite;
+}
+
 /* Reduce motion */
 @media (prefers-reduced-motion: reduce){
-  .reveal, .hero-beam{ animation:none !important; }
+  .reveal,
+  .hero-beam,
+  .cosaif-motion-panel,
+  .cosaif-motion-card,
+  .cosaif-motion-emphasis{
+    animation:none !important;
+  }
+  .cosaif-motion-card,
+  .cosaif-motion-button,
+  .cosaif-motion-progress{
+    transition:none !important;
+  }
+  .cosaif-motion-card:hover,
+  .cosaif-motion-button:active{
+    transform:none !important;
+  }
 }

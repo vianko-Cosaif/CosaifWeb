@@ -10,7 +10,6 @@ import {
   formatTornoMeasure,
   getTornoPositions,
   normalizeTornoMeasureValue,
-  TORNO_DEN_OPTIONS,
   TORNO_WHEEL_COUNT_OPTIONS,
   type TornoMeasurementField,
   type TornoMeasurementValue,
@@ -27,6 +26,7 @@ import type {
   WheelOverride,
 } from "@/app/Components/locomotive-wheel-selector/core/types";
 import TornoMeasureCopyPasteDialog from "./TornoMeasureCopyPasteDialog";
+import TornoMeasurePickerDialog from "../../torno/TornoMeasurePickerDialog";
 
 type Props = {
   form: MovementFormData;
@@ -106,103 +106,6 @@ function buildWheelOverrides(
   }
 
   return wheels;
-}
-
-function MeasurePickerModal(props: {
-  open: boolean;
-  title: string;
-  subtitle: string;
-  draft: TornoMeasurementValue;
-  onChange: (draft: TornoMeasurementValue) => void;
-  onCancel: () => void;
-  onSave: () => void;
-}) {
-  const { open, title, subtitle, draft, onChange, onCancel, onSave } = props;
-  const numeratorOptions = useMemo(() => {
-    const denominator = Number(draft.den);
-    if (Number.isFinite(denominator) && denominator > 0) {
-      return ["", ...Array.from({ length: denominator }, (_, index) => String(index))];
-    }
-    return ["", ...Array.from({ length: 65 }, (_, index) => String(index))];
-  }, [draft.den]);
-  const preview = formatTornoMeasure(normalizeTornoMeasureValue(draft)) || "Sin medida";
-
-  if (!open) return null;
-
-  const updatePart = (part: keyof TornoMeasurementValue, value: string) => {
-    onChange(normalizeTornoMeasureValue({ ...draft, [part]: value }));
-  };
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100010] flex items-end justify-center overflow-hidden bg-black/50 p-2 sm:items-center sm:p-3">
-      <div className="flex max-h-[calc(100dvh-1rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[28px]">
-        <div className="shrink-0 border-b border-slate-200 bg-emerald-50 px-3 py-3 dark:border-zinc-800 dark:bg-emerald-950/30 sm:px-5 sm:py-4">
-          <div className="flex items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <h4 className="break-words text-lg font-black text-slate-950 dark:text-white sm:text-xl">{title}</h4>
-              <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-zinc-400">{subtitle}</p>
-            </div>
-            <button
-              type="button"
-              onClick={onCancel}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-emerald-800 shadow-sm dark:bg-zinc-900 dark:text-emerald-200"
-              aria-label="Cerrar"
-            >
-              x
-            </button>
-          </div>
-          <div className="mt-3 rounded-2xl border border-emerald-200 bg-white px-3 py-2 text-center text-xl font-black text-emerald-800 dark:border-emerald-800 dark:bg-zinc-950 dark:text-emerald-200 sm:mt-4 sm:px-4 sm:py-3 sm:text-2xl">
-            {preview}
-          </div>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-5 sm:py-5">
-          <div className="grid gap-3 sm:gap-4">
-          {[
-            ["whole", "Entero", wholeOptions],
-            ["num", "Numerador", numeratorOptions],
-            ["den", "Denominador", [...TORNO_DEN_OPTIONS]],
-          ].map(([key, label, options]) => (
-            <label key={String(key)} className="grid gap-2">
-              <span className="text-sm font-black uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-                {String(label)}
-              </span>
-              <select
-                className="min-h-14 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-lg font-black text-slate-950 outline-none focus:border-emerald-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white"
-                value={draft[key as keyof TornoMeasurementValue]}
-                onChange={(event) => updatePart(key as keyof TornoMeasurementValue, event.target.value)}
-              >
-                {(options as string[]).map((option) => (
-                  <option key={`${key}_${option || "empty"}`} value={option}>
-                    {option || "-"}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ))}
-          </div>
-        </div>
-
-        <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-slate-50 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900 min-[360px]:flex-row sm:gap-3 sm:px-5 sm:py-4">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex-1 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm font-black text-emerald-800 dark:border-emerald-800 dark:bg-zinc-950 dark:text-emerald-200"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={onSave}
-            className="flex-1 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-black text-white shadow-lg shadow-emerald-500/25"
-          >
-            Aceptar
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
 }
 
 export default function MobileGuidedTornoMeasuresStep({
@@ -504,9 +407,70 @@ export default function MobileGuidedTornoMeasuresStep({
         </p>
       </div>
 
+      <style>{`
+        .torno-wheel-editor-overlay {
+          animation: tornoWheelOverlayIn 180ms ease-out both;
+        }
+        .torno-wheel-editor-card {
+          animation: tornoWheelCardIn 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+          transform-origin: bottom center;
+          will-change: opacity, transform;
+        }
+        .torno-wheel-editor-option {
+          animation: tornoWheelOptionIn 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+          will-change: opacity, transform;
+        }
+        @keyframes tornoWheelOverlayIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes tornoWheelCardIn {
+          from {
+            opacity: 0;
+            transform: translateY(28px) scale(0.985);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+        @keyframes tornoWheelOptionIn {
+          from {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        @media (min-width: 640px) {
+          .torno-wheel-editor-card {
+            transform-origin: center;
+          }
+          @keyframes tornoWheelCardIn {
+            from {
+              opacity: 0;
+              transform: translateY(12px) scale(0.97);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0) scale(1);
+            }
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .torno-wheel-editor-overlay,
+          .torno-wheel-editor-card,
+          .torno-wheel-editor-option {
+            animation: none;
+          }
+        }
+      `}</style>
+
       {wheelModalOpen && selectedPosition ? createPortal(
-        <div className="fixed inset-0 z-[100010] flex items-end justify-center overflow-hidden bg-black/50 p-2 sm:items-center sm:p-3">
-          <div className="flex max-h-[calc(100dvh-1rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[30px]">
+        <div className="torno-wheel-editor-overlay fixed inset-0 z-[100010] flex items-end justify-center overflow-hidden bg-black/50 p-2 sm:items-center sm:p-3">
+          <div className="torno-wheel-editor-card flex max-h-[calc(100dvh-1rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[30px]">
             <div className="flex shrink-0 items-start gap-2 border-b border-slate-200 bg-slate-50 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900 sm:gap-3 sm:px-5 sm:py-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-base font-black text-white sm:h-14 sm:w-14 sm:rounded-2xl sm:text-lg">
                 {selectedPosition}
@@ -529,7 +493,7 @@ export default function MobileGuidedTornoMeasuresStep({
 
             <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-5 sm:py-4">
               <div className="grid gap-3">
-                {fieldDefs.map((field) => {
+                {fieldDefs.map((field, index) => {
                   const value = tornoMedicion.rows[selectedPosition]?.[field.key] ?? EMPTY_TORNO_VALUE;
                   const formatted = formatTornoMeasure(value);
                   const hasValue = formatted.trim() !== "";
@@ -539,11 +503,12 @@ export default function MobileGuidedTornoMeasuresStep({
                       type="button"
                       onClick={() => openMeasureModal(selectedPosition, field.key, field.label, value)}
                       className={Movimiento.clsx(
-                        "flex min-w-0 items-center gap-2 rounded-xl border px-3 py-3 text-left transition-colors sm:gap-3 sm:rounded-2xl sm:px-4 sm:py-4",
+                        "torno-wheel-editor-option flex min-w-0 items-center gap-2 rounded-xl border px-3 py-3 text-left transition-colors sm:gap-3 sm:rounded-2xl sm:px-4 sm:py-4",
                         hasValue
                           ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/30"
                           : "border-slate-200 bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900"
                       )}
+                      style={{ animationDelay: `${Math.min(140, index * 24)}ms` }}
                     >
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-black text-slate-800 dark:text-zinc-100">{field.label}</div>
@@ -603,7 +568,7 @@ export default function MobileGuidedTornoMeasuresStep({
         document.body
       ) : null}
 
-      <MeasurePickerModal
+      <TornoMeasurePickerDialog
         open={measureModal.open}
         title="Seleccion de medida"
         subtitle={`${measureModal.position ?? "--"} - ${measureModal.label}`}
@@ -611,6 +576,8 @@ export default function MobileGuidedTornoMeasuresStep({
         onChange={(draft) => setMeasureModal((current) => ({ ...current, draft }))}
         onCancel={closeMeasureModal}
         onSave={applyMeasureModal}
+        accent="emerald"
+        wholeOptions={wholeOptions}
       />
 
       <TornoMeasureCopyPasteDialog

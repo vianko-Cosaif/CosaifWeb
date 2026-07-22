@@ -10,6 +10,8 @@ export const DEFAULT_THEME: LocomotiveWheelTheme = {
     primarySoft: '#DBEAFE',
     success: '#16A34A',
     successSoft: '#DCFCE7',
+    inProcess: '#0EA5E9',
+    inProcessSoft: '#E0F2FE',
     warning: '#F59E0B',
     warningSoft: '#FEF3C7',
     danger: '#DC2626',
@@ -84,7 +86,7 @@ export function getStatusStroke(theme: LocomotiveWheelTheme, status: WheelVisual
     case 'completed':
       return theme.colors.success;
     case 'inProcess':
-      return theme.colors.primary;
+      return theme.colors.inProcess;
     case 'disabled':
       return theme.colors.disabled;
     case 'available':
@@ -104,7 +106,7 @@ export function getStatusFill(theme: LocomotiveWheelTheme, status: WheelVisualSt
     case 'completed':
       return theme.colors.successSoft;
     case 'inProcess':
-      return theme.colors.primarySoft;
+      return theme.colors.inProcessSoft;
     case 'disabled':
       return theme.colors.disabledSoft;
     case 'available':

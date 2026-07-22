@@ -12,6 +12,10 @@ import TornoMeasuresViewerModal from "./../../movimientos/torno/TornoMeasuresVie
 import { parseTornoMedicionFromApi } from "./../../movimientos/torno/tornoMeasureParser";
 import { buildBackendTornoMedidas } from "./../../movimientos/crear/tornoSubmit.adapter";
 import StepTwoTorno from "./../../movimientos/crear/components/StepTwoTorno";
+import MobileGuidedTornoMeasuresStep, {
+  getGuidedTornoMeasuresPageCount,
+  getGuidedTornoMeasuresPageTitle,
+} from "./../../movimientos/crear/components/MobileGuidedTornoMeasuresStep";
 import {
   createEmptyTornoRow,
   DEFAULT_TORNO_MEDICION_STATE,
@@ -127,6 +131,7 @@ function Step1Edit({
   errors,
   empresaLabel,
   localidadLabel,
+  visualSection,
 }: {
   readOnly: boolean;
   form: MovementFormData;
@@ -154,6 +159,7 @@ function Step1Edit({
   errors: Record<string, string>;
   empresaLabel: string;
   localidadLabel: string;
+  visualSection?: "context" | "service" | "locomotive" | "route";
 }) {
   const {
     lifeLineModal,
@@ -284,9 +290,14 @@ function Step1Edit({
   return (
     <div className="grid gap-5 sm:grid-cols-2">
       {/* Empresa y Localidad (Disabled) */}
-      <Field label="Empresa" value={empresaLabel} disabled />
-      <Field label="Localidad" value={localidadLabel} disabled />
+      {(!visualSection || visualSection === "context") && (
+        <>
+          <Field label="Empresa" value={empresaLabel} disabled />
+          <Field label="Localidad" value={localidadLabel} disabled />
+        </>
+      )}
 
+      {(!visualSection || visualSection === "service") && (
       <div className="sm:col-span-2">
         <span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-200">Servicio (Opcional)</span>
         <div className="flex flex-wrap gap-2">
@@ -316,7 +327,8 @@ function Step1Edit({
           {serviceVia ? <span className="self-center text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg">Doble clic para desmarcar</span> : null}
         </div>
       </div>
-      {(serviceVia || selectionMode) && (
+      )}
+      {(!visualSection || visualSection === "service") && (serviceVia || selectionMode) && (
         <div className="sm:col-span-2 animate-in fade-in slide-in-from-top-2 duration-300">
           <span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-200">Modo de selección</span>
           <div className="flex flex-wrap gap-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/50">
@@ -347,6 +359,7 @@ function Step1Edit({
       )}
 
       {/* Prioridad + Loco */}
+      {(!visualSection || visualSection === "locomotive") && (
       <div className="sm:col-span-2 grid sm:grid-cols-2 gap-5 items-end">
         <div>
           <label className="mb-3 mt-1 flex items-center gap-2">
@@ -376,9 +389,10 @@ function Step1Edit({
           placeholder="Ej. 4501"
         />
       </div>
+      )}
 
       {/* Origen */}
-      {(selectionMode === "de_via" || !serviceVia) &&
+      {(!visualSection || visualSection === "route") && (selectionMode === "de_via" || !serviceVia) &&
         (<div className="sm:col-span-2 animate-in fade-in slide-in-from-left-2 duration-300">
           <span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-200">De vía (origen)</span>
           <div className="flex gap-2">
@@ -396,7 +410,7 @@ function Step1Edit({
           </div>
           <SectionsPills kind="from" viaId={viaOrigenId} />
         </div>)}
-      {(selectionMode === "para_via" || !serviceVia) && (<div className="sm:col-span-2 animate-in fade-in slide-in-from-right-2 duration-300">
+      {(!visualSection || visualSection === "route") && (selectionMode === "para_via" || !serviceVia) && (<div className="sm:col-span-2 animate-in fade-in slide-in-from-right-2 duration-300">
         <span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-200">Para vía (destino)</span>
         <div className="flex gap-2">
           <button
@@ -663,6 +677,10 @@ export default function EditarMovimiento({
     serializeTornoMedicion(DEFAULT_TORNO_MEDICION_STATE)
   );
   const [showTornoViewerModal, setShowTornoViewerModal] = useState(false);
+  const [editFlowMode, setEditFlowMode] = useState<"mobile" | "classic">("mobile");
+  const [tornoEditMode, setTornoEditMode] = useState<"mobile" | "classic">("mobile");
+  const [mobileStepOnePage, setMobileStepOnePage] = useState(0);
+  const [mobileTornoPage, setMobileTornoPage] = useState(0);
   const lastTap = useRef<Record<string, number>>({});
 
   // Secciones elegidas para hint META (el backend solo las lee desde instrucciones)
@@ -677,6 +695,9 @@ export default function EditarMovimiento({
     { label: "Paso 3 de 3", percent: 100 },
   ] as const;
   const { label, percent } = STEP_CFG[step - 1];
+  const mobileStepOneSections = ["context", "service", "locomotive", "route"] as const;
+  const mobileStepOneTitles = ["Empresa y localidad", "Servicio", "Locomotora", "Via y seccion"];
+  const mobileStepOneSection = mobileStepOneSections[mobileStepOnePage] ?? "context";
 
   // Limpiar instrucciones cuando se llega al paso 3
   useEffect(() => {
@@ -684,6 +705,18 @@ export default function EditarMovimiento({
       setInstrucciones("");
     }
   }, [step]);
+
+  useEffect(() => {
+    if (serviceVia !== "Torno") {
+      setMobileTornoPage(0);
+    }
+  }, [serviceVia]);
+
+  useEffect(() => {
+    if (editFlowMode !== "mobile" || step !== 1) {
+      setMobileStepOnePage(0);
+    }
+  }, [editFlowMode, step]);
 
   // Rol y helpers
   const [rol, setRol] = useState<Rol>("CLIENTE");
@@ -881,6 +914,67 @@ export default function EditarMovimiento({
     },
     [tornoStepForm]
   );
+
+  const tornoMobilePageCount = getGuidedTornoMeasuresPageCount();
+  const isMobileEditFlow = editFlowMode === "mobile";
+  const isMobileTornoEditor = serviceVia === "Torno" && isMobileEditFlow && tornoEditMode === "mobile";
+  const tornoEditorSubtitle = isMobileTornoEditor
+    ? getGuidedTornoMeasuresPageTitle(mobileTornoPage, tornoMedicion.wheelCount)
+    : "Diagnostico torno";
+  const mobileTotalUnits = serviceVia === "Torno" ? 7 : 6;
+  const mobileCurrentUnit =
+    step === 1
+      ? mobileStepOnePage + 1
+      : step === 2 && serviceVia === "Torno"
+        ? 4 + mobileTornoPage + 1
+        : step === 2
+          ? 5
+          : mobileTotalUnits;
+  const mobileProgress = isMobileEditFlow
+    ? Math.round((mobileCurrentUnit / mobileTotalUnits) * 100)
+    : percent;
+  const mobileStepTitle = isMobileEditFlow
+    ? step === 1
+      ? mobileStepOneTitles[mobileStepOnePage] ?? "Datos"
+      : step === 2 && serviceVia === "Torno"
+        ? getGuidedTornoMeasuresPageTitle(mobileTornoPage, tornoMedicion.wheelCount)
+        : step === 2
+          ? "Detalles operativos"
+          : "Confirmacion"
+    : label;
+  const mobileTransitionKey = `${editFlowMode}:${step}:${mobileStepOnePage}:${mobileTornoPage}:${serviceVia || "none"}`;
+
+  const goPreviousStep = () => {
+    if (isMobileEditFlow && step === 1 && mobileStepOnePage > 0) {
+      setMobileStepOnePage((page) => Math.max(0, page - 1));
+      return;
+    }
+    if (step === 2 && isMobileTornoEditor && mobileTornoPage > 0) {
+      setMobileTornoPage((page) => Math.max(0, page - 1));
+      return;
+    }
+    if (isMobileEditFlow && step === 2) {
+      setMobileStepOnePage(mobileStepOneSections.length - 1);
+    }
+    if (isMobileEditFlow && step === 3 && serviceVia === "Torno") {
+      setMobileTornoPage(Math.max(0, tornoMobilePageCount - 1));
+    }
+    setStep((s) => (s === 1 ? 1 : ((s - 1) as 1 | 2 | 3)));
+  };
+
+  const goNextStep = () => {
+    if (isMobileEditFlow && step === 1 && mobileStepOnePage < mobileStepOneSections.length - 1) {
+      setMobileStepOnePage((page) => Math.min(mobileStepOneSections.length - 1, page + 1));
+      return;
+    }
+    if (step === 2 && isMobileTornoEditor && mobileTornoPage < tornoMobilePageCount - 1) {
+      setMobileTornoPage((page) => Math.min(tornoMobilePageCount - 1, page + 1));
+      return;
+    }
+    if (step === 2 && !validateStep2()) return;
+    setStep((s) => ((s + 1) as 1 | 2 | 3));
+  };
+
   const buildPayload = (): EditablePayload => {
     if (!info) return {} as EditablePayload;
 
@@ -1031,6 +1125,18 @@ export default function EditarMovimiento({
           <RoleBadge rol={rol} canManageAll={canManageAll} />
 
           <button
+            onClick={() => setEditFlowMode((current) => current === "mobile" ? "classic" : "mobile")}
+            className={Movimiento.clsx(
+              "rounded-xl border px-3 py-1.5 text-sm font-semibold transition-all active:scale-95",
+              isMobileEditFlow
+                ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+            )}
+          >
+            {isMobileEditFlow ? "Vista clasica" : "Flujo mobile"}
+          </button>
+
+          <button
             onClick={onClose || (() => window.location.assign(roleToPath(rol)))}
             className="ml-auto rounded-xl border border-rose-200 dark:border-rose-800 px-3 py-1.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all active:scale-95"
             title="Volver"
@@ -1053,10 +1159,16 @@ export default function EditarMovimiento({
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
           </div>
+          {isMobileEditFlow ? (
+            <div className="ml-auto rounded-2xl bg-emerald-50 px-3 py-1.5 text-center dark:bg-emerald-950/40">
+              <div className="text-lg font-black leading-5 text-emerald-700 dark:text-emerald-300">{mobileProgress}%</div>
+              <div className="text-[9px] font-black uppercase tracking-wide text-emerald-700/70 dark:text-emerald-300/70">completado</div>
+            </div>
+          ) : null}
         </div>
 
         {/* Stepper */}
-        <div className="mt-5 flex items-center justify-center gap-0" aria-label="Progreso">
+        <div className={Movimiento.clsx("mt-5 items-center justify-center gap-0", isMobileEditFlow ? "hidden" : "flex")} aria-label="Progreso">
           {[1, 2, 3].map((s, i) => (
             <React.Fragment key={s}>
               <div className="flex flex-col items-center gap-1">
@@ -1095,6 +1207,23 @@ export default function EditarMovimiento({
 
         {/* Card Content */}
         <div className="mt-6 rounded-2xl border border-slate-200/80 dark:border-slate-800/60 bg-white/95 dark:bg-slate-950/90 backdrop-blur-sm p-5 sm:p-6 shadow-xl shadow-slate-200/30 dark:shadow-slate-900/30">
+          {isMobileEditFlow ? (
+            <div className="mb-4 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">Editar movimiento</p>
+                  <h2 className="truncate text-lg font-black text-slate-950 dark:text-white">{mobileStepTitle}</h2>
+                </div>
+                <div className="rounded-xl bg-white px-3 py-1 text-xs font-black text-emerald-700 shadow-sm dark:bg-slate-950 dark:text-emerald-300">
+                  {mobileCurrentUnit}/{mobileTotalUnits}
+                </div>
+              </div>
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-emerald-100 dark:bg-emerald-950/70">
+                <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500 transition-all duration-300" style={{ width: `${mobileProgress}%` }} />
+              </div>
+            </div>
+          ) : null}
+          <div key={mobileTransitionKey} className={isMobileEditFlow ? "animate-in fade-in slide-in-from-right-2 duration-200" : undefined}>
           {step === 1 && (
             <Step1Edit
               readOnly={readOnly}
@@ -1123,6 +1252,7 @@ export default function EditarMovimiento({
               errors={errors}
               empresaLabel={empresaLabel}
               localidadLabel={localidadLabel}
+              visualSection={isMobileEditFlow ? mobileStepOneSection : undefined}
             />
           )}
 
@@ -1145,25 +1275,70 @@ export default function EditarMovimiento({
 
               {serviceVia === "Torno" ? (
                 <section className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-900/40">
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Diagnostico torno</h4>
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{tornoEditorSubtitle}</h4>
+                      {isMobileTornoEditor ? (
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Pagina {mobileTornoPage + 1} de {tornoMobilePageCount}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 text-xs font-bold shadow-sm dark:border-slate-700 dark:bg-slate-950">
+                      <button
+                        type="button"
+                        onClick={() => setTornoEditMode("mobile")}
+                        className={Movimiento.clsx(
+                          "rounded-lg px-3 py-1.5 transition-all",
+                          tornoEditMode === "mobile"
+                            ? "bg-emerald-600 text-white shadow-sm"
+                            : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                        )}
+                      >
+                        Mobile
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTornoEditMode("classic")}
+                        className={Movimiento.clsx(
+                          "rounded-lg px-3 py-1.5 transition-all",
+                          tornoEditMode === "classic"
+                            ? "bg-emerald-600 text-white shadow-sm"
+                            : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                        )}
+                      >
+                        Clasica
+                      </button>
+                    </div>
                   </div>
 
                   <div className={Movimiento.clsx(readOnly || saving ? "pointer-events-none opacity-70" : "")}>
-                    <StepTwoTorno
-                      form={tornoStepForm}
-                      setForm={setTornoStepForm}
-                      errors={{
-                        movementType: errors.tipoMovimiento,
-                        direccionEmpuje: errors.direccionEmpuje,
-                      }}
-                      tornoMedicion={tornoMedicion}
-                      initialTornoMedicion={initialTornoMedicion}
-                      setTornoWheelCount={setTornoWheelCount}
-                      updateTornoMedicion={updateTornoMedicion}
-                      companyName={info.movimiento.empresa?.nombre}
-                      hideTypeSelector
-                    />
+                    {isMobileTornoEditor ? (
+                      <MobileGuidedTornoMeasuresStep
+                        form={tornoStepForm}
+                        setForm={setTornoStepForm}
+                        tornoMedicion={tornoMedicion}
+                        setTornoWheelCount={setTornoWheelCount}
+                        updateTornoMedicion={updateTornoMedicion}
+                        companyName={info.movimiento.empresa?.nombre}
+                        visualPage={mobileTornoPage}
+                      />
+                    ) : (
+                      <StepTwoTorno
+                        form={tornoStepForm}
+                        setForm={setTornoStepForm}
+                        errors={{
+                          movementType: errors.tipoMovimiento,
+                          direccionEmpuje: errors.direccionEmpuje,
+                        }}
+                        tornoMedicion={tornoMedicion}
+                        initialTornoMedicion={initialTornoMedicion}
+                        setTornoWheelCount={setTornoWheelCount}
+                        updateTornoMedicion={updateTornoMedicion}
+                        companyName={info.movimiento.empresa?.nombre}
+                        hideTypeSelector
+                      />
+                    )}
                   </div>
                 </section>
               ) : null}
@@ -1191,13 +1366,14 @@ export default function EditarMovimiento({
               onSubmit={onSubmit}
             />
           )}
+          </div>
         </div>
 
         {/* Actions Footer */}
         <div className="mt-5 flex flex-wrap gap-3">
-          {step > 1 && (
+          {(step > 1 || (isMobileEditFlow && step === 1 && mobileStepOnePage > 0)) && (
             <button
-              onClick={() => setStep((s) => (s === 1 ? 1 : ((s - 1) as 1 | 2 | 3)))}
+              onClick={goPreviousStep}
               className="rounded-xl border border-amber-300 dark:border-amber-700 px-4 py-2.5 text-sm font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all active:scale-[0.97]"
             >
               ← Anterior
@@ -1205,10 +1381,7 @@ export default function EditarMovimiento({
           )}
           {step < 3 && (
             <button
-              onClick={() => {
-                if (step === 2 && !validateStep2()) return;
-                setStep((s) => ((s + 1) as 1 | 2 | 3));
-              }}
+              onClick={goNextStep}
               className={Movimiento.clsx(
                 "rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 transition-all active:scale-[0.97]",
                 readOnly

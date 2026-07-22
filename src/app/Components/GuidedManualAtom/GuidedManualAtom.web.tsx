@@ -32,6 +32,7 @@ type GuidedManualStateContextValue = {
   totalSteps: number;
   targetsVersion: number;
   isTransitioning: boolean;
+  context: Record<string, unknown>;
 
   globalDisableAppElements: string[];
 
@@ -51,6 +52,11 @@ type GuidedManualApiContextValue = {
   checkAutoAdvance: () => boolean;
   isStepApplicable: (step?: GuidedManualStep | null) => boolean;
   isStepReady: (step?: GuidedManualStep | null) => boolean;
+  setContext: (key: string, value: unknown) => void;
+  mergeContext: (patch: Record<string, unknown>) => void;
+  clearContext: (prefix?: string) => void;
+  getContext: (key?: string) => unknown;
+  refreshLayout: () => void;
 
 };
 
@@ -104,6 +110,28 @@ const defaultGuidedManualTransition: Required<GuidedManualTransitionOptions> = {
   waitForTarget: true,
   targetStableMs: 120,
   targetTimeoutMs: 10_000,
+};
+
+const getGuidedContextValue = (source: Record<string, unknown>, key?: string) => {
+  if (!key) return source;
+  if (Object.prototype.hasOwnProperty.call(source, key)) return source[key];
+  return key.split('.').reduce<unknown>((current, segment) => {
+    if (current && typeof current === 'object' && Object.prototype.hasOwnProperty.call(current, segment)) {
+      return (current as Record<string, unknown>)[segment];
+    }
+    return undefined;
+  }, source);
+};
+
+const isGuidedContextEqual = (a: unknown, b: unknown) => {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== typeof b) return false;
+  if (!a || !b || typeof a !== 'object') return false;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
 };
 
 const BasicGuidedManualWebButton = ({
@@ -225,7 +253,9 @@ export const GuidedManualProvider = ({
   const [isTransitioning, setIsTransitioning] = useState(false);
   const targetsRef = useRef<Map<string, HTMLElement>>(new Map());
   const [targetsVersion, setTargetsVersion] = useState(0);
+  const [manualContext, setManualContextState] = useState<Record<string, unknown>>({});
   const transitionRequestRef = useRef(0);
+  const waitListenersRef = useRef<Set<() => void>>(new Set());
 
   const autoAdvanceTimerRef = useRef<number | null>(null);
 
@@ -284,10 +314,66 @@ export const GuidedManualProvider = ({
     () => (totalSteps > 0 ? manualSteps[Math.min(currentIndex, totalSteps - 1)] : null),
     [manualSteps, currentIndex, totalSteps]
   );
+  const refreshLayout = useCallback(() => {
+    setTargetsVersion((prevValue) => prevValue + 1);
+    waitListenersRef.current.forEach((listener) => listener());
+  }, []);
+
+  const mergeContext = useCallback((patch: Record<string, unknown>) => {
+    setManualContextState((current) => {
+      let changed = false;
+      const nextContext = { ...current };
+      Object.entries(patch).forEach(([key, value]) => {
+        if (!isGuidedContextEqual(nextContext[key], value)) {
+          nextContext[key] = value;
+          changed = true;
+        }
+      });
+      return changed ? nextContext : current;
+    });
+    refreshLayout();
+  }, [refreshLayout]);
+
+  const setContext = useCallback((key: string, value: unknown) => {
+    mergeContext({ [key]: value });
+  }, [mergeContext]);
+
+  const clearContext = useCallback((prefix?: string) => {
+    setManualContextState((current) => {
+      if (!prefix) return {};
+      let changed = false;
+      const nextContext: Record<string, unknown> = {};
+      Object.entries(current).forEach(([key, value]) => {
+        if (key === prefix || key.startsWith(`${prefix}.`)) {
+          changed = true;
+          return;
+        }
+        nextContext[key] = value;
+      });
+      return changed ? nextContext : current;
+    });
+    refreshLayout();
+  }, [refreshLayout]);
+
+  const getContext = useCallback((key?: string) => getGuidedContextValue(manualContext, key), [manualContext]);
+
   const evaluateCondition = useCallback((condition?: GuidedManualCondition): boolean => {
     if (!condition) return true;
     try {
       if (typeof condition === 'function') return Boolean(condition());
+      if (condition.type === 'context') {
+        const value = getGuidedContextValue(manualContext, condition.key);
+        const exists = value !== undefined && value !== null && value !== '';
+        if (typeof condition.exists === 'boolean' && condition.exists !== exists) return false;
+        if ('equals' in condition && !isGuidedContextEqual(value, condition.equals)) return false;
+        if ('notEquals' in condition && isGuidedContextEqual(value, condition.notEquals)) return false;
+        if ('includes' in condition) {
+          if (Array.isArray(value)) return value.some((item) => isGuidedContextEqual(item, condition.includes));
+          if (typeof value === 'string') return typeof condition.includes === 'string' && value.includes(condition.includes);
+          return false;
+        }
+        return true;
+      }
       if (condition.type === 'selector') {
         const exists = typeof document !== 'undefined' && Boolean(document.querySelector(condition.selector));
         return condition.exists === false ? !exists : exists;
@@ -302,7 +388,7 @@ export const GuidedManualProvider = ({
     } catch {
       return false;
     }
-  }, []);
+  }, [manualContext]);
   const isStepApplicable = useCallback(
     (step?: GuidedManualStep | null) => evaluateCondition(step?.when),
     [evaluateCondition]
@@ -348,7 +434,7 @@ export const GuidedManualProvider = ({
       autoAdvanceTimerRef.current = window.setTimeout(() => {
         autoAdvanceTimerRef.current = null;
         setCurrentIndex(bestMatch);
-      }, 1000);
+      }, 120);
       return true;
     }
     return false;
@@ -413,68 +499,92 @@ export const GuidedManualProvider = ({
     return step.targetId ? targetsRef.current.get(step.targetId) ?? null : null;
   }, []);
 
-  const waitForStepTarget = useCallback(
-    (step?: GuidedManualStep | null, requestId?: number) => {
-      if (!step?.selector && !step?.targetId) return Promise.resolve(true);
-      if (!resolvedTransition.waitForTarget || typeof window === 'undefined') return Promise.resolve(true);
+  const isStepNodeVisible = useCallback((step?: GuidedManualStep | null) => {
+    if (!step?.selector && !step?.targetId) return true;
+    if (typeof window === 'undefined') return true;
+    const node = resolveStepNode(step);
+    if (!node?.isConnected) return false;
+    const styles = window.getComputedStyle(node);
+    const rect = node.getBoundingClientRect();
+    return (
+      styles.display !== 'none' &&
+      styles.visibility !== 'hidden' &&
+      Number(styles.opacity || 1) > 0 &&
+      rect.width > 0 &&
+      rect.height > 0
+    );
+  }, [resolveStepNode]);
 
-      return new Promise<boolean>((resolve) => {
-        const startedAt = performance.now();
-        let stableSince = 0;
-        let previousRect: DOMRect | null = null;
+  const isStepReadyForTransition = useCallback((step?: GuidedManualStep | null) => {
+    if (!step || !isStepReady(step)) return false;
+    return isStepNodeVisible(step);
+  }, [isStepNodeVisible, isStepReady]);
+
+  const findReadyStepIndex = useCallback(
+    (fromIndex: number, direction: 'next' | 'prev') => {
+      const indexes = manualSteps
+        .map((step, index) => ({ step, index }))
+        .filter(({ index }) => (direction === 'next' ? index > fromIndex : index < fromIndex));
+      const orderedIndexes = direction === 'next' ? indexes : indexes.reverse();
+      return orderedIndexes.find(({ step }) => isStepReadyForTransition(step))?.index ?? -1;
+    },
+    [isStepReadyForTransition, manualSteps]
+  );
+
+  const waitForReadyStepIndex = useCallback(
+    (fromIndex: number, direction: 'next' | 'prev', requestId: number) => {
+      const immediate = findReadyStepIndex(fromIndex, direction);
+      if (immediate >= 0 || !resolvedTransition.waitForTarget || typeof window === 'undefined') {
+        return Promise.resolve(immediate);
+      }
+
+      return new Promise<number>((resolve) => {
+        const timeoutMs = Math.min(Math.max(resolvedTransition.targetTimeoutMs, 400), 2500);
         let frameId = 0;
+        let timeoutId = 0;
+        let observer: MutationObserver | null = null;
 
-        const finish = (ready: boolean) => {
-          window.cancelAnimationFrame(frameId);
-          resolve(ready);
+        const cleanup = () => {
+          if (frameId) window.cancelAnimationFrame(frameId);
+          if (timeoutId) window.clearTimeout(timeoutId);
+          observer?.disconnect();
+          waitListenersRef.current.delete(scheduleCheck);
         };
 
-        const check = (timestamp: number) => {
-          if (requestId !== undefined && requestId !== transitionRequestRef.current) {
-            finish(false);
+        const finish = (index: number) => {
+          cleanup();
+          resolve(index);
+        };
+
+        const check = () => {
+          frameId = 0;
+          if (requestId !== transitionRequestRef.current) {
+            finish(-1);
             return;
           }
-          const node = resolveStepNode(step);
-          if (node?.isConnected) {
-            const styles = window.getComputedStyle(node);
-            const rect = node.getBoundingClientRect();
-            const visible =
-              styles.display !== 'none' &&
-              styles.visibility !== 'hidden' &&
-              Number(styles.opacity || 1) > 0 &&
-              rect.width > 0 &&
-              rect.height > 0;
-
-            if (visible) {
-              const stable =
-                previousRect !== null &&
-                Math.abs(previousRect.top - rect.top) <= 0.5 &&
-                Math.abs(previousRect.left - rect.left) <= 0.5 &&
-                Math.abs(previousRect.width - rect.width) <= 0.5 &&
-                Math.abs(previousRect.height - rect.height) <= 0.5;
-              previousRect = rect;
-              stableSince = stable ? stableSince || timestamp : timestamp;
-              if (timestamp - stableSince >= resolvedTransition.targetStableMs) {
-                finish(true);
-                return;
-              }
-            } else {
-              previousRect = null;
-              stableSince = 0;
-            }
+          const readyIndex = findReadyStepIndex(fromIndex, direction);
+          if (readyIndex >= 0) {
+            finish(readyIndex);
           }
+        };
 
-          if (timestamp - startedAt >= resolvedTransition.targetTimeoutMs) {
-            finish(false);
-            return;
-          }
+        function scheduleCheck() {
+          if (frameId) return;
           frameId = window.requestAnimationFrame(check);
-        };
+        }
 
-        frameId = window.requestAnimationFrame(check);
+        waitListenersRef.current.add(scheduleCheck);
+        observer = new MutationObserver(scheduleCheck);
+        observer.observe(document.body, {
+          subtree: true,
+          childList: true,
+          attributes: true,
+        });
+        timeoutId = window.setTimeout(() => finish(-1), timeoutMs);
+        scheduleCheck();
       });
     },
-    [resolveStepNode, resolvedTransition]
+    [findReadyStepIndex, resolvedTransition.targetTimeoutMs, resolvedTransition.waitForTarget]
   );
 
   const startManual = useCallback(
@@ -513,20 +623,16 @@ export const GuidedManualProvider = ({
         });
       }
 
-      const nextIndex = manualSteps.findIndex(
-        (step, index) => index > currentIndex && isStepApplicable(step)
-      );
-      const nextStep = nextIndex >= 0 ? manualSteps[nextIndex] : null;
-      if (!nextStep) {
+      const nextIndex = await waitForReadyStepIndex(currentIndex, 'next', requestId);
+      if (nextIndex < 0) {
         if (requestId === transitionRequestRef.current) setIsTransitioning(false);
         return;
       }
-      const ready = await waitForStepTarget(nextStep, requestId);
       if (requestId !== transitionRequestRef.current) return;
       setIsTransitioning(false);
-      if (ready) setCurrentIndex(nextIndex);
+      setCurrentIndex(nextIndex);
     },
-    [currentIndex, isStepApplicable, isTransitioning, manualSteps, runAction, waitForStepTarget]
+    [currentIndex, isTransitioning, manualSteps, runAction, waitForReadyStepIndex]
   );
   const prev = useCallback(async () => {
     if (isTransitioning) return;
@@ -549,39 +655,33 @@ export const GuidedManualProvider = ({
     }
 
 
-    const previousIndex = [...manualSteps]
-      .map((step, index) => ({ step, index }))
-      .reverse()
-      .find(({ step, index }) => index < currentIndex && isStepApplicable(step))?.index;
-
-    if (previousIndex === undefined) {
+    const previousIndex = await waitForReadyStepIndex(currentIndex, 'prev', requestId);
+    if (previousIndex < 0) {
       if (requestId === transitionRequestRef.current) setIsTransitioning(false);
       return;
     }
-
-
-    const ready = await waitForStepTarget(manualSteps[previousIndex], requestId);
     if (requestId !== transitionRequestRef.current) return;
     setIsTransitioning(false);
-    if (ready) setCurrentIndex(previousIndex);
+    setCurrentIndex(previousIndex);
   }, [
     currentIndex,
-    isStepApplicable,
     isTransitioning,
     manualSteps,
     runAction,
-    waitForStepTarget,
+    waitForReadyStepIndex,
   ]);
 
   const registerTarget = useCallback((id: string, node: HTMLElement | null) => {
     if (!node) return;
     targetsRef.current.set(id, node);
     setTargetsVersion((prevValue) => prevValue + 1);
+    waitListenersRef.current.forEach((listener) => listener());
   }, []);
 
   const unregisterTarget = useCallback((id: string) => {
     if (targetsRef.current.delete(id)) {
       setTargetsVersion((prevValue) => prevValue + 1);
+      waitListenersRef.current.forEach((listener) => listener());
     }
   }, []);
 
@@ -617,10 +717,11 @@ export const GuidedManualProvider = ({
       totalSteps: visibleTotalSteps,
       targetsVersion,
       isTransitioning,
+      context: manualContext,
 
       globalDisableAppElements,
     }),
-    [manualSteps, isOpen, currentStep, visibleTotalSteps, targetsVersion, isTransitioning, visibleStepIndex, globalDisableAppElements]
+    [manualSteps, isOpen, currentStep, visibleTotalSteps, targetsVersion, isTransitioning, manualContext, visibleStepIndex, globalDisableAppElements]
 
   );
 
@@ -639,8 +740,31 @@ export const GuidedManualProvider = ({
       checkAutoAdvance,
       isStepApplicable,
       isStepReady,
+      setContext,
+      mergeContext,
+      clearContext,
+      getContext,
+      refreshLayout,
     }),
-    [start, startManual, startWithSteps, close, next, prev, registerTarget, unregisterTarget, getTarget, checkAutoAdvance, isStepApplicable, isStepReady]
+    [
+      start,
+      startManual,
+      startWithSteps,
+      close,
+      next,
+      prev,
+      registerTarget,
+      unregisterTarget,
+      getTarget,
+      checkAutoAdvance,
+      isStepApplicable,
+      isStepReady,
+      setContext,
+      mergeContext,
+      clearContext,
+      getContext,
+      refreshLayout,
+    ]
 
   );
 
@@ -981,6 +1105,21 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
 
       const node = resolveStepTargetNode(currentStep, getTarget);
       if (!node) {
+        if (!currentStep.selector && !currentStep.targetId) {
+          if (lostTimerRef.current !== null) {
+            window.clearTimeout(lostTimerRef.current);
+            lostTimerRef.current = null;
+          }
+          if (targetNodeRef.current !== null) {
+            targetNodeRef.current = null;
+            setTargetNode(null);
+          }
+          if (targetRectRef.current !== null) {
+            targetRectRef.current = null;
+            setTargetRect(null);
+          }
+          return;
+        }
 
         if (targetNodeRef.current !== null) {
           targetNodeRef.current = null;

@@ -4,9 +4,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useMounted } from "@/app/hooks/useMounted";
 import {
   GuidedTarget,
-  useGuidedManualApi,
   useGuidedManual,
-  type GuidedManualStep,
+  useGuidedManualApi,
 } from "@/app/Components/GuidedManualAtom";
 import { getInitialTheme, applyTheme, onThemeChange } from "@/lib/theme";
 import { Movimiento } from "../Movimiento";
@@ -22,25 +21,6 @@ import MobileGuidedTornoMeasuresStep, {
 import { Badge, RoleBadge } from "./components/ui";
 import { useCrearMovimientoController } from "./useCrearMovimientoController";
 
-
-function TornoMeasurementGuideButton({ steps }: { steps: GuidedManualStep[] }) {
-  const api = useGuidedManualApi();
-
-  if (!api || steps.length === 0) return null;
-
-  return (
-    <button
-      type="button"
-      onClick={() => api.startWithSteps(steps, 0)}
-      className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-sky-200 bg-sky-50 text-lg font-bold text-sky-700 shadow-sm transition-all hover:bg-sky-100 active:scale-[0.97] dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-900/60"
-      title="Mostrar guía de medición"
-      aria-label="Mostrar guía de medición"
-    >
-      ?
-    </button>
-  );
-}
-
 /**
  * Pantalla principal "Crear Movimiento".
  *
@@ -52,7 +32,8 @@ function TornoMeasurementGuideButton({ steps }: { steps: GuidedManualStep[] }) {
 export default function CrearMovimiento() {
   const mounted = useMounted();
   const guidedManual = useGuidedManual();
-  const [guidedMode, setGuidedMode] = useState(false);
+  const guidedManualApi = useGuidedManualApi();
+  const [guidedMode, setGuidedMode] = useState(true);
   const [guidedStepOnePage, setGuidedStepOnePage] = useState(0);
   const [guidedTornoMeasuresPage, setGuidedTornoMeasuresPage] = useState(0);
 
@@ -196,41 +177,6 @@ export default function CrearMovimiento() {
     ),
     [tornoMedicion.rows]
   );
-  const tornoGuideSteps: GuidedManualStep[] = useTornoMedicionStep
-    ? [
-        {
-          id: "torno-wheel-count",
-          targetId: "torno-wheel-count",
-          title: "Selecciona el numero de ruedas",
-          description:
-            "Empieza indicando cuantas ruedas vas a medir. La tabla se ajusta automaticamente al total que selecciones.",
-          mode: "wizard",
-        },
-        {
-          id: "torno-movement-type",
-          targetId: "torno-movement-type",
-          title: "Define el tipo de movimiento",
-          description:
-            "Marca si la locomotora viene trabajando o remolcada. Si eliges Remolcada, tambien se habilita la direccion para completar ese caso.",
-          mode: "wizard",
-        },
-        {
-          id: "torno-measures-table",
-          targetId: "torno-measures-table",
-          title: "Captura las medidas de cada rueda",
-          description:
-            "Llena cada celda usando entero, numerador y denominador en pulgadas. Puedes avanzar fila por fila hasta completar las posiciones necesarias.",
-          mode: "wizard",
-        },
-      ]
-    : [];
-  const guidedStepDescription = useMemo(() => {
-    if (step === 1) return "Completa los datos operativos, servicio, locomotora y vias necesarias.";
-    if (step === 2 && useTornoMedicionStep) return "Registra medidas de torno con el formato configurado para la empresa.";
-    if (step === 2) return "Define el tipo de movimiento y su orientacion operativa.";
-    if (step === 3) return "Revisa la solicitud antes de crear el movimiento.";
-    return "Genera el PDF o vuelve a editar las mediciones del torno.";
-  }, [step, useTornoMedicionStep]);
   const contentMaxWidth = guidedMode
     ? "max-w-5xl"
     : useTornoMedicionStep
@@ -294,6 +240,16 @@ export default function CrearMovimiento() {
       setGuidedTornoMeasuresPage((page) => page - 1);
       return;
     }
+    if (step === 2) {
+      setGuidedStepOnePage(guidedStepOneSections.length - 1);
+      goPrev();
+      return;
+    }
+    if (step === 3 && useTornoMedicionStep) {
+      setGuidedTornoMeasuresPage(Math.max(0, guidedTornoPageCount - 1));
+      goPrev();
+      return;
+    }
     goPrev();
   };
   const showPreviousButton = guidedMode
@@ -309,6 +265,52 @@ export default function CrearMovimiento() {
         ? "Siguiente grupo"
         : nextLabel
     : nextLabel;
+
+  useEffect(() => {
+    const contextPatch = {
+      route: "movimientos.crear",
+      "createMovement.mode": guidedMode ? "mobile" : "classic",
+      "createMovement.step": step,
+      "createMovement.stepTitle": guidedStepTitle,
+      "createMovement.progress": guidedProgress,
+      "createMovement.variant": useTornoMedicionStep ? "torno" : "standard",
+      "createMovement.service": form.service || "",
+      "createMovement.isScheduled": Boolean(form.agendado),
+      "createMovement.selectionMode": selectionMode,
+      "createMovement.stepOnePage": guidedStepOnePage,
+      "createMovement.stepOneSection": guidedStepOneSection,
+      "createMovement.tornoMeasuresPage": guidedTornoMeasuresPage,
+      "createMovement.tornoWheelCount": tornoMedicion.wheelCount,
+      "createMovement.hasAnyTornoMeasure": hasAnyTornoMeasure,
+      "createMovement.localityId": form.selectedLocalityId || null,
+      "createMovement.locomotiveNumber": form.locomotiveNumber || null,
+      "createMovement.nextActionLabel": guidedNextLabel,
+      "createMovement.sending": sending,
+    };
+    guidedManualApi?.mergeContext(contextPatch);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("cosaif:guided-context", { detail: contextPatch }));
+    }
+  }, [
+    form.agendado,
+    form.locomotiveNumber,
+    form.selectedLocalityId,
+    form.service,
+    guidedManualApi,
+    guidedMode,
+    guidedNextLabel,
+    guidedProgress,
+    guidedStepOnePage,
+    guidedStepOneSection,
+    guidedStepTitle,
+    guidedTornoMeasuresPage,
+    hasAnyTornoMeasure,
+    selectionMode,
+    sending,
+    step,
+    tornoMedicion.wheelCount,
+    useTornoMedicionStep,
+  ]);
 
   if (!mounted) return null;
 
@@ -344,10 +346,43 @@ export default function CrearMovimiento() {
         aria-hidden
         className="pointer-events-none absolute inset-0 z-0 bg-[linear-gradient(to_right,rgba(0,0,0,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.03)_1px,transparent_1px)] bg-[size:24px_24px] dark:opacity-[0.05]"
       />
+      {guidedMode && (
+        <div className="cosaif-motion-panel fixed inset-x-0 top-0 z-40 border-b border-emerald-100 bg-white/95 px-3 py-2 shadow-lg shadow-emerald-100/30 backdrop-blur dark:border-emerald-900/40 dark:bg-zinc-950/95 dark:shadow-none sm:px-5">
+          <div className={Movimiento.clsx("mx-auto flex min-w-0 items-center gap-3", contentMaxWidth)}>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/25">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-base font-black text-slate-950 dark:text-white">
+                {pageTitle}
+              </div>
+              <div className="truncate text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                {guidedStepTitle}
+              </div>
+            </div>
+            <div className="cosaif-motion-emphasis rounded-2xl bg-emerald-50 px-3 py-1.5 text-center dark:bg-emerald-950/40">
+              <div className="text-lg font-black leading-5 text-emerald-700 dark:text-emerald-300">{guidedProgress}%</div>
+              <div className="text-[9px] font-black uppercase tracking-wide text-emerald-700/70 dark:text-emerald-300/70">completado</div>
+            </div>
+          </div>
+          <div className={Movimiento.clsx("mx-auto mt-2 h-1.5 overflow-hidden rounded-full bg-emerald-100 dark:bg-emerald-950/70", contentMaxWidth)}>
+            <div
+              className="cosaif-motion-progress h-full rounded-full bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500"
+              style={{ width: `${guidedProgress}%` }}
+            />
+          </div>
+        </div>
+      )}
       <div
         data-guide-movement-variant={useTornoMedicionStep ? "torno" : "standard"}
         data-guide-movement-step={step}
-        className={Movimiento.clsx("relative z-10 mx-auto w-full min-w-0", contentMaxWidth)}
+        className={Movimiento.clsx(
+          "relative z-10 mx-auto w-full min-w-0",
+          guidedMode && "pt-20 pb-44 sm:pt-24 md:pb-32",
+          contentMaxWidth
+        )}
       >
 
         <div className="mb-4 flex min-w-0 flex-wrap items-center gap-2">
@@ -373,7 +408,7 @@ export default function CrearMovimiento() {
             type="button"
             onClick={() => setGuidedMode((current) => !current)}
             className={Movimiento.clsx(
-              "rounded-xl border px-3 py-1.5 text-sm font-semibold transition-all active:scale-[0.97]",
+              "cosaif-motion-button rounded-xl border px-3 py-1.5 text-sm font-semibold",
               guidedMode
                 ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
                 : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
@@ -381,12 +416,12 @@ export default function CrearMovimiento() {
           >
             {guidedMode ? "Vista clasica" : "Flujo mobile"}
           </button>
-          <button onClick={goSalir} className="ml-auto rounded-xl border border-rose-200 dark:border-rose-800 px-3 py-1.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all active:scale-95" title="Volver a mis movimientos">
+          <button onClick={goSalir} className="cosaif-motion-button ml-auto rounded-xl border border-rose-200 dark:border-rose-800 px-3 py-1.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20" title="Volver a mis movimientos">
             Salir
           </button>
         </div>
 
-        <div className="flex min-w-0 items-center gap-3">
+        <div className={Movimiento.clsx("min-w-0 items-center gap-3", guidedMode ? "hidden" : "flex")}>
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/25">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 5v14M5 12h14" />
@@ -409,6 +444,7 @@ export default function CrearMovimiento() {
         )}
 
         {/* Stepper declarativo (sin estado local extra). */}
+        {!guidedMode && (
         <GuidedTarget id="create-movement-stepper">
         <div className={Movimiento.clsx(
           "mt-5 flex min-w-0 items-center justify-center gap-0",
@@ -442,7 +478,7 @@ export default function CrearMovimiento() {
                 <div className="mx-1 mb-4 min-w-2 flex-1 sm:mx-2">
                   <div className="h-0.5 rounded-full bg-slate-200 dark:bg-zinc-700 overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                      className="cosaif-motion-progress h-full rounded-full bg-emerald-500"
                       style={{ width: s < step ? "100%" : "0%" }}
                     />
                   </div>
@@ -453,41 +489,12 @@ export default function CrearMovimiento() {
           })}
         </div>
         </GuidedTarget>
-
-        {guidedMode && (
-          <div className="mt-5 min-w-0 overflow-hidden rounded-2xl border border-emerald-100 bg-white/90 p-3 shadow-xl shadow-emerald-100/40 backdrop-blur dark:border-emerald-900/40 dark:bg-zinc-950/80 dark:shadow-none sm:rounded-[28px] sm:p-5">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="min-w-0">
-                <div className="text-xs font-black uppercase tracking-[0.22em] text-emerald-600 dark:text-emerald-300">
-                  Flujo guiado
-                </div>
-                <h2 className="mt-1 break-words text-xl font-black tracking-tight text-slate-950 dark:text-white sm:text-2xl">
-                  {guidedStepTitle}
-                </h2>
-                <p className="mt-1 max-w-2xl text-sm font-medium text-slate-500 dark:text-zinc-400">
-                  {guidedStepDescription}
-                </p>
-              </div>
-              <div className="w-full rounded-2xl bg-emerald-50 p-3 text-center dark:bg-emerald-950/30 sm:w-auto sm:min-w-[150px] sm:p-4">
-                <div className="text-3xl font-black text-emerald-700 dark:text-emerald-300">{guidedProgress}%</div>
-                <div className="text-xs font-bold uppercase tracking-wide text-emerald-700/70 dark:text-emerald-300/70">
-                  completado
-                </div>
-              </div>
-            </div>
-            <div className="mt-5 h-2 overflow-hidden rounded-full bg-emerald-100 dark:bg-emerald-950">
-              <div
-                className="h-full rounded-full bg-emerald-500 transition-[width] duration-300 ease-out"
-                style={{ width: `${guidedProgress}%` }}
-              />
-            </div>
-          </div>
         )}
 
         {/* Contenido de steps (1,2,3) desacoplado en componentes especializados. */}
         <GuidedTarget id="create-movement-step-content">
         <div className={Movimiento.clsx(
-          "mt-4 min-w-0 overflow-hidden border p-3 backdrop-blur-sm transition-colors min-[380px]:p-4 sm:mt-6 sm:p-6",
+          "cosaif-motion-card mt-4 min-w-0 overflow-hidden border p-3 backdrop-blur-sm transition-colors min-[380px]:p-4 sm:mt-6 sm:p-6",
           guidedMode
             ? "rounded-[28px] border-emerald-100 bg-white/95 shadow-2xl shadow-emerald-100/50 dark:border-emerald-900/40 dark:bg-zinc-950/90 dark:shadow-none"
             : "rounded-2xl border-slate-200/80 dark:border-zinc-800/60 bg-white/95 dark:bg-zinc-950/90 shadow-xl shadow-slate-200/30 dark:shadow-zinc-900/30"
@@ -583,7 +590,10 @@ export default function CrearMovimiento() {
                 tornoMovimientoId={tornoMovimientoId}
                 tornoPdfSending={tornoPdfSending}
                 tornoPdfStatus={tornoPdfStatus}
-                onEditMedicion={goBackToTornoMedicion}
+                onEditMedicion={() => {
+                  setGuidedTornoMeasuresPage(Math.max(0, guidedTornoPageCount - 1));
+                  goBackToTornoMedicion();
+                }}
                 onGeneratePdf={generateTornoPdf}
               />
             </GuidedTarget>
@@ -593,10 +603,15 @@ export default function CrearMovimiento() {
         </GuidedTarget>
 
         {/* Navegacion declarativa del wizard. */}
-        <div className="mt-5 flex min-w-0 flex-wrap gap-2 sm:gap-3">
+        <div className={Movimiento.clsx(
+          "flex min-w-0 flex-wrap gap-2 sm:gap-3",
+          guidedMode
+            ? "fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] z-[45] rounded-2xl border border-emerald-100 bg-white/95 p-2.5 shadow-[0_-12px_30px_rgba(16,185,129,0.12)] backdrop-blur dark:border-emerald-900/40 dark:bg-zinc-950/95 dark:shadow-none sm:p-3 md:inset-x-0 md:bottom-0 md:rounded-none md:border-x-0 md:border-b-0 md:pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+            : "mt-5"
+        )}>
           <button
             onClick={clearAction}
-            className="min-h-11 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-600 transition-all hover:bg-slate-50 active:scale-[0.97] dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 min-[420px]:flex-none sm:px-4"
+            className="cosaif-motion-button min-h-11 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 min-[420px]:flex-none sm:px-4"
           >
             {clearLabel}
           </button>
@@ -605,7 +620,7 @@ export default function CrearMovimiento() {
             <button
               onClick={guidedGoPrev}
               data-guide-action="create-movement-prev"
-              className="min-h-11 flex-1 rounded-xl border border-amber-300 px-3 py-2.5 text-sm font-medium text-amber-700 transition-all hover:bg-amber-50 active:scale-[0.97] dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/20 min-[420px]:flex-none sm:px-4"
+              className="cosaif-motion-button min-h-11 flex-1 rounded-xl border border-amber-300 px-3 py-2.5 text-sm font-medium text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/20 min-[420px]:flex-none sm:px-4"
             >
               ← Anterior
             </button>
@@ -616,18 +631,17 @@ export default function CrearMovimiento() {
               <button
                 onClick={guidedGoNext}
                 data-guide-action="create-movement-next"
-                className="min-h-11 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 transition-all hover:from-emerald-600 hover:to-emerald-700 hover:shadow-emerald-500/40 active:scale-[0.97] sm:px-5"
+                className="cosaif-motion-button min-h-11 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 hover:from-emerald-600 hover:to-emerald-700 hover:shadow-emerald-500/40 sm:px-5"
               >
                 {guidedNextLabel}
               </button>
             </GuidedTarget>
           )}
 
-          {isTornoMeasurementStep && <TornoMeasurementGuideButton steps={tornoGuideSteps} />}
           <button
             onClick={goSalir}
             data-guide-action="create-movement-exit"
-            className="min-h-11 flex-1 rounded-xl border border-rose-200 px-3 py-2.5 text-sm font-medium text-rose-600 transition-all hover:bg-rose-50 active:scale-95 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-900/20 min-[420px]:ml-auto min-[420px]:flex-none sm:px-4"
+            className="cosaif-motion-button min-h-11 flex-1 rounded-xl border border-rose-200 px-3 py-2.5 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-900/20 min-[420px]:ml-auto min-[420px]:flex-none sm:px-4"
             title="Volver a mis movimientos"
           >
             Salir

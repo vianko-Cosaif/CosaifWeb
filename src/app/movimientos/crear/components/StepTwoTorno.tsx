@@ -7,6 +7,7 @@ import {
   EMPTY_TORNO_VALUE,
   formatTornoMeasure,
   getTornoPositions,
+  normalizeTornoMeasureValue,
   TORNO_DEN_OPTIONS,
   TORNO_WHEEL_COUNT_OPTIONS,
   type TornoMeasurementField,
@@ -29,6 +30,7 @@ import {
   type DynamicTableColumn,
 } from "@/app/Components/dynamic-table";
 import { LocomotiveWheelMap } from "@/app/Components/locomotive-wheel-selector/LocomotiveWheelMap";
+import TornoMeasurePickerDialog from "../../torno/TornoMeasurePickerDialog";
 
 /**
  * Props del Step 2 especializado para servicio Torno.
@@ -82,6 +84,7 @@ type MeasurePartsInputProps = {
   isRecentlyPasted?: boolean;
   onStartCopy: (position: TornoWheelPosition, field: TornoMeasurementField) => void;
   onToggleCopyTarget: (position: TornoWheelPosition, field: TornoMeasurementField) => void;
+  onOpenPicker?: (position: TornoWheelPosition, field: TornoMeasurementField, value: TornoMeasurementValue) => void;
 };
 
 
@@ -136,7 +139,7 @@ function CompactChoice(props: {
     <button
       onClick={onClick}
       className={Movimiento.clsx(
-        "rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors duration-200 sm:text-sm",
+        "cosaif-motion-button rounded-lg border px-3 py-1.5 text-xs font-semibold sm:text-sm",
         active
           ? "border-emerald-600 bg-emerald-600 text-white"
           : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
@@ -160,34 +163,40 @@ const MeasurePartsInput = React.memo(function MeasurePartsInput(props: MeasurePa
     isRecentlyPasted,
     onStartCopy,
     onToggleCopyTarget,
+    onOpenPicker,
   } = props;
 
   const selectable = !!copyModeActive && !isCopySource;
   const inputDisabled = !!copyModeActive;
   const passthroughClasses = copyModeActive ? "pointer-events-none" : "";
   const hasMeasure = hasMeasureValue(value);
+  const formatted = formatTornoMeasure(value);
 
   return (
     <div className="flex min-w-0 items-center">
       <div
         onClick={() => {
           if (selectable) onToggleCopyTarget(position, field);
+          if (!copyModeActive) onOpenPicker?.(position, field, value);
         }}
         onKeyDown={(event) => {
-          if (!selectable) return;
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          if (selectable) {
             onToggleCopyTarget(position, field);
+            return;
           }
+          if (!copyModeActive) onOpenPicker?.(position, field, value);
         }}
-        role={selectable ? "button" : undefined}
-        tabIndex={selectable ? 0 : undefined}
+        role="button"
+        tabIndex={0}
         aria-pressed={selectable ? isCopyTarget : undefined}
         className={Movimiento.clsx(
-          "flex min-w-0 items-center rounded-lg border border-slate-200 bg-white px-1.5 py-1 transition-all dark:border-slate-700 dark:bg-slate-950",
+          "relative flex min-w-0 items-center rounded-lg border border-slate-200 bg-white px-2 py-1 transition-all dark:border-slate-700 dark:bg-slate-950",
           hasMeasure && !copyModeActive && "border-emerald-500 ring-1 ring-emerald-500/25 dark:border-emerald-500 dark:ring-emerald-500/25",
           isRecentlyPasted && "paste-feedback border-amber-400 bg-amber-50 ring-2 ring-amber-300/60 dark:border-amber-400 dark:bg-amber-900/30 dark:ring-amber-500/40",
           copyModeActive && !isCopySource && !isCopyTarget && "opacity-55 saturate-75",
+          !copyModeActive && "cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 dark:hover:border-emerald-700 dark:hover:bg-emerald-950/30",
           selectable && "cursor-pointer hover:border-sky-400 hover:bg-sky-100/80 hover:opacity-100 dark:hover:border-sky-500 dark:hover:bg-sky-900/30",
           isCopySource && "border-emerald-600 bg-emerald-100 shadow-md ring-2 ring-emerald-500/40 opacity-100 dark:border-emerald-500 dark:bg-emerald-900/35",
           isCopyTarget && "border-sky-600 bg-sky-200 shadow-md ring-2 ring-sky-500/40 opacity-100 dark:border-sky-500 dark:bg-sky-800/60",
@@ -262,6 +271,18 @@ const MeasurePartsInput = React.memo(function MeasurePartsInput(props: MeasurePa
           isCopyTarget && "text-sky-600 dark:text-sky-300",
           isCopySource && "text-emerald-600 dark:text-emerald-300"
         )}>&quot;</span>
+        {!copyModeActive ? (
+          <span
+            className={Movimiento.clsx(
+              "absolute inset-0 flex items-center justify-center rounded-lg px-2 text-center text-sm font-black",
+              formatted
+                ? "bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100"
+                : "bg-white text-slate-400 dark:bg-slate-950 dark:text-slate-500"
+            )}
+          >
+            {formatted || "Configurar"}
+          </span>
+        ) : null}
       </div>
       <button
         type="button"
@@ -342,6 +363,19 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
   );
   const [selectedVisualPosition, setSelectedVisualPosition] = useState<TornoWheelPosition>("L1");
   const [visualViewMode, setVisualViewMode] = useState<"top" | "left" | "right">("top");
+  const [measurePicker, setMeasurePicker] = useState<{
+    open: boolean;
+    position: TornoWheelPosition | null;
+    field: TornoMeasurementField | null;
+    label: string;
+    draft: TornoMeasurementValue;
+  }>({
+    open: false,
+    position: null,
+    field: null,
+    label: "",
+    draft: EMPTY_TORNO_VALUE,
+  });
 
   const [screenOrientation, setScreenOrientation] = useState<"horizontal" | "vertical">("vertical");
 
@@ -494,6 +528,40 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
     () => rightPositions.map((position) => ({ position })),
     [rightPositions]
   );
+  const openMeasurePicker = (
+    position: TornoWheelPosition,
+    field: TornoMeasurementField,
+    value: TornoMeasurementValue
+  ) => {
+    const label = fieldDefs.find((item) => item.key === field)?.label ?? field;
+    setMeasurePicker({
+      open: true,
+      position,
+      field,
+      label,
+      draft: {
+        whole: value.whole ?? "",
+        num: value.num ?? "",
+        den: value.den ?? "",
+      },
+    });
+  };
+
+  const closeMeasurePicker = () => {
+    setMeasurePicker((current) => ({ ...current, open: false }));
+  };
+
+  const applyMeasurePicker = () => {
+    if (!measurePicker.position || !measurePicker.field) {
+      closeMeasurePicker();
+      return;
+    }
+    const normalized = normalizeTornoMeasureValue(measurePicker.draft);
+    updateTornoMedicion(measurePicker.position, measurePicker.field, "whole", normalized.whole);
+    updateTornoMedicion(measurePicker.position, measurePicker.field, "num", normalized.num);
+    updateTornoMedicion(measurePicker.position, measurePicker.field, "den", normalized.den);
+    closeMeasurePicker();
+  };
   const startCopySelection = React.useCallback((position: TornoWheelPosition, field: TornoMeasurementField) => {
     setCopyState({
       scope: "cell",
@@ -658,6 +726,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
             isRecentlyPasted={pastedCells.has(cellId)}
             onStartCopy={startCopySelection}
             onToggleCopyTarget={toggleCopyTarget}
+            onOpenPicker={openMeasurePicker}
           />
         );
       },
@@ -717,7 +786,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
           </div>
         ) : null}
 
-        <div className="mb-4 flex min-w-0 flex-wrap items-start gap-4 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/50">
+        <div className="cosaif-motion-card mb-4 flex min-w-0 flex-wrap items-start gap-4 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/50">
           <GuidedTarget id="torno-wheel-count">
             <div className="min-w-0">
               <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Ruedas</div>
@@ -727,7 +796,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                     key={count}
                     onClick={() => setTornoWheelCount(count)}
                     className={Movimiento.clsx(
-                      "px-3 py-1.5 text-xs font-semibold transition-colors duration-200 sm:px-4 sm:text-sm",
+                      "cosaif-motion-button px-3 py-1.5 text-xs font-semibold sm:px-4 sm:text-sm",
                       tornoMedicion.wheelCount === count
                         ? "bg-emerald-600 text-white"
                         : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
@@ -787,7 +856,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
             type="button"
             onClick={() => setEntryMode("table")}
             className={Movimiento.clsx(
-              "px-3 py-2 text-xs font-bold rounded-lg border transition-colors select-none",
+              "cosaif-motion-button px-3 py-2 text-xs font-bold rounded-lg border select-none",
               entryMode === "table"
                 ? "border-emerald-600 bg-emerald-600 text-white"
                 : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
@@ -799,7 +868,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
             type="button"
             onClick={() => setEntryMode("visual")}
             className={Movimiento.clsx(
-              "px-3 py-2 text-xs font-bold rounded-lg border transition-colors select-none",
+              "cosaif-motion-button px-3 py-2 text-xs font-bold rounded-lg border select-none",
               entryMode === "visual"
                 ? "border-emerald-600 bg-emerald-600 text-white"
                 : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
@@ -820,7 +889,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                         key={`mobile_${position}`}
                         onClick={() => setMobilePosition(position)}
                         className={Movimiento.clsx(
-                          "shrink-0 rounded-full border px-3 py-1 text-xs font-semibold",
+                          "cosaif-motion-button shrink-0 rounded-full border px-3 py-1 text-xs font-semibold",
                           mobilePosition === position
                             ? "border-emerald-600 bg-emerald-600 text-white"
                             : "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
@@ -834,7 +903,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                     <button
                       type="button"
                       onClick={() => startRowCopySelection(mobilePosition)}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                      className="cosaif-motion-button rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                     >
                       Copiar fila {mobilePosition}
                     </button>
@@ -844,7 +913,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                     {fieldDefs.map((field) => {
                       const measure = selectedMobileRow[field.key] ?? EMPTY_TORNO_VALUE;
                       return (
-                        <div key={`mobile_field_${field.key}`} className="min-w-0 rounded-lg border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-950/40">
+                        <div key={`mobile_field_${field.key}`} className="cosaif-motion-card min-w-0 rounded-lg border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-950/40">
                           <div className="mb-1 flex items-center justify-between gap-2">
                             <span className="min-w-0 flex-1 break-words text-xs font-semibold text-slate-700 dark:text-slate-200">
                               {field.label}
@@ -852,7 +921,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                             <button
                               type="button"
                               onClick={() => startColumnCopySelection(field.key)}
-                              className="shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                              className="cosaif-motion-button shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                             >
                               Col.
                             </button>
@@ -869,6 +938,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                             isRecentlyPasted={pastedCells.has(getCopyCellId(mobilePosition, field.key))}
                             onStartCopy={startMobileCopySelection}
                             onToggleCopyTarget={toggleCopyTarget}
+                            onOpenPicker={openMeasurePicker}
                           />
                         </div>
                       );
@@ -928,7 +998,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 {/* Panel izquierdo: Diagrama SVG */}
-                <div className="lg:col-span-6 border border-slate-200 dark:border-slate-800 rounded-xl p-4 bg-slate-50/50 dark:bg-slate-900/10">
+                <div className="cosaif-motion-card lg:col-span-6 border border-slate-200 dark:border-slate-800 rounded-xl p-4 bg-slate-50/50 dark:bg-slate-900/10">
                   <div className="flex gap-2 mb-4 justify-center">
                     {(["top", "left", "right"] as const).map((mode) => (
                       <button
@@ -936,7 +1006,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                         type="button"
                         onClick={() => setVisualViewMode(mode)}
                         className={Movimiento.clsx(
-                          "px-3 py-1.5 text-xs font-bold rounded-lg border transition-colors select-none",
+                          "cosaif-motion-button px-3 py-1.5 text-xs font-bold rounded-lg border select-none",
                           visualViewMode === mode
                             ? "border-emerald-600 bg-emerald-600 text-white"
                             : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
@@ -963,7 +1033,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                 </div>
 
                 {/* Panel derecho: Formulario de captura de medidas */}
-                <div className="lg:col-span-6 border border-slate-200 dark:border-slate-800 rounded-xl p-5 bg-white dark:bg-slate-950">
+                <div className="cosaif-motion-card lg:col-span-6 border border-slate-200 dark:border-slate-800 rounded-xl p-5 bg-white dark:bg-slate-950">
                   <div className="mb-4 flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 gap-3">
                     <div>
                       <h4 className="text-base font-black text-slate-800 dark:text-slate-200">
@@ -976,7 +1046,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                     <button
                       type="button"
                       onClick={() => selectedVisualPosition && startRowCopySelection(selectedVisualPosition)}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                      className="cosaif-motion-button rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                     >
                       Copiar fila {selectedVisualPosition}
                     </button>
@@ -989,7 +1059,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                       return (
                         <div 
                           key={`visual_field_${field.key}`}
-                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg border border-slate-100 bg-slate-50/50 dark:border-slate-800/60 dark:bg-slate-900/10"
+                          className="cosaif-motion-card flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg border border-slate-100 bg-slate-50/50 dark:border-slate-800/60 dark:bg-slate-900/10"
                         >
                           <div className="min-w-0 flex-1">
                             <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
@@ -1015,6 +1085,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                               isRecentlyPasted={pastedCells.has(cellId)}
                               onStartCopy={startCopySelection}
                               onToggleCopyTarget={toggleCopyTarget}
+                              onOpenPicker={openMeasurePicker}
                             />
                           </div>
                         </div>
@@ -1051,6 +1122,17 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
             onApply={applyCopyTargets}
           />
         ) : null}
+
+        <TornoMeasurePickerDialog
+          open={measurePicker.open}
+          title="Seleccion de medida"
+          subtitle={`${measurePicker.position ?? "--"} - ${measurePicker.label}`}
+          draft={measurePicker.draft}
+          onChange={(draft) => setMeasurePicker((current) => ({ ...current, draft }))}
+          onCancel={closeMeasurePicker}
+          onSave={applyMeasurePicker}
+          accent="emerald"
+        />
 
         <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
           Las medidas son opcionales por campo y se guardan en draft local durante esta solicitud.

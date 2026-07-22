@@ -340,7 +340,7 @@ export default function StepOne(props: StepOneProps) {
                   )
                 }
                 className={Movimiento.clsx(
-                  "rounded-md border px-3 py-2 text-sm",
+                  "cosaif-motion-button rounded-md border px-3 py-2 text-sm",
                   active ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
                     : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                 )}
@@ -356,7 +356,7 @@ export default function StepOne(props: StepOneProps) {
 
       {showSection("service") && form.service === "Torno" ? (
         <GuidedTarget id="create-movement-torno-schedule" className="sm:col-span-2">
-          <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/50">
+          <div className="cosaif-motion-card rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/50">
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -407,7 +407,7 @@ export default function StepOne(props: StepOneProps) {
             <button
               onClick={() => setSelectionMode("de_via")}
               className={Movimiento.clsx(
-                "rounded-md border px-3 py-2 text-sm",
+                "cosaif-motion-button rounded-md border px-3 py-2 text-sm",
                 selectionMode === "de_via"
                   ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
                   : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
@@ -418,7 +418,7 @@ export default function StepOne(props: StepOneProps) {
             <button
               onClick={() => setSelectionMode("para_via")}
               className={Movimiento.clsx(
-                "rounded-md border px-3 py-2 text-sm",
+                "cosaif-motion-button rounded-md border px-3 py-2 text-sm",
                 selectionMode === "para_via"
                   ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
                   : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
@@ -495,7 +495,7 @@ export default function StepOne(props: StepOneProps) {
                   <button
                     onClick={() => { setShowFromOpts(!showFromOpts); if (form.fromTrack) ensureSections(form.fromTrack); }}
                     className={Movimiento.clsx(
-                      "w-full min-w-0 rounded-md border px-3 py-2 text-left transition-colors duration-200 min-[420px]:w-auto min-[420px]:min-w-[220px]",
+                      "cosaif-motion-button w-full min-w-0 rounded-md border px-3 py-2 text-left min-[420px]:w-auto min-[420px]:min-w-[220px]",
                       form.fromTrack
                         ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-500 dark:text-emerald-300"
                         : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
@@ -528,7 +528,7 @@ export default function StepOne(props: StepOneProps) {
                   <button
                     onClick={() => { setShowToOpts(!showToOpts); if (form.toTrack) ensureSections(form.toTrack); }}
                     className={Movimiento.clsx(
-                      "w-full min-w-0 rounded-md border px-3 py-2 text-left transition-colors duration-200 min-[420px]:w-auto min-[420px]:min-w-[220px]",
+                      "cosaif-motion-button w-full min-w-0 rounded-md border px-3 py-2 text-left min-[420px]:w-auto min-[420px]:min-w-[220px]",
                       form.toTrack
                         ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-500 dark:text-emerald-300"
                         : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
@@ -558,7 +558,7 @@ export default function StepOne(props: StepOneProps) {
 
       {altaOpen && (
         <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-2 sm:items-center sm:p-4">
-          <div className="max-h-[calc(100dvh-1rem)] w-full max-w-sm overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900 sm:p-4">
+          <div className="cosaif-motion-panel max-h-[calc(100dvh-1rem)] w-full max-w-sm overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900 sm:p-4">
             <div className="text-base font-semibold text-slate-800 dark:text-slate-100">Confirmar prioridad ALTA</div>
             <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               Ingresa la contrasena de ALTA para la empresa seleccionada.
@@ -576,8 +576,8 @@ export default function StepOne(props: StepOneProps) {
               {altaErr && <div className="mt-1 text-xs text-rose-600">{altaErr}</div>}
             </div>
             <div className="mt-4 flex gap-2">
-              <button onClick={confirmAltaPwd} className="rounded-md bg-emerald-600 px-3 py-2 text-sm text-white hover:bg-emerald-700">Confirmar</button>
-              <button onClick={cancelAltaPwd} className="rounded-md border px-3 py-2 text-sm hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Cancelar</button>
+              <button onClick={confirmAltaPwd} className="cosaif-motion-button rounded-md bg-emerald-600 px-3 py-2 text-sm text-white hover:bg-emerald-700">Confirmar</button>
+              <button onClick={cancelAltaPwd} className="cosaif-motion-button rounded-md border px-3 py-2 text-sm hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Cancelar</button>
             </div>
           </div>
         </div>

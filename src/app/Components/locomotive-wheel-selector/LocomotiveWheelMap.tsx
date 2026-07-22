@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   getBogieRanges,
   getDiagramMetrics,
@@ -559,6 +559,7 @@ function WheelNode({
   viewMode,
   rotateCoordinates,
   sidePortraitMode,
+  animationDelayMs = 0,
 }: {
   wheel: WheelPoint;
   disabled?: boolean;
@@ -567,6 +568,7 @@ function WheelNode({
   viewMode: LocomotiveMapProps['viewMode'];
   rotateCoordinates: boolean;
   sidePortraitMode?: boolean;
+  animationDelayMs?: number;
 }) {
   const stroke = getStatusStroke(theme, wheel.visualStatus);
   const fill = getStatusFill(theme, wheel.visualStatus);
@@ -627,6 +629,7 @@ function WheelNode({
         locked ? 'is-locked' : '',
         'select-none',
       ].filter(Boolean).join(' ')}
+      style={{ animationDelay: `${animationDelayMs}ms` }}
     >
       {detailedWheel ? (
         <circle
@@ -813,6 +816,8 @@ export function LocomotiveWheelMap({
           primarySoft: 'var(--loco-map-accent-soft)',
           success: 'var(--loco-map-accent-deep)',
           successSoft: 'var(--loco-map-accent-soft)',
+          inProcess: '#0EA5E9',
+          inProcessSoft: '#E0F2FE',
           disabled: 'var(--loco-map-disabled)',
           disabledSoft: 'var(--loco-map-surface)',
           text: 'var(--loco-map-text)',
@@ -823,8 +828,33 @@ export function LocomotiveWheelMap({
         },
       };
   const labels = resolveLabels(customLabels);
+  const [renderedViewMode, setRenderedViewMode] = useState(viewMode);
+  const [transitionPhase, setTransitionPhase] = useState<'entering' | 'idle' | 'leaving'>('idle');
+  const pendingViewMode = useRef(viewMode);
+
+  useEffect(() => {
+    if (viewMode === renderedViewMode) return;
+
+    pendingViewMode.current = viewMode;
+    setTransitionPhase('leaving');
+
+    const leaveTimer = window.setTimeout(() => {
+      setRenderedViewMode(pendingViewMode.current);
+      setTransitionPhase('entering');
+    }, 180);
+    const enterTimer = window.setTimeout(() => {
+      setTransitionPhase('idle');
+    }, 500);
+
+    return () => {
+      window.clearTimeout(leaveTimer);
+      window.clearTimeout(enterTimer);
+    };
+  }, [renderedViewMode, viewMode]);
+
+  const activeViewMode = renderedViewMode;
   
-  const sidePortraitMode = viewMode !== 'top' && orientation === 'vertical';
+  const sidePortraitMode = activeViewMode !== 'top' && orientation === 'vertical';
   const transformSidePortraitWheel = (wheel: WheelPoint): WheelPoint => {
     if (!sidePortraitMode) return wheel;
 
@@ -834,7 +864,7 @@ export function LocomotiveWheelMap({
     const portraitCenterY = 380;
     const dx = wheel.x - baseCenterX;
     const dy = wheel.y - baseCenterY;
-    const clockwise = viewMode === 'left';
+    const clockwise = activeViewMode === 'left';
 
     return {
       ...wheel,
@@ -844,11 +874,11 @@ export function LocomotiveWheelMap({
   };
 
   const renderOrientation = orientation;
-  const wheelPoints = getWheelPoints(wheelCount, viewMode, selectedWheelId, wheels, renderOrientation);
+  const wheelPoints = getWheelPoints(wheelCount, activeViewMode, selectedWheelId, wheels, renderOrientation);
   const renderedWheelPoints = wheelPoints.map(transformSidePortraitWheel);
   const visibleWheels = renderedWheelPoints.filter(wheel => wheel.visible);
-  const rotateWheelCoordinates = viewMode === 'top' && renderOrientation === 'horizontal';
-  const compactHorizontalSide = viewMode !== 'top' && renderOrientation === 'horizontal';
+  const rotateWheelCoordinates = activeViewMode === 'top' && renderOrientation === 'horizontal';
+  const compactHorizontalSide = activeViewMode !== 'top' && renderOrientation === 'horizontal';
 
   const widthVal = renderOrientation === 'horizontal' ? VIEWBOX_HEIGHT : VIEWBOX_WIDTH;
   const heightVal = renderOrientation === 'horizontal' ? VIEWBOX_WIDTH : VIEWBOX_HEIGHT;
@@ -858,7 +888,7 @@ export function LocomotiveWheelMap({
       ? 380
       : 640;
 
-  const topHorizontalMode = viewMode === 'top' && renderOrientation === 'horizontal';
+  const topHorizontalMode = activeViewMode === 'top' && renderOrientation === 'horizontal';
   const getTitleProps = () => {
     if (topHorizontalMode) return { x: 24, y: 22 };
     return renderOrientation === 'horizontal'
@@ -884,7 +914,7 @@ export function LocomotiveWheelMap({
       viewBox={`0 0 ${widthVal} ${heightVal}`} 
       width="100%" 
       height={renderedHeight}
-      className="loco-map-root mx-auto block"
+      className={`loco-map-root loco-map-view-${activeViewMode} loco-map-phase-${transitionPhase} mx-auto block`}
     >
       <style>
         {`
@@ -904,12 +934,23 @@ export function LocomotiveWheelMap({
             --loco-map-disabled: #64748b;
             --loco-map-wheel-rim: #e5e7eb;
             --loco-map-wheel-tire: #1f2937;
+            animation: locoMapRootEnter 180ms ease-out;
           }
           .loco-map-body {
-            animation: locoMapBodyEnter 220ms cubic-bezier(0.22, 1, 0.36, 1);
+            animation: locoMapBodyEnter 220ms ease-out;
             will-change: opacity;
           }
+          .loco-map-phase-leaving .loco-map-body {
+            animation: locoMapBodyLeave 180ms ease-in both;
+          }
+          .loco-map-phase-leaving .loco-wheel-node {
+            animation: locoWheelNodeLeave 140ms ease-in both;
+          }
+          .loco-map-phase-leaving .loco-wheel-node:nth-of-type(even) {
+            animation-delay: 25ms;
+          }
           .loco-wheel-node {
+            animation: locoWheelNodeEnter 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
             transition: opacity 160ms ease, filter 180ms ease, transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
             transform-box: fill-box;
             transform-origin: center;
@@ -932,7 +973,13 @@ export function LocomotiveWheelMap({
           .loco-wheel-node.is-locked {
             opacity: 0.78;
           }
-          @keyframes locoMapBodyEnter {
+          .loco-map-view-left .loco-map-body {
+            animation-name: locoMapBodyEnterLeft;
+          }
+          .loco-map-view-right .loco-map-body {
+            animation-name: locoMapBodyEnterRight;
+          }
+          @keyframes locoMapRootEnter {
             from {
               opacity: 0.88;
             }
@@ -940,7 +987,60 @@ export function LocomotiveWheelMap({
               opacity: 1;
             }
           }
+          @keyframes locoMapBodyEnter {
+            from {
+              opacity: 0;
+            }
+            to {
+              opacity: 1;
+            }
+          }
+          @keyframes locoMapBodyEnterLeft {
+            from {
+              opacity: 0;
+            }
+            to {
+              opacity: 1;
+            }
+          }
+          @keyframes locoMapBodyEnterRight {
+            from {
+              opacity: 0;
+            }
+            to {
+              opacity: 1;
+            }
+          }
+          @keyframes locoWheelNodeEnter {
+            from {
+              opacity: 0;
+              transform: translateY(10px) scale(0.94);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0) scale(1);
+            }
+          }
+          @keyframes locoMapBodyLeave {
+            from {
+              opacity: 1;
+            }
+            to {
+              opacity: 0;
+            }
+          }
+          @keyframes locoWheelNodeLeave {
+            from {
+              opacity: 1;
+              transform: translateY(0) scale(1);
+            }
+            to {
+              opacity: 0;
+              transform: translateY(-6px) scale(0.96);
+            }
+          }
           @media (prefers-reduced-motion: reduce) {
+            .loco-map-root,
             .loco-map-body,
             .loco-wheel-node {
               animation: none;
@@ -976,7 +1076,7 @@ export function LocomotiveWheelMap({
         fill={theme.colors.text}
         className="select-none"
       >
-        {titleForView(viewMode)}
+        {titleForView(activeViewMode)}
       </text>
 
       <text
@@ -991,30 +1091,31 @@ export function LocomotiveWheelMap({
         {`${wheelCount} ruedas torneables - ${wheelCount / 2} ejes`}
       </text>
 
-      {viewMode === 'top' ? (
-        <TopLocomotiveBody wheelCount={wheelCount} viewMode={viewMode} orientation={renderOrientation} theme={theme} />
+      {activeViewMode === 'top' ? (
+        <TopLocomotiveBody wheelCount={wheelCount} viewMode={activeViewMode} orientation={renderOrientation} theme={theme} />
       ) : (
         <SideLocomotiveBodyReferenceSvg
           wheelCount={wheelCount}
-          viewMode={viewMode}
+          viewMode={activeViewMode}
           orientation={renderOrientation}
           theme={theme}
           rotateForPortrait={sidePortraitMode}
         />
       )}
 
-      <AxleGuides wheelPoints={renderedWheelPoints} viewMode={viewMode} orientation={renderOrientation} />
+      <AxleGuides wheelPoints={renderedWheelPoints} viewMode={activeViewMode} orientation={renderOrientation} />
 
-      {visibleWheels.map(wheel => (
+      {visibleWheels.map((wheel, index) => (
         <WheelNode
           key={wheel.id}
           wheel={wheel}
           disabled={disabled}
           onWheelSelect={onWheelSelect}
           theme={theme}
-          viewMode={viewMode}
+          viewMode={activeViewMode}
           rotateCoordinates={rotateWheelCoordinates}
           sidePortraitMode={sidePortraitMode}
+          animationDelayMs={transitionPhase === 'leaving' ? 0 : 300 + Math.min(180, index * 26)}
         />
       ))}
 

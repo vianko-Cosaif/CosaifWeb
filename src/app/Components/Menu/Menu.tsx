@@ -31,7 +31,6 @@ import type { LucideIcon } from "lucide-react";
 import { GuidedTarget, useGuidedManualApi } from "@/app/Components/GuidedManualAtom";
 import ThemeToggle from "@/app/Components/ui/ThemeToggle";
 import { CLIENT_MOVEMENT_GUIDE_ID, CLIENT_MOVEMENT_MOBILE_GUIDE_ID } from "@/app/Components/GuidedManualAtom/ClientMovementGuide.config";
-import { ClientMovementGuideButton } from "@/app/Components/GuidedManualAtom/ClientMovementGuide";
 import { buildNavigationForRole, isNavigationItemActive, type AppNavigationItem } from "@/lib/appNavigation";
 import { getRoleClient } from "@/lib/cookies";
 import { getRoleCapabilities, normalizeAppRole, type AppRole, type NavModuleId } from "@/lib/accessControl";
@@ -61,7 +60,7 @@ type NavigationItem = {
   icon: LucideIcon;
 };
 
-type HelpGuideAction = "client-create-movement" | "client-create-movement-mobile" | "legacy-create-movement" | "legacy-create-movement-torno";
+type HelpGuideAction = "client-create-movement" | "client-create-movement-mobile" | "legacy-create-movement" | "legacy-create-movement-torno" | "general-help";
 
 type HelpSuggestion = {
   id: string;
@@ -70,9 +69,81 @@ type HelpSuggestion = {
   keywords: string[];
   roles?: Rol[];
   action: HelpGuideAction;
+  guideId?: string;
 };
 
 const HELP_GUIDE_CATALOG: HelpSuggestion[] = [
+  {
+    id: "general-first-steps",
+    label: "Primeros pasos en CosaifWeb",
+    description: "Guia inicial no interactiva sobre menu, dashboard, modulos y forma general de trabajo.",
+    keywords: ["inicio", "primeros", "pasos", "menu", "dashboard", "general", "ayuda"],
+    action: "general-help",
+    guideId: "general-first-steps",
+  },
+  {
+    id: "client-dashboard-basics",
+    label: "Cliente: entender el dashboard",
+    description: "Resumen general para consultar pendientes, movimientos y torneados desde la pantalla principal.",
+    keywords: ["cliente", "dashboard", "inicio", "pendientes", "movimientos", "torneados"],
+    roles: ["CLIENTE"],
+    action: "general-help",
+    guideId: "client-dashboard-basics",
+  },
+  {
+    id: "client-create-movement-overview",
+    label: "Cliente: crear movimiento sin entrar al wizard",
+    description: "Tutorial breve con las etapas del alta de movimiento y los puntos a revisar antes de confirmar.",
+    keywords: ["cliente", "crear", "movimiento", "nuevo", "solicitud", "confirmacion"],
+    roles: ["CLIENTE"],
+    action: "general-help",
+    guideId: "client-create-movement-overview",
+  },
+  {
+    id: "client-torno-overview",
+    label: "Cliente: movimiento tipo torno",
+    description: "Explica la relacion entre Movimiento y Torneado, medidas, agendado y recuperacion.",
+    keywords: ["cliente", "torno", "torneado", "ruedas", "medidas", "agendado", "recuperacion"],
+    roles: ["CLIENTE"],
+    action: "general-help",
+    guideId: "client-torno-overview",
+  },
+  {
+    id: "operations-monitoring-overview",
+    label: "Operacion: seguimiento de movimientos",
+    description: "Guia general para coordinadores y supervisores sobre estados, rondas y acciones operativas.",
+    keywords: ["coordinador", "supervisor", "operacion", "rondas", "movimientos", "seguimiento", "estados"],
+    roles: ["COORDINADOR", "SUPERVISOR"],
+    action: "general-help",
+    guideId: "operations-monitoring-overview",
+  },
+  {
+    id: "incidents-overview",
+    label: "Incidentes: lectura y seguimiento",
+    description: "Tutorial general sobre incidentes, reglas automaticas y revision de historial.",
+    keywords: ["incidentes", "cancelacion", "historial", "evidencia", "seguimiento"],
+    roles: ["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR"],
+    action: "general-help",
+    guideId: "incidents-overview",
+  },
+  {
+    id: "admin-users-overview",
+    label: "Administrador: usuarios y permisos",
+    description: "Guia inicial para entender roles, permisos y cambios sensibles como contrasenas.",
+    keywords: ["administrador", "usuarios", "permisos", "roles", "contrasena", "seguridad"],
+    roles: ["ADMINISTRADOR"],
+    action: "general-help",
+    guideId: "admin-users-overview",
+  },
+  {
+    id: "reports-overview",
+    label: "Reporteria: filtros y exportacion",
+    description: "Resumen para consultar reportes, aplicar filtros y validar datos antes de exportar.",
+    keywords: ["reporteria", "reportes", "pdf", "exportar", "filtros", "historico"],
+    roles: ["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR"],
+    action: "general-help",
+    guideId: "reports-overview",
+  },
   {
     id: "client-create-movement-mobile",
     label: "Crear movimiento paso a paso (Mobile / Paginado)",
@@ -305,7 +376,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
   const normalizedHelpQuery = helpQuery.trim().toLowerCase();
   const helpSuggestions = useMemo(() => {
     const available = HELP_GUIDE_CATALOG.filter((item) => !item.roles || item.roles.includes(normRol));
-    if (!normalizedHelpQuery) return available.slice(0, 4);
+    if (!normalizedHelpQuery) return available.slice(0, 10);
 
     return available.filter((item) => {
       const haystack = [item.label, item.description, ...item.keywords].join(" ").toLowerCase();
@@ -341,10 +412,18 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
         return;
       }
 
+      if (suggestion.action === "general-help") {
+        window.dispatchEvent(new CustomEvent("cosaif:start-general-help-guide", {
+          detail: { guideId: suggestion.guideId ?? suggestion.id, role: normRol },
+        }));
+        closeHelpAssistant();
+        return;
+      }
+
       window.dispatchEvent(new CustomEvent("cosaif:start-create-movement-guide"));
       closeHelpAssistant();
     },
-    [closeHelpAssistant, guidedManualApi]
+    [closeHelpAssistant, guidedManualApi, normRol]
   );
 
   const navigation = useMemo<NavigationItem[]>(() => {
@@ -658,7 +737,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
                     />
                   </div>
 
-                  <div className="mt-4 space-y-2">
+                  <div className="mt-4 max-h-[52vh] space-y-2 overflow-y-auto pr-1">
                     {helpSuggestions.length > 0 ? (
                       helpSuggestions.map((suggestion) => (
                         <button
@@ -694,15 +773,6 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
               </span>
             )}
             <div className="flex items-center gap-2">
-              {capabilities.isClientLike && (
-                <ClientMovementGuideButton
-                  compact={!(isOpen || mobileOpen)}
-                  className={cn(
-                    "inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50",
-                    !(isOpen || mobileOpen) && "w-9 px-0"
-                  )}
-                />
-              )}
               <ThemeToggle
                 size="sm"
                 withLabel={isOpen || mobileOpen}

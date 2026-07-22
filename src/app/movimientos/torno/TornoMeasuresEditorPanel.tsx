@@ -6,7 +6,6 @@ import {
   formatTornoMeasure,
   getTornoPositions,
   normalizeTornoMeasureValue,
-  TORNO_DEN_OPTIONS,
   TORNO_WHEEL_COUNT_OPTIONS,
   type TornoMeasurementField,
   type TornoMeasurementPart,
@@ -17,6 +16,7 @@ import {
 import { resolveTornoProfile, TORNO_PROFILE_FIELDS } from "../crear/tornoProfiles";
 import { Movimiento } from "../Movimiento";
 import { DynamicTable, type DynamicTableColumn } from "@/app/Components/dynamic-table";
+import TornoMeasurePickerDialog from "./TornoMeasurePickerDialog";
 
 type Props = {
   tornoMedicion: TornoMedicionState;
@@ -97,14 +97,6 @@ export default function TornoMeasuresEditorPanel(props: Props) {
     const t = window.setTimeout(() => setPastedTargets(new Set()), 1200);
     return () => window.clearTimeout(t);
   }, [pastedTargets]);
-
-  const numeratorOptions = useMemo(() => {
-    const denominator = Number(measureModal.draft.den);
-    if (Number.isFinite(denominator) && denominator > 0) {
-      return ["", ...Array.from({ length: denominator }, (_, index) => String(index))];
-    }
-    return ["", ...Array.from({ length: 65 }, (_, index) => String(index))];
-  }, [measureModal.draft.den]);
 
   const openMeasureModal = (
     position: TornoWheelPosition,
@@ -350,121 +342,17 @@ export default function TornoMeasuresEditorPanel(props: Props) {
         stickyFirstColumn
       />
 
-      {measureModal.open ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-          <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-slate-800 dark:bg-slate-950">
-            <div className="mb-3">
-              <h4 className="text-base font-semibold text-slate-900 dark:text-slate-100">Seleccion de medida</h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400">{measureModal.position ?? "--"} - {measureModal.label}</p>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-[130px_1fr]">
-              <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 p-2 dark:border-slate-700">
-                <div className="grid gap-1">
-                  {wholeOptions.map((option) => {
-                    const active = measureModal.draft.whole === option;
-                    return (
-                      <button
-                        key={`whole_${option || "empty"}`}
-                        type="button"
-                        onClick={() => setMeasureModal((prev) => ({ ...prev, draft: { ...prev.draft, whole: option } }))}
-                        className={Movimiento.clsx(
-                          "rounded-md border px-2 py-1.5 text-center text-xs font-semibold",
-                          active
-                            ? "border-emerald-600 bg-emerald-600 text-white"
-                            : "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                        )}
-                      >
-                        {option || "--"}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
-                <div className="mb-2 max-w-full overflow-x-auto">
-                  <div className="flex gap-2">
-                    {numeratorOptions.map((option) => {
-                      const active = measureModal.draft.num === option;
-                      return (
-                        <button
-                          key={`num_${option || "empty"}`}
-                          type="button"
-                          disabled={!measureModal.draft.den}
-                          onClick={() => setMeasureModal((prev) => ({ ...prev, draft: { ...prev.draft, num: option } }))}
-                          className={Movimiento.clsx(
-                            "shrink-0 rounded-md border px-3 py-1 text-xs font-semibold",
-                            !measureModal.draft.den && "opacity-40",
-                            active
-                              ? "border-emerald-600 bg-emerald-600 text-white"
-                              : "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                          )}
-                        >
-                          {option || "--"}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div className="my-2 h-px bg-slate-200 dark:bg-slate-700" />
-                <div className="max-w-full overflow-x-auto">
-                  <div className="flex gap-2">
-                    {TORNO_DEN_OPTIONS.map((option) => {
-                      const active = measureModal.draft.den === option;
-                      return (
-                        <button
-                          key={`den_${option || "empty"}`}
-                          type="button"
-                          onClick={() =>
-                            setMeasureModal((prev) => ({
-                              ...prev,
-                              draft: {
-                                ...prev.draft,
-                                den: option,
-                                num: option ? prev.draft.num : "",
-                              },
-                            }))
-                          }
-                          className={Movimiento.clsx(
-                            "shrink-0 rounded-md border px-3 py-1 text-xs font-semibold",
-                            active
-                              ? "border-emerald-600 bg-emerald-600 text-white"
-                              : "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                          )}
-                        >
-                          {option || "--"}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <p className="mt-3 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-              {formatTornoMeasure(normalizeTornoMeasureValue(measureModal.draft)) || "Sin medida"}
-            </p>
-
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setMeasureModal((prev) => ({ ...prev, open: false }))}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={applyMeasureModal}
-                className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-              >
-                Guardar
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <TornoMeasurePickerDialog
+        open={measureModal.open}
+        title="Seleccion de medida"
+        subtitle={`${measureModal.position ?? "--"} - ${measureModal.label}`}
+        draft={measureModal.draft}
+        onChange={(draft) => setMeasureModal((prev) => ({ ...prev, draft }))}
+        onCancel={() => setMeasureModal((prev) => ({ ...prev, open: false }))}
+        onSave={applyMeasureModal}
+        accent="emerald"
+        wholeOptions={wholeOptions}
+      />
 
       {copyModal.open ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">

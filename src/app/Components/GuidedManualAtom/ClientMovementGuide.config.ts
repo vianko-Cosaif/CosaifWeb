@@ -192,7 +192,7 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
     },
     {
       id: "mobile-understand-mobile-wizard",
-      targetId: "create-movement-stepper",
+      targetId: "create-movement-step-content",
       title: "Flujo guiado tipo Mobile",
       description: "En este modo, el formulario esta dividido en pequeñas pantallas consecutivas para mayor comodidad en dispositivos moviles.",
       mode: "guide",

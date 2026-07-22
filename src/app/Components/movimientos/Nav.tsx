@@ -68,9 +68,9 @@ export default function Nav({
       className="w-full flex flex-col gap-2 sm:gap-3 touch-manipulation"
     >
       {/* Row 1: Tabs + Actions */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         {/* Animated Pill Tabs */}
-        <div className="relative inline-flex w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0.5 sm:w-auto sm:p-1">
+        <div className="relative inline-flex w-full min-w-0 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0.5 sm:w-auto sm:min-w-[250px] sm:p-1 lg:flex-none">
           {/* Animated indicator */}
           <div
             className="absolute bottom-0.5 top-0.5 rounded-md bg-[var(--app-surface)] shadow-sm transition-all duration-200 sm:bottom-1 sm:top-1"
@@ -94,14 +94,14 @@ export default function Nav({
         </div>
 
         {/* Controls */}
-        <div className="flex items-center gap-2 sm:gap-2 justify-between sm:justify-end">
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-2 lg:flex-1">
           {realtimeConnected ? (
-            <span className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/35 dark:text-emerald-300">
+            <span className="inline-flex min-h-10 min-w-0 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/35 dark:text-emerald-300">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
               Al día
             </span>
           ) : <>
-          <label className="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-slate-500 dark:text-slate-400 group min-h-[44px] sm:min-h-0 px-2 touch-manipulation">
+          <label className="inline-flex min-h-[40px] shrink-0 cursor-pointer select-none items-center gap-2 rounded-lg px-2 text-xs text-slate-500 touch-manipulation group dark:text-slate-400 sm:min-h-[38px]">
             <div className="relative">
               <input
                 type="checkbox"
@@ -125,26 +125,27 @@ export default function Nav({
             loading={estaCargando}
             variant="secondary"
             size="md"
-            className="min-h-[44px] sm:min-h-[38px]"
+            className="min-h-[40px] shrink-0 px-3 sm:min-h-[38px] sm:px-4"
             leftIcon={<RefreshCw size={18} aria-hidden />}
           >
-            <span className="hidden sm:inline">{estaCargando ? "Actualizando…" : "Actualizar"}</span>
+            <span className="hidden md:inline">{estaCargando ? "Actualizando…" : "Actualizar"}</span>
           </Button>
           </>}
 
           {puedeCrear && (
-            <GuidedTarget id="movimientos-new-button" className="inline-flex">
-              <GuidedTarget id="client-new-movement" className="inline-flex">
+            <GuidedTarget id="movimientos-new-button" className="inline-flex min-w-0 shrink">
+              <GuidedTarget id="client-new-movement" className="inline-flex min-w-0">
                 <Button
                   type="button"
                   onClick={onNuevo}
                   variant="primary"
                   size="md"
-                  className="min-h-[44px] sm:min-h-[38px]"
+                  className="min-h-[40px] min-w-0 shrink px-3 sm:min-h-[38px] sm:px-4"
                   disabled={estaCargando}
                   leftIcon={<Plus size={18} aria-hidden />}
                 >
-                  <span>Nuevo movimiento</span>
+                  <span className="hidden min-[460px]:inline lg:hidden xl:inline">Nuevo movimiento</span>
+                  <span className="inline min-[460px]:hidden lg:inline xl:hidden">Nuevo</span>
                 </Button>
               </GuidedTarget>
             </GuidedTarget>

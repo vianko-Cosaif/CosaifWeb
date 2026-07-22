@@ -159,7 +159,7 @@ const CLIENT_CAPABILITIES: RoleCapabilities = {
   canManageUsers: false,
   canViewReports: true,
   canViewTorno: true,
-  navModules: ["dashboard", "movimientos", "torno", "reporteria"],
+  navModules: ["dashboard", "movimientos", "torno", "incidentes", "reporteria"],
 };
 
 const CLIENT_ADMIN_CAPABILITIES: RoleCapabilities = {

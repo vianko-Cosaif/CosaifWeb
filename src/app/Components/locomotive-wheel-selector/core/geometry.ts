@@ -87,7 +87,7 @@ export function getWheelPoints(
     if (viewMode === 'top') {
       return {
         ...wheel,
-        x: wheel.side === 'left' ? metrics.leftWheelX : metrics.rightWheelX,
+        x: wheel.side === 'left' ? metrics.rightWheelX : metrics.leftWheelX,
         y,
         radius: visualStatus === 'selected' ? 25 : 21,
         visible: true,

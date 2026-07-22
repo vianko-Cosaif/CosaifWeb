@@ -12,6 +12,9 @@ import { CLIENT_MOVEMENT_GUIDE, CLIENT_MOVEMENT_MOBILE_GUIDE } from "@/app/Compo
 
 const START_CREATE_MOVEMENT_GUIDE_EVENT = "cosaif:start-create-movement-guide";
 const START_CREATE_MOVEMENT_TORNO_GUIDE_EVENT = "cosaif:start-create-movement-torno-guide";
+const START_GENERAL_HELP_GUIDE_EVENT = "cosaif:start-general-help-guide";
+const GUIDE_CONTEXT_EVENT = "cosaif:guided-context";
+const GUIDE_REFRESH_EVENT = "cosaif:guided-refresh";
 
 function getRoleBaseFromPathname(pathname: string) {
   const firstSegment = pathname.split("/").filter(Boolean)[0] ?? "";
@@ -19,6 +22,10 @@ function getRoleBaseFromPathname(pathname: string) {
     return `/${firstSegment}`;
   }
   return "/cliente";
+}
+
+function detailIsRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function buildCreateMovementGuideSteps(roleBase: string): GuidedManualStep[] {
@@ -51,7 +58,7 @@ function buildCreateMovementGuideSteps(roleBase: string): GuidedManualStep[] {
     },
     {
       id: "understand-create-movement-steps",
-      targetId: "create-movement-stepper",
+      targetId: "create-movement-step-content",
       title: "El formulario está dividido por pasos",
       description: "Primero capturas los datos base, después completas los detalles y al final revisas la confirmación.",
       mode: "guide",
@@ -294,6 +301,202 @@ function buildCreateMovementTornoGuideSteps(roleBase: string): GuidedManualStep[
   ];
 }
 
+function buildGeneralHelpGuideSteps(guideId: string): GuidedManualStep[] {
+  const guides: Record<string, GuidedManualStep[]> = {
+    "general-first-steps": [
+      {
+        id: "general-first-steps-welcome",
+        title: "Primeros pasos en CosaifWeb",
+        description: "Usa el menu lateral para entrar a los modulos disponibles para tu rol. El dashboard resume lo mas importante y los listados concentran el trabajo operativo.",
+        mode: "guide",
+        icon: "🧭",
+        tone: "info",
+        hidePrevious: true,
+      },
+      {
+        id: "general-first-steps-navigation",
+        title: "Navegacion basica",
+        description: "Dashboard es el punto de inicio. Movimientos concentra solicitudes y servicios. Incidentes, usuarios, configuracion y reporteria aparecen solo cuando tu rol tiene permisos.",
+        mode: "guide",
+      },
+      {
+        id: "general-first-steps-workflow",
+        title: "Forma recomendada de trabajar",
+        description: "Primero revisa pendientes, despues abre el detalle de lo que necesitas atender y finalmente confirma cambios solo cuando la informacion sea correcta.",
+        mode: "guide",
+        tone: "success",
+      },
+    ],
+    "client-dashboard-basics": [
+      {
+        id: "client-dashboard-basics-start",
+        title: "Inicio del cliente",
+        description: "El dashboard del cliente muestra sus solicitudes activas. Cuando el servicio incluye torno, Movimiento y Torneado se consultan como entidades separadas.",
+        mode: "guide",
+        icon: "🏁",
+        tone: "info",
+        hidePrevious: true,
+      },
+      {
+        id: "client-dashboard-basics-status",
+        title: "Pendientes y seguimiento",
+        description: "Revisa primero los pendientes. Los elementos historicos o terminados pueden estar ocultos o separados segun las reglas operativas activas.",
+        mode: "guide",
+      },
+      {
+        id: "client-dashboard-basics-detail",
+        title: "Detalle antes de decidir",
+        description: "Abre el detalle para validar locomotora, via, localidad, medidas o comentarios antes de solicitar cambios o generar reportes.",
+        mode: "guide",
+      },
+    ],
+    "client-create-movement-overview": [
+      {
+        id: "client-create-movement-overview-start",
+        title: "Crear un movimiento",
+        description: "El flujo se divide en captura inicial, datos del servicio, comentarios y confirmacion. La vista mobile guiada es la opcion recomendada para capturar sin perder contexto.",
+        mode: "guide",
+        icon: "➕",
+        tone: "info",
+        hidePrevious: true,
+      },
+      {
+        id: "client-create-movement-overview-service",
+        title: "Seleccion del servicio",
+        description: "Puedes capturar movimientos ordinarios o seleccionar Torno cuando el servicio requiere mediciones de ruedas. Algunas opciones cambian segun el tipo elegido.",
+        mode: "guide",
+      },
+      {
+        id: "client-create-movement-overview-confirm",
+        title: "Confirmacion",
+        description: "La solicitud se crea al confirmar. Antes de hacerlo, revisa locomotora, vias, localidad, servicio y observaciones.",
+        mode: "guide",
+        tone: "warning",
+      },
+    ],
+    "client-torno-overview": [
+      {
+        id: "client-torno-overview-entities",
+        title: "Movimiento y Torneado",
+        description: "En torno se crean dos entidades relacionadas: el Movimiento logistico y el Torneado. Pueden tener estados diferentes y deben revisarse por separado.",
+        mode: "guide",
+        icon: "⚙️",
+        tone: "info",
+        hidePrevious: true,
+      },
+      {
+        id: "client-torno-overview-measures",
+        title: "Medidas de ruedas",
+        description: "Selecciona el numero de ruedas de la locomotora y registra solo las medidas necesarias. El mapa grafico ayuda a ubicar cada rueda con mas claridad.",
+        mode: "guide",
+      },
+      {
+        id: "client-torno-overview-schedule",
+        title: "Agendado y recuperacion",
+        description: "Un torno puede agendarse o recuperarse bajo reglas de negocio. Si aparece un modal de recuperacion, revisa la informacion antes de reutilizarla.",
+        mode: "guide",
+        tone: "warning",
+      },
+    ],
+    "operations-monitoring-overview": [
+      {
+        id: "operations-monitoring-overview-start",
+        title: "Seguimiento operativo",
+        description: "Coordinadores y supervisores revisan rondas, movimientos e incidentes para mantener la operacion en orden.",
+        mode: "guide",
+        icon: "🚦",
+        tone: "info",
+        hidePrevious: true,
+      },
+      {
+        id: "operations-monitoring-overview-status",
+        title: "Estados y prioridades",
+        description: "Da prioridad a elementos en proceso, detenidos o con incidentes. Evita modificar un servicio sin validar su estado actual.",
+        mode: "guide",
+      },
+      {
+        id: "operations-monitoring-overview-actions",
+        title: "Acciones con impacto",
+        description: "Iniciar, finalizar, cancelar o editar una ronda puede afectar la operacion. Confirma siempre localidad, locomotora y servicio antes de actuar.",
+        mode: "guide",
+        tone: "warning",
+      },
+    ],
+    "incidents-overview": [
+      {
+        id: "incidents-overview-start",
+        title: "Incidentes",
+        description: "Los incidentes documentan problemas operativos. Su seguimiento ayuda a decidir si un movimiento continua, se pausa o se cancela.",
+        mode: "guide",
+        icon: "⚠️",
+        tone: "warning",
+        hidePrevious: true,
+      },
+      {
+        id: "incidents-overview-rule",
+        title: "Reglas automaticas",
+        description: "Algunas reglas pueden cancelar un movimiento despues de acumular incidentes. Si el movimiento incluye torno, tambien puede afectar el torneado relacionado.",
+        mode: "guide",
+      },
+      {
+        id: "incidents-overview-history",
+        title: "Historial y evidencia",
+        description: "Revisa comentarios, fechas y responsables antes de cerrar una incidencia o tomar decisiones operativas.",
+        mode: "guide",
+      },
+    ],
+    "admin-users-overview": [
+      {
+        id: "admin-users-overview-start",
+        title: "Usuarios y permisos",
+        description: "Los administradores gestionan usuarios, roles, empresas y permisos. Cada rol ve solo los modulos necesarios para su operacion.",
+        mode: "guide",
+        icon: "🛡️",
+        tone: "info",
+        hidePrevious: true,
+      },
+      {
+        id: "admin-users-overview-passwords",
+        title: "Cambios sensibles",
+        description: "Cambios como contrasenas requieren validacion del usuario autorizado. Evita compartir credenciales o datos sensibles en observaciones.",
+        mode: "guide",
+        tone: "warning",
+      },
+      {
+        id: "admin-users-overview-review",
+        title: "Revision periodica",
+        description: "Revisa usuarios activos, empresas asignadas y permisos para mantener el acceso alineado con la operacion real.",
+        mode: "guide",
+      },
+    ],
+    "reports-overview": [
+      {
+        id: "reports-overview-start",
+        title: "Reporteria",
+        description: "La reporteria permite consultar resultados, historicos y documentos operativos como PDFs de torno o reportes de movimientos.",
+        mode: "guide",
+        icon: "📊",
+        tone: "info",
+        hidePrevious: true,
+      },
+      {
+        id: "reports-overview-filters",
+        title: "Filtros",
+        description: "Usa filtros de fecha, localidad, empresa o servicio cuando esten disponibles. Un filtro incorrecto puede ocultar informacion esperada.",
+        mode: "guide",
+      },
+      {
+        id: "reports-overview-export",
+        title: "Exportacion",
+        description: "Antes de descargar o compartir un reporte, valida que corresponda al periodo, rol y servicio requerido.",
+        mode: "guide",
+      },
+    ],
+  };
+
+  return guides[guideId] ?? guides["general-first-steps"];
+}
+
 function GuidedManualEventBridge() {
   const api = useGuidedManualApi();
   const pathname = usePathname();
@@ -311,13 +514,40 @@ function GuidedManualEventBridge() {
       api.startWithSteps(buildCreateMovementTornoGuideSteps(roleBase), 0);
     };
 
+    const startGeneralHelpGuide = (event: Event) => {
+      const detail = event instanceof CustomEvent && detailIsRecord(event.detail) ? event.detail : null;
+      const guideId = typeof detail?.guideId === "string" ? detail.guideId : "general-first-steps";
+      api.startWithSteps(buildGeneralHelpGuideSteps(guideId), 0);
+    };
+
     window.addEventListener(START_CREATE_MOVEMENT_GUIDE_EVENT, startCreateMovementGuide);
     window.addEventListener(START_CREATE_MOVEMENT_TORNO_GUIDE_EVENT, startCreateMovementTornoGuide);
+    window.addEventListener(START_GENERAL_HELP_GUIDE_EVENT, startGeneralHelpGuide);
     return () => {
       window.removeEventListener(START_CREATE_MOVEMENT_GUIDE_EVENT, startCreateMovementGuide);
       window.removeEventListener(START_CREATE_MOVEMENT_TORNO_GUIDE_EVENT, startCreateMovementTornoGuide);
+      window.removeEventListener(START_GENERAL_HELP_GUIDE_EVENT, startGeneralHelpGuide);
     };
   }, [api, pathname]);
+
+  useEffect(() => {
+    if (!api) return;
+
+    const syncContext = (event: Event) => {
+      const detail = event instanceof CustomEvent && detailIsRecord(event.detail) ? event.detail : null;
+      if (!detail) return;
+      api.mergeContext(detail);
+    };
+
+    const refreshGuideLayout = () => api.refreshLayout();
+
+    window.addEventListener(GUIDE_CONTEXT_EVENT, syncContext);
+    window.addEventListener(GUIDE_REFRESH_EVENT, refreshGuideLayout);
+    return () => {
+      window.removeEventListener(GUIDE_CONTEXT_EVENT, syncContext);
+      window.removeEventListener(GUIDE_REFRESH_EVENT, refreshGuideLayout);
+    };
+  }, [api]);
 
   return null;
 }
@@ -350,7 +580,12 @@ export default function GuidedManualRoot({ children }: { children: React.ReactNo
         }
 
         if (action.eventName === "guide:navigate-create-movement") {
-          window.location.assign("/movimientos/crear");
+          router.push("/movimientos/crear");
+          return;
+        }
+
+        if (action.eventName) {
+          window.dispatchEvent(new CustomEvent(action.eventName, { detail: action.detail || {} }));
         }
       };
 

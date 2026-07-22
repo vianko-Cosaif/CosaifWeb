@@ -29,6 +29,14 @@ export type GuidedManualTransitionOptions = {
 export type GuidedManualCondition =
   | (() => boolean)
   | {
+      type: 'context';
+      key: string;
+      equals?: unknown;
+      notEquals?: unknown;
+      exists?: boolean;
+      includes?: unknown;
+    }
+  | {
       type: 'selector';
       selector: string;
       exists?: boolean;

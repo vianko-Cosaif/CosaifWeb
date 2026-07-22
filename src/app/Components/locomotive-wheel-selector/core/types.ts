@@ -53,6 +53,8 @@ export interface LocomotiveWheelTheme {
     primarySoft: string;
     success: string;
     successSoft: string;
+    inProcess: string;
+    inProcessSoft: string;
     warning: string;
     warningSoft: string;
     danger: string;
