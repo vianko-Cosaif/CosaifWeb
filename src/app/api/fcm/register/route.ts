@@ -9,9 +9,40 @@ const ORIGIN = normalizeHttpOrigin(process.env.API_ORIGIN);
 const FCM_TIMEOUT_MS = Number(process.env.BFF_TIMEOUT_MS || 12000);
 const JWT_COOKIE = process.env.JWT_COOKIE_NAME || "token";
 
+function firstHeaderValue(value: string | null) {
+  return value?.split(",", 1)[0]?.trim() || undefined;
+}
+
+function getForwardedOrigin(req: NextRequest) {
+  const host =
+    firstHeaderValue(req.headers.get("x-forwarded-host")) ??
+    firstHeaderValue(req.headers.get("host"));
+  const protocol =
+    firstHeaderValue(req.headers.get("x-forwarded-proto")) ??
+    req.nextUrl.protocol.replace(/:$/, "");
+
+  if (!host || !["http", "https"].includes(protocol)) return undefined;
+
+  try {
+    return new URL(`${protocol}://${host}`).origin;
+  } catch {
+    return undefined;
+  }
+}
+
 function isAllowedOrigin(req: NextRequest) {
   const origin = req.headers.get("origin");
-  if (origin && origin !== req.nextUrl.origin) return false;
+  if (origin) {
+    let normalizedOrigin: string;
+    try {
+      normalizedOrigin = new URL(origin).origin;
+    } catch {
+      return false;
+    }
+
+    const allowedOrigins = new Set([req.nextUrl.origin, getForwardedOrigin(req)].filter(Boolean));
+    if (!allowedOrigins.has(normalizedOrigin)) return false;
+  }
 
   const fetchSite = req.headers.get("sec-fetch-site");
   if (fetchSite && !["same-origin", "same-site", "none"].includes(fetchSite)) return false;
