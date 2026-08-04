@@ -170,6 +170,14 @@ export function evaluateRoute(input: {
     return { allow: false, redirectTo: "/login", reason: "CROSS_AREA" };
   }
 
+  const capabilities = getRoleCapabilities(role);
+  if (
+    pathname.toLowerCase().startsWith("/cliente/reporteria") &&
+    !capabilities.canViewReports
+  ) {
+    return { allow: false, redirectTo: capabilities.home, reason: "CROSS_AREA" };
+  }
+
   const inAny = isInAnyArea(pathname);
   const hereOk = role ? isAllowedInArea(pathname, role) : false;
   if (inAny && !hereOk) {

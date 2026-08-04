@@ -157,9 +157,9 @@ const CLIENT_CAPABILITIES: RoleCapabilities = {
   canViewTorreonArrastres: false,
   canCreateTorreonArrastres: false,
   canManageUsers: false,
-  canViewReports: true,
+  canViewReports: false,
   canViewTorno: true,
-  navModules: ["dashboard", "movimientos", "torno", "incidentes", "reporteria"],
+  navModules: ["dashboard", "movimientos", "torno", "incidentes"],
 };
 
 const CLIENT_ADMIN_CAPABILITIES: RoleCapabilities = {
@@ -169,7 +169,7 @@ const CLIENT_ADMIN_CAPABILITIES: RoleCapabilities = {
   canSwitchLocalidad: false,
   canViewTorreonArrastres: true,
   canCreateTorreonArrastres: true,
-  navModules: ["dashboard", "movimientos", "torreon_arrastres", "torno", "incidentes", "reporteria"],
+  navModules: ["dashboard", "movimientos", "torreon_arrastres", "torno", "incidentes"],
 };
 
 const CLIENT_COOR_CAPABILITIES: RoleCapabilities = {

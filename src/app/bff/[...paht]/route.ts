@@ -1,6 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { getRoleCapabilities } from "@/lib/accessControl";
 import { normalizeHttpOrigin } from "@/lib/serverOrigin";
 
 const ORIGIN = normalizeHttpOrigin(process.env.API_ORIGIN);
@@ -107,9 +108,11 @@ async function proxy(req: NextRequest) {
     cookieStore.get("token")?.value ||
     "";
   const role = String(cookieStore.get(process.env.ROLE_COOKIE_NAME ?? "role")?.value || "").toUpperCase();
+  const assignedEmpresaId = Number(cookieStore.get("empresaId")?.value || 0);
   const assignedLocalidadId = Number(
     cookieStore.get("locId")?.value || cookieStore.get("localidadId")?.value || 0
   );
+  const capabilities = getRoleCapabilities(role);
   const restrictedLocality = role !== "ADMINISTRADOR";
   const restrictedCoordinator = role === "COORDINADOR";
   let upstreamPath = req.nextUrl.pathname.replace(/^\/bff/, "");
@@ -122,6 +125,36 @@ async function proxy(req: NextRequest) {
   const isUsersCollection = upstreamPath === "/usuarios";
   const isUsersPath = isUsersCollection || upstreamPath.startsWith("/usuarios/");
   const userTarget = upstreamPath.match(/^\/usuarios\/(\d+)(?:\/estado)?$/);
+  const isReportPath = upstreamPath === "/reporteria" ||
+    upstreamPath.startsWith("/reporteria/") ||
+    upstreamPath === "/reporterias" ||
+    upstreamPath.startsWith("/reporterias/");
+  const isTornoRead = ["GET", "HEAD"].includes(req.method) &&
+    (upstreamPath === "/torno" || upstreamPath.startsWith("/torno/"));
+
+  if (isReportPath && !capabilities.canViewReports) {
+    return NextResponse.json({ message: "Reporteria no disponible para este rol." }, { status: 403 });
+  }
+
+  if (isTornoRead && capabilities.isClientLike) {
+    if (!Number.isFinite(assignedEmpresaId) || assignedEmpresaId <= 0) {
+      return NextResponse.json({ message: "No hay una empresa asignada a la sesion." }, { status: 403 });
+    }
+
+    const requestedEmpresaId = Number(searchParams.get("empresaId") || 0);
+    if (requestedEmpresaId > 0 && requestedEmpresaId !== assignedEmpresaId) {
+      return NextResponse.json({ message: "Solo puedes consultar locomotoras de tu empresa." }, { status: 403 });
+    }
+    searchParams.set("empresaId", String(assignedEmpresaId));
+
+    if (role === "CLIENTE" && Number.isFinite(assignedLocalidadId) && assignedLocalidadId > 0) {
+      const requestedLocalidadId = Number(searchParams.get("localidadId") || 0);
+      if (requestedLocalidadId > 0 && requestedLocalidadId !== assignedLocalidadId) {
+        return NextResponse.json({ message: "Solo puedes consultar locomotoras de tu localidad." }, { status: 403 });
+      }
+      searchParams.set("localidadId", String(assignedLocalidadId));
+    }
+  }
 
   if (isCompanyWrite && role !== "ADMINISTRADOR") {
     return NextResponse.json(

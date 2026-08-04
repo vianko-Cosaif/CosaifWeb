@@ -442,6 +442,19 @@ function filterHistoryByTab(items: TornoHistoryItem[], tab: TornoHistoryTab) {
   return items.filter((item) => allowed.has(upper(item.status)));
 }
 
+function filterHistoryByScope(items: TornoHistoryItem[], filters: TornoFilters) {
+  const empresaId = Number(filters.empresaId);
+  const localidadId = Number(filters.localidadId);
+  const hasEmpresaScope = Number.isFinite(empresaId) && empresaId > 0;
+  const hasLocalidadScope = Number.isFinite(localidadId) && localidadId > 0;
+
+  return items.filter((item) => {
+    if (hasEmpresaScope && Number(item.empresaId) !== empresaId) return false;
+    if (hasLocalidadScope && Number(item.localidadId) !== localidadId) return false;
+    return true;
+  });
+}
+
 function cryptoSafeId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return `tmp-${Date.now()}-${Math.round(Math.random() * 10000)}`;
@@ -516,9 +529,20 @@ export async function listTornoHistory(
   const raw = await firstJson<any>([`${API_BASE}/torno/rondas-servicio/historial?${query}`]);
   const rows = unwrapArray(raw);
   const normalized = filterHistoryByTab(rows.map(normalizeHistoryItem), tab);
+  const scoped = filterHistoryByScope(normalized, filters);
+  const upstreamScopeWasApplied = scoped.length === normalized.length;
   return {
-    items: normalized,
-    meta: metaFrom(raw, normalized.length, page, pageSize),
+    items: scoped,
+    meta: upstreamScopeWasApplied
+      ? metaFrom(raw, scoped.length, page, pageSize)
+      : {
+          page: 1,
+          pageSize,
+          total: scoped.length,
+          totalPages: 1,
+          hasNextPage: false,
+          hasPrevPage: false,
+        },
   };
 }
 
