@@ -2,7 +2,8 @@
 'use client';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeftRight, X, CheckCircle, XCircle, Info, Ban, LayoutList, GripVertical
+  ArrowLeftRight, X, CheckCircle, XCircle, Info, Ban, LayoutList, GripVertical,
+  ChevronUp, ChevronDown, AlertTriangle
 } from 'lucide-react';
 import {
   DndContext,
@@ -96,12 +97,18 @@ function SortableRondaCard({
   ronda,
   info,
   onSwapRequest,
+  onMoveStep,
+  canMoveUp,
+  canMoveDown,
   onCancelRequest,
   isCancelling,
 }: {
   ronda: Ronda;
   info?: InfoExtra;
   onSwapRequest: () => void;
+  onMoveStep: (direction: -1 | 1) => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
   onCancelRequest: () => void;
   isCancelling: boolean;
 }) {
@@ -127,6 +134,9 @@ function SortableRondaCard({
         ronda={ronda}
         info={info}
         onSwapRequest={onSwapRequest}
+        onMoveStep={onMoveStep}
+        canMoveUp={canMoveUp}
+        canMoveDown={canMoveDown}
         onCancelRequest={onCancelRequest}
         isCancelling={isCancelling}
         dragHandleProps={{ ...attributes, ...listeners }}
@@ -139,6 +149,9 @@ function RondaCardContent({
   ronda,
   info,
   onSwapRequest,
+  onMoveStep,
+  canMoveUp,
+  canMoveDown,
   onCancelRequest,
   isCancelling,
   dragHandleProps,
@@ -146,6 +159,9 @@ function RondaCardContent({
   ronda: Ronda;
   info?: InfoExtra;
   onSwapRequest?: () => void;
+  onMoveStep?: (direction: -1 | 1) => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
   onCancelRequest?: () => void;
   isCancelling?: boolean;
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
@@ -205,8 +221,34 @@ function RondaCardContent({
 
         {/* Right: Actions */}
         <div className="flex flex-col gap-1">
+          {onMoveStep ? (
+            <>
+              <button
+                type="button"
+                onClick={() => onMoveStep(-1)}
+                disabled={!canMoveUp}
+                title="Subir una posición"
+                aria-label={`Subir ${locomotiveLabel(ronda)} una posición`}
+                className="rounded-md border border-slate-200 p-1.5 text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                <ChevronUp size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={() => onMoveStep(1)}
+                disabled={!canMoveDown}
+                title="Bajar una posición"
+                aria-label={`Bajar ${locomotiveLabel(ronda)} una posición`}
+                className="rounded-md border border-slate-200 p-1.5 text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                <ChevronDown size={15} />
+              </button>
+            </>
+          ) : null}
           <button
+            type="button"
             onClick={() => setOpen(!open)}
+            aria-label={open ? 'Ocultar acciones del movimiento' : 'Mostrar acciones del movimiento'}
             className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
           >
             {open ? <X size={16} /> : <Info size={16} />}
@@ -238,6 +280,7 @@ function RondaCardContent({
 
           <div className="flex items-center justify-end gap-2 pt-2">
             <button
+              type="button"
               onClick={onCancelRequest}
               disabled={isCancelling || isTorreon}
               title={isTorreon ? 'Movimiento de Torreon en solo lectura' : undefined}
@@ -249,9 +292,10 @@ function RondaCardContent({
                 }`}
             >
               {isCancelling ? <span className="animate-spin">⏳</span> : <Ban size={14} />}
-              Cancelar
+              Quitar y cancelar
             </button>
             <button
+              type="button"
               onClick={onSwapRequest}
               disabled={isTorreon}
               title={isTorreon ? 'Ronda de Torreon en solo lectura' : undefined}
@@ -260,7 +304,7 @@ function RondaCardContent({
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200'
               }`}
             >
-              <ArrowLeftRight size={14} /> Mover
+              <ArrowLeftRight size={14} /> Cambiar posición
             </button>
           </div>
         </div>
@@ -366,7 +410,131 @@ function SwapModal({
               : 'bg-slate-200 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-600'
               }`}
           >
-            Confirmar Cambio
+            Revisar cambio
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type PendingRoundEdit = {
+  active: Ronda;
+  target: Ronda;
+  kind: 'swap' | 'torreon-order';
+  targetOrder: number;
+};
+
+function locomotiveLabel(item: Ronda) {
+  const number = item.movimiento?.locomotiveNumber;
+  return number == null || String(number).trim() === '' ? item.movimiento?.title || 'Movimiento' : `LOC-${number}`;
+}
+
+function movementTechnicalId(item: Ronda) {
+  const value = Number(item.movimiento?.idTecnico ?? item.movimientoId ?? item.movimiento?.id);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function RoundEditConfirmModal({
+  pending,
+  busy,
+  onConfirm,
+  onClose,
+}: {
+  pending: PendingRoundEdit | null;
+  busy: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  if (!pending) return null;
+
+  const isOrderChange = pending.kind === 'torreon-order';
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="confirm-round-edit-title">
+      <div className={`w-full max-w-lg rounded-xl border ${THEME.border} ${THEME.surface} shadow-2xl`}>
+        <div className="flex items-start gap-3 p-5">
+          <div className="rounded-full bg-amber-100 p-2 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+            <AlertTriangle size={20} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 id="confirm-round-edit-title" className={`text-base font-bold ${THEME.text}`}>Confirmar edición de la ronda</h3>
+            <p className={`mt-2 text-sm leading-6 ${THEME.textMuted}`}>
+              {isOrderChange
+                ? <>Vas a mover <strong className={THEME.text}>{locomotiveLabel(pending.active)}</strong> de la posición {pending.active.orden} a la posición {pending.targetOrder} en la ronda {pending.active.rondaNumero}.</>
+                : <>Vas a intercambiar la posición de <strong className={THEME.text}>{locomotiveLabel(pending.active)}</strong> con <strong className={THEME.text}>{locomotiveLabel(pending.target)}</strong>.</>}
+            </p>
+            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
+              Al aceptar, el nuevo orden se guardará inmediatamente.
+            </p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 border-t border-slate-100 p-4 dark:border-slate-800">
+          <button type="button" onClick={onClose} disabled={busy} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:opacity-50 dark:text-slate-400 dark:hover:text-white">
+            Volver
+          </button>
+          <button type="button" onClick={onConfirm} disabled={busy} className={`rounded-md px-4 py-2 text-sm font-semibold disabled:cursor-wait disabled:opacity-60 ${THEME.primary}`}>
+            {busy ? 'Guardando...' : 'Sí, editar la ronda'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CancelMovementModal({
+  item,
+  busy,
+  onConfirm,
+  onClose,
+}: {
+  item: Ronda | null;
+  busy: boolean;
+  onConfirm: (reason: string) => void;
+  onClose: () => void;
+}) {
+  const [reason, setReason] = useState('');
+
+  useEffect(() => {
+    if (item) setReason('');
+  }, [item]);
+
+  if (!item) return null;
+  const validReason = reason.trim().length >= 3;
+
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="cancel-movement-title">
+      <div className={`w-full max-w-lg rounded-xl border ${THEME.border} ${THEME.surface} shadow-2xl`}>
+        <div className="flex items-start gap-3 p-5">
+          <div className="rounded-full bg-red-100 p-2 text-red-700 dark:bg-red-500/15 dark:text-red-400">
+            <Ban size={20} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 id="cancel-movement-title" className={`text-base font-bold ${THEME.text}`}>Quitar movimiento de la ronda</h3>
+            <p className={`mt-2 text-sm leading-6 ${THEME.textMuted}`}>
+              Vas a quitar <strong className={THEME.text}>{locomotiveLabel(item)}</strong> de la ronda {item.rondaNumero} y el movimiento completo quedará en estado <strong className="text-red-600 dark:text-red-400">CANCELADO</strong>.
+            </p>
+            <label className={`mt-4 block text-xs font-bold uppercase tracking-wide ${THEME.textMuted}`} htmlFor="movement-cancel-reason">
+              Motivo de cancelación
+            </label>
+            <textarea
+              id="movement-cancel-reason"
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              disabled={busy}
+              rows={3}
+              autoFocus
+              placeholder="Escribe por qué se cancela este movimiento"
+              className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-500/10 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            />
+            <p className="mt-2 text-xs text-red-600 dark:text-red-400">Esta acción modifica el movimiento; no sólo lo oculta de la ronda.</p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 border-t border-slate-100 p-4 dark:border-slate-800">
+          <button type="button" onClick={onClose} disabled={busy} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:opacity-50 dark:text-slate-400 dark:hover:text-white">
+            No, regresar
+          </button>
+          <button type="button" onClick={() => onConfirm(reason.trim())} disabled={busy || !validReason} className={`rounded-md px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-45 ${THEME.danger}`}>
+            {busy ? 'Cancelando...' : 'Sí, cancelar y quitar'}
           </button>
         </div>
       </div>
@@ -381,36 +549,34 @@ type Props = {
   onSaved?: () => void;
 };
 
-const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
+const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
   const {
-    user, infoMap, loading, groupedByRonda, setGroupedByRonda, setList
+    infoMap, loading, groupedByRonda, setGroupedByRonda, setList
   } = useRondaData(Number(localidadId), onClose);
-
-  const [originalState, setOriginalState] = useState<Record<number, Ronda[]>>({});
-
-  useEffect(() => {
-    if (!loading && Object.keys(groupedByRonda).length > 0 && Object.keys(originalState).length === 0) {
-      setOriginalState(JSON.parse(JSON.stringify(groupedByRonda)));
-    }
-  }, [loading, groupedByRonda, originalState]);
 
   const todasLasRondas = useMemo(() =>
     Object.values(groupedByRonda).flat().sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden),
     [groupedByRonda]
   );
 
-  const hasRealChanges = useMemo(() => {
-    // Comparar estructura profunda
-    return Object.keys(originalState).length > 0 && JSON.stringify(groupedByRonda) !== JSON.stringify(originalState)
-  }, [groupedByRonda, originalState]);
-
   const [swapModal, setSwapModal] = useState<{ visible: boolean; base: Ronda | null }>({ visible: false, base: null });
+  const [pendingRoundEdit, setPendingRoundEdit] = useState<PendingRoundEdit | null>(null);
+  const [savingRoundEdit, setSavingRoundEdit] = useState(false);
+  const [cancelItem, setCancelItem] = useState<Ronda | null>(null);
   const [toast, setToast] = useState<{ show: boolean; message: string }>({ show: false, message: '' });
   const [themeKey, setThemeKey] = useState(0);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [activeDragId, setActiveDragId] = useState<number | null>(null);
+  const [didSave, setDidSave] = useState(false);
 
-  const showToast = (m: string) => setToast({ show: true, message: m });
+  const showToast = useCallback((message: string) => setToast({ show: true, message }), []);
+  const closeEditor = useCallback(() => {
+    if (didSave && onSaved) {
+      onSaved();
+      return;
+    }
+    onClose();
+  }, [didSave, onClose, onSaved]);
 
   useEffect(() => {
     const unsubscribe = onThemeChange(() => setThemeKey(prev => prev + 1));
@@ -425,187 +591,169 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
   /* ===== Actions ===== */
   const handleSwapRequest = useCallback((ronda: Ronda) => {
     if (ronda.source === 'torreon') {
-      alert('Para Torreon arrastra el movimiento a su nueva posicion.');
+      alert('En esta ronda usa las flechas o arrastra el movimiento a su nueva posición.');
       return;
     }
-    // if (hasRealChanges) { alert('Guarda los cambios antes de continuar.'); return; } // Allow swap? No, complex state.
     setSwapModal({ visible: true, base: ronda });
   }, []);
 
-  const handleSwap = useCallback(async (otra: Ronda) => {
+  const handleSwap = useCallback((otra: Ronda) => {
     const base = swapModal.base;
-    if (!base || !otra || !user) return;
-    try {
-      await apiSwapMovimientos(base.id, otra.id, localidadId);
-      const swappedA: Ronda = { ...base, movimiento: { ...otra.movimiento } };
-      const swappedB: Ronda = { ...otra, movimiento: { ...base.movimiento } };
+    if (!base || !otra) return;
+    if (otra.source === 'torreon') {
+      alert('No se puede intercambiar una ronda normal con una ronda de Torreón.');
+      return;
+    }
+    setSwapModal({ visible: false, base: null });
+    setPendingRoundEdit({ active: base, target: otra, kind: 'swap', targetOrder: otra.orden });
+  }, [swapModal.base]);
 
-      setGroupedByRonda((prev) => {
-        const copy = { ...prev };
-        copy[swappedA.rondaNumero] = (copy[swappedA.rondaNumero] || []).map((r) => (r.id === swappedA.id ? swappedA : r));
-        copy[swappedB.rondaNumero] = (copy[swappedB.rondaNumero] || []).map((r) => (r.id === swappedB.id ? swappedB : r));
-        return copy;
-      });
-      setList((prev) => prev.map((r) => (r.id === swappedA.id ? swappedA : r.id === swappedB.id ? swappedB : r)));
-      showToast('Intercambio realizado exitosamente');
-      setSwapModal({ visible: false, base: null });
+  const requestMoveStep = useCallback((item: Ronda, direction: -1 | 1) => {
+    const currentList = [...(groupedByRonda[item.rondaNumero] || [])]
+      .sort((a, b) => a.orden - b.orden || a.id - b.id);
+    const currentIndex = currentList.findIndex((candidate) => candidate.id === item.id);
+    const targetIndex = currentIndex + direction;
+    const target = currentList[targetIndex];
+    if (currentIndex < 0 || !target) return;
+
+    setPendingRoundEdit({
+      active: item,
+      target,
+      kind: item.source === 'torreon' ? 'torreon-order' : 'swap',
+      targetOrder: targetIndex + 1,
+    });
+  }, [groupedByRonda]);
+
+  const confirmRoundEdit = useCallback(async () => {
+    if (!pendingRoundEdit) return;
+    const { active, target, kind, targetOrder } = pendingRoundEdit;
+    setSavingRoundEdit(true);
+
+    try {
+      if (kind === 'torreon-order') {
+        await apiOrdenMovimiento(active.id, targetOrder, localidadId);
+        const currentList = [...(groupedByRonda[active.rondaNumero] || [])]
+          .sort((a, b) => a.orden - b.orden || a.id - b.id);
+        const oldIndex = currentList.findIndex((item) => item.id === active.id);
+        const newIndex = Math.max(0, Math.min(targetOrder - 1, currentList.length - 1));
+        if (oldIndex < 0) throw new Error('No se encontró el movimiento en la ronda');
+        const nextList = [...currentList];
+        const [moved] = nextList.splice(oldIndex, 1);
+        nextList.splice(newIndex, 0, moved);
+        const normalized = nextList.map((item, index) => ({ ...item, orden: index + 1 }));
+        const byId = new Map(normalized.map((item) => [item.id, item]));
+
+        setGroupedByRonda((prev) => ({ ...prev, [active.rondaNumero]: normalized }));
+        setList((prev) => prev.map((item) => byId.get(item.id) ?? item));
+        showToast('Orden de la ronda actualizado');
+      } else {
+        await apiSwapMovimientos(active.id, target.id, localidadId);
+        const swapMovement = (item: Ronda): Ronda => {
+          if (item.id === active.id) {
+            return {
+              ...item,
+              movimiento: { ...target.movimiento },
+              movimientoId: target.movimientoId ?? movementTechnicalId(target),
+              empresa: target.empresa ?? item.empresa,
+            };
+          }
+          if (item.id === target.id) {
+            return {
+              ...item,
+              movimiento: { ...active.movimiento },
+              movimientoId: active.movimientoId ?? movementTechnicalId(active),
+              empresa: active.empresa ?? item.empresa,
+            };
+          }
+          return item;
+        };
+
+        setGroupedByRonda((prev) => Object.fromEntries(
+          Object.entries(prev).map(([roundNumber, items]) => [roundNumber, items.map(swapMovement)])
+        ));
+        setList((prev) => prev.map(swapMovement));
+        showToast('Posiciones de la ronda actualizadas');
+      }
+
+      setDidSave(true);
+      setPendingRoundEdit(null);
     } catch (e: unknown) {
       console.error(e);
-      alert(errorMessage(e, 'Error al intercambiar'));
+      alert(errorMessage(e, 'No se pudo editar la ronda'));
+    } finally {
+      setSavingRoundEdit(false);
     }
-  }, [localidadId, swapModal.base, setGroupedByRonda, setList, user]);
+  }, [groupedByRonda, localidadId, pendingRoundEdit, setGroupedByRonda, setList, showToast]);
 
-  const handleCancelRequest = useCallback(async (item: Ronda) => {
-    if (!confirm('¿Cancelar este movimiento? Solo se permite si pertenece a tu empresa.')) return;
+  const handleCancelRequest = useCallback((item: Ronda) => {
+    setCancelItem(item);
+  }, []);
+
+  const confirmCancelMovement = useCallback(async (reason: string) => {
+    if (!cancelItem) return;
+    const movimientoId = movementTechnicalId(cancelItem);
+    if (!movimientoId) {
+      alert('No se encontró el identificador técnico del movimiento.');
+      return;
+    }
+
+    setCancellingId(movimientoId);
     try {
-      const mid = item.movimiento?.id;
-      if (!mid) throw new Error('ID inválido');
-      setCancellingId(mid);
-      await apiCancelarMovimiento(mid, undefined, localidadId);
+      await apiCancelarMovimiento(movimientoId, reason, localidadId);
+      const remaining = [...(groupedByRonda[cancelItem.rondaNumero] || [])]
+        .filter((item) => item.id !== cancelItem.id)
+        .sort((a, b) => a.orden - b.orden || a.id - b.id)
+        .map((item, index) => ({ ...item, orden: index + 1 }));
+      const byId = new Map(remaining.map((item) => [item.id, item]));
 
-      setGroupedByRonda(prev => {
-        const copy = { ...prev };
-        const rn = item.rondaNumero;
-        copy[rn] = (copy[rn] || []).filter(r => r.id !== item.id).map((r, i) => ({ ...r, orden: i + 1 }));
-        return copy;
-      });
-      setList(prev => prev.filter(r => r.id !== item.id));
-      showToast('Movimiento cancelado');
+      setGroupedByRonda((prev) => ({ ...prev, [cancelItem.rondaNumero]: remaining }));
+      setList((prev) => prev
+        .filter((item) => item.id !== cancelItem.id)
+        .map((item) => byId.get(item.id) ?? item));
+      setDidSave(true);
+      setCancelItem(null);
+      showToast('Movimiento cancelado y retirado de la ronda');
     } catch (e: unknown) {
-      alert(errorMessage(e, 'Error al cancelar'));
+      console.error(e);
+      alert(errorMessage(e, 'No se pudo cancelar el movimiento'));
     } finally {
       setCancellingId(null);
     }
-  }, [localidadId, setGroupedByRonda, setList]);
+  }, [cancelItem, groupedByRonda, localidadId, setGroupedByRonda, setList, showToast]);
 
-
-  // Drag End Handler - STRICT SWAP LOGIC (LIVE UPDATE)
-  const handleDragEnd = async (event: DragEndEvent) => {
+  // Arrastrar sólo prepara el cambio; la API se ejecuta después de confirmarlo.
+  const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveDragId(null);
-
     if (!over) return;
 
     const activeId = Number(active.id);
     const overId = Number(over.id);
-
     if (activeId === overId) return;
 
     const activeItem = todasLasRondas.find((r) => r.id === activeId);
     const overItem = todasLasRondas.find((r) => r.id === overId);
     if (!activeItem || !overItem) return;
 
-    if (activeItem?.source === 'torreon' || overItem?.source === 'torreon') {
+    if (activeItem.source === 'torreon' || overItem.source === 'torreon') {
       if (activeItem.source !== 'torreon' || overItem.source !== 'torreon' || activeItem.rondaNumero !== overItem.rondaNumero) {
-        alert('Torreon solo permite reordenar dentro de su misma ronda.');
+        alert('Torreón sólo permite reordenar dentro de su misma ronda.');
         return;
       }
-
       const currentList = [...(groupedByRonda[activeItem.rondaNumero] || [])]
         .sort((a, b) => a.orden - b.orden || a.id - b.id);
-      const oldIndex = currentList.findIndex((item) => item.id === activeId);
       const newIndex = currentList.findIndex((item) => item.id === overId);
-      if (oldIndex < 0 || newIndex < 0) return;
-
-      try {
-        await apiOrdenMovimiento(activeId, newIndex + 1, localidadId);
-
-        const nextList = [...currentList];
-        const [moved] = nextList.splice(oldIndex, 1);
-        nextList.splice(newIndex, 0, moved);
-        const normalized = nextList.map((item, index) => ({ ...item, orden: index + 1 }));
-
-        setGroupedByRonda((prev) => ({
-          ...prev,
-          [activeItem.rondaNumero]: normalized,
-        }));
-        setList((prev) => {
-          const byId = new Map(normalized.map((item) => [item.id, item]));
-          return prev.map((item) => byId.get(item.id) ?? item);
-        });
-        showToast('Orden actualizado');
-      } catch (e: unknown) {
-        console.error(e);
-        alert('Error al reordenar: ' + errorMessage(e, 'Error desconocido'));
-      }
+      if (newIndex < 0) return;
+      setPendingRoundEdit({ active: activeItem, target: overItem, kind: 'torreon-order', targetOrder: newIndex + 1 });
       return;
     }
 
-    // Call API immediately
-    try {
-      await apiSwapMovimientos(activeId, overId, localidadId);
-
-      // Update local state ONLY on success (or optimistically revert on failure)
-      // For now, we update local state optimistically or re-fetch?
-      // Re-fetching is safer but potentially slower.
-      // Optimistic update:
-
-      setGroupedByRonda(prev => {
-        // Find items
-        let sourceRondaNum = -1;
-        let destRondaNum = -1;
-        let sourceItemIndex = -1;
-        let destItemIndex = -1;
-        let sourceItem: Ronda | undefined;
-        let destItem: Ronda | undefined;
-
-        for (const [rNum, items] of Object.entries(prev)) {
-          const idx = items.findIndex(i => i.id === activeId);
-          if (idx !== -1) {
-            sourceRondaNum = Number(rNum);
-            sourceItemIndex = idx;
-            sourceItem = items[idx];
-          }
-          const idxOver = items.findIndex(i => i.id === overId);
-          if (idxOver !== -1) {
-            destRondaNum = Number(rNum);
-            destItemIndex = idxOver;
-            destItem = items[idxOver];
-          }
-        }
-
-        if (!sourceItem || !destItem) return prev;
-
-        const copy = { ...prev };
-        const sourceList = [...(copy[sourceRondaNum] || [])];
-        const destList = sourceRondaNum === destRondaNum ? sourceList : [...(copy[destRondaNum] || [])];
-
-        const itemA = sourceList[sourceItemIndex];
-        const itemB = destList[destItemIndex];
-
-        // Swap their movement content but keep ID structure? 
-        // Backend swap usually swaps movements between round IDs.
-        // So Round ID 100 has Mov A, Round ID 200 has Mov B.
-        // After swap: Round ID 100 has Mov B, Round ID 200 has Mov A.
-        // The UI renders Rounds. So we swap the *data* inside the round objects.
-
-        const tempMov = itemA.movimiento;
-        itemA.movimiento = itemB.movimiento;
-        itemB.movimiento = tempMov;
-
-        // Force update lists
-        copy[sourceRondaNum] = [...sourceList];
-        if (sourceRondaNum !== destRondaNum) {
-          copy[destRondaNum] = [...destList];
-        }
-
-        return copy;
-      });
-
-      showToast('Cambio realizado');
-    } catch (e: unknown) {
-      console.error(e);
-      alert('Error al mover: ' + errorMessage(e, 'Error desconocido'));
-      // Ideally refresh from server here if failed
-      onClose(); // Close to force refresh? Or trigger refresh.
-    }
+    setPendingRoundEdit({ active: activeItem, target: overItem, kind: 'swap', targetOrder: overItem.orden });
   };
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveDragId(Number(event.active.id));
   };
-
-  // Removed handleSaveChanges as we do live updates now.
 
   if (loading) {
     return (
@@ -635,11 +783,11 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
             <div>
               <h2 className={`text-lg font-bold leading-tight ${THEME.text}`}>Editor de Rondas</h2>
               <p className={`text-xs ${THEME.textMuted}`}>
-                <span className="font-semibold text-blue-600 dark:text-blue-400">Arrastra desde los 6 puntos (⋮⋮)</span> para ajustar la cola.
+                Arrastra desde los 6 puntos (⋮⋮) o usa las flechas. <span className="font-semibold text-blue-600 dark:text-blue-400">Siempre se pedirá confirmación.</span>
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition-colors">
+          <button onClick={closeEditor} className="p-2 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition-colors" aria-label="Cerrar editor de rondas">
             <X size={20} />
           </button>
         </div>
@@ -658,14 +806,17 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
                     strategy={verticalListSortingStrategy}
                   >
                     <div className="space-y-2">
-                      {section.items.map(r => (
+                      {section.items.map((r, index) => (
                         <SortableRondaCard
                           key={r.id}
                           ronda={r}
                           info={infoMap[r.id]}
                           onSwapRequest={() => handleSwapRequest(r)}
+                          onMoveStep={(direction) => requestMoveStep(r, direction)}
+                          canMoveUp={index > 0}
+                          canMoveDown={index < section.items.length - 1}
                           onCancelRequest={() => handleCancelRequest(r)}
-                          isCancelling={cancellingId === r.movimiento?.id}
+                          isCancelling={cancellingId === movementTechnicalId(r)}
                         />
                       ))}
                     </div>
@@ -680,11 +831,11 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
         {/* Footer */}
         <div className={`p-4 border-t ${THEME.border} ${THEME.surface} sticky bottom-0 z-20 flex justify-between items-center`}>
           <div className="text-xs text-slate-400 hidden sm:block">
-            {hasRealChanges ? 'Cambios pendientes...' : 'Todo sincronizado'}
+            {didSave ? 'Cambios guardados correctamente' : 'Todo sincronizado'}
           </div>
           <div className="flex gap-3 w-full sm:w-auto">
             <button
-              onClick={onClose}
+              onClick={closeEditor}
               className="flex-1 sm:flex-none px-6 py-2.5 rounded-lg bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 text-sm font-semibold shadow-sm transition-all flex items-center justify-center gap-2"
             >
               <CheckCircle size={16} />
@@ -706,10 +857,22 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
         <SwapModal
           visible={swapModal.visible}
           base={swapModal.base}
-          candidatos={todasLasRondas}
+          candidatos={todasLasRondas.filter((item) => item.source !== 'torreon')}
           infoMap={infoMap}
           onConfirm={handleSwap}
           onClose={() => setSwapModal({ visible: false, base: null })}
+        />
+        <RoundEditConfirmModal
+          pending={pendingRoundEdit}
+          busy={savingRoundEdit}
+          onConfirm={confirmRoundEdit}
+          onClose={() => setPendingRoundEdit(null)}
+        />
+        <CancelMovementModal
+          item={cancelItem}
+          busy={cancellingId !== null}
+          onConfirm={confirmCancelMovement}
+          onClose={() => setCancelItem(null)}
         />
         <Toast show={toast.show} message={toast.message} onClose={() => setToast({ show: false, message: '' })} />
       </div>
