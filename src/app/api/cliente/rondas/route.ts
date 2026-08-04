@@ -1,6 +1,7 @@
 // app/api/cliente/rondas/route.ts
 import { NextResponse, NextRequest } from "next/server";
 import { cookies } from "next/headers";
+import { getRoleCapabilities } from "@/lib/accessControl";
 import { normalizeHttpOrigin } from "@/lib/serverOrigin";
 import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
 
@@ -629,16 +630,26 @@ export async function GET(req: NextRequest) {
     const entity = String(searchParams.get("entity") ?? "movimientos").toLowerCase();
     const estado = String(searchParams.get("estado") ?? searchParams.get("tab") ?? "pendientes").toLowerCase();
     const concluido = estado === "terminados" || estado === "finalizados" || estado === "true";
-    const generalLocalityView = searchParams.get("alcance") === "localidad";
+    const requestedGeneralLocalityView = searchParams.get("alcance") === "localidad";
 
     const cookieStore = await cookies();
     const token = cookieStore.get(process.env.JWT_COOKIE_NAME || "token")?.value;
     const role = readRole(cookieStore);
+    const capabilities = getRoleCapabilities(role);
     const empresaId = readEmpresaId(cookieStore);
     const assignedLocalidadId = readLocalidadId(cookieStore);
     const localidadId = role === "ADMINISTRADOR"
       ? requestedLocalidadId
       : assignedLocalidadId;
+    const generalLocalityView = requestedGeneralLocalityView && !capabilities.isClientLike;
+
+    const requestedEmpresaId = firstPositiveNumber(searchParams.get("empresaId"));
+    if (
+      capabilities.isClientLike &&
+      (!empresaId || (requestedEmpresaId && requestedEmpresaId !== empresaId))
+    ) {
+      return NextResponse.json({ message: "Solo puedes consultar locomotoras de tu empresa." }, { status: 403 });
+    }
 
     if (role !== "ADMINISTRADOR" && requestedLocalidadId && requestedLocalidadId !== assignedLocalidadId) {
       return NextResponse.json({ message: "Solo puedes consultar rondas de tu localidad." }, { status: 403 });
@@ -654,7 +665,8 @@ export async function GET(req: NextRequest) {
     if (entity === "torneados") {
       const statusParam = concluido ? "CONCLUIDO,CANCELADO" : "SOLICITADO,EN_PROCESO,DETENIDO";
       const qs = new URLSearchParams({ status: statusParam, localidadId: localidadIdParam });
-      if (!generalLocalityView && empresaId && !canSeeAllEmpresas(role)) qs.set("empresaId", String(empresaId));
+      const empresaScopeId = generalLocalityView || canSeeAllEmpresas(role) ? null : empresaId;
+      if (empresaScopeId) qs.set("empresaId", String(empresaScopeId));
       const r = await fetch(`${base}/torno/rondas-servicio/historial?${qs.toString()}`, {
         cache: "no-store",
         headers,
@@ -687,7 +699,11 @@ export async function GET(req: NextRequest) {
         );
         if (!servicioId) return null;
 
-        let empresa: RondaOut["empresa"] = null;
+        const recordEmpresa = asRecord(movimientoRecord.empresa);
+        const recordEmpresaId = firstPositiveNumber(movimientoRecord.empresaId, recordEmpresa.id);
+        let empresa: RondaOut["empresa"] = recordEmpresaId
+          ? { id: recordEmpresaId, nombre: String(recordEmpresa.nombre ?? "—") }
+          : null;
         let localidadMovimientoId = firstPositiveNumber(
           record.localidadId,
           movimientoRecord.localidadId,
@@ -743,6 +759,7 @@ export async function GET(req: NextRequest) {
         }
 
         if (localidadMovimientoId && localidadId !== localidadMovimientoId) return null;
+        if (empresaScopeId && Number(empresa?.id) !== empresaScopeId) return null;
         return {
           id: -Math.abs(servicioId),
           rondaNumero: 1,

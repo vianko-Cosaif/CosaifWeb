@@ -29,7 +29,6 @@ import type {
 import { peekCachedJson } from "@/lib/clientRequestCache";
 import { playNotificationSound, preloadNotificationSound, primeNotificationSound } from "@/lib/notificationSound";
 
-const API_BASE = API_XAPI_BASE;
 const fmtLoco = (value: unknown) => formatLoco(value, "—");
 
 /* ═══════════ SVG ICONS ═══════════ */
@@ -86,14 +85,17 @@ const STATUS_OPTIONS: QueueSegmentedFilterOption<QueueStatusKind>[] = [
 /* ═══════════ MAIN COMPONENT ═══════════ */
 export default function RailQueueBoard({
   localidadId,
+  empresaId,
   autoMs = 120_000,
 }: {
   localidadId: number;
+  empresaId?: number | null;
   autoMs?: number;
 }) {
   const [activeEntity, setActiveEntity] = useState<QueueEntityKind>("movimientos");
   const [activeStatus, setActiveStatus] = useState<QueueStatusKind>("pendientes");
-  const roundsUrl = `/api/cliente/rondas?localidadId=${localidadId}&estado=${activeStatus}&entity=${activeEntity}&alcance=localidad`;
+  const empresaQuery = empresaId ? `&empresaId=${empresaId}` : "";
+  const roundsUrl = `/api/cliente/rondas?localidadId=${localidadId}${empresaQuery}&estado=${activeStatus}&entity=${activeEntity}&alcance=localidad`;
   const initialItems = peekCachedJson<Ronda[]>(roundsUrl) ?? [];
   const [items, setItems] = useState<Ronda[]>(() => initialItems);
   const [info, setInfo] = useState<Record<number, RondaInfo>>({});
@@ -104,7 +106,7 @@ export default function RailQueueBoard({
   const [soundOn, setSoundOn] = useLocalStorageBoolean("rail-queue:soundOn", false);
   const { toasts, push: pushToast, dismiss } = useToasts();
   const { measuresModal, openMeasuresModal, closeMeasuresModal } =
-    useTornoMeasuresModal(API_BASE);
+    useTornoMeasuresModal(empresaId ? "/api/cliente" : API_XAPI_BASE);
   const prevIdsRef = useRef<number[]>([]);
   const firstLoad = useRef(true);
   const reqSeq = useRef(120);
@@ -127,7 +129,9 @@ export default function RailQueueBoard({
         ac.signal,
         { force: showRefreshing, ttlMs: 20_000 }
       );
-      const data = [...responseData];
+      const data = empresaId
+        ? responseData.filter((item) => Number(item.empresa?.id) === empresaId)
+        : [...responseData];
       data.sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden);
 
       const nextIds = data.map(d => d.id);
@@ -190,12 +194,12 @@ export default function RailQueueBoard({
     if (!items.length) setLoading(true);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localidadId, activeStatus, activeEntity]);
+  }, [localidadId, empresaId, activeStatus, activeEntity]);
 
   useVisibleInterval(
     () => polling && load(),
     polling && realtimeStatus !== "connected" ? Math.min(autoMs, 30_000) : null,
-    [autoMs, localidadId, polling, activeStatus, activeEntity, realtimeStatus, soundOn]
+    [autoMs, localidadId, empresaId, polling, activeStatus, activeEntity, realtimeStatus, soundOn]
   );
 
   function toggleSound() {

@@ -81,7 +81,7 @@ const preloadRailQueueBoard = () => {
 const LazyRailQueueBoard = lazy(() => preloadRailQueueBoard());
 
 /* ================= Componente Principal Mejorado ================= */
-export default function ClientPageWrapper({ localidadId, role }: ClientPageWrapperProps) {
+export default function ClientPageWrapper({ localidadId, empresaId, role }: ClientPageWrapperProps) {
   const capabilities = React.useMemo(() => getRoleCapabilities(role), [role]);
   // Preload del componente cuando el wrapper se monta
   React.useEffect(() => {
@@ -96,7 +96,7 @@ export default function ClientPageWrapper({ localidadId, role }: ClientPageWrapp
         <ErrorBoundary>
           {localidadId ? (
             <Suspense fallback={<LoadingFallback />}>
-              <LazyRailQueueBoard localidadId={localidadId} />
+              <LazyRailQueueBoard localidadId={localidadId} empresaId={empresaId} />
             </Suspense>
           ) : (
             <div className="flex flex-col items-center justify-center min-h-[420px] rounded-2xl border border-slate-200 bg-white/70 p-6 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900/60">
