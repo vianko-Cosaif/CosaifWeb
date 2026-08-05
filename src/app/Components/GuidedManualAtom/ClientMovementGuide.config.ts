@@ -164,7 +164,7 @@ export const CLIENT_MOVEMENT_MOBILE_GUIDE_ID = "client-create-movement-mobile";
 
 export const CLIENT_MOVEMENT_MOBILE_GUIDE = defineGuidedManual({
   id: CLIENT_MOVEMENT_MOBILE_GUIDE_ID,
-  title: "Crear un movimiento (Flujo mobile)",
+  title: "Crear un movimiento (Flujo guiado)",
   steps: [
     {
       id: "mobile-open-movements",

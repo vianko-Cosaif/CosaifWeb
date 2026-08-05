@@ -28,9 +28,8 @@ import {
   PackageCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { GuidedTarget, useGuidedManualApi } from "@/app/Components/GuidedManualAtom";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import ThemeToggle from "@/app/Components/ui/ThemeToggle";
-import { CLIENT_MOVEMENT_GUIDE_ID, CLIENT_MOVEMENT_MOBILE_GUIDE_ID } from "@/app/Components/GuidedManualAtom/ClientMovementGuide.config";
 import { buildNavigationForRole, isNavigationItemActive, type AppNavigationItem } from "@/lib/appNavigation";
 import { getRoleClient } from "@/lib/cookies";
 import { getRoleCapabilities, normalizeAppRole, type AppRole, type NavModuleId } from "@/lib/accessControl";
@@ -60,7 +59,7 @@ type NavigationItem = {
   icon: LucideIcon;
 };
 
-type HelpGuideAction = "client-create-movement" | "client-create-movement-mobile" | "legacy-create-movement" | "legacy-create-movement-torno" | "general-help";
+type HelpGuideAction = "general-help";
 
 type HelpSuggestion = {
   id: string;
@@ -143,29 +142,6 @@ const HELP_GUIDE_CATALOG: HelpSuggestion[] = [
     roles: ["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR"],
     action: "general-help",
     guideId: "reports-overview",
-  },
-  {
-    id: "client-create-movement-mobile",
-    label: "Crear movimiento paso a paso (Mobile / Paginado)",
-    description: "Guía interactiva optimizada para el flujo mobile/paginado paso a paso.",
-    keywords: ["movimiento", "crear", "nuevo", "mobile", "paginado", "guia", "wizard"],
-    roles: ["CLIENTE"],
-    action: "client-create-movement-mobile",
-  },
-  {
-    id: "client-guide-button-flow",
-    label: "Wizard del botón Guía",
-    description: "Mismo flujo del botón Guía: acompaña al cliente desde Movimientos hasta confirmar la solicitud.",
-    keywords: ["guia", "boton", "wizard", "cliente", "movimiento", "paso", "confirmar"],
-    roles: ["CLIENTE"],
-    action: "client-create-movement",
-  },
-  {
-    id: "create-movement-torno",
-    label: "Cómo crear un movimiento con torno",
-    description: "Asistente para el flujo con mediciones de ruedas, PDF y cierre del movimiento.",
-    keywords: ["movimiento", "torno", "ruedas", "medicion", "pdf", "calendarizar", "wizard"],
-    action: "legacy-create-movement-torno",
   },
 ];
 
@@ -272,8 +248,6 @@ function cn(...classes: (string | undefined | null | false)[]) {
 export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }) {
   const router = useRouter();
   const pathname = usePathname();
-  const guidedManualApi = useGuidedManualApi();
-
   const [isOpen, setIsOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -394,36 +368,12 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
 
   const runHelpSuggestion = useCallback(
     (suggestion: HelpSuggestion) => {
-      if (suggestion.action === "client-create-movement" && guidedManualApi) {
-        guidedManualApi.startManual(CLIENT_MOVEMENT_GUIDE_ID);
-        closeHelpAssistant();
-        return;
-      }
-
-      if (suggestion.action === "client-create-movement-mobile" && guidedManualApi) {
-        guidedManualApi.startManual(CLIENT_MOVEMENT_MOBILE_GUIDE_ID);
-        closeHelpAssistant();
-        return;
-      }
-
-      if (suggestion.action === "legacy-create-movement-torno") {
-        window.dispatchEvent(new CustomEvent("cosaif:start-create-movement-torno-guide"));
-        closeHelpAssistant();
-        return;
-      }
-
-      if (suggestion.action === "general-help") {
-        window.dispatchEvent(new CustomEvent("cosaif:start-general-help-guide", {
-          detail: { guideId: suggestion.guideId ?? suggestion.id, role: normRol },
-        }));
-        closeHelpAssistant();
-        return;
-      }
-
-      window.dispatchEvent(new CustomEvent("cosaif:start-create-movement-guide"));
+      window.dispatchEvent(new CustomEvent("cosaif:start-general-help-guide", {
+        detail: { guideId: suggestion.guideId ?? suggestion.id, role: normRol },
+      }));
       closeHelpAssistant();
     },
-    [closeHelpAssistant, guidedManualApi, normRol]
+    [closeHelpAssistant, normRol]
   );
 
   const navigation = useMemo<NavigationItem[]>(() => {

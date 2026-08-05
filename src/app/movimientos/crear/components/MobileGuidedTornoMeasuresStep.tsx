@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { Copy } from "lucide-react";
 import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import { Movimiento } from "../../Movimiento";
 import type { MovementFormData } from "../../movimientos.shared";
@@ -47,8 +48,8 @@ const emptyValue: TornoMeasurementValue = { whole: "", num: "", den: "" };
 const wholeOptions = ["", ...Array.from({ length: 100 }, (_, index) => String(index))];
 const views: Array<{ key: LocomotiveViewMode; label: string }> = [
   { key: "top", label: "Superior" },
-  { key: "left", label: "Lateral L" },
-  { key: "right", label: "Lateral R" },
+  { key: "left", label: "Lateral Izq" },
+  { key: "right", label: "Lateral Der" },
 ];
 
 export function getGuidedTornoMeasuresPageCount() {
@@ -239,19 +240,33 @@ export default function MobileGuidedTornoMeasuresStep({
 
   if (visualPage <= 0) {
     return (
-    <div className="grid min-w-0 gap-3 sm:gap-4">
-        <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[26px] sm:p-5">
-          <div className="text-xs font-black uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-300">
-            Formato de medicion
+      <div className="grid min-w-0 gap-2 sm:gap-3">
+        <div className="min-w-0 rounded-2xl border border-emerald-100 bg-white/95 p-3 shadow-sm dark:border-emerald-900/40 dark:bg-zinc-950 sm:rounded-[22px] sm:p-4">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600 dark:text-emerald-300">
+                Formato de medicion
+              </div>
+              <div className="mt-1 truncate text-lg font-black text-slate-950 dark:text-white sm:text-xl">
+                {profileMeta.title}
+              </div>
+            </div>
+            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-black text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+              {tornoMedicion.wheelCount} ruedas
+            </span>
           </div>
-          <div className="mt-2 text-xl font-black text-slate-950 dark:text-white">{profileMeta.title}</div>
-          <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-zinc-400">{profileMeta.description}</p>
+          <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-500 dark:text-zinc-400 sm:text-sm">
+            {profileMeta.description}
+          </p>
         </div>
 
         <GuidedTarget id="torno-movement-type">
-          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[26px] sm:p-5">
-            <div className="text-sm font-black text-slate-950 dark:text-white">Tipo de movimiento</div>
-            <div className="mt-3 grid grid-cols-1 gap-2 min-[380px]:grid-cols-2 sm:gap-3">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[22px]">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm font-black text-slate-950 dark:text-white">Tipo de movimiento</div>
+              <span className="text-[11px] font-bold text-slate-400 dark:text-zinc-500">Servicio</span>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
               {(["MD_TRABAJANDO", "REMOLCADA"] as const).map((type) => {
                 const selected = form.movementType === type;
                 return (
@@ -260,7 +275,7 @@ export default function MobileGuidedTornoMeasuresStep({
                     type="button"
                     onClick={() => selectMovementType(type)}
                     className={Movimiento.clsx(
-                      "min-h-14 rounded-2xl border px-4 text-sm font-black transition-colors",
+                      "min-h-11 rounded-xl border px-3 text-sm font-black transition-colors sm:min-h-12 sm:rounded-2xl",
                       selected
                         ? "border-emerald-600 bg-emerald-600 text-white"
                         : "border-slate-200 bg-slate-50 text-slate-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
@@ -275,9 +290,9 @@ export default function MobileGuidedTornoMeasuresStep({
         </GuidedTarget>
 
         {form.movementType === "REMOLCADA" ? (
-          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[26px] sm:p-5">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[22px]">
             <div className="text-sm font-black text-slate-950 dark:text-white">Direccion</div>
-            <div className="mt-3 grid grid-cols-1 gap-2 min-[380px]:grid-cols-2 sm:gap-3">
+            <div className="mt-2 grid grid-cols-2 gap-2">
               {(["EMPUJAR", "JALAR"] as const).map((direction) => {
                 const selected = form.direccionEmpuje === direction;
                 return (
@@ -286,7 +301,7 @@ export default function MobileGuidedTornoMeasuresStep({
                     type="button"
                     onClick={() => selectDireccion(direction)}
                     className={Movimiento.clsx(
-                      "min-h-14 rounded-2xl border px-4 text-sm font-black transition-colors",
+                      "min-h-11 rounded-xl border px-3 text-sm font-black transition-colors sm:min-h-12 sm:rounded-2xl",
                       selected
                         ? "border-emerald-600 bg-emerald-600 text-white"
                         : "border-slate-200 bg-slate-50 text-slate-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
@@ -301,9 +316,12 @@ export default function MobileGuidedTornoMeasuresStep({
         ) : null}
 
         <GuidedTarget id="torno-wheel-count">
-          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[26px] sm:p-5">
-            <div className="text-sm font-black text-slate-950 dark:text-white">Numero de ruedas</div>
-            <div className="mt-3 grid grid-cols-2 gap-2 min-[420px]:grid-cols-4">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[22px]">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm font-black text-slate-950 dark:text-white">Numero de ruedas</div>
+              <span className="text-[11px] font-bold text-slate-400 dark:text-zinc-500">Mapa grafico</span>
+            </div>
+            <div className="mt-2 grid grid-cols-4 gap-2">
               {TORNO_WHEEL_COUNT_OPTIONS.map((count) => {
                 const selected = tornoMedicion.wheelCount === count;
                 return (
@@ -312,7 +330,7 @@ export default function MobileGuidedTornoMeasuresStep({
                     type="button"
                     onClick={() => setTornoWheelCount(count)}
                     className={Movimiento.clsx(
-                      "min-h-14 rounded-2xl border px-2 text-lg font-black transition-colors",
+                      "min-h-11 rounded-xl border px-2 text-base font-black transition-colors sm:min-h-12 sm:rounded-2xl sm:text-lg",
                       selected
                         ? "border-emerald-600 bg-emerald-600 text-white"
                         : "border-slate-200 bg-slate-50 text-slate-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200"
@@ -330,9 +348,23 @@ export default function MobileGuidedTornoMeasuresStep({
   }
 
   return (
-    <div className="grid min-w-0 gap-3 sm:gap-4">
-      <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 min-[380px]:p-3 sm:rounded-[26px] sm:p-4">
-        <div className="mb-3 grid grid-cols-3 gap-2">
+    <div className="grid min-w-0 gap-2 sm:gap-3">
+      <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[22px] sm:p-3">
+        <div className="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+          <div className="min-w-0">
+            <div className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">
+              Captura por rueda
+            </div>
+            <p className="line-clamp-1 text-xs font-semibold text-slate-600 dark:text-zinc-400">
+              Toca una rueda para abrir sus medidas.
+            </p>
+          </div>
+          <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-black text-emerald-800 shadow-sm dark:bg-zinc-950 dark:text-emerald-200">
+            {enabledPositions.filter(hasPositionMeasures).length}/{enabledPositions.length}
+          </span>
+        </div>
+
+        <div className="mb-2 grid grid-cols-3 gap-2">
           {views.map((view) => {
             const active = viewMode === view.key;
             return (
@@ -341,7 +373,7 @@ export default function MobileGuidedTornoMeasuresStep({
                 type="button"
                 onClick={() => setViewMode(view.key)}
                 className={Movimiento.clsx(
-                  "min-h-11 min-w-0 rounded-xl border px-1 text-[11px] font-black transition-colors min-[380px]:rounded-2xl min-[380px]:px-2 min-[380px]:text-xs",
+                  "min-h-10 min-w-0 rounded-xl border px-1 text-[11px] font-black transition-colors min-[380px]:px-2 min-[380px]:text-xs sm:min-h-11",
                   active
                     ? "border-emerald-600 bg-emerald-600 text-white"
                     : "border-slate-200 bg-slate-50 text-slate-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
@@ -352,59 +384,19 @@ export default function MobileGuidedTornoMeasuresStep({
             );
           })}
         </div>
-        <div
-          className={Movimiento.clsx(
-            "grid min-w-0 gap-3",
-            isLandscape && "md:grid-cols-[minmax(0,1fr)_minmax(150px,220px)] md:items-start"
-          )}
-        >
-          <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900">
-            <LocomotiveWheelMap
-              wheelCount={tornoMedicion.wheelCount as WheelCount}
-              viewMode={viewMode}
-              selectedWheelId={selectedWheelId}
-              wheels={wheels}
-              showLabels={false}
-              orientation={screenOrientation}
-              labels={{ instructions: "Selecciona la rueda a capturar." }}
-              onWheelSelect={handleWheelSelect}
-            />
-          </div>
-          <div
-            className={Movimiento.clsx(
-              "flex min-w-0 flex-wrap gap-2",
-              isLandscape && "md:max-h-[320px] md:overflow-y-auto md:pr-1"
-            )}
-          >
-            {enabledPositions.map((position) => {
-              const selected = selectedPosition === position;
-              const hasMeasures = hasPositionMeasures(position);
-              return (
-                <button
-                  key={position}
-                  type="button"
-                  onClick={() => openWheelModal(position)}
-                  className={Movimiento.clsx(
-                    "rounded-full border px-3 py-2 text-xs font-black transition-colors",
-                    isLandscape && "md:w-full md:justify-start",
-                    selected
-                      ? "border-emerald-600 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200"
-                      : "border-slate-200 bg-slate-50 text-slate-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
-                  )}
-                >
-                  {position} {hasMeasures ? "capturada" : "pendiente"}
-                </button>
-              );
-            })}
-          </div>
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900">
+          <LocomotiveWheelMap
+            wheelCount={tornoMedicion.wheelCount as WheelCount}
+            viewMode={viewMode}
+            selectedWheelId={selectedWheelId}
+            wheels={wheels}
+            showLabels={false}
+            orientation={screenOrientation}
+            locomotiveNumber={form.locomotiveNumber}
+            labels={{ instructions: "Selecciona la rueda a capturar." }}
+            onWheelSelect={handleWheelSelect}
+          />
         </div>
-      </div>
-
-      <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-[26px] sm:p-5">
-        <div className="text-sm font-black text-slate-950 dark:text-white">Captura por rueda</div>
-        <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-zinc-400">
-          Toca una rueda en la locomotora para abrir sus medidas. Puedes regresar a cualquier rueda antes de revisar la solicitud.
-        </p>
       </div>
 
       <style>{`
@@ -520,6 +512,8 @@ export default function MobileGuidedTornoMeasuresStep({
                         <span
                           role="button"
                           tabIndex={0}
+                          aria-label={`Copiar ${field.label} de rueda ${selectedPosition}`}
+                          title="Copiar medida"
                           onClick={(event) => {
                             event.stopPropagation();
                             setCopyModal({
@@ -542,9 +536,9 @@ export default function MobileGuidedTornoMeasuresStep({
                               sourceValue: value,
                             });
                           }}
-                          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-white text-sm font-black text-emerald-800 dark:border-emerald-800 dark:bg-zinc-950 dark:text-emerald-200"
+                          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-white text-emerald-800 transition hover:border-emerald-300 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 dark:border-emerald-800 dark:bg-zinc-950 dark:text-emerald-200 dark:hover:bg-emerald-950/40"
                         >
-                          Cop.
+                          <Copy className="h-5 w-5" aria-hidden="true" strokeWidth={2.5} />
                         </span>
                       ) : null}
                       <span className="text-xl font-black text-emerald-700">{hasValue ? "✓" : "+"}</span>

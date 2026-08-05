@@ -19,6 +19,25 @@ interface OrientationProps {
   orientation: 'vertical' | 'horizontal';
 }
 
+function shadeHexColor(color: string, percent: number, fallback: string) {
+  if (!/^#[0-9a-f]{6}$/i.test(color)) return fallback;
+  const amount = Math.round(2.55 * percent);
+  const value = parseInt(color.slice(1), 16);
+  const red = Math.max(0, Math.min(255, (value >> 16) + amount));
+  const green = Math.max(0, Math.min(255, ((value >> 8) & 0x00ff) + amount));
+  const blue = Math.max(0, Math.min(255, (value & 0x0000ff) + amount));
+  return `#${(0x1000000 + red * 0x10000 + green * 0x100 + blue).toString(16).slice(1)}`;
+}
+
+function getHexLuminance(color: string, fallback = 0.5) {
+  if (!/^#[0-9a-f]{6}$/i.test(color)) return fallback;
+  const value = parseInt(color.slice(1), 16);
+  const red = (value >> 16) / 255;
+  const green = ((value >> 8) & 0x00ff) / 255;
+  const blue = (value & 0x0000ff) / 255;
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
 function TopLocomotiveBody({ 
   wheelCount, 
   viewMode,
@@ -37,14 +56,17 @@ function TopLocomotiveBody({
   const baseDark = theme.colors.machineStroke;
   const baseLight = theme.colors.primarySoft;
   const baseGlow = 'var(--loco-map-accent-highlight)';
-  const metal = theme.colors.machineStroke;
+  const backgroundIsDark = getHexLuminance(theme.colors.background) < 0.35;
+  const metal = /^#[0-9a-f]{6}$/i.test(theme.colors.primary)
+    ? (backgroundIsDark ? shadeHexColor(theme.colors.primary, 44, '#D1FAE5') : shadeHexColor(theme.colors.primary, -38, theme.colors.machineStroke))
+    : 'var(--loco-map-metal)';
 
   return (
     <>
       <g className="loco-map-body" transform={topTransform}>
         <rect x="-18" y="112" width="836" height="42" rx="18" fill="#020617" opacity="0.16" />
-        <rect x="-20" y="95" width="40" height="30" fill={metal} rx="4" />
-        <rect x="780" y="95" width="40" height="30" fill={metal} rx="4" />
+        <rect x="-20" y="95" width="40" height="30" fill={metal} rx="4" opacity="0.9" />
+        <rect x="780" y="95" width="40" height="30" fill={metal} rx="4" opacity="0.9" />
 
         <rect x="0" y="20" width="800" height="180" fill={baseDeep} rx="8" />
         <rect x="6" y="28" width="788" height="34" fill={baseLight} opacity="0.22" rx="7" />
@@ -71,7 +93,7 @@ function TopLocomotiveBody({
           <g key={`top-module-${index}`}>
             <rect x={x} y="75" width="70" height="70" fill={baseDeep} rx="4" />
             <rect x={x + 5} y="80" width="60" height="18" fill={baseLight} opacity="0.24" rx="3" />
-            <circle cx={x + 35} cy="110" r="25" fill={metal} />
+            <circle cx={x + 35} cy="110" r="25" fill={metal} opacity="0.9" />
             <circle cx={x + 35} cy="110" r="15" fill={baseDark} />
             <circle cx={x + 30} cy="105" r="7" fill={baseGlow} opacity="0.28" />
           </g>
@@ -321,19 +343,25 @@ function SideLocomotiveBodyReferenceSvg({
   orientation,
   theme,
   rotateForPortrait,
+  locomotiveNumber,
 }: Pick<LocomotiveMapProps, 'wheelCount' | 'viewMode'> & OrientationProps & {
   theme: ReturnType<typeof resolveTheme>;
   rotateForPortrait?: boolean;
+  locomotiveNumber?: string | number | null;
 }) {
   const canvasWidth = orientation === 'horizontal' ? VIEWBOX_HEIGHT : VIEWBOX_WIDTH;
   const locoFill = theme.colors.primary;
-  const locoShadow = theme.colors.machineStroke;
-  const locoDark = theme.colors.machineStroke;
-  const locoDeep = 'var(--loco-map-accent-shadow)';
+  const backgroundIsDark = getHexLuminance(theme.colors.background) < 0.35;
+  const locoShadow = /^#[0-9a-f]{6}$/i.test(locoFill) ? shadeHexColor(locoFill, -24, theme.colors.machineStroke) : 'var(--loco-map-accent-shadow)';
+  const locoDark = /^#[0-9a-f]{6}$/i.test(locoFill) ? shadeHexColor(locoFill, -14, theme.colors.machineStroke) : 'var(--loco-map-accent-deep)';
+  const locoDeep = /^#[0-9a-f]{6}$/i.test(locoFill) ? shadeHexColor(locoFill, -34, theme.colors.machineStroke) : 'var(--loco-map-accent-shadow)';
   const locoHighlight = theme.colors.primarySoft;
   const locoSoftHighlight = 'var(--loco-map-accent-highlight)';
-  const cutFill = theme.colors.background;
-  const cutStroke = theme.colors.background;
+  const cutFill = backgroundIsDark ? shadeHexColor(locoFill, -48, 'var(--loco-map-cut)') : theme.colors.background;
+  const cutStroke = backgroundIsDark ? shadeHexColor(locoFill, 54, 'var(--loco-map-contrast-line)') : theme.colors.surface;
+  const cabNumberFill = backgroundIsDark ? 'var(--loco-map-number)' : theme.colors.surface;
+  const plateFill = backgroundIsDark ? 'var(--loco-map-plate)' : locoDeep;
+  const plateTextFill = '#FFFFFF';
   const sideScale = 0.51;
   const sideTranslateX = orientation === 'horizontal' ? 90 : -82;
   const sideTranslateY = 59;
@@ -344,6 +372,22 @@ function SideLocomotiveBodyReferenceSvg({
   const portraitRotation = viewMode === 'right'
     ? 'translate(210 380) rotate(-90) translate(-210 -212)'
     : 'translate(210 380) rotate(90) translate(-210 -212)';
+  const locomotiveText = locomotiveNumber == null || String(locomotiveNumber).trim() === ''
+    ? ''
+    : String(locomotiveNumber).trim();
+  const plateText = locomotiveText ? `LOCO-${locomotiveText}` : '';
+  const plateX = 894;
+  const plateY = 136;
+  const plateWidth = Math.max(196, plateText.length * 13 + 34);
+  const plateHeight = 40;
+  const plateMirrorFix = viewMode === 'right'
+    ? `translate(${plateX} ${plateY}) scale(-1 1) translate(${-plateX} ${-plateY})`
+    : undefined;
+  const cabTextX = 164;
+  const cabTextY = 168;
+  const cabMirrorFix = viewMode === 'right'
+    ? `translate(${cabTextX} ${cabTextY}) scale(-1 1) translate(${-cabTextX} ${-cabTextY})`
+    : undefined;
 
   return (
     <>
@@ -403,6 +447,24 @@ function SideLocomotiveBodyReferenceSvg({
           <rect x="160" y="83" width="26" height="38" rx="3" fill={cutFill} />
           <rect x="190" y="83" width="28" height="38" rx="3" fill={cutFill} />
           <rect x="224" y="83" width="26" height="38" rx="3" fill={cutFill} />
+          {locomotiveText ? (
+            <g transform={cabMirrorFix}>
+              <text
+                x={cabTextX}
+                y={cabTextY}
+                textAnchor="middle"
+                fontFamily="sans-serif"
+                fontSize="58"
+                fontWeight="900"
+                letterSpacing="0"
+                fill={cabNumberFill}
+                opacity={backgroundIsDark ? '0.44' : '0.42'}
+                className="select-none"
+              >
+                {locomotiveText}
+              </text>
+            </g>
+          ) : null}
         </g>
 
         <g>
@@ -417,9 +479,58 @@ function SideLocomotiveBodyReferenceSvg({
             <rect key={`upper-left-panel-${x}`} x={x} y="74" width="34" height="38" fill={locoDark} opacity="0.78" />
           ))}
 
-          <rect x="780" y="112" width="230" height="48" fill={cutFill} />
-          <rect x="786" y="118" width="106" height="36" fill={locoDark} opacity="0.82" />
-          <rect x="898" y="118" width="106" height="36" fill={locoDark} opacity="0.82" />
+          {!plateText ? (
+            <>
+              <rect x="780" y="112" width="230" height="48" fill={cutFill} />
+              <rect x="786" y="118" width="106" height="36" fill={locoDark} opacity="0.82" />
+              <rect x="898" y="118" width="106" height="36" fill={locoDark} opacity="0.82" />
+            </>
+          ) : null}
+
+          {plateText ? (
+            <g transform={plateMirrorFix}>
+              <rect
+                x={plateX - plateWidth / 2 + 7}
+                y={plateY - plateHeight / 2 + 8}
+                width={plateWidth}
+                height={plateHeight}
+                rx="20"
+                fill="#020617"
+                opacity="0.18"
+              />
+              <rect
+                x={plateX - plateWidth / 2}
+                y={plateY - plateHeight / 2}
+                width={plateWidth}
+                height={plateHeight}
+                rx="20"
+                fill={plateFill}
+                opacity="0.94"
+              />
+              <rect
+                x={plateX - plateWidth / 2 + 8}
+                y={plateY - plateHeight / 2 + 6}
+                width={plateWidth - 16}
+                height="8"
+                rx="5"
+                fill={locoSoftHighlight}
+                opacity="0.14"
+              />
+              <text
+                x={plateX}
+                y={plateY + 10}
+                textAnchor="middle"
+                fontFamily="sans-serif"
+                fontSize="27"
+                fontWeight="900"
+                letterSpacing="0.3"
+                fill={plateTextFill}
+                className="select-none"
+              >
+                {plateText}
+              </text>
+            </g>
+          ) : null}
 
           <rect x="1030" y="154" width="70" height="70" fill={cutFill} />
           <rect x="1037" y="162" width="50" height="36" fill={locoFill} />
@@ -799,6 +910,7 @@ export function LocomotiveWheelMap({
   labels: customLabels,
   showLabels = true,
   orientation = 'vertical',
+  locomotiveNumber,
   onWheelSelect,
 }: LocomotiveMapProps) {
   const resolvedTheme = resolveTheme(customTheme);
@@ -931,6 +1043,10 @@ export function LocomotiveWheelMap({
             --loco-map-accent-soft: #d1fae5;
             --loco-map-accent-shadow: #064e3b;
             --loco-map-accent-highlight: #a7f3d0;
+            --loco-map-contrast-line: #ffffff;
+            --loco-map-metal: #064e3b;
+            --loco-map-number: #ffffff;
+            --loco-map-plate: #0f172a;
             --loco-map-disabled: #64748b;
             --loco-map-wheel-rim: #e5e7eb;
             --loco-map-wheel-tire: #1f2937;
@@ -1060,6 +1176,10 @@ export function LocomotiveWheelMap({
             --loco-map-accent-soft: #064e3b;
             --loco-map-accent-shadow: #022c22;
             --loco-map-accent-highlight: #bbf7d0;
+            --loco-map-contrast-line: #d1fae5;
+            --loco-map-metal: #86efac;
+            --loco-map-number: #e2e8f0;
+            --loco-map-plate: #020617;
             --loco-map-disabled: #94a3b8;
             --loco-map-wheel-rim: #cbd5e1;
             --loco-map-wheel-tire: #020617;
@@ -1100,6 +1220,7 @@ export function LocomotiveWheelMap({
           orientation={renderOrientation}
           theme={theme}
           rotateForPortrait={sidePortraitMode}
+          locomotiveNumber={locomotiveNumber}
         />
       )}
 
