@@ -2,7 +2,7 @@
 "use client";
 
 import type React from "react";
-import { useEffect, useMemo, useRef, useState, startTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
@@ -27,6 +27,11 @@ import {
 } from "@/features/rail-queue/hooks";
 import type { Ronda, RondaInfo } from "@/features/rail-queue/types";
 import { peekCachedJson } from "@/lib/clientRequestCache";
+import {
+  playNotificationSound,
+  preloadNotificationSound,
+  primeNotificationSound,
+} from "@/lib/notificationSound";
 
 const API_BASE = API_XAPI_BASE;
 const fmtList = railQueueListFormatter;
@@ -74,7 +79,6 @@ export default function RailQueueBoardPage({
   const [polling, setPolling] = useLocalStorageBoolean("rail-queue:polling", true);
 
   const [soundOn, setSoundOn] = useLocalStorageBoolean("rail-queue:soundOn", false);
-  const bellRef = useRef<HTMLAudioElement | null>(null);
 
   const { toasts, push: pushToast, dismiss } = useToasts();
 
@@ -86,6 +90,17 @@ export default function RailQueueBoardPage({
   const reqSeq = useRef(120);
   const abortRef = useRef<AbortController | null>(null);
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  useEffect(() => preloadNotificationSound(), []);
+
+  const toggleSound = useCallback(() => {
+    const next = !soundOn;
+    setSoundOn(next);
+    if (!next) return;
+    void primeNotificationSound().then((ready) => {
+      if (ready) void playNotificationSound("sonido_actualizado");
+    });
+  }, [setSoundOn, soundOn]);
 
   const [openEditor, setOpenEditor] = useState(false);
   const { measuresModal, openMeasuresModal, closeMeasuresModal } =
@@ -220,13 +235,13 @@ export default function RailQueueBoardPage({
         load(true);
       }
       if (e.key === "a") setPolling((p) => !p);
-      if (e.key === "s") setSoundOn((s) => !s);
+      if (e.key === "s") toggleSound();
       if (e.key === "f") toggleFullscreen();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openEditor]);
+  }, [openEditor, toggleSound]);
 
   useEffect(() => {
     firstLoad.current = true;
@@ -245,14 +260,7 @@ export default function RailQueueBoardPage({
   useEffect(() => {
     const curId = items[0]?.id ?? null;
     if (soundOn && curId && lastCurrentId.current && curId !== lastCurrentId.current) {
-      const el = bellRef.current;
-      try {
-        el?.pause?.();
-        if (el) {
-          el.currentTime = 0;
-          void el.play();
-        }
-      } catch {}
+      void playNotificationSound("ronda_movimiento_iniciado");
     }
     lastCurrentId.current = curId;
   }, [items, soundOn]);
@@ -356,7 +364,7 @@ export default function RailQueueBoardPage({
 
               <div className={S.toolbarButtons}>
                 <button
-                  onClick={() => setSoundOn((s) => !s)}
+                  onClick={toggleSound}
                   className={S.btnSound(soundOn)}
                   title="Pitido al cambiar la orden actual"
                   aria-pressed={soundOn}
@@ -707,10 +715,6 @@ export default function RailQueueBoardPage({
           }}
         />
       </GuidedTarget>
-
-      <audio ref={bellRef} preload="none" aria-hidden="true">
-        <source src="/sounds/notification.mp3" type="audio/mp3" />
-      </audio>
 
       {measuresModal.open && !measuresModal.loading && !measuresModal.error ? (
         <TornoMeasuresViewerModal

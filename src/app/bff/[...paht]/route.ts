@@ -114,6 +114,7 @@ async function proxy(req: NextRequest) {
   const assignedLocalidadId = Number(session.localidadId || 0);
   const capabilities = getRoleCapabilities(role);
   const restrictedLocality = role !== "ADMINISTRADOR";
+  const restrictedCompany = capabilities.isClientLike;
   const restrictedCoordinator = role === "COORDINADOR";
   let upstreamPath = req.nextUrl.pathname.replace(/^\/bff/, "");
   const searchParams = new URLSearchParams(req.nextUrl.searchParams);
@@ -204,6 +205,31 @@ async function proxy(req: NextRequest) {
     if (isMovementListing) searchParams.set("localidadId", String(assignedLocalidadId));
   }
 
+  if (restrictedCompany && isMovementPath) {
+    if (!Number.isFinite(assignedEmpresaId) || assignedEmpresaId <= 0) {
+      return NextResponse.json({ message: "No hay una empresa asignada a la sesion." }, { status: 403 });
+    }
+
+    const requestedEmpresaId = Number(searchParams.get("empresaId") || 0);
+    if (requestedEmpresaId > 0 && requestedEmpresaId !== assignedEmpresaId) {
+      return NextResponse.json({ message: "Solo puedes consultar movimientos de tu empresa." }, { status: 403 });
+    }
+
+    const embeddedEmpresa = upstreamPath.match(/\/empresa\/(\d+)(?:\/|$)/);
+    if (embeddedEmpresa && Number(embeddedEmpresa[1]) !== assignedEmpresaId) {
+      return NextResponse.json({ message: "Solo puedes consultar movimientos de tu empresa." }, { status: 403 });
+    }
+
+    if (isMovementListing) searchParams.set("empresaId", String(assignedEmpresaId));
+
+    const localidadPendientes = upstreamPath.match(/^\/movimientos\/localidad\/(\d+)\/pendientes$/);
+    if (localidadPendientes) {
+      upstreamPath = `/movimientos/empresa/${assignedEmpresaId}/localidad/${localidadPendientes[1]}/pendientes`;
+    } else if (upstreamPath === "/movimientos/pendientes") {
+      upstreamPath = `/movimientos/empresa/${assignedEmpresaId}/localidad/${assignedLocalidadId}/pendientes`;
+    }
+  }
+
   if (restrictedCoordinator && isUsersPath) {
     if (!Number.isFinite(assignedLocalidadId) || assignedLocalidadId <= 0) {
       return NextResponse.json({ message: "No hay una localidad asignada a la sesion." }, { status: 403 });
@@ -251,7 +277,11 @@ async function proxy(req: NextRequest) {
       if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
         return NextResponse.json({ message: "Payload invalido" }, { status: 400 });
       }
-      body = JSON.stringify({ ...payload, localidadId: assignedLocalidadId });
+      body = JSON.stringify({
+        ...payload,
+        localidadId: assignedLocalidadId,
+        ...(restrictedCompany ? { empresaId: assignedEmpresaId } : {}),
+      });
       headers.set("content-type", "application/json");
     } else {
       body = await req.arrayBuffer();

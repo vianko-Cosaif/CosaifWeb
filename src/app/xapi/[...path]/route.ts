@@ -6,6 +6,7 @@ import { normalizeHttpOrigin } from "@/lib/serverOrigin";
 import { containsTrainingReservedId } from "@/lib/routePolicy";
 import { getVerifiedSession } from "@/lib/server/session";
 import { rejectCrossSiteMutation } from "@/lib/server/requestSecurity";
+import { getRoleCapabilities } from "@/lib/accessControl";
 
 const API_URL = normalizeHttpOrigin(process.env.API_ORIGIN);
 const TOKEN_COOKIE = process.env.JWT_COOKIE_NAME ?? "token";
@@ -37,8 +38,10 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
   const session = await getVerifiedSession();
   if (!token || !session) return NextResponse.json({ message: "No autenticado" }, { status: 401 });
   const role = session.role;
+  const assignedEmpresaId = Number(session.empresaId || 0);
   const assignedLocalidadId = Number(session.localidadId || 0);
   const restrictedLocality = role !== "ADMINISTRADOR";
+  const restrictedCompany = getRoleCapabilities(role).isClientLike;
 
   const orig = new URL(req.url);
   const scopedPath = [...path];
@@ -71,6 +74,34 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
     }
   }
 
+  if (restrictedCompany && (isMovementRequest || isTorreonMovementCreate)) {
+    if (!Number.isFinite(assignedEmpresaId) || assignedEmpresaId <= 0) {
+      return NextResponse.json({ message: "No hay una empresa asignada a la sesion." }, { status: 403 });
+    }
+
+    const requestedEmpresaId = Number(searchParams.get("empresaId") || 0);
+    if (requestedEmpresaId > 0 && requestedEmpresaId !== assignedEmpresaId) {
+      return NextResponse.json({ message: "Solo puedes consultar movimientos de tu empresa." }, { status: 403 });
+    }
+    searchParams.set("empresaId", String(assignedEmpresaId));
+
+    if (isMovementRequest && scopedPath[1] === "empresa" && Number(scopedPath[2]) !== assignedEmpresaId) {
+      return NextResponse.json({ message: "Solo puedes consultar movimientos de tu empresa." }, { status: 403 });
+    }
+
+    if (isMovementRequest && scopedPath[1] === "localidad" && scopedPath[3] === "pendientes") {
+      scopedPath.splice(
+        1,
+        scopedPath.length - 1,
+        "empresa",
+        String(assignedEmpresaId),
+        "localidad",
+        String(assignedLocalidadId),
+        "pendientes"
+      );
+    }
+  }
+
   const search = searchParams.toString();
   const destURL = `${API_URL}/${scopedPath.join("/")}${search ? `?${search}` : ""}`;
 
@@ -86,7 +117,11 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
       return NextResponse.json({ message: "Payload invalido" }, { status: 400 });
     }
-    body = JSON.stringify({ ...payload, localidadId: assignedLocalidadId });
+    body = JSON.stringify({
+      ...payload,
+      localidadId: assignedLocalidadId,
+      ...(restrictedCompany ? { empresaId: assignedEmpresaId } : {}),
+    });
     h.set("content-type", "application/json");
   } else if (hasBody) {
     body = (req as any).body;

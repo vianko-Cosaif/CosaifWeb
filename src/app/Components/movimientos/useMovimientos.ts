@@ -862,21 +862,27 @@ export function useMovimientos({
       if (event.type === "realtime.ready" || event.type === "realtime.resume") return true;
       if (!event.type) return false;
 
+      const refreshableTypes = new Set([
+        "movimiento.creado",
+        "movimiento.estado",
+        "movimiento.incidente",
+        "incidente.estado",
+      ]);
+      if (!refreshableTypes.has(String(event.type))) return false;
+
       const eventEmpresaId = Number(event.empresaId ?? NaN);
       const eventLocalidadId = Number(event.localidadId ?? NaN);
 
       if (
         filtros.empresaId != null &&
-        Number.isFinite(eventEmpresaId) &&
-        eventEmpresaId !== Number(filtros.empresaId)
+        (!Number.isFinite(eventEmpresaId) || eventEmpresaId !== Number(filtros.empresaId))
       ) {
         return false;
       }
 
       if (
         filtros.localidadId != null &&
-        Number.isFinite(eventLocalidadId) &&
-        eventLocalidadId !== Number(filtros.localidadId)
+        (!Number.isFinite(eventLocalidadId) || eventLocalidadId !== Number(filtros.localidadId))
       ) {
         return false;
       }
@@ -892,7 +898,7 @@ export function useMovimientos({
       if (typeof window === "undefined") return;
       if (realtimeRefreshTimerRef.current != null) return;
 
-      const jitterMs = 700 + Math.floor(Math.random() * 1_300);
+      const jitterMs = 150 + Math.floor(Math.random() * 350);
       realtimeRefreshTimerRef.current = window.setTimeout(() => {
         realtimeRefreshTimerRef.current = null;
         fetchMovimientos(true);
@@ -901,15 +907,8 @@ export function useMovimientos({
     [eventMatchesCurrentScope, fetchMovimientos]
   );
 
-  const realtimeLocalidadId = useMemo(() => {
-    const normalizedRole = String(rol || "").toUpperCase();
-    if (normalizedRole !== "COORDINADOR") return null;
-    return filtros.localidadId != null ? Number(filtros.localidadId) : null;
-  }, [rol, filtros.localidadId]);
-
   const realtimeStatus = useRealtimeMovimientos({
     enabled: true,
-    localidadId: realtimeLocalidadId,
     onEvent: scheduleRealtimeRefresh,
   });
 
@@ -925,13 +924,14 @@ export function useMovimientos({
     fetchMovimientos();
   }, [fetchMovimientos]);
 
-  /* ---------- Polling de respaldo cuando realtime no esta conectado ---------- */
+  /* ---------- Reconciliación periódica aunque realtime reporte conectado ---------- */
   useEffect(() => {
-    if (ambito !== "actuales" || realtimeStatus === "connected") {
-      return;
-    }
+    if (ambito !== "actuales") return;
 
-    const intervalMs = autoRefreshMs ?? DEFAULT_AUTO_REFRESH_MS;
+    const requestedInterval = autoRefreshMs ?? DEFAULT_AUTO_REFRESH_MS;
+    const intervalMs = realtimeStatus === "connected"
+      ? Math.max(30_000, requestedInterval)
+      : requestedInterval;
     const intervalId = setInterval(fetchMovimientos, intervalMs);
     return () => clearInterval(intervalId);
   }, [fetchMovimientos, ambito, autoRefreshMs, realtimeStatus]);

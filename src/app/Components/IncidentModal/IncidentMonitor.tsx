@@ -68,11 +68,12 @@ const eventMatchesScope = (
   empresaId: number | null,
   localidadId: number | null
 ) => {
+  if (event.type === "realtime.ready" || event.type === "realtime.resume") return true;
   const eventEmpresaId = Number(event.empresaId ?? NaN);
   const eventLocalidadId = Number(event.localidadId ?? NaN);
 
-  if (empresaId && Number.isFinite(eventEmpresaId) && eventEmpresaId !== empresaId) return false;
-  if (localidadId && Number.isFinite(eventLocalidadId) && eventLocalidadId !== localidadId) return false;
+  if (empresaId && (!Number.isFinite(eventEmpresaId) || eventEmpresaId !== empresaId)) return false;
+  if (localidadId && (!Number.isFinite(eventLocalidadId) || eventLocalidadId !== localidadId)) return false;
   return true;
 };
 

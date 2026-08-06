@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState, startTransition, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, startTransition, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { MapPin, Sparkles } from "lucide-react";
@@ -32,6 +32,11 @@ import {
   type RondaInfo,
   type Toast,
 } from "@/features/rail-queue";
+import {
+  playNotificationSound,
+  preloadNotificationSound,
+  primeNotificationSound,
+} from "@/lib/notificationSound";
 
 const API_BASE = API_BFF_BASE;
 const API_MEASURES = API_XAPI_BASE;
@@ -62,7 +67,6 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
   const [polling, setPolling] = useLocalStorageBoolean("rail-queue:polling", true);
 
   const [soundOn, setSoundOn] = useLocalStorageBoolean("rail-queue:soundOn", false);
-  const bellRef = useRef<HTMLAudioElement | null>(null);
 
   const { toasts, push: pushToast, dismiss } = useToasts();
   const { measuresModal, openMeasuresModal, closeMeasuresModal } =
@@ -76,6 +80,17 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
   const reqSeq = useRef(120);
   const abortRef = useRef<AbortController | null>(null);
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  useEffect(() => preloadNotificationSound(), []);
+
+  const toggleSound = useCallback(() => {
+    const next = !soundOn;
+    setSoundOn(next);
+    if (!next) return;
+    void primeNotificationSound().then((ready) => {
+      if (ready) void playNotificationSound("sonido_actualizado");
+    });
+  }, [setSoundOn, soundOn]);
 
   /* === Catálogo de localidades y selector === */
   const [localidades, setLocalidades] = useState<Localidad[]>([]);
@@ -288,8 +303,7 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
   useEffect(() => {
     const curId = items[0]?.id ?? null;
     if (soundOn && curId && lastCurrentId.current && curId !== lastCurrentId.current) {
-      const el = bellRef.current;
-      try { el?.pause?.(); if (el) { el.currentTime = 0; void el.play(); } } catch { }
+      void playNotificationSound("ronda_movimiento_iniciado");
     }
     lastCurrentId.current = curId;
   }, [items, soundOn]);
@@ -386,7 +400,7 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
               ) : (
                 <>
                   <Badge live={polling} label={`Últ. act: ${timeAgo(lastOkAt.current)}`} />
-                  <Btn onClick={() => setSoundOn((s) => !s)} active={soundOn} labelOn="Sonido" labelOff="Silencio" iconOn="🔔" iconOff="🔕" />
+                  <Btn onClick={toggleSound} active={soundOn} labelOn="Sonido" labelOff="Silencio" iconOn="🔔" iconOff="🔕" />
                   <Btn onClick={() => setPolling((p) => !p)} active={polling} labelOn="Auto" labelOff="Auto" iconOn="⏸️" iconOff="▶️" />
                   <Btn onClick={() => load(true)} disabled={refreshing} labelOn={refreshing ? "Actualizando…" : "Actualizar"} iconOn={refreshing ? "⟳" : "↻"} />
                 </>
@@ -440,11 +454,6 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
           />
         )}
       </section>
-
-      {/* Audio */}
-      <audio ref={bellRef} preload="auto" aria-hidden="true">
-        <source src="/sounds/notification.mp3" type="audio/mp3" />
-      </audio>
 
       <TornoMeasuresViewerModal
         open={measuresModal.open && !measuresModal.loading && !measuresModal.error}

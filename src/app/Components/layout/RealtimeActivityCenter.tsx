@@ -7,6 +7,7 @@ import {
   type RealtimeMovementEvent,
 } from "@/app/hooks/useRealtimeMovimientos";
 import { playNotificationSound } from "@/lib/notificationSound";
+import { getEmpresaIdClient, getLocIdClient } from "@/lib/cookies";
 
 type AppActivityEvent = {
   eventId?: string;
@@ -52,9 +53,45 @@ function eventDescription(event: RealtimeMovementEvent) {
 
 function realtimeSoundType(event: RealtimeMovementEvent) {
   const type = String(event.type ?? "");
-  if (type.includes("incidente")) return "nuevo_incidente";
-  if (type.endsWith(".creado")) return "nuevo_movimiento";
-  return type || "generic";
+  return [type, event.accion, event.estado]
+    .filter(Boolean)
+    .map(String)
+    .join("_") || "generic";
+}
+
+function currentViewerScope() {
+  let storedUser: Record<string, unknown> = {};
+  try {
+    storedUser = JSON.parse(window.localStorage.getItem("user") || "{}") as Record<string, unknown>;
+  } catch {
+    storedUser = {};
+  }
+  const role = String(storedUser.rol || storedUser.role || "").toUpperCase();
+  const empresaId = getEmpresaIdClient() ?? (Number(storedUser.empresaId || 0) || null);
+  const localidadId = getLocIdClient() ?? (Number(storedUser.localidadId || 0) || null);
+  return { role, empresaId, localidadId };
+}
+
+function eventMatchesViewerScope(event: RealtimeMovementEvent) {
+  const { role, empresaId, localidadId } = currentViewerScope();
+  if (!role || role === "ADMINISTRADOR") return true;
+
+  const eventEmpresaId = Number(event.empresaId ?? NaN);
+  const eventLocalidadId = Number(event.localidadId ?? NaN);
+  const isCompanyClient = ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON"].includes(role);
+  const isLocalityOperator = ["COORDINADOR", "SUPERVISOR", "MAQUINISTA", "MAQUINISTA_ARRASTRE"].includes(role);
+
+  if (isCompanyClient && empresaId && (!Number.isFinite(eventEmpresaId) || eventEmpresaId !== empresaId)) {
+    return false;
+  }
+  if (
+    (role === "CLIENTE" || role === "ARRASTRE_TORREON" || isLocalityOperator) &&
+    localidadId &&
+    (!Number.isFinite(eventLocalidadId) || eventLocalidadId !== localidadId)
+  ) {
+    return false;
+  }
+  return true;
 }
 
 export default function RealtimeActivityCenter() {
@@ -78,6 +115,7 @@ export default function RealtimeActivityCenter() {
       const event = (raw as CustomEvent<RealtimeMovementEvent>).detail;
       const type = String(event?.type ?? "");
       if (!event || type.startsWith("realtime.")) return;
+      if (!eventMatchesViewerScope(event)) return;
       const item: ActivityItem = {
         eventId: event.eventId ?? `${type}-${event.entityId ?? event.movimientoId ?? event.arrastreId ?? Date.now()}`,
         title: eventTitle(event),
