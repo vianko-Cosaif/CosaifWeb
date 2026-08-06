@@ -570,10 +570,13 @@ function bindLifecycleListeners() {
   });
 }
 
-function startRealtime(sseUrl: string, wsConfigUrl: string, localidadId?: number | null) {
+function startRealtime(sseUrl: string, wsConfigUrl: string) {
   bindLifecycleListeners();
-  const nextSseUrl = scopedUrl(sseUrl || DEFAULT_REALTIME_SSE_URL, localidadId);
-  const nextWsConfigUrl = scopedUrl(wsConfigUrl, localidadId);
+  // La conexión es un singleton compartido por toda la PWA. El backend ya
+  // limita la audiencia por usuario y cada consumidor filtra su propia vista;
+  // aplicar aquí el alcance de un consumidor hacía que otro cerrara el canal.
+  const nextSseUrl = scopedUrl(sseUrl || DEFAULT_REALTIME_SSE_URL);
+  const nextWsConfigUrl = scopedUrl(wsConfigUrl);
   const shouldReconnect =
     streamState.sseUrl !== nextSseUrl || streamState.wsConfigUrl !== nextWsConfigUrl;
 
@@ -606,7 +609,6 @@ export function useRealtimeMovimientos({
   enabled = true,
   url = DEFAULT_REALTIME_SSE_URL,
   wsConfigUrl = DEFAULT_REALTIME_WS_CONFIG_URL,
-  localidadId = null,
   onEvent,
 }: {
   enabled?: boolean;
@@ -635,13 +637,13 @@ export function useRealtimeMovimientos({
 
     const subscriber: Subscriber = (event) => onEventRef.current(event);
     subscribers.add(subscriber);
-    startRealtime(url, wsConfigUrl, localidadId);
+    startRealtime(url, wsConfigUrl);
 
     return () => {
       subscribers.delete(subscriber);
       if (subscribers.size === 0) stopRealtime();
     };
-  }, [enabled, url, wsConfigUrl, localidadId]);
+  }, [enabled, url, wsConfigUrl]);
 
   return status;
 }

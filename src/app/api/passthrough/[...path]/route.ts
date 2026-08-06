@@ -32,6 +32,7 @@ async function forward(req: NextRequest, ctx: RouteCtx) {
     return NextResponse.json({ message: "Ruta inválida" }, { status: 400 });
   }
   const hasBody = !["GET", "HEAD"].includes(req.method);
+  const isRealtimeStream = req.method === "GET" && path.join("/") === "realtime/events";
   const jsonBody = hasBody && (req.headers.get("content-type") || "").includes("application/json")
     ? await req.clone().json().catch(() => null)
     : null;
@@ -72,8 +73,13 @@ async function forward(req: NextRequest, ctx: RouteCtx) {
 
   const responseHeaders = new Headers({
     "content-type": upstream.headers.get("content-type") || "application/json",
-    "cache-control": "no-store",
+    "cache-control": isRealtimeStream ? "no-cache, no-transform" : "no-store",
   });
+  if (isRealtimeStream) {
+    // Sin esta cabecera Nginx retiene el evento `realtime.ready`; el navegador
+    // vence a los 10 s y entra en un ciclo conectar/desconectar.
+    responseHeaders.set("x-accel-buffering", "no");
+  }
   for (const name of ["content-disposition", "content-range", "etag"]) {
     const value = upstream.headers.get(name);
     if (value) responseHeaders.set(name, value);
@@ -84,6 +90,7 @@ async function forward(req: NextRequest, ctx: RouteCtx) {
 }
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 // Exporta todos los verbos usando el mismo forward
 export async function GET(req: NextRequest, ctx: RouteCtx)  { return forward(req, ctx); }
