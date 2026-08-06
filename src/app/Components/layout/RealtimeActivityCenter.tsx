@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Bell, Wifi, WifiOff, X } from "lucide-react";
-import type { RealtimeMovementEvent } from "@/app/hooks/useRealtimeMovimientos";
+import {
+  useRealtimeMovimientos,
+  type RealtimeMovementEvent,
+} from "@/app/hooks/useRealtimeMovimientos";
+import { playNotificationSound } from "@/lib/notificationSound";
 
 type AppActivityEvent = {
   eventId?: string;
@@ -22,6 +26,7 @@ type ActivityItem = {
 };
 
 function eventTitle(event: RealtimeMovementEvent) {
+  const type = String(event.type ?? "");
   const action = String(event.accion ?? "").replaceAll("_", " ").trim();
   const entity = event.arrastreId
     ? `Arrastre #${event.arrastreId}`
@@ -30,7 +35,26 @@ function eventTitle(event: RealtimeMovementEvent) {
       : event.incidenteId
         ? `Incidente #${event.incidenteId}`
         : "Operación";
+  if (type === "movimiento.creado") return `Nuevo ${entity.toLowerCase()}`;
+  if (type === "movimiento.incidente") return `${entity}: incidente reportado`;
+  if (type === "incidente.estado") return `${entity}: estado actualizado`;
   return action ? `${entity}: ${action}` : `${entity} actualizado`;
+}
+
+function eventDescription(event: RealtimeMovementEvent) {
+  const details = [
+    event.descripcion ? String(event.descripcion) : null,
+    event.locomotiveNumber ? `Locomotora ${event.locomotiveNumber}` : null,
+    event.estado ? `Estado: ${event.estado}` : null,
+  ].filter(Boolean);
+  return details.join(" · ") || undefined;
+}
+
+function realtimeSoundType(event: RealtimeMovementEvent) {
+  const type = String(event.type ?? "");
+  if (type.includes("incidente")) return "nuevo_incidente";
+  if (type.endsWith(".creado")) return "nuevo_movimiento";
+  return type || "generic";
 }
 
 export default function RealtimeActivityCenter() {
@@ -39,6 +63,10 @@ export default function RealtimeActivityCenter() {
   const [toast, setToast] = useState<ActivityItem | null>(null);
   const [lastReadAt, setLastReadAt] = useState(() => Date.now());
   const [incidentStatus, setIncidentStatus] = useState({ activeCount: 0, connected: true });
+
+  // Mantiene WebSocket/SSE activo en cualquier pantalla que use el shell,
+  // aunque el tablero visible no tenga su propia suscripcion.
+  useRealtimeMovimientos({ onEvent: () => undefined });
 
   const pushItem = useCallback((item: ActivityItem, showToast = false) => {
     setItems((current) => [item, ...current.filter((entry) => entry.eventId !== item.eventId)].slice(0, 40));
@@ -53,12 +81,15 @@ export default function RealtimeActivityCenter() {
       const item: ActivityItem = {
         eventId: event.eventId ?? `${type}-${event.entityId ?? event.movimientoId ?? event.arrastreId ?? Date.now()}`,
         title: eventTitle(event),
-        description: event.estado ? `Estado: ${event.estado}` : event.descripcion ?? undefined,
+        description: eventDescription(event),
         source: event.source ? String(event.source).toUpperCase() : "Realtime",
         kind: "realtime",
         receivedAt: Date.now(),
       };
-      pushItem(item, !type.includes("incidente"));
+      // Todo evento operativo recibido por socket debe dejar una señal visible
+      // dentro de la PWA, incluidos los incidentes.
+      pushItem(item, true);
+      void playNotificationSound(realtimeSoundType(event));
     };
 
     const onAppActivity = (raw: Event) => {
@@ -152,11 +183,14 @@ export default function RealtimeActivityCenter() {
         <button
           type="button"
           onClick={() => { openActivity(); setToast(null); }}
-          className="fixed right-4 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[70] max-w-sm rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-4 py-3 text-left text-sm text-[var(--app-text)] shadow-[var(--app-shadow-md)]"
+          className="fixed right-4 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[1070] w-[min(calc(100vw-2rem),390px)] rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-4 py-3 text-left text-sm text-[var(--app-text)] shadow-[var(--app-shadow-md)]"
           aria-label={`Abrir actividad: ${toast.title}`}
+          role={toast.title.toLowerCase().includes("incidente") ? "alert" : "status"}
+          aria-live={toast.title.toLowerCase().includes("incidente") ? "assertive" : "polite"}
         >
-          <span className="block text-xs font-bold text-[var(--app-accent)]">Actualización en tiempo real</span>
-          <span className="mt-1 block">{toast.title}</span>
+          <span className="block text-xs font-bold text-[var(--app-accent)]">Notificación en tiempo real</span>
+          <span className="mt-1 block font-semibold">{toast.title}</span>
+          {toast.description ? <span className="mt-1 block text-xs text-[var(--app-text-muted)]">{toast.description}</span> : null}
         </button>
       ) : null}
 

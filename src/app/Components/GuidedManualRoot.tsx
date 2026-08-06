@@ -563,7 +563,16 @@ export default function GuidedManualRoot({ children }: { children: React.ReactNo
       const execute = () => {
         if (action.type === "click" && action.selector) {
           const node = document.querySelector(action.selector) as HTMLElement | null;
-          node?.click();
+          if (node) {
+            const previousMarker = node.getAttribute("data-guide-internal-action");
+            node.setAttribute("data-guide-internal-action", "true");
+            try {
+              node.click();
+            } finally {
+              if (previousMarker === null) node.removeAttribute("data-guide-internal-action");
+              else node.setAttribute("data-guide-internal-action", previousMarker);
+            }
+          }
           return;
         }
 

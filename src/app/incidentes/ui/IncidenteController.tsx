@@ -27,7 +27,13 @@ import {
 import { useSearchParams } from "next/navigation";
 import { fetchJSON } from "@/lib/api";
 import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
+import { isTrainingIncidentId } from "@/lib/routePolicy";
 import { SearchInput } from "@/app/Components/ui";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
+import {
+  TRAINING_INCIDENT_ID,
+  useTrainingTour,
+} from "@/app/Components/GuidedManualAtom/TrainingTourContext";
 import { IncidentCatalogSelect, IncidentStatCard } from "@/features/incidentes";
 import { useRealtimeMovimientos, type RealtimeMovementEvent } from "@/app/hooks/useRealtimeMovimientos";
 import { playNotificationSound } from "@/lib/notificationSound";
@@ -242,7 +248,7 @@ function useUserRole(): {
       const userString =
         typeof window !== "undefined" ? localStorage.getItem("user") : null;
       const user = userString ? JSON.parse(userString) : {};
-      const roleCookie = (getCookie("role") || user.rol || "CLIENTE") as Role;
+      const roleCookie = String(getCookie("role") || user.rol || "CLIENTE").toUpperCase() as Role;
       const locFromCookie = Number(getCookie("locId") || "") || null;
 
       setUserInfo({
@@ -294,6 +300,7 @@ function useNotifications() {
 }
 
 export default function IncidenteController() {
+  const trainingTour = useTrainingTour();
   const searchParams = useSearchParams();
   const initialSource: IncidentSource =
     String(searchParams.get("source") || "").toLowerCase() === "torreon" ? "torreon" : "cosaif";
@@ -305,8 +312,14 @@ export default function IncidenteController() {
   const { notification, showNotification, hideNotification } =
     useNotifications();
 
-  const isLimitedClientView = role === "CLIENTE";
-  // const canSeeEverything = ["ADMINISTRADOR", "SUPERVISOR", "COORDINADOR"].includes(role);
+  const isLimitedClientView = ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"].includes(role);
+  const isLocalityScopedView = [
+    "CLIENTE",
+    "CLIENTE_ADMIN",
+    "CLIENTE_COOR",
+    "COORDINADOR",
+    "SUPERVISOR",
+  ].includes(role);
 
   const tabs: Tab[] = ["Actuales", "Pasados"];
   const [activeTab, setActiveTab] = useState<Tab>("Actuales");
@@ -325,7 +338,7 @@ export default function IncidenteController() {
     source: initialSource,
     torreonTipo: initialTorreonTipo,
     empresaId: isLimitedClientView ? userEmpresaId : null,
-    localidadId: isLimitedClientView ? userLocalidadId : null,
+    localidadId: isLocalityScopedView ? userLocalidadId : null,
     searchQuery: "",
   });
   const isTorreonScope = filters.source === "torreon" || isTorreonLocalidadId(filters.localidadId);
@@ -361,93 +374,59 @@ export default function IncidenteController() {
   const [modalKey, setModalKey] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
   const realtimeRefreshTimerRef = useRef<number | null>(null);
+  const incidentActionLockRef = useRef(false);
   const [isPending, startTransition] = useTransition();
 
-  /** Sincroniza filtros iniciales cuando llegue user info (solo cliente) */
+  /** Fuerza la localidad de la sesión para cliente, coordinador y supervisor. */
   useEffect(() => {
-    if (isLimitedClientView) {
-      setFilters((prev) => ({
-        ...prev,
-        empresaId: userEmpresaId ?? prev.empresaId,
-        localidadId: userLocalidadId ?? prev.localidadId,
-      }));
-    }
-  }, [isLimitedClientView, userEmpresaId, userLocalidadId]);
+    if (!isLocalityScopedView) return;
+    setFilters((prev) => ({
+      ...prev,
+      empresaId: isLimitedClientView ? userEmpresaId ?? prev.empresaId : prev.empresaId,
+      localidadId: userLocalidadId,
+      source: isTorreonLocalidadId(userLocalidadId) ? "torreon" : "cosaif",
+      torreonTipo: isTorreonLocalidadId(userLocalidadId) ? prev.torreonTipo : "TODOS",
+    }));
+  }, [isLimitedClientView, isLocalityScopedView, userEmpresaId, userLocalidadId]);
 
   /** Carga catálogos de empresas y localidades */
   useEffect(() => {
     const load = async () => {
       setCatalogues((p) => ({ ...p, loading: true }));
       try {
-        if (!isLimitedClientView) {
-          const [empresasResponse, localidadesResponse] = await Promise.all([
-            withCreds<any>(EMPRESAS),
-            withCreds<any>(LOCALIDADES),
-          ]);
+        const [empresasResponse, localidadesResponse] = await Promise.all([
+          isLimitedClientView
+            ? userEmpresaId ? withCreds<any>(`${EMPRESAS}/${userEmpresaId}`) : null
+            : withCreds<any>(EMPRESAS),
+          isLocalityScopedView
+            ? userLocalidadId ? withCreds<any>(`${LOCALIDADES}/${userLocalidadId}`) : null
+            : withCreds<any>(LOCALIDADES),
+        ]);
 
-          const empresasArray = Array.isArray(empresasResponse)
-            ? empresasResponse
-            : (empresasResponse as any)?.data;
-          const localidadesArray = Array.isArray(localidadesResponse)
-            ? localidadesResponse
-            : (localidadesResponse as any)?.data;
+        const toOptions = (response: any, fallbackPrefix: string): DropdownOption[] => {
+          if (!response) return [];
+          const data = response.data ?? response;
+          const rows = Array.isArray(data) ? data : [data];
+          return rows
+            .filter((row: any) => Number(row?.id) > 0)
+            .map((row: any) => ({
+              id: Number(row.id),
+              nombre: row.nombre ?? `${fallbackPrefix} #${row.id}`,
+            }));
+        };
 
-          setCatalogues({
-            empresas: (empresasArray || []).map((e: any) => ({
-              id: e.id,
-              nombre: e.nombre,
-            })),
-            localidades: (localidadesArray || []).map((l: any) => ({
-              id: l.id,
-              nombre: l.nombre,
-            })),
-            loading: false,
-          });
-        } else {
-          const [empRes, locRes] = await Promise.all([
-            userEmpresaId ? withCreds<any>(`${EMPRESAS}/${userEmpresaId}`) : null,
-            userLocalidadId
-              ? withCreds<any>(`${LOCALIDADES}/${userLocalidadId}`)
-              : null,
-          ]);
-
-          const unwrapSingle = (res: any) => {
-            if (!res) return null;
-            const data = res.data ?? res;
-            if (Array.isArray(data)) return data[0] ?? null;
-            return data;
-          };
-
-          const emp = unwrapSingle(empRes);
-          const loc = unwrapSingle(locRes);
-
-          setCatalogues({
-            empresas: emp?.id
-              ? [
-                {
-                  id: emp.id,
-                  nombre: emp.nombre ?? `Empresa #${emp.id}`,
-                },
-              ]
-              : [],
-            localidades: loc?.id
-              ? [
-                {
-                  id: loc.id,
-                  nombre: loc.nombre ?? `Localidad #${loc.id}`,
-                },
-              ]
-              : [],
-            loading: false,
-          });
-        }
+        setCatalogues({
+          empresas: toOptions(empresasResponse, "Empresa"),
+          localidades: toOptions(localidadesResponse, "Localidad"),
+          loading: false,
+        });
       } catch {
         setCatalogues((p) => ({ ...p, loading: false }));
         showNotification("error", "Error al cargar catálogos");
       }
     };
     load();
-  }, [isLimitedClientView, userEmpresaId, userLocalidadId, showNotification]);
+  }, [isLimitedClientView, isLocalityScopedView, userEmpresaId, userLocalidadId, showNotification]);
 
   /** Construye URL del API de incidentes */
   const buildApiUrl = useCallback(
@@ -608,14 +587,15 @@ export default function IncidenteController() {
 
   /** Carga datos cuando cambian filtros / tab */
   useEffect(() => {
-    if (isLimitedClientView && (!filters.empresaId || !filters.localidadId))
-      return;
+    if (isLocalityScopedView && !filters.localidadId) return;
+    if (isLimitedClientView && !filters.empresaId) return;
 
     startTransition(() => {
       fetchIncidents(1);
     });
   }, [
     isLimitedClientView,
+    isLocalityScopedView,
     filters.empresaId,
     filters.localidadId,
     activeTab,
@@ -650,6 +630,9 @@ export default function IncidenteController() {
   const handleFilterChange = useCallback(
     (filterKey: keyof FilterState, value: any) => {
       setFilters((prev) => {
+        if (isLocalityScopedView && (filterKey === "localidadId" || filterKey === "source")) {
+          return prev;
+        }
         const next = { ...prev, [filterKey]: value };
         if (filterKey === "localidadId" && isTorreonLocalidadId(value)) {
           next.source = "torreon";
@@ -661,20 +644,24 @@ export default function IncidenteController() {
         return next;
       });
     },
-    []
+    [isLocalityScopedView]
   );
 
   const handleClearFilters = useCallback(() => {
     setFilters((prev) => ({
       ...prev,
-      empresaId: null,
-      localidadId: null,
-      torreonTipo: "TODOS",
+      empresaId: isLimitedClientView ? userEmpresaId : null,
+      localidadId: isLocalityScopedView ? userLocalidadId : null,
+      source: isLocalityScopedView && isTorreonLocalidadId(userLocalidadId) ? "torreon" : "cosaif",
+      torreonTipo: isLocalityScopedView && isTorreonLocalidadId(userLocalidadId) ? prev.torreonTipo : "TODOS",
     }));
-  }, []);
+  }, [isLimitedClientView, isLocalityScopedView, userEmpresaId, userLocalidadId]);
 
   const handleIncidentSelect = useCallback((incident: any) => {
-    const original = incident._original;
+    const original = {
+      ...incident._original,
+      _openedDuringTraining: trainingTour.active,
+    };
     setUiState((prev) => ({
       ...prev,
       selectedIncident: original,
@@ -705,14 +692,43 @@ export default function IncidenteController() {
         ));
       })
       .catch(() => undefined);
-  }, []);
+  }, [trainingTour.active]);
 
   const handleIncidentAction = useCallback(
     async (action: "resolve" | "skip", comments?: string) => {
-      if (!uiState.selectedIncident) return;
+      if (!uiState.selectedIncident || incidentActionLockRef.current) return;
       const selectedIncident = uiState.selectedIncident;
+      incidentActionLockRef.current = true;
 
       try {
+        const incidentId = Number(selectedIncident.id ?? selectedIncident.incidenteId);
+        const sandboxSelection = trainingTour.active || selectedIncident._openedDuringTraining === true;
+        if (sandboxSelection || isTrainingIncidentId(incidentId)) {
+          if (incidentId !== TRAINING_INCIDENT_ID) {
+            showNotification(
+              "error",
+              "En capacitación sólo puedes actuar sobre SIM-INC-041. No se modificó ningún incidente real.",
+            );
+            return;
+          }
+
+          trainingTour.resolveIncident(action, comments);
+          showNotification(
+            "success",
+            action === "resolve"
+              ? "Incidente SIM resuelto sólo en capacitación"
+              : "Incidente SIM omitido sólo en capacitación",
+          );
+          setUiState((previous) => ({
+            ...previous,
+            refreshing: false,
+            blockerVisible: false,
+            selectedIncident: null,
+          }));
+          setModalKey((key) => key + 1);
+          return;
+        }
+
         setUiState((prev) => ({ ...prev, refreshing: true }));
 
         if (action === "resolve") {
@@ -755,16 +771,62 @@ export default function IncidenteController() {
         const message = error instanceof Error ? error.message : "Error al procesar incidente";
         showNotification("error", message);
         throw error;
+      } finally {
+        incidentActionLockRef.current = false;
       }
     },
-    [uiState.selectedIncident, fetchIncidents, incidentData.meta.page, showNotification]
+    [uiState.selectedIncident, fetchIncidents, incidentData.meta.page, showNotification, trainingTour]
   );
 
   /** Filtro local por búsqueda */
   const filteredIncidents = useMemo(() => {
-    if (!filters.searchQuery.trim()) return incidentData.data;
+    const trainingIsInCurrentTab = trainingTour.active && (
+      activeTab === "Actuales"
+        ? trainingTour.incidentStatus === "ABIERTO"
+        : trainingTour.incidentStatus !== "ABIERTO"
+    );
+    const trainingOriginal = {
+      id: TRAINING_INCIDENT_ID,
+      incidenteId: TRAINING_INCIDENT_ID,
+      descripcion: "SIM-INC-041 · Obstáculo detectado durante una maniobra de capacitación.",
+      estado: trainingTour.incidentStatus === "ABIERTO" ? "ABIERTO" : trainingTour.incidentStatus === "RESUELTO" ? "RESUELTO" : "CERRADO",
+      fechaInicio: new Date(Date.now() - 120_000).toISOString(),
+      localidadId: filters.localidadId || 1,
+      _source: "cosaif",
+      imagenes: [],
+      operadorComentario: "Verifica el área, documenta la acción y elige resolver u omitir conscientemente.",
+      movimiento: {
+        id: 910_000_204,
+        localidadId: filters.localidadId || 1,
+        locomotiveNumber: "SIM-L204",
+        empresa: { nombre: "Empresa de capacitación" },
+      },
+    };
+    const trainingRow: IncidenteRow = {
+      id: TRAINING_INCIDENT_ID,
+      fecha: new Date().toLocaleDateString("es-MX"),
+      fechaISO: trainingOriginal.fechaInicio,
+      estatus: trainingOriginal.estado === "ABIERTO" ? "Requiere atención" : trainingOriginal.estado === "RESUELTO" ? "Resuelto" : "Cerrado",
+      estadoRaw: trainingOriginal.estado,
+      empresa: "Empresa de capacitación",
+      empresaId: filters.empresaId || 91_001,
+      localidad: "Localidad de capacitación",
+      localidadId: filters.localidadId || 1,
+      locomotora: "SIM-L204",
+      origen: "Vía 2",
+      destino: "Vía 4",
+      descripcion: trainingOriginal.descripcion,
+      usuario: "Operador SIM",
+      fuente: "Capacitación",
+      tipoIncidente: "Natural · SIM",
+      _original: trainingOriginal,
+    };
+    const rows = trainingIsInCurrentTab
+      ? [trainingRow, ...incidentData.data.filter((incident) => Number(incident.id) !== TRAINING_INCIDENT_ID)]
+      : incidentData.data;
+    if (!filters.searchQuery.trim()) return rows;
     const searchTerm = filters.searchQuery.toLowerCase();
-    return incidentData.data.filter((incident) =>
+    return rows.filter((incident) =>
       [
         incident.id,
         incident.fecha,
@@ -780,7 +842,7 @@ export default function IncidenteController() {
         .map((v) => String(v ?? "").toLowerCase())
         .some((t) => t.includes(searchTerm))
     );
-  }, [incidentData.data, filters.searchQuery]);
+  }, [activeTab, incidentData.data, filters.empresaId, filters.localidadId, filters.searchQuery, trainingTour.active, trainingTour.incidentStatus]);
 
 
   // Calculate Stats
@@ -828,7 +890,7 @@ export default function IncidenteController() {
   );
 
   return (
-    <div className="flex w-full flex-col min-h-screen bg-slate-50/50 dark:bg-slate-950/50">
+    <GuidedTarget id="incidents-center" className="flex min-h-screen w-full flex-col bg-slate-50/50 dark:bg-slate-950/50">
       {renderNotification()}
 
       {/* Header Bar */}
@@ -838,7 +900,7 @@ export default function IncidenteController() {
             {/* Title / Brand area if needed, otherwise Tabs & Status */}
             <div className="flex flex-wrap items-center gap-2">
               {/* Tabs */}
-              <div className="inline-flex rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+              <GuidedTarget id="incidents-scope-tabs" className="inline-flex rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
                 {tabs.map((tab) => {
                   const isActive = activeTab === tab;
                   // const count = tab === "Actuales" ? totalActivos : (incidentData.meta.total || 0) - totalActivos; // Roughly
@@ -846,6 +908,7 @@ export default function IncidenteController() {
                     <button
                       key={tab}
                       onClick={() => handleTabChange(tab)}
+                      aria-pressed={isActive}
                       className={`relative flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${isActive
                         ? "bg-white text-slate-800 shadow-sm dark:bg-slate-700 dark:text-white"
                         : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
@@ -859,9 +922,9 @@ export default function IncidenteController() {
                     </button>
                   );
                 })}
-              </div>
+              </GuidedTarget>
 
-              <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+              <GuidedTarget id="incidents-source-tabs" className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900">
                 {[
                   { value: "cosaif", label: "Cosaif / GDL" },
                   { value: "torreon", label: "Torreón" },
@@ -872,19 +935,22 @@ export default function IncidenteController() {
                       key={option.value}
                       type="button"
                       onClick={() => handleFilterChange("source", option.value)}
+                      aria-pressed={isActive}
+                      disabled={isLocalityScopedView}
+                      title={isLocalityScopedView ? "La fuente depende de tu localidad asignada" : undefined}
                       className={`rounded-lg px-3 py-2 text-xs font-black uppercase tracking-wide transition ${isActive
                         ? "bg-slate-950 text-white shadow-sm dark:bg-white dark:text-slate-950"
                         : "text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-                        }`}
+                        } ${isLocalityScopedView ? "cursor-not-allowed opacity-60" : ""}`}
                     >
                       {option.label}
                     </button>
                   );
                 })}
-              </div>
+              </GuidedTarget>
 
               {isTorreonScope && (
-                <div className="inline-flex rounded-xl border border-emerald-200 bg-emerald-50/70 p-1 dark:border-emerald-800 dark:bg-emerald-950/30">
+                <GuidedTarget id="incidents-torreon-type-tabs" className="inline-flex rounded-xl border border-emerald-200 bg-emerald-50/70 p-1 dark:border-emerald-800 dark:bg-emerald-950/30">
                   {[
                     { value: "TODOS", label: "Todos" },
                     { value: "NATURAL", label: "Naturales" },
@@ -896,6 +962,7 @@ export default function IncidenteController() {
                         key={option.value}
                         type="button"
                         onClick={() => handleFilterChange("torreonTipo", option.value)}
+                        aria-pressed={isActive}
                         className={`rounded-lg px-3 py-2 text-xs font-black uppercase tracking-wide transition ${isActive
                           ? "bg-emerald-600 text-white shadow-sm"
                           : "text-emerald-700 hover:bg-white/70 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
@@ -905,7 +972,7 @@ export default function IncidenteController() {
                       </button>
                     );
                   })}
-                </div>
+                </GuidedTarget>
               )}
 
               {/* Last update pill */}
@@ -932,16 +999,18 @@ export default function IncidenteController() {
 
             {/* Search & Actions */}
             <div className="flex flex-1 items-center justify-end gap-3 w-full xl:w-auto">
-              <SearchInput
-                ref={searchRef}
-                value={filters.searchQuery}
-                onChange={(value) => handleFilterChange("searchQuery", value)}
-                onClear={() => handleFilterChange("searchQuery", "")}
-                placeholder="Buscar por ID, empresa, via..."
-                label="Buscar incidentes"
-                className="w-full max-w-md"
-                inputClassName="h-10 bg-slate-50/50 font-medium focus:border-emerald-500 focus:bg-white focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800/50 dark:focus:bg-slate-900"
-              />
+              <GuidedTarget id="incidents-search" className="w-full max-w-md">
+                <SearchInput
+                  ref={searchRef}
+                  value={filters.searchQuery}
+                  onChange={(value) => handleFilterChange("searchQuery", value)}
+                  onClear={() => handleFilterChange("searchQuery", "")}
+                  placeholder="Buscar por ID, empresa, via..."
+                  label="Buscar incidentes"
+                  className="w-full"
+                  inputClassName="h-10 bg-slate-50/50 font-medium focus:border-emerald-500 focus:bg-white focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800/50 dark:focus:bg-slate-900"
+                />
+              </GuidedTarget>
 
               {/* Mobile Filter Toggle */}
               <button
@@ -968,7 +1037,8 @@ export default function IncidenteController() {
                       value={filters.localidadId}
                       onChange={(v: number | null) => handleFilterChange("localidadId", v)}
                       options={catalogues.localidades}
-                      placeholder="Todas las Localidades"
+                      placeholder={isLocalityScopedView ? "Localidad asignada" : "Todas las Localidades"}
+                      disabled={isLocalityScopedView}
                     />
                   </>
                 )}
@@ -1000,7 +1070,8 @@ export default function IncidenteController() {
                     value={filters.localidadId}
                     onChange={(v: number | null) => handleFilterChange("localidadId", v)}
                     options={catalogues.localidades}
-                    placeholder="Todas las Localidades"
+                    placeholder={isLocalityScopedView ? "Localidad asignada" : "Todas las Localidades"}
+                    disabled={isLocalityScopedView}
                     fullWidth
                   />
                 </>
@@ -1027,7 +1098,7 @@ export default function IncidenteController() {
 
         {/* STATS CARDS - Placed ABOVE table */}
         {!incidentData.error && incidentData.data.length > 0 && (
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <GuidedTarget id="incidents-summary" className="grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-bottom-4 duration-500 sm:gap-4 xl:grid-cols-4">
             <IncidentStatCard
               label="Total Incidentes"
               value={incidentData.data.length}
@@ -1052,7 +1123,7 @@ export default function IncidenteController() {
               icon={BriefcaseBusiness}
               color="indigo"
             />
-          </div>
+          </GuidedTarget>
         )}
 
         {/* Error State */}
@@ -1072,7 +1143,7 @@ export default function IncidenteController() {
 
         {/* Table Container */}
         {!incidentData.error && (
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden relative dark:border-slate-800 dark:bg-slate-900 animate-in fade-in duration-700">
+          <GuidedTarget id="incidents-list" className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm animate-in fade-in duration-700 dark:border-slate-800 dark:bg-slate-900">
             {(incidentData.loading || isPending) && (
               <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 backdrop-blur-[2px] dark:bg-slate-900/60">
                 <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-xl flex flex-col items-center gap-3 border border-slate-100 dark:border-slate-700">
@@ -1096,7 +1167,7 @@ export default function IncidenteController() {
                 />
               </div>
             </div>
-          </div>
+          </GuidedTarget>
         )}
       </div>
 
@@ -1130,6 +1201,6 @@ export default function IncidenteController() {
           />
         )
       )}
-    </div>
+    </GuidedTarget>
   );
 }

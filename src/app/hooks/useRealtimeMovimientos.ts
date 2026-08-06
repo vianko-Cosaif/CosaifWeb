@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { handleAuthError } from "@/app/utils/auth";
 
 export type RealtimeMovementEventType =
   | "movimiento.creado"
@@ -93,6 +94,12 @@ const streamState: StreamState = {
 
 let lifecycleListenersBound = false;
 const suppressedReconnectSockets = new WeakSet<WebSocket>();
+
+class RealtimeAuthError extends Error {}
+
+function warnInDevelopment(message: string, error: unknown) {
+  if (process.env.NODE_ENV !== "production") console.warn(message, error);
+}
 
 function browserIsOnline() {
   return typeof navigator === "undefined" || navigator.onLine !== false;
@@ -275,6 +282,7 @@ async function connectStream(url: string, token: number) {
   const abortController = new AbortController();
   streamState.abortController = abortController;
   const connectionTimeoutId = window.setTimeout(() => abortController.abort(), 10_000);
+  let connectedAt = 0;
 
   try {
     const response = await fetch(url, {
@@ -286,22 +294,33 @@ async function connectStream(url: string, token: number) {
     });
     window.clearTimeout(connectionTimeoutId);
 
+    if (response.status === 401 || response.status === 403) {
+      throw new RealtimeAuthError(`Realtime SSE HTTP ${response.status}`);
+    }
     if (!response.ok) throw new Error(`Realtime SSE HTTP ${response.status}`);
+    const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+    if (!contentType.includes("text/event-stream")) {
+      throw new Error("Realtime SSE respondió con un formato inválido");
+    }
     if (streamState.connectionToken !== token || !streamState.running) {
       abortController.abort();
       return;
     }
 
-    streamState.attempt = 0;
+    connectedAt = Date.now();
     markActivity();
     setRealtimeStatus("connected");
     await readSseStream(response, abortController.signal);
   } catch (error) {
-    if (!abortController.signal.aborted) {
-      console.warn("[realtime] SSE cerrada:", error);
+    if (error instanceof RealtimeAuthError) {
+      stopRealtime();
+      handleAuthError();
+    } else if (!abortController.signal.aborted) {
+      warnInDevelopment("[realtime] SSE cerrada:", error);
     }
   } finally {
     window.clearTimeout(connectionTimeoutId);
+    if (connectedAt && Date.now() - connectedAt >= 30_000) streamState.attempt = 0;
     if (streamState.abortController === abortController) {
       streamState.abortController = null;
     }
@@ -337,6 +356,9 @@ async function resolveWebSocketUrl(configUrl: string): Promise<string> {
     window.clearTimeout(timeoutId);
   }
 
+  if (response.status === 401 || response.status === 403) {
+    throw new RealtimeAuthError(`Realtime WS config HTTP ${response.status}`);
+  }
   if (!response.ok) throw new Error(`Realtime WS config HTTP ${response.status}`);
   const payload = (await response.json()) as { url?: string | null; transport?: string; reason?: string };
   if (payload.transport && payload.transport !== "websocket") {
@@ -383,6 +405,7 @@ async function connectWebSocket(configUrl: string, token: number): Promise<void>
 
   return new Promise((resolve, reject) => {
     let settled = false;
+    let openedAt = 0;
     const timeoutId = window.setTimeout(() => {
       if (settled) return;
       settled = true;
@@ -406,7 +429,7 @@ async function connectWebSocket(configUrl: string, token: number): Promise<void>
         return;
       }
       settled = true;
-      streamState.attempt = 0;
+      openedAt = Date.now();
       markActivity();
       setRealtimeStatus("connected");
       startWebSocketHealthTimer(ws);
@@ -445,6 +468,7 @@ async function connectWebSocket(configUrl: string, token: number): Promise<void>
         suppressedReconnectSockets.delete(ws);
         return;
       }
+      if (openedAt && Date.now() - openedAt >= 30_000) streamState.attempt = 0;
       if (streamState.running && subscribers.size > 0 && streamState.connectionToken === token) {
         scheduleReconnect();
       }
@@ -482,7 +506,12 @@ async function connectRealtime() {
         await connectWebSocket(streamState.wsConfigUrl, token);
         return;
       } catch (error) {
-        console.warn("[realtime] WS no disponible, usando SSE:", error);
+        if (error instanceof RealtimeAuthError) {
+          stopRealtime();
+          handleAuthError();
+          return;
+        }
+        warnInDevelopment("[realtime] WS no disponible, usando SSE:", error);
       }
     }
 

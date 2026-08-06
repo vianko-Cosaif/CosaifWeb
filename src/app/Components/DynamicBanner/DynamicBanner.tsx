@@ -18,6 +18,20 @@ const ANIMATION_MAP: Record<string, string> = {
   zoomIn: "banner-zoomIn",
 };
 
+/** El contenido del banner es dato, no código. Conserva saltos y formato externo. */
+const toSafeBannerText = (value: unknown) => String(value || "")
+  .replace(/<br\s*\/?>/gi, "\n")
+  .replace(/<\/(?:p|div|li|h[1-6])\s*>/gi, "\n")
+  .replace(/<[^>]*>/g, "")
+  .replace(/&nbsp;/gi, " ")
+  .replace(/&amp;/gi, "&")
+  .replace(/&lt;/gi, "<")
+  .replace(/&gt;/gi, ">")
+  .replace(/&quot;/gi, '"')
+  .replace(/&#39;|&apos;/gi, "'")
+  .replace(/\n{3,}/g, "\n\n")
+  .trim();
+
 const parsePositiveNumber = (value: unknown) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
@@ -476,8 +490,8 @@ export default function DynamicBanner({
 
         case "text":
         case "animated": {
-          const htmlValue = layer.content || layer.value || "";
-          if (!htmlValue) return children || null;
+          const textValue = toSafeBannerText(layer.content || layer.value || "");
+          if (!textValue) return children || null;
           const Tag =
             layer.tag && /^[a-zA-Z][a-zA-Z0-9-]*$/.test(layer.tag)
               ? (layer.tag as keyof React.JSX.IntrinsicElements)
@@ -486,7 +500,7 @@ export default function DynamicBanner({
             Tag,
             { key, style },
             <>
-              <span dangerouslySetInnerHTML={{ __html: htmlValue }} />
+              <span style={{ whiteSpace: "pre-line" }}>{textValue}</span>
               {children}
             </>,
           );

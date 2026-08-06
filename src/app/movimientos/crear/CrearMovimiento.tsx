@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMounted } from "@/app/hooks/useMounted";
 import {
   GuidedTarget,
   useGuidedManual,
   useGuidedManualApi,
 } from "@/app/Components/GuidedManualAtom";
+import { useTrainingTour } from "@/app/Components/GuidedManualAtom/TrainingTourContext";
 import { getInitialTheme, applyTheme, onThemeChange } from "@/lib/theme";
 import { Movimiento } from "../Movimiento";
 import StepOne from "./components/StepOne";
@@ -31,6 +33,15 @@ import { useCrearMovimientoController } from "./useCrearMovimientoController";
  */
 export default function CrearMovimiento() {
   const mounted = useMounted();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const training = useTrainingTour();
+  // El query mantiene el sandbox aunque el usuario cierre el tour o recargue
+  // con un diálogo abierto. Quitar el query no lo desactiva mientras el tour siga activo.
+  const sandboxRequested = training.active || searchParams.get("training") === "1";
+  const sandboxAtMountRef = useRef(sandboxRequested);
+  if (sandboxRequested) sandboxAtMountRef.current = true;
+  const sandboxMode = sandboxRequested || sandboxAtMountRef.current;
   const guidedManual = useGuidedManual();
   const guidedManualApi = useGuidedManualApi();
   const [guidedMode, setGuidedMode] = useState(true);
@@ -68,6 +79,9 @@ export default function CrearMovimiento() {
     empresas,
     localidades,
     vias,
+    viasLoading,
+    viasError,
+    reloadVias,
     sectionsByVia,
     secLoading,
     rol,
@@ -103,6 +117,8 @@ export default function CrearMovimiento() {
     pendingCount,
     flushOutbox,
     submit,
+    validate1,
+    validate2,
     tapToggle,
     ensureSections,
     selectFromSection,
@@ -116,7 +132,74 @@ export default function CrearMovimiento() {
     clearForm,
     clearTornoMedicion,
     clearOutbox,
-  } = useCrearMovimientoController();
+  } = useCrearMovimientoController({ sandbox: sandboxMode });
+
+  const trainingScenario = sandboxMode
+    ? guidedManual?.currentStep?.id?.startsWith("tour-torno-")
+      ? "torno"
+      : training.trainingScenario
+    : null;
+  const trainingSubmitLockRef = useRef(false);
+
+  const validateTrainingScenario = useCallback((announce = true) => {
+    if (!sandboxMode) return true;
+    const valid = trainingScenario === "torno" ? form.service === "Torno" : !form.service;
+    if (!valid && announce) {
+      window.alert(
+        trainingScenario === "torno"
+          ? "Este ejercicio es de Torno. Selecciona Torno en Servicio antes de avanzar."
+          : "Este primer ejercicio es un movimiento Natural. Deja Servicio sin seleccionar; Torno se practicará después."
+      );
+    }
+    return valid;
+  }, [form.service, sandboxMode, trainingScenario]);
+
+  const submitTrainingMovement = useCallback(() => {
+    if (!sandboxMode || trainingSubmitLockRef.current) return;
+    if (step !== 3) {
+      window.alert("Completa Datos y Detalles antes de confirmar el movimiento SIM.");
+      return;
+    }
+    const validStepOne = validate1();
+    const validStepTwo = validate2();
+    if (!validStepOne || !validStepTwo || !validateTrainingScenario()) {
+      window.alert("Faltan datos obligatorios. Revisa los campos marcados antes de crear el movimiento SIM.");
+      return;
+    }
+    if (form.service === "Torno") {
+      const hasMeasure = Object.values(tornoMedicion.rows).some((row) =>
+        Object.values(row ?? {}).some((value) => Boolean(value?.whole || value?.num || value?.den))
+      );
+      if (!hasMeasure) {
+        window.alert("Captura al menos una medida ficticia de Torno antes de confirmar.");
+        return;
+      }
+    }
+    trainingSubmitLockRef.current = true;
+    training.createMovement(form);
+    router.push(`${training.roleBase}/movimientos`);
+  }, [form, router, sandboxMode, step, tornoMedicion.rows, training, validate1, validate2, validateTrainingScenario]);
+
+  const safeSubmit = sandboxMode ? submitTrainingMovement : submit;
+  const safeExit = sandboxMode
+    ? () => router.push(`${training.roleBase}/movimientos`)
+    : goSalir;
+
+  // El controlador conserva su atajo de teclado de producción. En capacitación
+  // lo interceptamos en captura para que Ctrl/Cmd + Enter tampoco pueda enviar
+  // una solicitud real por accidente.
+  useEffect(() => {
+    if (!sandboxMode) return;
+    const onTrainingSubmitShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "enter") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (step === 3) submitTrainingMovement();
+      else window.alert("Primero completa los pasos anteriores; el atajo no puede saltarse validaciones.");
+    };
+    window.addEventListener("keydown", onTrainingSubmitShortcut, true);
+    return () => window.removeEventListener("keydown", onTrainingSubmitShortcut, true);
+  }, [sandboxMode, step, submitTrainingMovement]);
 
   const useTornoMedicionStep = hasTornoPdfStep;
   useEffect(() => {
@@ -177,6 +260,59 @@ export default function CrearMovimiento() {
     ),
     [tornoMedicion.rows]
   );
+  const trainingStepOneReady = useMemo(() => {
+    if (!sandboxMode) return true;
+    const companyReady = !canManageAll || Number(form.empresaId) > 0;
+    const localityReady = !canChooseLocality || Number(form.selectedLocalityId) > 0;
+    const routeReady = form.service
+      ? (selectionMode === "de_via" ? Number(form.fromTrack) > 0 : Number(form.toTrack) > 0)
+      : Number(form.fromTrack) > 0 && Number(form.toTrack) > 0;
+    const scenarioReady = trainingScenario === "torno" ? form.service === "Torno" : !form.service;
+    return companyReady && localityReady && routeReady && scenarioReady && form.locomotiveNumber.trim().length > 0;
+  }, [
+    canChooseLocality,
+    canManageAll,
+    form.empresaId,
+    form.fromTrack,
+    form.locomotiveNumber,
+    form.selectedLocalityId,
+    form.service,
+    form.toTrack,
+    sandboxMode,
+    selectionMode,
+    trainingScenario,
+  ]);
+  const trainingStepTwoReady = useMemo(() => {
+    if (!sandboxMode || !form.movementType) return !sandboxMode;
+    if (form.movementType === "REMOLCADA" && !["EMPUJAR", "JALAR"].includes(form.direccionEmpuje || "")) {
+      return false;
+    }
+    if (!form.service) {
+      const hasChimney = ["DENTRO", "AFUERA"].includes(form.chimneyPosition);
+      const hasPole = ["NORTE", "SUR"].includes(form.polo);
+      if (!hasChimney && !hasPole) return false;
+    }
+    return !useTornoMedicionStep || hasAnyTornoMeasure;
+  }, [
+    form.chimneyPosition,
+    form.direccionEmpuje,
+    form.movementType,
+    form.polo,
+    form.service,
+    hasAnyTornoMeasure,
+    sandboxMode,
+    useTornoMedicionStep,
+  ]);
+  const trainingNextBlocked = sandboxMode && !guidedMode && (
+    (step === 1 && !trainingStepOneReady) || (step === 2 && !trainingStepTwoReady)
+  );
+  const trainingNextHint = step === 1
+    ? trainingScenario === "torno"
+      ? "Para continuar: selecciona Torno, empresa/localidad, locomotora y una vía válida."
+      : "Para continuar: deja Servicio sin seleccionar y completa empresa/localidad, locomotora, origen y destino."
+    : useTornoMedicionStep
+      ? "Para continuar: completa tipo, dirección cuando aplique y al menos una medición ficticia."
+      : "Para continuar: completa tipo, dirección cuando aplique y posición de chimenea o polo.";
   const contentMaxWidth = guidedMode
     ? "max-w-5xl"
     : useTornoMedicionStep
@@ -213,6 +349,12 @@ export default function CrearMovimiento() {
   };
   const guidedGoNext = () => {
     if (!guidedMode) {
+      if (trainingNextBlocked) {
+        if (step === 1) validate1();
+        if (step === 2) validate2();
+        window.alert(trainingNextHint);
+        return;
+      }
       goNext();
       return;
     }
@@ -225,6 +367,7 @@ export default function CrearMovimiento() {
       setGuidedTornoMeasuresPage((page) => page + 1);
       return;
     }
+    if (step === 1 && !validateTrainingScenario()) return;
     goNext();
   };
   const guidedGoPrev = () => {
@@ -385,6 +528,19 @@ export default function CrearMovimiento() {
         )}
       >
 
+        {sandboxMode && (
+          <div
+            role="status"
+            data-training-sandbox="true"
+            className="mb-4 rounded-2xl border-2 border-dashed border-sky-400 bg-sky-50 px-4 py-3 text-sm text-sky-950 shadow-sm dark:border-sky-500 dark:bg-sky-950/40 dark:text-sky-100"
+          >
+            <strong className="block text-xs font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">
+              Capacitación · datos SIM
+            </strong>
+            Practica en el formulario real. Al confirmar se guardará únicamente un movimiento ficticio en esta capacitación; no se enviará nada al sistema productivo.
+          </div>
+        )}
+
         <div className="mb-4 flex min-w-0 flex-wrap items-center gap-2">
           <Badge tone={online ? "ok" : "error"}>{online ? "En línea" : "Sin conexión"}</Badge>
           <RoleBadge
@@ -392,7 +548,7 @@ export default function CrearMovimiento() {
             canManageAll={canManageAll}
             canChooseLocality={canChooseLocality}
           />
-          {pendingCount > 0 && (
+          {!sandboxMode && pendingCount > 0 && (
             <>
               <Badge tone="warn">{pendingCount} pendiente(s)</Badge>
               <button onClick={flushOutbox} className="rounded-xl border px-3 py-1.5 text-xs font-medium hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800 transition-all">
@@ -407,8 +563,10 @@ export default function CrearMovimiento() {
           <button
             type="button"
             onClick={() => setGuidedMode((current) => !current)}
+            disabled={Boolean(training.active && guidedManual?.isOpen)}
+            title={training.active && guidedManual?.isOpen ? "La vista se mantiene fija durante el recorrido para no perder el paso actual." : undefined}
             className={Movimiento.clsx(
-              "cosaif-motion-button rounded-xl border px-3 py-1.5 text-sm font-semibold",
+              "cosaif-motion-button rounded-xl border px-3 py-1.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50",
               guidedMode
                 ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
                 : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
@@ -416,7 +574,7 @@ export default function CrearMovimiento() {
           >
             {guidedMode ? "Vista clasica" : "Flujo mobile"}
           </button>
-          <button onClick={goSalir} className="cosaif-motion-button ml-auto rounded-xl border border-rose-200 dark:border-rose-800 px-3 py-1.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20" title="Volver a mis movimientos">
+          <button onClick={safeExit} className="cosaif-motion-button ml-auto rounded-xl border border-rose-200 dark:border-rose-800 px-3 py-1.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20" title="Volver a mis movimientos">
             Salir
           </button>
         </div>
@@ -509,6 +667,9 @@ export default function CrearMovimiento() {
                 empresas={empresas}
                 localidades={localidades}
                 vias={vias}
+                viasLoading={viasLoading}
+                viasError={viasError}
+                reloadVias={reloadVias}
                 canManageAll={canManageAll}
                 canChooseLocality={canChooseLocality}
                 userCompanyName={userCompanyName}
@@ -528,10 +689,10 @@ export default function CrearMovimiento() {
                 setToSection={setToSection}
                 viaName={viaName}
                 companyName={selectedCompanyName}
-                scheduledTornoMovements={scheduledTornoMovements}
-                scheduledTornoLoading={scheduledTornoLoading}
-                onRefreshScheduledTorno={refreshScheduledTornoMovements}
-                onActivateScheduledTorno={activateScheduledTornoMovement}
+                scheduledTornoMovements={sandboxMode ? [] : scheduledTornoMovements}
+                scheduledTornoLoading={sandboxMode ? false : scheduledTornoLoading}
+                onRefreshScheduledTorno={sandboxMode ? async () => undefined : refreshScheduledTornoMovements}
+                onActivateScheduledTorno={sandboxMode ? async () => undefined : activateScheduledTornoMovement}
                 visualSection={guidedMode ? guidedStepOneSection : undefined}
               />
             </GuidedTarget>
@@ -571,9 +732,9 @@ export default function CrearMovimiento() {
               <StepThree
                 form={form}
                 setForm={setForm}
-                sending={sending}
-                submit={submit}
-                submitLabel={useTornoMedicionStep ? "Confirmar y Continuar al PDF" : undefined}
+                sending={sandboxMode ? false : sending}
+                submit={safeSubmit}
+                submitLabel={sandboxMode ? "Crear movimiento SIM" : useTornoMedicionStep ? "Confirmar y Continuar al PDF" : undefined}
                 fromSection={fromSection}
                 toSection={toSection}
                 viaName={viaName}
@@ -601,6 +762,12 @@ export default function CrearMovimiento() {
           </div>
         </div>
         </GuidedTarget>
+
+        {trainingNextBlocked ? (
+          <p id="training-next-requirements" role="status" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+            {trainingNextHint}
+          </p>
+        ) : null}
 
         {/* Navegacion declarativa del wizard. */}
         <div className={Movimiento.clsx(
@@ -630,8 +797,10 @@ export default function CrearMovimiento() {
             <GuidedTarget id="create-movement-next-step" className="inline-flex min-w-0 flex-1 min-[420px]:flex-none">
               <button
                 onClick={guidedGoNext}
+                disabled={trainingNextBlocked}
+                aria-describedby={trainingNextBlocked ? "training-next-requirements" : undefined}
                 data-guide-action="create-movement-next"
-                className="cosaif-motion-button min-h-11 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 hover:from-emerald-600 hover:to-emerald-700 hover:shadow-emerald-500/40 sm:px-5"
+                className="cosaif-motion-button min-h-11 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 hover:from-emerald-600 hover:to-emerald-700 hover:shadow-emerald-500/40 disabled:cursor-not-allowed disabled:from-slate-400 disabled:to-slate-400 disabled:shadow-none sm:px-5"
               >
                 {guidedNextLabel}
               </button>
@@ -639,7 +808,7 @@ export default function CrearMovimiento() {
           )}
 
           <button
-            onClick={goSalir}
+            onClick={safeExit}
             data-guide-action="create-movement-exit"
             className="cosaif-motion-button min-h-11 flex-1 rounded-xl border border-rose-200 px-3 py-2.5 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-900/20 min-[420px]:ml-auto min-[420px]:flex-none sm:px-4"
             title="Volver a mis movimientos"

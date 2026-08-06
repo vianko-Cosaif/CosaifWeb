@@ -2,6 +2,7 @@
 
 import { Activity, ArrowLeft, Ban, CalendarClock, Grid2X2, Loader2, Map as MapIcon, Play, RefreshCw, TrainFront, UserRound } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import IncidentTree from "../IncidentTree";
 import MeasuresSection from "../MeasuresSection";
 import TornoFinalMeasuresForm from "../TornoFinalMeasuresForm/TornoFinalMeasuresForm";
@@ -195,7 +196,7 @@ export default function TornoServiceDetail({
   };
 
   return (
-    <section className="space-y-4">
+    <GuidedTarget id="torno-service-detail" as="section" className="space-y-4">
       <header className="sticky top-0 z-20 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm shadow-slate-200/70 dark:border-slate-800 dark:bg-slate-950 dark:shadow-none">
         <div className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div className="flex min-w-0 items-center gap-3">
@@ -285,7 +286,11 @@ export default function TornoServiceDetail({
         <InfoTile label="Destino" value={item.destinationName || "-"} />
       </section>
 
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm shadow-slate-200/60 dark:border-slate-800 dark:bg-slate-950 dark:shadow-none">
+      <GuidedTarget
+        id="torno-wheel-panel"
+        as="section"
+        className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm shadow-slate-200/60 dark:border-slate-800 dark:bg-slate-950 dark:shadow-none"
+      >
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
           <div className="min-w-0">
             <h3 className="text-sm font-black text-slate-950 dark:text-slate-100">
@@ -295,7 +300,7 @@ export default function TornoServiceDetail({
               Alterna entre el tablero clasico y una vista grafica didactica.
             </p>
           </div>
-          <div className="grid w-full grid-cols-2 gap-2 sm:w-[360px]">
+          <GuidedTarget id="torno-wheel-view-tabs" className="grid w-full grid-cols-2 gap-2 sm:w-[360px]">
             <button
               type="button"
               onClick={() => setAxisDisplayMode("board")}
@@ -322,7 +327,7 @@ export default function TornoServiceDetail({
               <MapIcon className="h-4 w-4" />
               Mapa grafico
             </button>
-          </div>
+          </GuidedTarget>
         </div>
 
         {axisDisplayMode === "graphic" ? (
@@ -347,10 +352,10 @@ export default function TornoServiceDetail({
             onFinishWheel={(position, side) => run(`wheel:${position}-${side}`, () => onFinishWheel?.(item, position, side) ?? Promise.resolve())}
           />
         )}
-      </section>
+      </GuidedTarget>
 
       {axisDisplayMode !== "graphic" && (
-        <div className="grid items-start gap-4 xl:grid-cols-2">
+        <GuidedTarget id="torno-measures-panel" className="grid items-start gap-4 xl:grid-cols-2">
           <MeasuresSection title="Medidas de inicio" measures={item.measuresRequested} />
           <TornoFinalMeasuresForm
             requested={item.measuresRequested}
@@ -361,7 +366,7 @@ export default function TornoServiceDetail({
             onSave={(measures) => run("save-final", () => onSaveFinalMeasures?.(item, measures) ?? Promise.resolve())}
             onConclude={(measures) => run("conclude", () => onConcludeService?.(item, measures) ?? Promise.resolve())}
           />
-        </div>
+        </GuidedTarget>
       )}
 
       {permissions.canViewIncidents && (
@@ -383,7 +388,7 @@ export default function TornoServiceDetail({
           onNavajas={onNavajas}
         />
       )}
-    </section>
+    </GuidedTarget>
   );
 }
 

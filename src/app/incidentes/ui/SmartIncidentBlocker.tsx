@@ -1,9 +1,12 @@
 /* eslint-disable @next/next/no-img-element, @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState, useId } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
 import { createPortal } from "react-dom";
 import { shouldUseIncidentCountdown } from "@/lib/incidentCountdownPolicy";
+import { isTrainingIncidentId } from "@/lib/routePolicy";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
+import { useTrainingTour } from "@/app/Components/GuidedManualAtom/TrainingTourContext";
 import {
   ImageIcon,
   Info,
@@ -44,9 +47,9 @@ interface Incident {
 
 interface Props {
   incident: Incident;
-  onResolve: (comments?: string) => void;
+  onResolve: (comments?: string) => void | Promise<void>;
   onContinue: () => void;
-  onSkip: () => void;
+  onSkip: () => void | Promise<void>;
   operatorComment?: string;
 }
 
@@ -360,6 +363,10 @@ export default function SmartIncidentBlocker({
   onSkip,
   operatorComment,
 }: Props) {
+  const trainingTour = useTrainingTour();
+  // El ID reservado nunca debe consultarse ni mutarse en backend, incluso si
+  // el modal queda abierto justo cuando termina el tour.
+  const isTrainingIncident = isTrainingIncidentId(incident?.id ?? incident?.incidenteId);
   const [tab, setTab] = useState<0 | 1>(0);
   const [visible, setVisible] = useState(true);
   const [resolution, setResolution] = useState("");
@@ -369,6 +376,10 @@ export default function SmartIncidentBlocker({
   const [idx, setIdx] = useState(0);
   const [now, setNow] = useState<number>(Date.now());
   const [fullscreen, setFullscreen] = useState(false);
+  const actionLockRef = useRef(false);
+  // Captura el modo al abrir. Si el usuario cierra el tour con este modal
+  // todavía visible, una acción sobre un incidente real sigue bloqueada.
+  const sandboxAtOpenRef = useRef(trainingTour.active);
   const headingId = useId();
   const countdownAllowed = useMemo(
     () => shouldUseIncidentCountdown(incident) && shouldUseIncidentCountdown(fetched),
@@ -377,6 +388,12 @@ export default function SmartIncidentBlocker({
 
   /* Fetch details with abort */
   useEffect(() => {
+    if (isTrainingIncident) {
+      setFetched(incident);
+      setErr(null);
+      setLoading(false);
+      return;
+    }
     const ac = new AbortController();
     (async () => {
       try {
@@ -401,7 +418,7 @@ export default function SmartIncidentBlocker({
       }
     })();
     return () => ac.abort();
-  }, [incident]);
+  }, [incident, isTrainingIncident]);
 
   /* Timer tick each 1s */
   useEffect(() => {
@@ -432,37 +449,46 @@ export default function SmartIncidentBlocker({
   /* Actions */
   const doResolve = useCallback(async () => {
     if (!resolution.trim()) return alert("Describe la resolución.");
+    if (actionLockRef.current) return;
+    actionLockRef.current = true;
     try {
-      const id = (fetched?.id ?? incident?.id) as string | number;
-      const r = await fetch(`${INCIDENTES}/${id}/resuelto${sourceQuery(fetched || incident)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        credentials: "include",
-        body: JSON.stringify({ estado: "RESUELTO", comentario: resolution.trim() }),
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if ((trainingTour.active || sandboxAtOpenRef.current) && !isTrainingIncident) {
+        alert("En capacitación sólo puedes resolver SIM-INC-041. No se modificó ningún incidente real.");
+        return;
+      }
+      // El controlador padre es el único dueño de la mutación. Antes este
+      // componente hacía POST y después llamaba al padre, duplicando la acción.
+      await onResolve(resolution.trim());
       setVisible(false);
-      onResolve(resolution.trim());
     } catch {
       alert("No se pudo resolver el incidente.");
+    } finally {
+      actionLockRef.current = false;
     }
-  }, [fetched, incident, resolution, onResolve]);
+  }, [isTrainingIncident, onResolve, resolution, trainingTour.active]);
 
   const doSkip = useCallback(async () => {
+    if (actionLockRef.current) return;
+    actionLockRef.current = true;
     try {
-      const id = (fetched?.id ?? incident?.id) as string | number;
-      const r = await fetch(`${INCIDENTES}/${id}/cerrar${sourceQuery(fetched || incident)}`, {
-        method: "POST",
-        headers: { ...authHeaders() },
-        credentials: "include",
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if ((trainingTour.active || sandboxAtOpenRef.current) && !isTrainingIncident) {
+        alert("En capacitación sólo puedes omitir SIM-INC-041. No se modificó ningún incidente real.");
+        return;
+      }
+      const confirmed = window.confirm(
+        isTrainingIncident
+          ? "¿Confirmas omitir el incidente SIM? Sólo cambiará el escenario ficticio de capacitación."
+          : "¿Confirmas cerrar el incidente sin resolver? Esta decisión queda registrada y puede cancelar el movimiento relacionado."
+      );
+      if (!confirmed) return;
+      await onSkip();
       setVisible(false);
-      onSkip();
     } catch {
       alert("No se pudo cerrar el incidente sin resolver.");
+    } finally {
+      actionLockRef.current = false;
     }
-  }, [fetched, incident, onSkip]);
+  }, [isTrainingIncident, onSkip, trainingTour.active]);
 
   const close = useCallback(() => setVisible(false), []);
   const continueFn = useCallback(() => {
@@ -485,12 +511,13 @@ export default function SmartIncidentBlocker({
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(16,185,129,0.35),transparent_55%),radial-gradient(ellipse_at_bottom,rgba(15,23,42,0.85),transparent_60%)]" />
       <div className="absolute inset-0 opacity-25 [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:28px_28px]" />
       <div className="relative z-10 flex h-full w-full items-stretch justify-center p-0">
-        <div
-          className="flex min-h-0 w-full h-full max-w-none flex-col overflow-hidden rounded-none border border-white/10 bg-white/90 shadow-[0_30px_120px_rgba(15,23,42,0.45)] backdrop-blur dark:bg-slate-900/95 dark:text-slate-100"
-          role="dialog"
-          aria-labelledby={headingId}
-          aria-modal="true"
-        >
+        <GuidedTarget id="incident-detail-dialog" className="h-full w-full">
+          <div
+            className="flex h-full min-h-0 w-full max-w-none flex-col overflow-hidden rounded-none border border-white/10 bg-white/90 shadow-[0_30px_120px_rgba(15,23,42,0.45)] backdrop-blur dark:bg-slate-900/95 dark:text-slate-100"
+            role="dialog"
+            aria-labelledby={headingId}
+            aria-modal="true"
+          >
           {/* Header */}
           <div className="relative overflow-hidden bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-950 px-4 sm:px-6 py-4 sm:py-6">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.35),transparent_55%)] opacity-70" />
@@ -660,12 +687,17 @@ export default function SmartIncidentBlocker({
                   )}
 
                   {estado === "ABIERTO" && (
-                    <section className="rounded-2xl border border-white/60 bg-white/85 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/80">
+                    <GuidedTarget
+                      id="incident-resolution-panel"
+                      as="section"
+                      className="rounded-2xl border border-white/60 bg-white/85 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/80"
+                    >
                       <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-100">Resolución del incidente</h2>
                       <p className="mb-3 text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
                         Resolver cambia el incidente a RESUELTO. Cerrar sin resolver lo deja como cierre operativo sin registrar solución.
                       </p>
                       <textarea
+                        data-guide-id="incident-resolution-input"
                         value={resolution}
                         onChange={(e) => setResolution(e.target.value)}
                         rows={5}
@@ -700,7 +732,7 @@ export default function SmartIncidentBlocker({
                           Confirmar resolución
                         </button>
                       </div>
-                    </section>
+                    </GuidedTarget>
                   )}
                 </div>
               </div>
@@ -719,10 +751,12 @@ export default function SmartIncidentBlocker({
         </div>
 
         {/* Footer */}
-        <div className="flex flex-col gap-2 border-t border-white/10 bg-white/80 px-4 py-3 backdrop-blur dark:bg-slate-900/80 dark:border-slate-800 sm:flex-row sm:px-6 sm:py-4">
+        <GuidedTarget id="incident-actions" className="flex flex-col gap-2 border-t border-white/10 bg-white/80 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80 sm:flex-row sm:px-6 sm:py-4">
           {canActOnIncident ? (
             <>
               <button
+                data-guide-id="incident-resolve-action"
+                data-training-incident-resolve={isTrainingIncident ? "true" : undefined}
                 onClick={doResolve}
                 disabled={!resolution.trim()}
                 className={cn(
@@ -736,6 +770,7 @@ export default function SmartIncidentBlocker({
                 Resolver incidente
                       </button>
                       <button
+                        data-guide-id="incident-close-action"
                         onClick={doSkip}
                         className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-3 font-semibold text-white shadow-lg hover:from-amber-500 hover:to-amber-700 transition-all"
                       >
@@ -745,14 +780,16 @@ export default function SmartIncidentBlocker({
             </>
           ) : (
             <button
+              data-guide-id="incident-continue-action"
               onClick={continueFn}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-3 font-semibold text-white shadow-lg hover:from-emerald-600 hover:to-emerald-800 transition-all"
             >
               Continuar
             </button>
           )}
-        </div>
-        </div>
+        </GuidedTarget>
+          </div>
+        </GuidedTarget>
       </div>
     </div>
   );

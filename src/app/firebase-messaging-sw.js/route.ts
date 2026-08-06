@@ -28,6 +28,14 @@ const requiredConfig = [
   firebaseConfig.appId,
 ];
 
+self.addEventListener("install", () => {
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
 function hasValue(value) {
   return Boolean(value && !String(value).startsWith("TU_"));
 }
@@ -47,7 +55,9 @@ if (requiredConfig.every(hasValue)) {
     const url = data.url || data.click_action || "/";
     const tag = data.tag || data.eventId || data.movimientoId || data.incidenteId || data.tipo || title;
 
-    self.registration.showNotification(title, {
+    // Devolver la promesa mantiene vivo el service worker hasta que el SO
+    // haya aceptado la notificación, incluso con la PWA cerrada.
+    return self.registration.showNotification(title, {
       body: notification.body || data.body || "",
       icon: notification.icon || data.icon || "/icons/cosaif-192.png",
       badge: data.badge || "/icons/cosaif-192.png",

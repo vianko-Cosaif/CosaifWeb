@@ -27,6 +27,9 @@ type StepOneProps = {
   empresas: Empresa[];
   localidades: Localidad[];
   vias: Via[];
+  viasLoading: boolean;
+  viasError: string | null;
+  reloadVias: () => Promise<void>;
   canManageAll: boolean;
   canChooseLocality: boolean;
   userCompanyName: string;
@@ -76,7 +79,8 @@ const fromDatetimeLocalValue = (value: string) => {
  */
 export default function StepOne(props: StepOneProps) {
   const {
-    form, setForm, errors, empresas, localidades, vias, canManageAll, canChooseLocality, userCompanyName,
+    form, setForm, errors, empresas, localidades, vias, viasLoading, viasError, reloadVias,
+    canManageAll, canChooseLocality, userCompanyName,
     showFromOpts, setShowFromOpts, showToOpts, setShowToOpts, selectionMode, setSelectionMode,
     tapToggle, sectionsByVia, secLoading, ensureSections, fromSection, toSection,
     setFromSection, setToSection, viaName, companyName, scheduledTornoMovements = [],
@@ -187,7 +191,16 @@ export default function StepOne(props: StepOneProps) {
     return (
       <button
         key={v.id}
-        onClick={() => !isDisabled && setForm((p) => ({ ...p, fromTrack: p.fromTrack === v.id ? null : v.id }))}
+        type="button"
+        data-guide-action={v.id === 91101 ? "select-training-origin" : undefined}
+        aria-label={`Seleccionar ${v.nombre} como vía de origen`}
+        onClick={() => {
+          if (isDisabled) return;
+          const nextViaId = form.fromTrack === v.id ? null : v.id;
+          setForm((p) => ({ ...p, fromTrack: nextViaId }));
+          setShowFromOpts(false);
+          if (nextViaId) ensureSections(nextViaId);
+        }}
         disabled={isDisabled}
         className={Movimiento.clsx(
           "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left transition-colors duration-200",
@@ -198,7 +211,7 @@ export default function StepOne(props: StepOneProps) {
               : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
         )}
       >
-        <span className="truncate">Via {isDisabled ? `${v.nombre} (solo servicio)` : v.nombre}</span>
+        <span className="truncate">{isDisabled ? `${v.nombre} (solo servicio)` : v.nombre}</span>
         <span className={Movimiento.clsx("ml-3 text-xs font-semibold", isDisabled ? "text-slate-400 dark:text-slate-500" : tone)}>
           {isDisabled ? "NO DISPONIBLE" : label}
         </span>
@@ -216,7 +229,15 @@ export default function StepOne(props: StepOneProps) {
     return (
       <button
         key={v.id}
-        onClick={() => setForm((p) => ({ ...p, toTrack: p.toTrack === v.id ? null : v.id }))}
+        type="button"
+        data-guide-action={v.id === 91102 ? "select-training-destination" : undefined}
+        aria-label={`Seleccionar ${v.nombre} como vía de destino`}
+        onClick={() => {
+          const nextViaId = form.toTrack === v.id ? null : v.id;
+          setForm((p) => ({ ...p, toTrack: nextViaId }));
+          setShowToOpts(false);
+          if (nextViaId) ensureSections(nextViaId);
+        }}
         className={Movimiento.clsx(
           "flex w-full items-center justify-between rounded-md border px-3 py-2 text-left transition-colors duration-200",
           allOcc === true ? "opacity-60" : "",
@@ -225,7 +246,7 @@ export default function StepOne(props: StepOneProps) {
             : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
         )}
       >
-        <span className="truncate">Via {v.nombre}</span>
+        <span className="truncate">{v.nombre}</span>
         <span className={Movimiento.clsx("ml-3 text-xs font-semibold", tone)}>{label}</span>
       </button>
     );
@@ -488,12 +509,41 @@ export default function StepOne(props: StepOneProps) {
       {showSection("route") && (
         <GuidedTarget id="create-movement-route" className="sm:col-span-2">
           <>
+            {viasLoading ? (
+              <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-300" role="status">
+                Cargando vías de la localidad…
+              </div>
+            ) : viasError ? (
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300" role="alert">
+                <span>{viasError}</span>
+                <button
+                  type="button"
+                  onClick={() => void reloadVias()}
+                  className="rounded-md border border-rose-300 px-2.5 py-1 font-semibold hover:bg-rose-100 dark:border-rose-800 dark:hover:bg-rose-900/40"
+                >
+                  Reintentar
+                </button>
+              </div>
+            ) : form.selectedLocalityId && vias.length === 0 ? (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300" role="status">
+                No hay vías registradas para esta localidad.
+              </div>
+            ) : null}
             {(!form.service || selectionMode === "de_via") && (
               <div className="mb-4">
                 <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">De via</span>
                 <div className="flex min-w-0 flex-col gap-2 min-[420px]:flex-row">
                   <button
-                    onClick={() => { setShowFromOpts(!showFromOpts); if (form.fromTrack) ensureSections(form.fromTrack); }}
+                    type="button"
+                    data-guide-action="create-origin-open"
+                    aria-expanded={showFromOpts}
+                    aria-controls="create-movement-origin-options"
+                    onClick={() => {
+                      const nextOpen = !showFromOpts;
+                      setShowFromOpts(nextOpen);
+                      setShowToOpts(false);
+                      if (nextOpen && form.fromTrack) ensureSections(form.fromTrack);
+                    }}
                     className={Movimiento.clsx(
                       "cosaif-motion-button w-full min-w-0 rounded-md border px-3 py-2 text-left min-[420px]:w-auto min-[420px]:min-w-[220px]",
                       form.fromTrack
@@ -501,13 +551,13 @@ export default function StepOne(props: StepOneProps) {
                         : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     )}
                   >
-                    {form.fromTrack ? `Via ${viaName(form.fromTrack)}` : "Selecciona una via"}
+                    {form.fromTrack ? viaName(form.fromTrack) : "Selecciona una vía de origen"}
                   </button>
                   {errors.fromTrack ? <span className="self-center text-xs text-rose-600 dark:text-rose-400">{errors.fromTrack}</span> : null}
                 </div>
 
                 {showFromOpts && (
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <div id="create-movement-origin-options" className="mt-2 grid gap-2 sm:grid-cols-2">
                     {Movimiento.TrackFilter(vias, selectionMode, "de_via", form.service)
                       .map((v) => (
                         <div key={v.id}>
@@ -526,7 +576,16 @@ export default function StepOne(props: StepOneProps) {
                 <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Para via</span>
                 <div className="flex min-w-0 flex-col gap-2 min-[420px]:flex-row">
                   <button
-                    onClick={() => { setShowToOpts(!showToOpts); if (form.toTrack) ensureSections(form.toTrack); }}
+                    type="button"
+                    data-guide-action="create-destination-open"
+                    aria-expanded={showToOpts}
+                    aria-controls="create-movement-destination-options"
+                    onClick={() => {
+                      const nextOpen = !showToOpts;
+                      setShowToOpts(nextOpen);
+                      setShowFromOpts(false);
+                      if (nextOpen && form.toTrack) ensureSections(form.toTrack);
+                    }}
                     className={Movimiento.clsx(
                       "cosaif-motion-button w-full min-w-0 rounded-md border px-3 py-2 text-left min-[420px]:w-auto min-[420px]:min-w-[220px]",
                       form.toTrack
@@ -534,13 +593,13 @@ export default function StepOne(props: StepOneProps) {
                         : "hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     )}
                   >
-                    {form.toTrack ? `Via ${viaName(form.toTrack)}` : "Selecciona una via"}
+                    {form.toTrack ? viaName(form.toTrack) : "Selecciona una vía de destino"}
                   </button>
                   {errors.toTrack ? <span className="self-center text-xs text-rose-600 dark:text-rose-400">{errors.toTrack}</span> : null}
                 </div>
 
                 {showToOpts && (
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <div id="create-movement-destination-options" className="mt-2 grid gap-2 sm:grid-cols-2">
                     {Movimiento.TrackFilter(vias, selectionMode, "para_via", form.service)
                       .map((v) => (
                         <div key={v.id}>

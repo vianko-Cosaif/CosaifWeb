@@ -68,17 +68,26 @@ export default function StepThree({
         <div className="font-semibold mb-2 text-slate-800 dark:text-slate-100">Resumen</div>
         <ul className="grid gap-1 text-slate-700 dark:text-slate-300">
           <li>Localidad: {form.selectedLocalityId ?? "-"}</li>
-          {selectionMode === "de_via" && (
-            <li>Origen: {form.fromTrack ? `Via ${viaName(form.fromTrack)} ${fromSection ? `(Seccion #${fromSection})` : ""}` : "-"}</li>
+          {(!form.service || selectionMode === "de_via") && (
+            <li>Origen: {form.fromTrack ? `${viaName(form.fromTrack)} ${fromSection ? `(Sección #${fromSection})` : ""}` : "-"}</li>
           )}
-          {selectionMode === "para_via" && (
-            <li>Destino: {form.toTrack ? `Via ${viaName(form.toTrack)} ${toSection ? `(Seccion #${toSection})` : ""}` : "-"}</li>
+          {(!form.service || selectionMode === "para_via") && (
+            <li>Destino: {form.toTrack ? `${viaName(form.toTrack)} ${toSection ? `(Sección #${toSection})` : ""}` : "-"}</li>
           )}
           <li>Locomotora: {form.locomotiveNumber || "-"}</li>
           <li>Tipo: {form.movementType || "-"}</li>
-          <li>Direccion: {form.direccionEmpuje || "-"}</li>
+          {form.movementType === "REMOLCADA" ? <li>Dirección: {form.direccionEmpuje || "-"}</li> : null}
+          {!form.service ? (
+            <li>
+              Orientación: {form.polo !== "Sin_Solicitar"
+                ? `Polo ${form.polo}`
+                : form.chimneyPosition !== "Sin_Solicitar"
+                  ? `Chimenea ${form.chimneyPosition}`
+                  : "-"}
+            </li>
+          ) : null}
           <li>Prioridad: {form.priority ? "ALTA" : "BAJA"}</li>
-          <li>Servicio: {form.service || "-"}</li>
+          <li>Servicio: {form.service || "Natural"}</li>
         </ul>
       </div>
       </GuidedTarget>
@@ -99,6 +108,7 @@ export default function StepThree({
 
       <GuidedTarget id="create-movement-submit" className="inline-flex">
         <button
+          type="button"
           onClick={handleSubmitClick}
           disabled={sending}
           data-guide-action="create-movement-submit"

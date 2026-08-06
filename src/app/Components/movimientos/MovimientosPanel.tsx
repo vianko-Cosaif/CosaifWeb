@@ -14,6 +14,7 @@ import Nav from "./Nav";
 import Filtros from "./Filtros";
 import { useMovimientos, type FechaCampo, type Rol, type Movement } from "./useMovimientos";
 import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
+import { useTrainingTour } from "@/app/Components/GuidedManualAtom/TrainingTourContext";
 import DataEmptyState from "@/app/Components/ui/DataEmptyState";
 import KpiCard from "@/app/Components/ui/KpiCard";
 import ModuleHeader from "@/app/Components/ui/ModuleHeader";
@@ -136,6 +137,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     intervaloAutoMs,
   } = props;
   const router = useRouter();
+  const trainingTour = useTrainingTour();
 
   const [rol, setRol] = useState<Rol>(() => rolProp ?? getRoleFromSession());
   const [token, setToken] = useState<string | undefined>(() => tokenProp);
@@ -240,6 +242,22 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
           : userLocalidadId,
   });
 
+  const trainingRows = useMemo(() => {
+    if (!trainingTour.active) return [];
+    return trainingTour.movements.filter((movement) => {
+      const isPast = movement.finalizado || ["CONCLUIDO", "CANCELADO", "RESUELTO"].includes(String(movement.estado || "").toUpperCase());
+      return ambito === "pasados" ? isPast : !isPast;
+    });
+  }, [ambito, trainingTour.active, trainingTour.movements]);
+  const displayedRows = useMemo(() => {
+    if (!trainingRows.length) return filas;
+    const trainingIds = new Set(trainingRows.map((movement) => movement.id));
+    return [...trainingRows, ...filas.filter((movement) => !trainingIds.has(movement.id))];
+  }, [filas, trainingRows]);
+  const displayedTotal = total + trainingRows.filter(
+    (movement) => !filas.some((row) => row.id === movement.id)
+  ).length;
+
   /* ================== PERMISOS POR ROL ================== */
 
   const puedeElegirLocalidad = roleCapabilities.canSwitchLocalidad && !bloquearLocalidad;
@@ -284,7 +302,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     return localidades;
   }, [localidades, puedeElegirLocalidad, userLocalidadId]);
 
-  const resumenEjecucion = useMemo(() => buildExecutionSummary(filas), [filas]);
+  const resumenEjecucion = useMemo(() => buildExecutionSummary(displayedRows), [displayedRows]);
   const ordenActual = useMemo(() => {
     const labelMap: Record<string, string> = {
       id: "Folio",
@@ -443,6 +461,14 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
 
   const handleEditar = useCallback(
     (id: number) => {
+      if (trainingTour.active) {
+        if (trainingTour.isTrainingMovement(id)) {
+          router.push(`/cliente/editar?id=${id}&training=1`);
+          return;
+        }
+        window.alert("Durante la capacitación sólo puedes editar registros SIM. No se abrió ni modificó el movimiento real.");
+        return;
+      }
       const BASE: Record<string, string> = {
         ADMINISTRADOR: "/administrador",
         COORDINADOR: "/coordinador",
@@ -452,7 +478,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
       const base = BASE[String(rol).toUpperCase()] ?? "/cliente";
       router.push(`${base}/editar?id=${id}`);
     },
-    [router, rol]
+    [router, rol, trainingTour]
   );
 
   const handleToggleAuto = useCallback(() => {
@@ -460,8 +486,8 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
   }, []);
 
   const handleNuevo = useCallback(() => {
-    window.location.assign("/movimientos/crear");
-  }, []);
+    router.push(trainingTour.active ? "/movimientos/crear?training=1" : "/movimientos/crear");
+  }, [router, trainingTour.active]);
 
   /* ================== RENDER ================== */
 
@@ -479,6 +505,11 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
       "
     >
       <div className="flex flex-col gap-3 sm:gap-5 px-2 py-3 sm:px-5 sm:py-6 lg:px-7 lg:py-8 min-w-0">
+        {trainingTour.active ? (
+          <div className="rounded-xl border border-violet-300 bg-violet-50 px-4 py-3 text-sm font-bold text-violet-900 dark:border-violet-800 dark:bg-violet-950/35 dark:text-violet-100" role="status">
+            CAPACITACIÓN ACTIVA · Los registros SIM y todas sus acciones se guardan sólo en esta sesión.
+          </div>
+        ) : null}
         <ModuleHeader
           icon={Flag}
           title="Movimientos"
@@ -487,8 +518,8 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
           loading={cargando}
           actions={
             <div className="flex items-center gap-1.5 rounded-lg bg-[var(--app-surface-muted)] px-3 py-1.5 text-xs">
-              <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">{total}</span>
-              <span className="text-slate-500 dark:text-slate-400">registro{total === 1 ? "" : "s"}</span>
+              <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">{displayedTotal}</span>
+              <span className="text-slate-500 dark:text-slate-400">registro{displayedTotal === 1 ? "" : "s"}</span>
             </div>
           }
         />
@@ -512,8 +543,8 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
             autoActualizacion={ambito === "actuales"}
             estaCargando={cargando}
             contadores={{
-              actuales: badges.Actuales ?? 0,
-              pasados: ambito === "pasados" ? total : 0,
+              actuales: (badges.Actuales ?? 0) + (trainingTour.active ? trainingTour.movements.filter((movement) => !movement.finalizado && !["CONCLUIDO", "CANCELADO", "RESUELTO"].includes(String(movement.estado || "").toUpperCase())).length : 0),
+              pasados: ambito === "pasados" ? displayedTotal : 0,
             }}
             puedeCrear={puedeCrear}
             onCambiarAmbito={(nuevo) => {
@@ -554,7 +585,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
           />
 
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-            <ResumenChip label="Total filtrado" value={`${total}${totalEstimado ? "+" : ""}`} />
+            <ResumenChip label="Total filtrado" value={`${displayedTotal}${totalEstimado ? "+" : ""}`} />
             <ResumenChip label="Primer inicio visible" value={formatPanelDate(resumenEjecucion.firstStart)} />
             <ResumenChip label="Último fin visible" value={formatPanelDate(resumenEjecucion.lastEnd)} />
             {puedeVerDuracionMovimiento ? (
@@ -578,7 +609,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
               shadow-sm
             "
           >
-            {filas.length === 0 && !cargando ? (
+            {displayedRows.length === 0 && !cargando ? (
             <DataEmptyState
               icon={Flag}
               title={emptyText}
@@ -588,10 +619,10 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
             ) : (
             <div className="relative flex-1 min-h-0">
               <Tabla
-                filas={filas}
+                filas={displayedRows}
                 pagina={filtros.pagina}
                 tamPagina={filtros.tamPagina}
-                total={total}
+                total={displayedTotal}
                 totalEstimado={totalEstimado}
                 campoOrden={filtros.campoOrden}
                 direccionOrden={filtros.direccionOrden}

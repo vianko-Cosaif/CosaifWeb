@@ -29,6 +29,7 @@ import Empty from "antd/es/empty";
 import Table from "antd/es/table";
 import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
 import type { SorterResult } from "antd/es/table/interface";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import styles from "./Tabla.module.scss";
 import type { Movement, CampoOrden, DireccionOrden, Rol } from "./useMovimientos";
 import TornoMeasuresViewerModal from "../../movimientos/torno/TornoMeasuresViewerModal";
@@ -43,6 +44,7 @@ import {
   formatoFecha,
   isClientLikeRole,
 } from "@/features/movimientos/table";
+import { useTrainingTour } from "@/app/Components/GuidedManualAtom/TrainingTourContext";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/xapi";
 
@@ -96,6 +98,7 @@ function TablaInner({
   rol,
   mostrarDuracion = true,
 }: TablaProps) {
+  const trainingTour = useTrainingTour();
   const clienteSoloIds = isClientLikeRole(rol);
   const puedeVerDuracion = mostrarDuracion && canViewMovementDuration(rol);
   const NO_EDIT_STATES = useMemo(
@@ -407,6 +410,7 @@ function TablaInner({
           return canEdit ? (
             <Button
               size="small"
+              data-training-edit-movement={trainingTour.isTrainingMovement(movementId) ? String(movementId) : undefined}
               onClick={(event) => {
                 event.stopPropagation();
                 onEditar?.(movementId);
@@ -423,7 +427,7 @@ function TablaInner({
     }
 
     return base;
-  }, [clienteSoloIds, getSortOrder, onEditar, puedeEditarMovimiento, puedeVerDuracion, showEditColumn, startIndex]);
+  }, [clienteSoloIds, getSortOrder, onEditar, puedeEditarMovimiento, puedeVerDuracion, showEditColumn, startIndex, trainingTour]);
 
   const handleAntTableChange = useCallback(
     (
@@ -450,7 +454,7 @@ function TablaInner({
   );
 
   return (
-    <div className="flex h-full w-full flex-col space-y-3 sm:space-y-4 font-sans">
+    <GuidedTarget id="movements-table" className="flex h-full w-full flex-col space-y-3 font-sans sm:space-y-4">
       <div className="relative w-full overflow-x-hidden overflow-y-visible rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-sm transition-all">
         {/* Loader Overlay */}
         {cargando && (
@@ -479,7 +483,7 @@ function TablaInner({
               </p>
             </div>
           ) : (
-            filas.map((movement) => (
+            filas.map((movement, index) => (
               <MobileCard
                 key={getMovementRowKey(movement)}
                 rowKey={getMovementRowKey(movement)}
@@ -493,6 +497,8 @@ function TablaInner({
                 onViewMeasures={handleViewMeasures}
                 clienteSoloIds={clienteSoloIds}
                 canViewDuration={puedeVerDuracion}
+                guideId={index === 0 ? "training-movement-row-mobile" : undefined}
+                isTraining={trainingTour.isTrainingMovement(movement.id)}
               />
             ))
           )}
@@ -531,13 +537,15 @@ function TablaInner({
               size="middle"
               scroll={{ x: 1880, ...(filas.length > 50 ? { y: 640 } : {}) }}
               onChange={handleAntTableChange}
-              onRow={(movement) => ({
+              onRow={(movement, rowIndex) => ({
                 onClick: (event) => {
                   const target = event.target as HTMLElement | null;
                   if (target?.closest("button,a,input,select,textarea,[role='button']")) return;
                   toggle(getMovementRowKey(movement));
                 },
                 className: "cursor-pointer",
+                "data-guide-id": rowIndex === 0 ? "training-movement-row" : undefined,
+                "data-training-movement-id": trainingTour.isTrainingMovement(movement.id) ? String(movement.id) : undefined,
               })}
               expandable={{
                 expandedRowKeys: Object.entries(expanded)
@@ -547,6 +555,7 @@ function TablaInner({
                 expandIcon: () => null,
                 onExpand: (_open, movement) => toggle(getMovementRowKey(movement)),
                 expandedRowRender: (movement) => (
+                  <div data-training-movement-details={trainingTour.isTrainingMovement(movement.id) ? String(movement.id) : undefined}>
                   <ExpandedDetailsContent
                     movement={movement}
                     fechaSolicitudFmt={formatoFecha(movement.fechaSolicitud)}
@@ -556,6 +565,7 @@ function TablaInner({
                     clienteSoloIds={clienteSoloIds}
                     canViewDuration={puedeVerDuracion}
                   />
+                  </div>
                 ),
               }}
               pagination={{
@@ -673,7 +683,7 @@ function TablaInner({
           </div>
         </div>
       ) : null}
-    </div>
+    </GuidedTarget>
   );
 }
 
@@ -693,6 +703,8 @@ interface MovimientoRowProps {
   onViewMeasures?: (movement: Movement) => void;
   clienteSoloIds?: boolean;
   canViewDuration?: boolean;
+  guideId?: string;
+  isTraining?: boolean;
 }
 
 const MobileCard = memo(function MobileCard({
@@ -707,6 +719,8 @@ const MobileCard = memo(function MobileCard({
   onViewMeasures,
   clienteSoloIds = false,
   canViewDuration = true,
+  guideId,
+  isTraining = false,
 }: MovimientoRowProps) {
   const fechaSolicitudFmt = useMemo(
     () => formatoFecha(movement.fechaSolicitud),
@@ -744,6 +758,8 @@ const MobileCard = memo(function MobileCard({
 
   return (
     <div
+      data-guide-id={guideId}
+      data-training-movement-id={isTraining ? String(movement.id) : undefined}
       className={`rounded-2xl border border-slate-200 dark:border-slate-800/70 bg-white dark:bg-slate-900/80 shadow-sm transition-all ${isOpen ? "ring-1 ring-emerald-400/40" : ""
         }`}
     >
@@ -877,6 +893,7 @@ const MobileCard = memo(function MobileCard({
               canEdit ? (
                 <button
                   type="button"
+                  data-training-edit-movement={isTraining ? String(movement.id) : undefined}
                   onClick={handleEditClick}
                   className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 transition-all duration-200 hover:bg-emerald-100 hover:border-emerald-300 hover:shadow-sm active:scale-95 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
                 >
@@ -893,7 +910,10 @@ const MobileCard = memo(function MobileCard({
         </div>
       </div>
 
-      <div className={`${styles.expandedContentContainer} ${isOpen ? styles.show : ""}`}>
+      <div
+        data-training-movement-details={isTraining && isOpen ? String(movement.id) : undefined}
+        className={`${styles.expandedContentContainer} ${isOpen ? styles.show : ""}`}
+      >
         <ExpandedDetailsContent
           movement={movement}
           fechaSolicitudFmt={fechaSolicitudFmt}

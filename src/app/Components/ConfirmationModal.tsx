@@ -10,6 +10,7 @@ interface ConfirmationModalProps {
   onConfirm: () => void;
   title: string;
   children: React.ReactNode;
+  confirmDataGuideAction?: string;
 }
 
 export default function ConfirmationModal({
@@ -18,6 +19,7 @@ export default function ConfirmationModal({
   onConfirm,
   title,
   children,
+  confirmDataGuideAction,
 }: ConfirmationModalProps) {
   if (!isOpen) {
     return null;
@@ -65,6 +67,7 @@ export default function ConfirmationModal({
           </button>
           <button
             type="button"
+            data-guide-action={confirmDataGuideAction}
             onClick={onConfirm}
             className="w-full sm:w-auto rounded-lg px-4 py-2 text-sm font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
           >

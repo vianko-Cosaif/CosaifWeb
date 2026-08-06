@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { containsTrainingReservedId } from "@/lib/routePolicy";
 
 const API_URL = process.env.API_URL!;
 const JWT_COOKIE_NAME = process.env.JWT_COOKIE_NAME ?? "token";
@@ -16,6 +17,12 @@ export async function POST(req: Request) {
     const payload: unknown = await req.json().catch(() => null);
     if (payload == null) {
       return NextResponse.json({ message: "Payload inválido" }, { status: 400 });
+    }
+    if (containsTrainingReservedId(payload)) {
+      return NextResponse.json(
+        { message: "Los datos SIM de capacitación no se envían al sistema productivo." },
+        { status: 409 },
+      );
     }
 
     const r = await fetch(`${API_URL}/movimientos`, {

@@ -3,6 +3,9 @@ import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { getRoleCapabilities } from "@/lib/accessControl";
 import { normalizeHttpOrigin } from "@/lib/serverOrigin";
+import { containsTrainingReservedId } from "@/lib/routePolicy";
+import { getVerifiedSession } from "@/lib/server/session";
+import { rejectCrossSiteMutation } from "@/lib/server/requestSecurity";
 
 const ORIGIN = normalizeHttpOrigin(process.env.API_ORIGIN);
 const BFF_TIMEOUT_MS = Number(process.env.BFF_TIMEOUT_MS || 12000);
@@ -26,7 +29,6 @@ function buildUpstreamHeaders(req: NextRequest, token: string) {
   const userAgent = req.headers.get("user-agent");
   const forwardedFor = req.headers.get("x-forwarded-for");
   const forwardedProto = req.headers.get("x-forwarded-proto");
-  const incomingAuthorization = req.headers.get("authorization") || "";
 
   if (accept) headers.set("accept", accept);
   if (contentType) headers.set("content-type", contentType);
@@ -34,11 +36,7 @@ function buildUpstreamHeaders(req: NextRequest, token: string) {
   if (forwardedFor) headers.set("x-forwarded-for", forwardedFor);
   if (forwardedProto) headers.set("x-forwarded-proto", forwardedProto);
 
-  if (token) {
-    headers.set("authorization", `Bearer ${token}`);
-  } else if (incomingAuthorization) {
-    headers.set("authorization", incomingAuthorization);
-  }
+  if (token) headers.set("authorization", `Bearer ${token}`);
 
   return headers;
 }
@@ -97,6 +95,8 @@ async function coordinatorCanManageUser(headers: Headers, userId: number, locali
 }
 
 async function proxy(req: NextRequest) {
+  const crossSite = rejectCrossSiteMutation(req);
+  if (crossSite) return crossSite;
   if (!ORIGIN) {
     return NextResponse.json({ error: "API_ORIGIN not set" }, { status: 500 });
   }
@@ -107,16 +107,30 @@ async function proxy(req: NextRequest) {
     cookieStore.get(cookieName)?.value ||
     cookieStore.get("token")?.value ||
     "";
-  const role = String(cookieStore.get(process.env.ROLE_COOKIE_NAME ?? "role")?.value || "").toUpperCase();
-  const assignedEmpresaId = Number(cookieStore.get("empresaId")?.value || 0);
-  const assignedLocalidadId = Number(
-    cookieStore.get("locId")?.value || cookieStore.get("localidadId")?.value || 0
-  );
+  const session = await getVerifiedSession();
+  if (!token || !session) return NextResponse.json({ message: "No autenticado" }, { status: 401 });
+  const role = session.role;
+  const assignedEmpresaId = Number(session.empresaId || 0);
+  const assignedLocalidadId = Number(session.localidadId || 0);
   const capabilities = getRoleCapabilities(role);
   const restrictedLocality = role !== "ADMINISTRADOR";
   const restrictedCoordinator = role === "COORDINADOR";
   let upstreamPath = req.nextUrl.pathname.replace(/^\/bff/, "");
   const searchParams = new URLSearchParams(req.nextUrl.searchParams);
+  const hasBody = !["GET", "HEAD"].includes(req.method);
+  const jsonBody = hasBody && (req.headers.get("content-type") || "").includes("application/json")
+    ? await req.clone().json().catch(() => null)
+    : null;
+  if (
+    containsTrainingReservedId(upstreamPath)
+    || containsTrainingReservedId(req.nextUrl.search)
+    || containsTrainingReservedId(jsonBody)
+  ) {
+    return NextResponse.json(
+      { message: "Los registros SIM sólo existen dentro de la capacitación." },
+      { status: 409 }
+    );
+  }
   const isCompanyWrite =
     (upstreamPath === "/empresas" || upstreamPath.startsWith("/empresas/")) &&
     !["GET", "HEAD"].includes(req.method);
@@ -210,7 +224,7 @@ async function proxy(req: NextRequest) {
   const headers = buildUpstreamHeaders(req, token);
 
   let body: BodyInit | undefined;
-  if (!["GET", "HEAD"].includes(req.method)) {
+  if (hasBody) {
     if (restrictedCoordinator && isUsersPath && userTarget) {
       const canManageTarget = await coordinatorCanManageUser(headers, Number(userTarget[1]), assignedLocalidadId).catch(
         () => false

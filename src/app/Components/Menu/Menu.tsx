@@ -28,9 +28,9 @@ import {
   PackageCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { GuidedTarget, useGuidedManualApi } from "@/app/Components/GuidedManualAtom";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import ThemeToggle from "@/app/Components/ui/ThemeToggle";
-import { CLIENT_MOVEMENT_GUIDE_ID, CLIENT_MOVEMENT_MOBILE_GUIDE_ID } from "@/app/Components/GuidedManualAtom/ClientMovementGuide.config";
+import { START_ROLE_TUTORIAL_EVENT } from "@/app/Components/GuidedManualAtom/trainingEvents";
 import { buildNavigationForRole, isNavigationItemActive, type AppNavigationItem } from "@/lib/appNavigation";
 import { getRoleClient } from "@/lib/cookies";
 import { getRoleCapabilities, normalizeAppRole, type AppRole, type NavModuleId } from "@/lib/accessControl";
@@ -60,112 +60,160 @@ type NavigationItem = {
   icon: LucideIcon;
 };
 
-type HelpGuideAction = "client-create-movement" | "client-create-movement-mobile" | "legacy-create-movement" | "legacy-create-movement-torno" | "general-help";
+type HelpGuideAction = "general-help" | "full-role-training";
 
 type HelpSuggestion = {
   id: string;
   label: string;
   description: string;
   keywords: string[];
-  roles?: Rol[];
+  roles?: AppRole[];
   action: HelpGuideAction;
   guideId?: string;
 };
 
 const HELP_GUIDE_CATALOG: HelpSuggestion[] = [
   {
-    id: "general-first-steps",
-    label: "Primeros pasos en CosaifWeb",
-    description: "Guia inicial no interactiva sobre menu, dashboard, modulos y forma general de trabajo.",
-    keywords: ["inicio", "primeros", "pasos", "menu", "dashboard", "general", "ayuda"],
+    id: "dashboard-training",
+    label: "Empieza aquí: menú y Operación",
+    description: "Práctica corta para aprender dónde estás, qué botón pulsar y cómo leer la primera ronda.",
+    keywords: ["dashboard", "inicio", "operacion", "rondas", "tarjetas", "orden", "localidad"],
+    roles: ["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR", "CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON"],
     action: "general-help",
-    guideId: "general-first-steps",
+    guideId: "dashboard-training",
   },
   {
-    id: "client-dashboard-basics",
-    label: "Cliente: entender el dashboard",
-    description: "Resumen general para consultar pendientes, movimientos y torneados desde la pantalla principal.",
-    keywords: ["cliente", "dashboard", "inicio", "pendientes", "movimientos", "torneados"],
-    roles: ["CLIENTE"],
-    action: "general-help",
-    guideId: "client-dashboard-basics",
+    id: "role-training",
+    label: "Paso a paso dentro de Cosaif",
+    description: "La guía abre tus pantallas reales, señala un control a la vez y utiliza solamente datos SIM.",
+    keywords: ["completo", "paso a paso", "practica", "dashboard", "rol", "capacitacion", "nuevo", "ayuda"],
+    action: "full-role-training",
   },
   {
-    id: "client-create-movement-overview",
-    label: "Cliente: crear movimiento sin entrar al wizard",
-    description: "Tutorial breve con las etapas del alta de movimiento y los puntos a revisar antes de confirmar.",
-    keywords: ["cliente", "crear", "movimiento", "nuevo", "solicitud", "confirmacion"],
-    roles: ["CLIENTE"],
+    id: "movements-training",
+    label: "Entender movimientos y estados",
+    description: "Cómo consultar activos, historial y detalle, y qué revisar antes de crear o cambiar algo.",
+    keywords: ["movimientos", "seguimiento", "activos", "historial", "estados", "detalle", "solicitud"],
+    roles: ["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR", "CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"],
     action: "general-help",
-    guideId: "client-create-movement-overview",
+    guideId: "movements-training",
   },
   {
-    id: "client-torno-overview",
-    label: "Cliente: movimiento tipo torno",
-    description: "Explica la relacion entre Movimiento y Torneado, medidas, agendado y recuperacion.",
-    keywords: ["cliente", "torno", "torneado", "ruedas", "medidas", "agendado", "recuperacion"],
-    roles: ["CLIENTE"],
+    id: "rounds-training",
+    label: "Rondas: consultar, ordenar y cancelar",
+    description: "Aclara quién ve la ronda, cómo reordenarla y por qué cancelar afecta al movimiento completo.",
+    keywords: ["rondas", "orden", "flechas", "arrastrar", "editar", "cancelar", "movimiento", "empresa"],
+    roles: ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"],
     action: "general-help",
-    guideId: "client-torno-overview",
+    guideId: "rounds-training",
   },
   {
-    id: "operations-monitoring-overview",
-    label: "Operacion: seguimiento de movimientos",
-    description: "Guia general para coordinadores y supervisores sobre estados, rondas y acciones operativas.",
-    keywords: ["coordinador", "supervisor", "operacion", "rondas", "movimientos", "seguimiento", "estados"],
-    roles: ["COORDINADOR", "SUPERVISOR"],
+    id: "create-movement-overview",
+    label: "Crear un movimiento sin equivocarse",
+    description: "Servicio, locomotora, ruta o mediciones, comentarios, resumen y confirmación.",
+    keywords: ["crear", "movimiento", "nuevo", "solicitud", "servicio", "locomotora", "confirmacion"],
+    roles: ["ADMINISTRADOR", "COORDINADOR", "CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"],
     action: "general-help",
-    guideId: "operations-monitoring-overview",
+    guideId: "create-movement-overview",
   },
   {
-    id: "incidents-overview",
-    label: "Incidentes: lectura y seguimiento",
-    description: "Tutorial general sobre incidentes, reglas automaticas y revision de historial.",
-    keywords: ["incidentes", "cancelacion", "historial", "evidencia", "seguimiento"],
-    roles: ["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR"],
+    id: "torno-training",
+    label: "Torno desde cero",
+    description: "Movimiento contra Torneado, mediciones de ruedas, agenda, historial y PDF.",
+    keywords: ["torno", "torneado", "ruedas", "medidas", "agendado", "recuperacion", "pdf", "navajas"],
+    roles: ["COORDINADOR", "SUPERVISOR", "CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"],
     action: "general-help",
-    guideId: "incidents-overview",
+    guideId: "torno-training",
+  },
+  {
+    id: "incidents-training",
+    label: "Incidentes: registrar y dar seguimiento",
+    description: "Alcance por localidad, actuales y pasados, evidencia, resolución y efectos operativos.",
+    keywords: ["incidentes", "localidad", "actuales", "pasados", "cancelacion", "historial", "evidencia", "seguimiento"],
+    roles: ["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR", "CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON"],
+    action: "general-help",
+    guideId: "incidents-training",
   },
   {
     id: "admin-users-overview",
-    label: "Administrador: usuarios y permisos",
-    description: "Guia inicial para entender roles, permisos y cambios sensibles como contrasenas.",
-    keywords: ["administrador", "usuarios", "permisos", "roles", "contrasena", "seguridad"],
-    roles: ["ADMINISTRADOR"],
+    label: "Usuarios, roles y permisos",
+    description: "Altas, asignación correcta de empresa/localidad, contraseñas y desactivación segura.",
+    keywords: ["administrador", "coordinador", "usuarios", "permisos", "roles", "contrasena", "seguridad", "localidad"],
+    roles: ["ADMINISTRADOR", "COORDINADOR"],
     action: "general-help",
     guideId: "admin-users-overview",
   },
   {
+    id: "admin-config-overview",
+    label: "Configuración: empresas, patios y catálogos",
+    description: "Qué revisar antes de editar o desactivar datos que utiliza toda la operación.",
+    keywords: ["administrador", "configuracion", "empresas", "patios", "catalogos", "desactivar"],
+    roles: ["ADMINISTRADOR"],
+    action: "general-help",
+    guideId: "admin-config-overview",
+  },
+  {
     id: "reports-overview",
-    label: "Reporteria: filtros y exportacion",
-    description: "Resumen para consultar reportes, aplicar filtros y validar datos antes de exportar.",
-    keywords: ["reporteria", "reportes", "pdf", "exportar", "filtros", "historico"],
-    roles: ["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR"],
+    label: "Reportería: filtros y exportación",
+    description: "Cómo validar periodo, localidad, empresa, totales y archivo antes de compartir.",
+    keywords: ["reporteria", "reportes", "excel", "pdf", "exportar", "filtros", "historico"],
+    roles: ["ADMINISTRADOR", "COORDINADOR", "COMERCIAL"],
     action: "general-help",
     guideId: "reports-overview",
   },
   {
-    id: "client-create-movement-mobile",
-    label: "Crear movimiento paso a paso (Mobile / Paginado)",
-    description: "Guía interactiva optimizada para el flujo mobile/paginado paso a paso.",
-    keywords: ["movimiento", "crear", "nuevo", "mobile", "paginado", "guia", "wizard"],
-    roles: ["CLIENTE"],
-    action: "client-create-movement-mobile",
+    id: "arrastre-overview",
+    label: "Arrastres de Torreón desde cero",
+    description: "Solicitudes de vagones, composición, seguimiento e incidentes sin mezclar otros servicios.",
+    keywords: ["torreon", "arrastre", "vagones", "composicion", "solicitud", "seguimiento"],
+    roles: ["ARRASTRE_TORREON", "CLIENTE_ADMIN", "CLIENTE_COOR"],
+    action: "general-help",
+    guideId: "arrastre-overview",
   },
   {
-    id: "client-guide-button-flow",
-    label: "Wizard del botón Guía",
-    description: "Mismo flujo del botón Guía: acompaña al cliente desde Movimientos hasta confirmar la solicitud.",
-    keywords: ["guia", "boton", "wizard", "cliente", "movimiento", "paso", "confirmar"],
-    roles: ["CLIENTE"],
-    action: "client-create-movement",
+    id: "commercial-overview",
+    label: "Capacitación completa del área comercial",
+    description: "Clientes, contratos, movimientos contratados, cortes, saldos y reportes en el orden correcto.",
+    keywords: ["comercial", "clientes", "contratos", "consumo", "cortes", "saldos", "reportes"],
+    roles: ["COMERCIAL"],
+    action: "general-help",
+    guideId: "commercial-overview",
   },
   {
-    id: "create-movement-torno",
-    label: "Cómo crear un movimiento con torno",
-    description: "Asistente para el flujo con mediciones de ruedas, PDF y cierre del movimiento.",
-    keywords: ["movimiento", "torno", "ruedas", "medicion", "pdf", "calendarizar", "wizard"],
-    action: "legacy-create-movement-torno",
+    id: "commercial-clients-overview",
+    label: "Comercial: clientes y contactos",
+    description: "Cómo evitar duplicados y mantener expedientes comerciales utilizables.",
+    keywords: ["comercial", "clientes", "contactos", "expediente", "duplicados"],
+    roles: ["COMERCIAL"],
+    action: "general-help",
+    guideId: "commercial-clients-overview",
+  },
+  {
+    id: "commercial-contracts-overview",
+    label: "Comercial: contratos y vigencias",
+    description: "Cliente, localidad, periodo y efectos de modificar un contrato con consumo.",
+    keywords: ["comercial", "contratos", "vigencia", "reglas", "cliente", "consumo"],
+    roles: ["COMERCIAL"],
+    action: "general-help",
+    guideId: "commercial-contracts-overview",
+  },
+  {
+    id: "commercial-packages-overview",
+    label: "Comercial: movimientos contratados",
+    description: "Cantidades incluidas, consumo por periodo y diferencias con una solicitud operativa.",
+    keywords: ["comercial", "movimientos", "contratados", "paquetes", "cantidades", "consumo"],
+    roles: ["COMERCIAL"],
+    action: "general-help",
+    guideId: "commercial-packages-overview",
+  },
+  {
+    id: "commercial-collections-overview",
+    label: "Comercial: cortes y saldos",
+    description: "Qué validar antes de cerrar un periodo o registrar un saldo manual.",
+    keywords: ["comercial", "cortes", "saldos", "cobranza", "periodo", "cierre"],
+    roles: ["COMERCIAL"],
+    action: "general-help",
+    guideId: "commercial-collections-overview",
   },
 ];
 
@@ -272,7 +320,6 @@ function cn(...classes: (string | undefined | null | false)[]) {
 export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }) {
   const router = useRouter();
   const pathname = usePathname();
-  const guidedManualApi = useGuidedManualApi();
 
   const [isOpen, setIsOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -375,8 +422,8 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
   const showExpandedSidebar = isOpen || mobileOpen;
   const normalizedHelpQuery = helpQuery.trim().toLowerCase();
   const helpSuggestions = useMemo(() => {
-    const available = HELP_GUIDE_CATALOG.filter((item) => !item.roles || item.roles.includes(normRol));
-    if (!normalizedHelpQuery) return available.slice(0, 10);
+    const available = HELP_GUIDE_CATALOG.filter((item) => !item.roles || item.roles.includes(appRole));
+    if (!normalizedHelpQuery) return available;
 
     return available.filter((item) => {
       const haystack = [item.label, item.description, ...item.keywords].join(" ").toLowerCase();
@@ -385,7 +432,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
         .filter(Boolean)
         .every((term) => haystack.includes(term));
     });
-  }, [normRol, normalizedHelpQuery]);
+  }, [appRole, normalizedHelpQuery]);
 
   const closeHelpAssistant = useCallback(() => {
     setHelpOpen(false);
@@ -394,36 +441,24 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
 
   const runHelpSuggestion = useCallback(
     (suggestion: HelpSuggestion) => {
-      if (suggestion.action === "client-create-movement" && guidedManualApi) {
-        guidedManualApi.startManual(CLIENT_MOVEMENT_GUIDE_ID);
-        closeHelpAssistant();
-        return;
-      }
-
-      if (suggestion.action === "client-create-movement-mobile" && guidedManualApi) {
-        guidedManualApi.startManual(CLIENT_MOVEMENT_MOBILE_GUIDE_ID);
-        closeHelpAssistant();
-        return;
-      }
-
-      if (suggestion.action === "legacy-create-movement-torno") {
-        window.dispatchEvent(new CustomEvent("cosaif:start-create-movement-torno-guide"));
+      if (suggestion.action === "full-role-training") {
+        window.dispatchEvent(new CustomEvent(START_ROLE_TUTORIAL_EVENT, {
+          detail: { role: appRole },
+        }));
         closeHelpAssistant();
         return;
       }
 
       if (suggestion.action === "general-help") {
         window.dispatchEvent(new CustomEvent("cosaif:start-general-help-guide", {
-          detail: { guideId: suggestion.guideId ?? suggestion.id, role: normRol },
+          detail: { guideId: suggestion.guideId ?? suggestion.id, role: appRole },
         }));
         closeHelpAssistant();
         return;
       }
 
-      window.dispatchEvent(new CustomEvent("cosaif:start-create-movement-guide"));
-      closeHelpAssistant();
     },
-    [closeHelpAssistant, guidedManualApi, normRol]
+    [appRole, closeHelpAssistant]
   );
 
   const navigation = useMemo<NavigationItem[]>(() => {
@@ -548,6 +583,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
               <button
                 key={item.id}
                 type="button"
+                data-guide-id={`sidebar-menu-${item.id}`}
                 onClick={() => router.push(item.href)}
                 className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-black transition ${active ? "bg-[var(--app-accent-soft)] text-[var(--app-accent)]" : "text-[var(--app-text-muted)]"}`}
                 aria-current={active ? "page" : undefined}
@@ -559,6 +595,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
           })}
           <button
             type="button"
+            data-guide-id="sidebar-mobile-more"
             onClick={() => setMobileOpen(true)}
             className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-black text-[var(--app-text-muted)] transition hover:bg-[var(--app-surface-muted)]"
           >
@@ -665,15 +702,11 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
             const active = isNavigationItemActive(pathname, item);
             const navItem = <NavItem key={item.id} item={item} isActive={active} />;
 
-            if (item.id === "movimientos") {
-              return (
-                <GuidedTarget key={item.id} id="sidebar-menu-movimientos" className="w-full">
-                  {navItem}
-                </GuidedTarget>
-              );
-            }
-
-            return navItem;
+            return (
+              <GuidedTarget key={item.id} id={`sidebar-menu-${item.id}`} className="w-full">
+                {navItem}
+              </GuidedTarget>
+            );
           })}
         </nav>
 
@@ -716,9 +749,9 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
                 aria-label="Panel de ayuda"
               >
                 <div className="border-b border-[var(--app-border)] px-4 py-3">
-                  <p className="text-sm font-semibold text-[var(--app-text)]">Asistente de guías</p>
+                  <p className="text-sm font-semibold text-[var(--app-text)]">Centro de capacitación</p>
                   <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">
-                    Busca un proceso y lanza la guía o wizard correspondiente.
+                    Abre “Paso a paso dentro de Cosaif”. La guía te lleva por tus pantallas reales y ningún dato SIM se guarda.
                   </p>
                 </div>
                 <div className="px-4 py-5">
@@ -732,7 +765,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
                       type="text"
                       value={helpQuery}
                       onChange={(event) => setHelpQuery(event.target.value)}
-                      placeholder="Ej. movimiento, torno, PDF, solicitud"
+                      placeholder="Ej. movimiento, torno, rondas, incidentes"
                       className="w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-subtle)] py-2.5 pl-9 pr-3 text-sm text-[var(--app-text)] outline-none transition focus:border-[var(--app-accent)] focus:bg-[var(--app-surface)]"
                     />
                   </div>
@@ -756,7 +789,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
                       ))
                     ) : (
                       <div className="rounded-xl border border-dashed border-[var(--app-border)] bg-[var(--app-surface-subtle)] px-3 py-4 text-xs text-[var(--app-text-muted)]">
-                        No encontré una guía con esa búsqueda. Intenta con movimiento, torno o PDF.
+                        No encontré una guía con esa búsqueda. Intenta con rondas, movimiento, incidentes o contratos.
                       </div>
                     )}
                   </div>

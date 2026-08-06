@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { getRoleCapabilities } from "@/lib/accessControl";
 import { normalizeHttpOrigin } from "@/lib/serverOrigin";
 import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
+import { containsTrainingReservedId } from "@/lib/routePolicy";
 
 export const dynamic = "force-dynamic";
 
@@ -641,7 +642,9 @@ export async function GET(req: NextRequest) {
     const localidadId = role === "ADMINISTRADOR"
       ? requestedLocalidadId
       : assignedLocalidadId;
-    const generalLocalityView = requestedGeneralLocalityView && !capabilities.isClientLike;
+    // El dashboard del cliente es una vista operativa de toda la localidad.
+    // Las consultas sin `alcance=localidad` (como el editor) siguen limitadas a su empresa.
+    const generalLocalityView = requestedGeneralLocalityView;
 
     const requestedEmpresaId = firstPositiveNumber(searchParams.get("empresaId"));
     if (
@@ -834,6 +837,12 @@ export async function POST(req: NextRequest) {
   try {
     const { origin } = new URL(req.url);
     const body = await req.json().catch(() => ({}));
+    if (containsTrainingReservedId(body)) {
+      return NextResponse.json(
+        { message: "Los registros SIM sólo existen dentro de la capacitación." },
+        { status: 409 }
+      );
+    }
     const action = String(body?.action || "").toLowerCase();
 
     const cookieStore = await cookies();

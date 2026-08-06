@@ -1,6 +1,6 @@
 // /components/EditRondas.tsx
 'use client';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeftRight, X, CheckCircle, XCircle, Info, Ban, LayoutList, GripVertical,
   ChevronUp, ChevronDown, AlertTriangle
@@ -23,6 +23,11 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { GuidedTarget } from '@/app/Components/GuidedManualAtom';
+import {
+  TRAINING_ROUND_ID,
+  useTrainingTour,
+} from '@/app/Components/GuidedManualAtom/TrainingTourContext';
 
 import {
   useRondaData,
@@ -102,6 +107,7 @@ function SortableRondaCard({
   canMoveDown,
   onCancelRequest,
   isCancelling,
+  guideId,
 }: {
   ronda: Ronda;
   info?: InfoExtra;
@@ -111,6 +117,7 @@ function SortableRondaCard({
   canMoveDown: boolean;
   onCancelRequest: () => void;
   isCancelling: boolean;
+  guideId?: string;
 }) {
   const {
     attributes,
@@ -129,7 +136,7 @@ function SortableRondaCard({
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="touch-none">
+    <div ref={setNodeRef} style={style} className="touch-none" data-guide-id={guideId}>
       <RondaCardContent
         ronda={ronda}
         info={info}
@@ -224,6 +231,7 @@ function RondaCardContent({
           {onMoveStep ? (
             <>
               <button
+                data-guide-id="round-move-up"
                 type="button"
                 onClick={() => onMoveStep(-1)}
                 disabled={!canMoveUp}
@@ -234,6 +242,7 @@ function RondaCardContent({
                 <ChevronUp size={15} />
               </button>
               <button
+                data-guide-id="round-move-down"
                 type="button"
                 onClick={() => onMoveStep(1)}
                 disabled={!canMoveDown}
@@ -246,6 +255,7 @@ function RondaCardContent({
             </>
           ) : null}
           <button
+            data-guide-id="round-show-actions"
             type="button"
             onClick={() => setOpen(!open)}
             aria-label={open ? 'Ocultar acciones del movimiento' : 'Mostrar acciones del movimiento'}
@@ -280,6 +290,7 @@ function RondaCardContent({
 
           <div className="flex items-center justify-end gap-2 pt-2">
             <button
+              data-guide-id="round-cancel-movement"
               type="button"
               onClick={onCancelRequest}
               disabled={isCancelling || isTorreon}
@@ -295,6 +306,7 @@ function RondaCardContent({
               Quitar y cancelar
             </button>
             <button
+              data-guide-id="round-change-position"
               type="button"
               onClick={onSwapRequest}
               disabled={isTorreon}
@@ -472,9 +484,11 @@ function RoundEditConfirmModal({
           <button type="button" onClick={onClose} disabled={busy} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:opacity-50 dark:text-slate-400 dark:hover:text-white">
             Volver
           </button>
-          <button type="button" onClick={onConfirm} disabled={busy} className={`rounded-md px-4 py-2 text-sm font-semibold disabled:cursor-wait disabled:opacity-60 ${THEME.primary}`}>
-            {busy ? 'Guardando...' : 'Sí, editar la ronda'}
-          </button>
+          <GuidedTarget id="round-edit-confirm-action" className="inline-flex">
+            <button type="button" onClick={onConfirm} disabled={busy} className={`rounded-md px-4 py-2 text-sm font-semibold disabled:cursor-wait disabled:opacity-60 ${THEME.primary}`}>
+              {busy ? 'Guardando...' : 'Sí, editar la ronda'}
+            </button>
+          </GuidedTarget>
         </div>
       </div>
     </div>
@@ -502,8 +516,8 @@ function CancelMovementModal({
   const validReason = reason.trim().length >= 3;
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="cancel-movement-title">
-      <div className={`w-full max-w-lg rounded-xl border ${THEME.border} ${THEME.surface} shadow-2xl`}>
+    <GuidedTarget id="round-cancel-dialog" className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm">
+      <div role="dialog" aria-modal="true" aria-labelledby="cancel-movement-title" className={`w-full max-w-lg rounded-xl border ${THEME.border} ${THEME.surface} shadow-2xl`}>
         <div className="flex items-start gap-3 p-5">
           <div className="rounded-full bg-red-100 p-2 text-red-700 dark:bg-red-500/15 dark:text-red-400">
             <Ban size={20} />
@@ -533,12 +547,14 @@ function CancelMovementModal({
           <button type="button" onClick={onClose} disabled={busy} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:opacity-50 dark:text-slate-400 dark:hover:text-white">
             No, regresar
           </button>
-          <button type="button" onClick={() => onConfirm(reason.trim())} disabled={busy || !validReason} className={`rounded-md px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-45 ${THEME.danger}`}>
-            {busy ? 'Cancelando...' : 'Sí, cancelar y quitar'}
-          </button>
+          <GuidedTarget id="round-cancel-confirm-action" className="inline-flex">
+            <button type="button" onClick={() => onConfirm(reason.trim())} disabled={busy || !validReason} className={`rounded-md px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-45 ${THEME.danger}`}>
+              {busy ? 'Cancelando...' : 'Sí, cancelar y quitar'}
+            </button>
+          </GuidedTarget>
         </div>
       </div>
-    </div>
+    </GuidedTarget>
   );
 }
 
@@ -550,6 +566,7 @@ type Props = {
 };
 
 const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
+  const trainingTour = useTrainingTour();
   const {
     infoMap, loading, groupedByRonda, setGroupedByRonda, setList
   } = useRondaData(Number(localidadId), onClose);
@@ -568,6 +585,73 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [activeDragId, setActiveDragId] = useState<number | null>(null);
   const [didSave, setDidSave] = useState(false);
+  const roundEditLockRef = useRef(false);
+  const cancelLockRef = useRef(false);
+
+  const trainingRounds = useMemo<Ronda[]>(() => {
+    if (!trainingTour.active) return [];
+    const movementById = new Map(trainingTour.movements.map((movement) => [movement.id, movement]));
+    return trainingTour.roundOrder.reduce<Ronda[]>((rounds, movementId, index) => {
+        const movement = movementById.get(movementId);
+        if (!movement || movement.finalizado || ["CONCLUIDO", "CANCELADO"].includes(String(movement.estado).toUpperCase())) return rounds;
+        rounds.push({
+          id: TRAINING_ROUND_ID + index,
+          rondaNumero: 99,
+          orden: index + 1,
+          concluido: false,
+          source: 'training',
+          empresa: { id: movement.empresaId, nombre: movement.empresaNombre || 'Empresa de capacitación' },
+          movimientoId: movement.id,
+          createdAt: movement.fechaSolicitud,
+          movimiento: {
+            id: movement.id,
+            idTecnico: movement.id,
+            folioLocalidad: movement.folioLocalidad,
+            folioLocalidadLabel: movement.folioLocalidadLabel,
+            title: movement.folioLocalidadLabel || `SIM-${movement.id}`,
+            description: movement.instrucciones,
+            prioridad: movement.prioridad === 'ALTA' ? 'ALTA' : 'BAJA',
+            locomotiveNumber: movement.locomotora,
+            viaOrigen: { nombre: String(movement.viaOrigen || '—') },
+            viaDestino: { nombre: String(movement.viaDestino || '—') },
+            lavado: movement.lavado,
+            torno: movement.torno,
+            estado: movement.estado,
+            instrucciones: movement.instrucciones,
+          },
+        });
+        return rounds;
+      }, []);
+  }, [trainingTour.active, trainingTour.movements, trainingTour.roundOrder]);
+
+  useEffect(() => {
+    if (!trainingTour.active || loading) return;
+    setGroupedByRonda((previous) => ({ ...previous, 99: trainingRounds }));
+    setList((previous) => [
+      ...previous.filter((item) => item.source !== 'training'),
+      ...trainingRounds,
+    ]);
+  }, [loading, setGroupedByRonda, setList, trainingRounds, trainingTour.active]);
+
+  const displayedInfoMap = useMemo(() => {
+    const extra = { ...infoMap };
+    trainingRounds.forEach((round) => {
+      extra[round.id] = {
+        empresa: round.empresa || { id: 0, nombre: 'Empresa de capacitación' },
+        movimiento: {
+          id: round.movimiento?.id,
+          viaOrigen: { nombre: round.movimiento?.viaOrigen?.nombre || '—' },
+          viaDestino: { nombre: round.movimiento?.viaDestino?.nombre || null },
+          lavado: Boolean(round.movimiento?.lavado),
+          torno: Boolean(round.movimiento?.torno),
+          estado: round.movimiento?.estado,
+          prioridad: round.movimiento?.prioridad,
+          locomotiveNumber: round.movimiento?.locomotiveNumber,
+        },
+      };
+    });
+    return extra;
+  }, [infoMap, trainingRounds]);
 
   const showToast = useCallback((message: string) => setToast({ show: true, message }), []);
   const closeEditor = useCallback(() => {
@@ -590,31 +674,51 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
 
   /* ===== Actions ===== */
   const handleSwapRequest = useCallback((ronda: Ronda) => {
+    if (trainingTour.active && !trainingTour.isTrainingMovement(movementTechnicalId(ronda))) {
+      alert('En capacitación sólo puedes seleccionar registros SIM.');
+      return;
+    }
     if (ronda.source === 'torreon') {
       alert('En esta ronda usa las flechas o arrastra el movimiento a su nueva posición.');
       return;
     }
     setSwapModal({ visible: true, base: ronda });
-  }, []);
+  }, [trainingTour]);
 
   const handleSwap = useCallback((otra: Ronda) => {
     const base = swapModal.base;
     if (!base || !otra) return;
+    if (trainingTour.active && (
+      !trainingTour.isTrainingMovement(movementTechnicalId(base))
+      || !trainingTour.isTrainingMovement(movementTechnicalId(otra))
+    )) {
+      alert('En capacitación sólo puedes intercambiar registros SIM.');
+      setSwapModal({ visible: false, base: null });
+      return;
+    }
     if (otra.source === 'torreon') {
       alert('No se puede intercambiar una ronda normal con una ronda de Torreón.');
       return;
     }
     setSwapModal({ visible: false, base: null });
     setPendingRoundEdit({ active: base, target: otra, kind: 'swap', targetOrder: otra.orden });
-  }, [swapModal.base]);
+  }, [swapModal.base, trainingTour]);
 
   const requestMoveStep = useCallback((item: Ronda, direction: -1 | 1) => {
+    if (trainingTour.active && !trainingTour.isTrainingMovement(movementTechnicalId(item))) {
+      alert('En capacitación sólo puedes mover registros SIM.');
+      return;
+    }
     const currentList = [...(groupedByRonda[item.rondaNumero] || [])]
       .sort((a, b) => a.orden - b.orden || a.id - b.id);
     const currentIndex = currentList.findIndex((candidate) => candidate.id === item.id);
     const targetIndex = currentIndex + direction;
     const target = currentList[targetIndex];
     if (currentIndex < 0 || !target) return;
+    if (trainingTour.active && !trainingTour.isTrainingMovement(movementTechnicalId(target))) {
+      alert('En capacitación el destino también debe ser un registro SIM.');
+      return;
+    }
 
     setPendingRoundEdit({
       active: item,
@@ -622,16 +726,47 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
       kind: item.source === 'torreon' ? 'torreon-order' : 'swap',
       targetOrder: targetIndex + 1,
     });
-  }, [groupedByRonda]);
+  }, [groupedByRonda, trainingTour]);
 
   const confirmRoundEdit = useCallback(async () => {
-    if (!pendingRoundEdit) return;
+    if (!pendingRoundEdit || roundEditLockRef.current) return;
+    roundEditLockRef.current = true;
     const { active, target, kind, targetOrder } = pendingRoundEdit;
     setSavingRoundEdit(true);
 
     try {
+      if (trainingTour.active) {
+        const activeMovementId = movementTechnicalId(active);
+        const targetMovementId = movementTechnicalId(target);
+        if (!trainingTour.isTrainingMovement(activeMovementId) || !trainingTour.isTrainingMovement(targetMovementId)) {
+          alert('En capacitación selecciona únicamente registros SIM. No se modificó ninguna ronda real.');
+          setPendingRoundEdit(null);
+          return;
+        }
+        const currentList = [...(groupedByRonda[active.rondaNumero] || [])]
+          .sort((a, b) => a.orden - b.orden || a.id - b.id);
+        const oldIndex = currentList.findIndex((item) => item.id === active.id);
+        const newIndex = Math.max(0, Math.min(targetOrder - 1, currentList.length - 1));
+        if (oldIndex < 0) throw new Error('No se encontró el registro SIM en la ronda');
+        const nextList = [...currentList];
+        const [moved] = nextList.splice(oldIndex, 1);
+        nextList.splice(newIndex, 0, moved);
+        const normalized = nextList.map((item, index) => ({ ...item, orden: index + 1 }));
+        const byId = new Map(normalized.map((item) => [item.id, item]));
+        setGroupedByRonda((previous) => ({ ...previous, [active.rondaNumero]: normalized }));
+        setList((previous) => previous.map((item) => byId.get(item.id) ?? item));
+        trainingTour.reorderMovements(
+          normalized
+            .map(movementTechnicalId)
+            .filter((id): id is number => Boolean(id && trainingTour.isTrainingMovement(id)))
+        );
+        setDidSave(true);
+        setPendingRoundEdit(null);
+        showToast('Orden SIM actualizado sólo en capacitación');
+        return;
+      }
       if (kind === 'torreon-order') {
-        await apiOrdenMovimiento(active.id, targetOrder, localidadId);
+        await apiOrdenMovimiento(active.id, targetOrder, localidadId, { sandbox: trainingTour.active });
         const currentList = [...(groupedByRonda[active.rondaNumero] || [])]
           .sort((a, b) => a.orden - b.orden || a.id - b.id);
         const oldIndex = currentList.findIndex((item) => item.id === active.id);
@@ -647,7 +782,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
         setList((prev) => prev.map((item) => byId.get(item.id) ?? item));
         showToast('Orden de la ronda actualizado');
       } else {
-        await apiSwapMovimientos(active.id, target.id, localidadId);
+        await apiSwapMovimientos(active.id, target.id, localidadId, { sandbox: trainingTour.active });
         const swapMovement = (item: Ronda): Ronda => {
           if (item.id === active.id) {
             return {
@@ -681,13 +816,18 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
       console.error(e);
       alert(errorMessage(e, 'No se pudo editar la ronda'));
     } finally {
+      roundEditLockRef.current = false;
       setSavingRoundEdit(false);
     }
-  }, [groupedByRonda, localidadId, pendingRoundEdit, setGroupedByRonda, setList, showToast]);
+  }, [groupedByRonda, localidadId, pendingRoundEdit, setGroupedByRonda, setList, showToast, trainingTour]);
 
   const handleCancelRequest = useCallback((item: Ronda) => {
+    if (trainingTour.active && !trainingTour.isTrainingMovement(movementTechnicalId(item))) {
+      alert('En capacitación sólo puedes cancelar registros SIM.');
+      return;
+    }
     setCancelItem(item);
-  }, []);
+  }, [trainingTour]);
 
   const confirmCancelMovement = useCallback(async (reason: string) => {
     if (!cancelItem) return;
@@ -697,9 +837,32 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
       return;
     }
 
+    if (cancelLockRef.current) return;
+    cancelLockRef.current = true;
     setCancellingId(movimientoId);
     try {
-      await apiCancelarMovimiento(movimientoId, reason, localidadId);
+      if (trainingTour.active) {
+        if (!trainingTour.isTrainingMovement(movimientoId)) {
+          alert('En capacitación sólo puedes cancelar registros SIM. No se modificó ningún movimiento real.');
+          setCancelItem(null);
+          return;
+        }
+        trainingTour.cancelMovement(movimientoId, reason);
+        const remaining = [...(groupedByRonda[cancelItem.rondaNumero] || [])]
+          .filter((item) => item.id !== cancelItem.id)
+          .sort((a, b) => a.orden - b.orden || a.id - b.id)
+          .map((item, index) => ({ ...item, orden: index + 1 }));
+        const byId = new Map(remaining.map((item) => [item.id, item]));
+        setGroupedByRonda((previous) => ({ ...previous, [cancelItem.rondaNumero]: remaining }));
+        setList((previous) => previous
+          .filter((item) => item.id !== cancelItem.id)
+          .map((item) => byId.get(item.id) ?? item));
+        setDidSave(true);
+        setCancelItem(null);
+        showToast('SIM cancelado y retirado sólo de la capacitación');
+        return;
+      }
+      await apiCancelarMovimiento(movimientoId, reason, localidadId, { sandbox: trainingTour.active });
       const remaining = [...(groupedByRonda[cancelItem.rondaNumero] || [])]
         .filter((item) => item.id !== cancelItem.id)
         .sort((a, b) => a.orden - b.orden || a.id - b.id)
@@ -717,9 +880,10 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
       console.error(e);
       alert(errorMessage(e, 'No se pudo cancelar el movimiento'));
     } finally {
+      cancelLockRef.current = false;
       setCancellingId(null);
     }
-  }, [cancelItem, groupedByRonda, localidadId, setGroupedByRonda, setList, showToast]);
+  }, [cancelItem, groupedByRonda, localidadId, setGroupedByRonda, setList, showToast, trainingTour]);
 
   // Arrastrar sólo prepara el cambio; la API se ejecuta después de confirmarlo.
   const handleDragEnd = (event: DragEndEvent) => {
@@ -734,6 +898,14 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
     const activeItem = todasLasRondas.find((r) => r.id === activeId);
     const overItem = todasLasRondas.find((r) => r.id === overId);
     if (!activeItem || !overItem) return;
+
+    if (trainingTour.active && (
+      !trainingTour.isTrainingMovement(movementTechnicalId(activeItem))
+      || !trainingTour.isTrainingMovement(movementTechnicalId(overItem))
+    )) {
+      alert('En capacitación sólo puedes arrastrar entre registros SIM.');
+      return;
+    }
 
     if (activeItem.source === 'torreon' || overItem.source === 'torreon') {
       if (activeItem.source !== 'torreon' || overItem.source !== 'torreon' || activeItem.rondaNumero !== overItem.rondaNumero) {
@@ -773,7 +945,12 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div key={themeKey} className={`${THEME.surface} h-full max-h-[85vh] flex flex-col bg-white dark:bg-slate-900`}>
+      <GuidedTarget key={themeKey} id="dashboard-rounds-editor-panel" className={`${THEME.surface} h-full max-h-[85vh] flex flex-col bg-white dark:bg-slate-900`}>
+        {trainingTour.active ? (
+          <div className="border-b border-violet-300 bg-violet-50 px-5 py-2 text-xs font-black text-violet-900 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-100">
+            CAPACITACIÓN · Sólo las tarjetas SIM aceptan cambios; nunca se llamará al backend.
+          </div>
+        ) : null}
         {/* Header - Solid background to prevent overlapping issues */}
         <div className={`px-5 py-4 border-b ${THEME.border} flex items-center justify-between bg-white dark:bg-slate-900 sticky top-0 z-20`}>
           <div className="flex items-center gap-3">
@@ -793,7 +970,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
         </div>
 
         {/* Content */}
-        <div className={`flex-1 overflow-y-auto ${THEME.surfaceAlt} p-4`}>
+        <GuidedTarget id="dashboard-rounds-editor-list" className={`flex-1 overflow-y-auto ${THEME.surfaceAlt} p-4`}>
           <div className="max-w-3xl mx-auto">
             {Object.entries(groupedByRonda)
               .map(([r, items]) => ({ num: parseInt(r), items: [...items].sort((a, b) => a.orden - b.orden) }))
@@ -810,13 +987,14 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
                         <SortableRondaCard
                           key={r.id}
                           ronda={r}
-                          info={infoMap[r.id]}
+                          info={displayedInfoMap[r.id]}
                           onSwapRequest={() => handleSwapRequest(r)}
                           onMoveStep={(direction) => requestMoveStep(r, direction)}
                           canMoveUp={index > 0}
                           canMoveDown={index < section.items.length - 1}
                           onCancelRequest={() => handleCancelRequest(r)}
                           isCancelling={cancellingId === movementTechnicalId(r)}
+                          guideId={trainingTour.isTrainingMovement(movementTechnicalId(r)) ? 'training-round-edit-row' : undefined}
                         />
                       ))}
                     </div>
@@ -825,7 +1003,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
               ))
             }
           </div>
-        </div>
+        </GuidedTarget>
 
 
         {/* Footer */}
@@ -848,7 +1026,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
           {activeItem ? (
             <RondaCardContent
               ronda={activeItem}
-              info={infoMap[activeItem.id]}
+              info={displayedInfoMap[activeItem.id]}
               isCancelling={false}
             />
           ) : null}
@@ -858,7 +1036,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
           visible={swapModal.visible}
           base={swapModal.base}
           candidatos={todasLasRondas.filter((item) => item.source !== 'torreon')}
-          infoMap={infoMap}
+          infoMap={displayedInfoMap}
           onConfirm={handleSwap}
           onClose={() => setSwapModal({ visible: false, base: null })}
         />
@@ -875,7 +1053,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
           onClose={() => setCancelItem(null)}
         />
         <Toast show={toast.show} message={toast.message} onClose={() => setToast({ show: false, message: '' })} />
-      </div>
+      </GuidedTarget>
     </DndContext>
   );
 };

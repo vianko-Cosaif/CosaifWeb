@@ -57,6 +57,8 @@ export type GuidedManualCondition =
 
 export type GuidedManualStep = {
   id: string;
+  /** Etiqueta corta para agrupar pasos largos (p. ej. Dashboard o Movimientos). */
+  chapter?: string;
   title: string;
   description: string;
   targetId?: string;
@@ -85,6 +87,12 @@ export type GuidedManualStep = {
   actionOnEnter?: GuidedManualAction;
   actionOnNext?: GuidedManualAction;
   actionOnPrevious?: GuidedManualAction;
+  /**
+   * Convierte el objetivo resaltado en el control de avance del paso.
+   * El usuario debe pulsar el elemento real de la aplicacion; el boton
+   * "Siguiente" del panel se reemplaza por una indicacion visual.
+   */
+  advanceOnTargetClick?: boolean;
   hidePrevious?: boolean;
   disablePrevious?: boolean;
   disableAppElements?: string[];
@@ -266,6 +274,147 @@ export const resolveGuidedManualAppearance = (appearance?: GuidedManualAppearanc
 export const clampGuidedManualValue = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
 
+export type GuidedManualRectLike = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+  width: number;
+  height: number;
+};
+
+export type GuidedManualPanelPlacement = {
+  top: number;
+  left: number;
+  width: number;
+  maxHeight: number;
+  docked: 'none' | 'top' | 'right' | 'bottom' | 'left';
+};
+
+/**
+ * Coloca el panel en una franja libre del viewport. Las franjas laterales se
+ * pueden hacer mas angostas y las verticales mas bajas (con scroll interno),
+ * pero nunca se elige una candidata que invada el rectangulo resaltado.
+ * Cuando el objetivo ocupa practicamente toda la pantalla no existe una
+ * solucion geometrica: en ese caso se usa una bandeja inferior y el spotlight
+ * se recorta antes de la bandeja en la capa web.
+ */
+export const resolveGuidedManualPanelPlacement = ({
+  viewportWidth,
+  viewportHeight,
+  panelWidth,
+  panelHeight,
+  target,
+  margin = 12,
+  gap = 12,
+}: {
+  viewportWidth: number;
+  viewportHeight: number;
+  panelWidth: number;
+  panelHeight: number;
+  target?: GuidedManualRectLike | null;
+  margin?: number;
+  gap?: number;
+}): GuidedManualPanelPlacement => {
+  const availableWidth = Math.max(1, viewportWidth - margin * 2);
+  const availableHeight = Math.max(1, viewportHeight - margin * 2);
+  const desiredWidth = Math.min(Math.max(1, panelWidth), availableWidth);
+  const desiredHeight = Math.min(Math.max(1, panelHeight), availableHeight);
+
+  if (!target) {
+    return {
+      top: margin + Math.max(0, (availableHeight - desiredHeight) / 2),
+      left: margin + Math.max(0, (availableWidth - desiredWidth) / 2),
+      width: desiredWidth,
+      maxHeight: availableHeight,
+      docked: 'none',
+    };
+  }
+
+  const clipped = {
+    top: clampGuidedManualValue(target.top, margin, viewportHeight - margin),
+    right: clampGuidedManualValue(target.right, margin, viewportWidth - margin),
+    bottom: clampGuidedManualValue(target.bottom, margin, viewportHeight - margin),
+    left: clampGuidedManualValue(target.left, margin, viewportWidth - margin),
+  };
+  const spaces = {
+    top: Math.max(0, clipped.top - margin - gap),
+    right: Math.max(0, viewportWidth - margin - clipped.right - gap),
+    bottom: Math.max(0, viewportHeight - margin - clipped.bottom - gap),
+    left: Math.max(0, clipped.left - margin - gap),
+  };
+  const minimumWidth = Math.min(208, availableWidth);
+  const minimumHeight = Math.min(128, availableHeight);
+
+  type Candidate = GuidedManualPanelPlacement & { area: number; full: boolean };
+  const candidates: Candidate[] = [];
+  const addVertical = (side: 'top' | 'bottom', space: number) => {
+    if (space < minimumHeight) return;
+    const maxHeight = space;
+    const height = Math.min(desiredHeight, maxHeight);
+    const left = clampGuidedManualValue(
+      target.left + (target.width - desiredWidth) / 2,
+      margin,
+      Math.max(margin, viewportWidth - margin - desiredWidth)
+    );
+    candidates.push({
+      top: side === 'top' ? clipped.top - gap - height : clipped.bottom + gap,
+      left,
+      width: desiredWidth,
+      maxHeight,
+      docked: side,
+      area: desiredWidth * height,
+      full: height >= desiredHeight,
+    });
+  };
+  const addHorizontal = (side: 'left' | 'right', space: number) => {
+    if (space < minimumWidth) return;
+    const width = Math.min(desiredWidth, space);
+    const top = clampGuidedManualValue(
+      target.top + (target.height - desiredHeight) / 2,
+      margin,
+      Math.max(margin, viewportHeight - margin - desiredHeight)
+    );
+    candidates.push({
+      top,
+      left: side === 'left' ? clipped.left - gap - width : clipped.right + gap,
+      width,
+      maxHeight: availableHeight,
+      docked: side,
+      area: width * desiredHeight,
+      full: width >= desiredWidth,
+    });
+  };
+
+  addVertical('bottom', spaces.bottom);
+  addVertical('top', spaces.top);
+  addHorizontal('right', spaces.right);
+  addHorizontal('left', spaces.left);
+
+  const selected = candidates.sort((a, b) => {
+    if (a.full !== b.full) return a.full ? -1 : 1;
+    return b.area - a.area;
+  })[0];
+  if (selected) {
+    return {
+      top: selected.top,
+      left: selected.left,
+      width: selected.width,
+      maxHeight: selected.maxHeight,
+      docked: selected.docked,
+    };
+  }
+
+  const dockHeight = Math.min(desiredHeight, Math.max(144, availableHeight * 0.42));
+  return {
+    top: viewportHeight - margin - dockHeight,
+    left: margin,
+    width: availableWidth,
+    maxHeight: dockHeight,
+    docked: 'bottom',
+  };
+};
+
 export const normalizeGuidedManualId = (id: string) =>
   String(id || '').trim().toLowerCase();
 
@@ -278,6 +427,7 @@ export const normalizeGuidedManualSteps = (steps: unknown): GuidedManualStep[] =
       return {
         ...step,
         id: String(step.id || '').trim(),
+        chapter: step.chapter ? String(step.chapter).trim() : undefined,
         title: String(step.title || '').trim(),
         description: String(step.description || '').trim(),
         targetId: step.targetId ? String(step.targetId).trim() : undefined,

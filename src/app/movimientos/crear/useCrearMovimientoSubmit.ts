@@ -258,6 +258,8 @@ export function useCrearMovimientoSubmit(args: {
   pushOutbox: (payload: unknown, endpoint?: string) => void;
   onSuccess: (ctx: { movimientoId: number; agendado?: boolean; activatedScheduled?: boolean }) => void;
   redirectOnSuccess?: boolean;
+  /** Bloqueo de defensa en profundidad para capacitación/sandbox. */
+  disabled?: boolean;
 }) {
   const {
     form,
@@ -276,13 +278,18 @@ export function useCrearMovimientoSubmit(args: {
     pushOutbox,
     onSuccess,
     redirectOnSuccess = true,
+    disabled = false,
   } = args;
 
   const [sending, setSending] = useState(false);
   const inFlightRef = useRef(false);
+  const disabledRef = useRef(disabled);
+  disabledRef.current = disabled;
 
   const submit = useCallback(async () => {
-    if (inFlightRef.current || sending) return;
+    // Debe ser la primera condición: en sandbox no validamos, consultamos
+    // incidentes, encolamos ni alcanzamos ninguno de los POST del flujo real.
+    if (disabledRef.current || inFlightRef.current || sending) return;
     const { empresaId, creadoPorId, localidadId } = resolvedIds;
 
     const missing: string[] = [];
@@ -329,6 +336,10 @@ export function useCrearMovimientoSubmit(args: {
         });
         if (!confirmed) return;
       }
+
+      // El usuario puede iniciar/cerrar capacitación mientras una confirmación
+      // está abierta. Revalidamos justo antes de construir/encolar/enviar.
+      if (disabledRef.current) return;
 
       const {
         payload,
@@ -378,10 +389,13 @@ export function useCrearMovimientoSubmit(args: {
       setSending(true);
 
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        if (disabledRef.current) return;
         pushOutbox(requestPayload, createEndpoint);
         setSending(false);
         return;
       }
+
+      if (disabledRef.current) return;
 
       const res = await Movimiento.fetchWithTimeout(createEndpoint, {
         method: "POST",
@@ -415,7 +429,7 @@ export function useCrearMovimientoSubmit(args: {
       const wasScheduled = !!(createdRecord?.agendado || createdRecord?.data?.agendado);
       const activatedScheduled = !!(createdRecord?.activatedScheduled || createdRecord?.data?.activatedScheduled);
 
-      if (!isTorreon && movimientoId && viaParaAsignar && typeof numeroParaAsignar === "number") {
+      if (!disabledRef.current && !isTorreon && movimientoId && viaParaAsignar && typeof numeroParaAsignar === "number") {
         await Movimiento.fetchWithTimeout(`${API_BASE}/secciones/via/${viaParaAsignar}/asignar`, {
           method: "POST",
           credentials: "include",
@@ -424,6 +438,7 @@ export function useCrearMovimientoSubmit(args: {
         }).catch(() => { });
       }
 
+      if (disabledRef.current) return;
       invalidateCachedJson("/movimientos");
       invalidateCachedJson("/api/cliente/rondas");
       onSuccess({ movimientoId, agendado: wasScheduled, activatedScheduled });
@@ -436,7 +451,7 @@ export function useCrearMovimientoSubmit(args: {
       const isTypeErr = getErrorMessage(e).toLowerCase().includes("failed to fetch");
 
       if (isAbort || isTypeErr) {
-        if (payloadForOffline !== null) pushOutbox(payloadForOffline, endpointForOffline);
+        if (!disabledRef.current && payloadForOffline !== null) pushOutbox(payloadForOffline, endpointForOffline);
         return;
       }
 

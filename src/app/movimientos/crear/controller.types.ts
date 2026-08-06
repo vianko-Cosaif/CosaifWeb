@@ -77,6 +77,9 @@ export interface CrearMovimientoController {
   empresas: Empresa[];
   localidades: Localidad[];
   vias: Via[];
+  viasLoading: boolean;
+  viasError: string | null;
+  reloadVias: () => Promise<void>;
   sectionsByVia: Record<number, Seccion[]>;
   secLoading: Record<number, boolean>;
 

@@ -1,12 +1,13 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import EditarMovimiento from "./EditarMovimiento";
+import { isTrainingMovementId } from "@/lib/routePolicy";
 
 export const dynamic = "force-dynamic";
 
 interface PageProps {
   // Next está esperando un Promise aquí
-  searchParams: Promise<{ id?: string }>;
+  searchParams: Promise<{ id?: string; training?: string }>;
 }
 
 export default async function Page({ searchParams }: PageProps) {
@@ -18,21 +19,29 @@ export default async function Page({ searchParams }: PageProps) {
     redirect("/login?loc=cliente");
   }
 
+  // Resolvem​os el Promise de searchParams
+  const { id: idStr, training } = await searchParams;
+  const id = Number(idStr ?? "");
+
+  if (!id) {
+    redirect("/cliente/movimientos");
+  }
+
+  // Los IDs SIM permiten practicar a roles sin empresa asignada, sin relajar
+  // el requisito de empId para movimientos productivos.
+  const isTrainingMovement = isTrainingMovementId(id);
+  if (training === "1" && !isTrainingMovement) {
+    // Nunca permitimos convertir un editor de capacitación en uno productivo
+    // cambiando únicamente el ID del query string.
+    redirect("/cliente/movimientos?trainingError=invalid-sim-id");
+  }
   const empIdCookie =
     Number(c.get("empId")?.value ?? "") ||
     Number(c.get("empresaId")?.value ?? "") ||
     null;
 
-  if (empIdCookie == null) {
+  if (empIdCookie == null && !isTrainingMovement) {
     redirect("/login?loc=cliente");
-  }
-
-  // Resolvem​os el Promise de searchParams
-  const { id: idStr } = await searchParams;
-  const id = Number(idStr ?? "");
-
-  if (!id) {
-    redirect("/cliente/movimientos");
   }
 
   return (

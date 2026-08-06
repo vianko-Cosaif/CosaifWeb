@@ -9,6 +9,7 @@ import {
   RefreshCw,
   TrainFront,
 } from "lucide-react";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import TornoStatusBadge from "../TornoStatusBadge/TornoStatusBadge";
 import type { TornoHistoryItem, TornoPagination } from "../../lib/types";
 import {
@@ -42,7 +43,11 @@ export default function TornoServiceTable({
   const canNext = meta.page < meta.totalPages;
 
   return (
-    <section className="overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-[var(--app-shadow-sm)]">
+    <GuidedTarget
+      id="torno-services-list"
+      as="section"
+      className="overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-[var(--app-shadow-sm)]"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--app-border)] px-3 py-3">
         <div>
           <h2 className="text-base font-black text-slate-950 dark:text-slate-100">
@@ -97,9 +102,10 @@ export default function TornoServiceTable({
                 </td>
               </tr>
             ) : (
-              items.map((item) => (
+              items.map((item, index) => (
                 <tr
                   key={String(item.id)}
+                  data-guide-id={index === 0 ? "training-torno-service-row" : undefined}
                   className="group cursor-pointer align-top transition hover:bg-cyan-50/45 dark:hover:bg-slate-900/70"
                   onClick={() => onView(item)}
                 >
@@ -153,18 +159,13 @@ export default function TornoServiceTable({
                     <Progress item={item} />
                   </td>
                   <td className="sticky right-0 bg-[var(--app-surface)] px-4 py-3 text-right shadow-[-10px_0_16px_-16px_rgba(15,23,42,0.5)] group-hover:bg-[var(--app-surface-subtle)]">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onView(item);
-                      }}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 transition hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
-                      title="Ver detalle"
-                      aria-label="Ver detalle"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </button>
+                    {index === 0 ? (
+                      <GuidedTarget id="torno-open-service-detail" className="inline-flex">
+                        <ServiceDetailButton item={item} onView={onView} />
+                      </GuidedTarget>
+                    ) : (
+                      <ServiceDetailButton item={item} onView={onView} />
+                    )}
                   </td>
                 </tr>
               ))
@@ -196,7 +197,30 @@ export default function TornoServiceTable({
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
-    </section>
+    </GuidedTarget>
+  );
+}
+
+function ServiceDetailButton({
+  item,
+  onView,
+}: {
+  item: TornoHistoryItem;
+  onView: (item: TornoHistoryItem) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onView(item);
+      }}
+      className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 transition hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+      title="Ver detalle"
+      aria-label={`Ver detalle de servicio ${serviceFolio(item)}`}
+    >
+      <Eye className="h-4 w-4" />
+    </button>
   );
 }
 

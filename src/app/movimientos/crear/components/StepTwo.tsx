@@ -26,13 +26,17 @@ export default function StepTwo({ form, setForm, errors, isService }: StepTwoPro
     label,
     onClick,
     disabled,
+    guideAction,
   }: {
     active: boolean;
     label: string;
     onClick: () => void;
     disabled?: boolean;
+    guideAction?: string;
   }) => (
     <button
+      type="button"
+      data-guide-action={guideAction}
       onClick={onClick}
       disabled={disabled}
       className={Movimiento.clsx(
@@ -62,6 +66,7 @@ export default function StepTwo({ form, setForm, errors, isService }: StepTwoPro
         <div className="grid gap-2 sm:grid-cols-2">
           <Card
             label="MD Trabajando"
+            guideAction="select-training-movement-type"
             active={form.movementType === "MD_TRABAJANDO"}
             onClick={() => setForm((p) => ({ ...p, movementType: "MD_TRABAJANDO" }))}
           />
@@ -77,11 +82,18 @@ export default function StepTwo({ form, setForm, errors, isService }: StepTwoPro
       <div className="grid gap-6">
       {!isService && (
         <>
+          <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-100">
+            <div className="font-semibold">Orientación de la locomotora</div>
+            <div className="mt-1 text-xs leading-5">
+              Elige una sola forma: Polo Norte/Sur, o posición de chimenea. No necesitas completar ambas.
+            </div>
+          </div>
           <div>
-            <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200"></div>
+            <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">Opción A · Polo</div>
             <div className="grid gap-2 sm:grid-cols-2">
               <Card
                 label="Norte"
+                guideAction="select-training-orientation"
                 active={form.polo === "NORTE"}
                 disabled={form.cabinPosition !== "Sin_Solicitar" || form.chimneyPosition !== "Sin_Solicitar"}
                 onClick={() => {
@@ -105,9 +117,10 @@ export default function StepTwo({ form, setForm, errors, isService }: StepTwoPro
                 }}
               />
             </div>
-            {(form.polo !== "Sin_Solicitar") && <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Doble clic para desmarcar</div>}
+            {(form.polo !== "Sin_Solicitar") && <div className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">Orientación completa por polo. Pulsa otra vez para desmarcar.</div>}
           </div>
 
+          <div className="-mb-4 text-sm font-medium text-slate-700 dark:text-slate-200">Opción B · Posiciones</div>
           <div>
             <div className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">Posición de cabina</div>
             <div className="grid gap-2 sm:grid-cols-2">
@@ -137,7 +150,7 @@ export default function StepTwo({ form, setForm, errors, isService }: StepTwoPro
               />
             </div>
             {errors.cabinPosition && <div className="mt-1 text-xs text-rose-600">{errors.cabinPosition}</div>}
-            {(form.cabinPosition !== "Sin_Solicitar") && <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Doble clic para desmarcar</div>}
+            {(form.cabinPosition !== "Sin_Solicitar") && <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Pulsa otra vez para desmarcar.</div>}
           </div>
 
           <div>
@@ -169,8 +182,14 @@ export default function StepTwo({ form, setForm, errors, isService }: StepTwoPro
               />
             </div>
             {errors.chimneyPosition && <div className="mt-1 text-xs text-rose-600">{errors.chimneyPosition}</div>}
-            {(form.chimneyPosition !== "Sin_Solicitar") && <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Doble clic para desmarcar</div>}
+            {(form.chimneyPosition !== "Sin_Solicitar") && <div className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">Orientación completa por chimenea. Pulsa otra vez para desmarcar.</div>}
           </div>
+
+          {form.polo === "Sin_Solicitar" && form.chimneyPosition === "Sin_Solicitar" ? (
+            <div role="status" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+              Falta elegir Polo Norte/Sur o la posición de chimenea.
+            </div>
+          ) : null}
         </>
       )}
 

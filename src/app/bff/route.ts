@@ -3,6 +3,8 @@ import "server-only";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { normalizeHttpOrigin } from "@/lib/serverOrigin";
+import { getVerifiedSession } from "@/lib/server/session";
+import { rejectCrossSiteMutation } from "@/lib/server/requestSecurity";
 
 const ORIGIN = normalizeHttpOrigin(process.env.API_ORIGIN);
 const BFF_TIMEOUT_MS = Number(process.env.BFF_TIMEOUT_MS || 12000);
@@ -26,7 +28,6 @@ function buildUpstreamHeaders(req: NextRequest, token: string) {
   const userAgent = req.headers.get("user-agent");
   const forwardedFor = req.headers.get("x-forwarded-for");
   const forwardedProto = req.headers.get("x-forwarded-proto");
-  const incomingAuthorization = req.headers.get("authorization") || "";
 
   if (accept) headers.set("accept", accept);
   if (contentType) headers.set("content-type", contentType);
@@ -34,21 +35,18 @@ function buildUpstreamHeaders(req: NextRequest, token: string) {
   if (forwardedFor) headers.set("x-forwarded-for", forwardedFor);
   if (forwardedProto) headers.set("x-forwarded-proto", forwardedProto);
 
-  if (token) {
-    headers.set("authorization", `Bearer ${token}`);
-  } else if (incomingAuthorization) {
-    headers.set("authorization", incomingAuthorization);
-  }
+  if (token) headers.set("authorization", `Bearer ${token}`);
 
   return headers;
 }
 
 async function proxy(req: NextRequest) {
-  const up = upstreamUrl(req.nextUrl.pathname.replace(/^\/bff/, ""), req.nextUrl.search);
+  const crossSite = rejectCrossSiteMutation(req);
+  if (crossSite) return crossSite;
   if (!ORIGIN) {
-    console.error("[/bff] API_ORIGIN vacio");
-    return NextResponse.json({ error: "API_ORIGIN not set" }, { status: 500 });
+    return NextResponse.json({ error: "Servicio no configurado" }, { status: 500 });
   }
+  const up = upstreamUrl(req.nextUrl.pathname.replace(/^\/bff/, ""), req.nextUrl.search);
 
   const cookieStore = await cookies();
   const cookieName = process.env.JWT_COOKIE_NAME ?? "token";
@@ -56,6 +54,8 @@ async function proxy(req: NextRequest) {
     cookieStore.get(cookieName)?.value ||
     cookieStore.get("token")?.value ||
     "";
+  const session = await getVerifiedSession();
+  if (!token || !session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   const headers = buildUpstreamHeaders(req, token);
 
   const init: RequestInit = {
@@ -80,7 +80,6 @@ async function proxy(req: NextRequest) {
     });
   } catch (error) {
     const status = getErrorStatus(error);
-    console.error("[/bff] fetch error:", error);
     return NextResponse.json(
       { error: status === 504 ? "Upstream timeout" : "Upstream unavailable" },
       { status }

@@ -4,6 +4,11 @@
 import React, { useCallback, useEffect, useState, useRef } from "react";
 import { useAuthErrorHandler } from '@/app/hooks/useAuthErrorHandler';
 import { useIncidentMonitor, type IncidenteEmergente } from "@/app/hooks/useIncidentMonitor";
+import { useGuidedManual } from "@/app/Components/GuidedManualAtom";
+import {
+  TRAINING_INCIDENT_ID,
+  useTrainingTour,
+} from "@/app/Components/GuidedManualAtom/TrainingTourContext";
 import {
   useRealtimeMovimientos,
   type RealtimeMovementEvent,
@@ -280,6 +285,9 @@ export default function IncidentMonitor({
   autoOpenNewIncidents = true,
   countdownEnabled = true,
 }: IncidentMonitorProps) {
+  const trainingTour = useTrainingTour();
+  const guidedManual = useGuidedManual();
+  const effectiveEnabled = enabled && !trainingTour.active;
   // Keep first client render identical to SSR; resolve cookie-based fallback after mount.
   const [empresaId, setEmpresaId] = useState<number | null>(empresaIdProp ?? null);
 
@@ -342,24 +350,57 @@ export default function IncidentMonitor({
   const { isMonitoring, lastCheck, error, activeIncidents, checkNow } = useIncidentMonitor({
     apiBase,
     intervalMs,
-    enabled,
+    enabled: effectiveEnabled,
     empresaId,        // ya filtra por empresa en el polling
     localidadId,
     onIncidentDetected: handleNewIncident,
   });
 
-  const activeCount = Array.isArray(activeIncidents) ? activeIncidents.length : 0;
+  const trainingAlertStep = Boolean(
+    trainingTour.active && guidedManual?.currentStep?.id?.startsWith("tour-incident-alert")
+  );
+
+  useEffect(() => {
+    if (!trainingAlertStep) return;
+    setCurrentIncident({
+      id: TRAINING_INCIDENT_ID,
+      descripcion: "SIM-INC-041 · Obstáculo detectado en la vía de capacitación",
+      estado: "ABIERTO",
+      fechaInicio: new Date().toISOString(),
+      empresa: "Empresa de capacitación",
+      locomotora: "SIM-L204",
+      origen: "Vía 2",
+      destino: "Vía 4",
+      imagenes: [],
+    });
+    setIsModalOpen(true);
+  }, [trainingAlertStep]);
+
+  useEffect(() => {
+    if (!trainingTour.active) return;
+    setRealtimeNotice(null);
+    if (currentIncident && currentIncident.id !== TRAINING_INCIDENT_ID) {
+      setCurrentIncident(null);
+      setIsModalOpen(false);
+    }
+  }, [currentIncident, trainingTour.active]);
+
+  const activeCount = trainingTour.active
+    ? 0
+    : Array.isArray(activeIncidents) ? activeIncidents.length : 0;
   const showLegacyMonitorWidget = false;
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("cosaif:incident-monitor-status", {
       detail: {
         activeCount,
-        connected: isMonitoring && !error,
+        // El monitor productivo se pausa intencionalmente durante la
+        // capacitación. No lo presentamos como una falla de conexión.
+        connected: trainingTour.active || (isMonitoring && !error),
         lastCheck: lastCheck?.toISOString() ?? null,
       },
     }));
-  }, [activeCount, error, isMonitoring, lastCheck]);
+  }, [activeCount, error, isMonitoring, lastCheck, trainingTour.active]);
 
   const scheduleRealtimeIncidentCheck = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -373,7 +414,7 @@ export default function IncidentMonitor({
   }, [checkNow]);
 
   useRealtimeMovimientos({
-    enabled,
+    enabled: effectiveEnabled,
     localidadId,
     onEvent: (event) => {
       if (!eventMatchesScope(event, empresaId, localidadId)) return;
@@ -467,6 +508,18 @@ export default function IncidentMonitor({
   const handleResolve = useCallback(
     async (incident: IncidenteEmergente, comments?: string) => {
       try {
+        if (trainingTour.active) {
+          if (incident.id !== TRAINING_INCIDENT_ID) {
+            alert("En capacitación no se puede modificar una alerta real.");
+            return;
+          }
+          trainingTour.resolveIncident("resolve", comments);
+          setProcessedIncidents((prev) => new Set(prev).add(incident.id));
+          setIsModalOpen(false);
+          setCurrentIncident(null);
+          onIncidentResolved?.(incident);
+          return;
+        }
         const response = await handleFetchRequest(`${apiBase}/incidentes/${incident.id}/resuelto${incidentSourceQuery(incident)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json", ...getAuthHeaders() },
@@ -483,12 +536,26 @@ export default function IncidentMonitor({
         alert("No se pudo resolver el incidente. Inténtalo de nuevo.");
       }
     },
-    [apiBase, onIncidentResolved, handleFetchRequest]
+    [apiBase, onIncidentResolved, handleFetchRequest, trainingTour]
   );
 
   const handleSkip = useCallback(
     async (incident: IncidenteEmergente) => {
       try {
+        if (trainingTour.active) {
+          if (incident.id !== TRAINING_INCIDENT_ID) {
+            alert("En capacitación no se puede cerrar una alerta real.");
+            return;
+          }
+          // Esta primera simulación enseña el cierre sin resolver, pero se
+          // reinicia inmediatamente para que el usuario también practique la
+          // resolución desde la bandeja en los pasos siguientes.
+          setProcessedIncidents((prev) => new Set(prev).add(incident.id));
+          setIsModalOpen(false);
+          setCurrentIncident(null);
+          onIncidentSkipped?.(incident);
+          return;
+        }
         const response = await handleFetchRequest(`${apiBase}/incidentes/${incident.id}/cerrar${incidentSourceQuery(incident)}`, {
           method: "POST",
           headers: { ...getAuthHeaders() },
@@ -504,7 +571,7 @@ export default function IncidentMonitor({
         alert("No se pudo omitir el incidente. Inténtalo de nuevo.");
       }
     },
-    [apiBase, onIncidentSkipped, handleFetchRequest]
+    [apiBase, onIncidentSkipped, handleFetchRequest, trainingTour]
   );
 
   const handleContinue = useCallback(

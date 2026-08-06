@@ -112,6 +112,7 @@ function readMeasurementRows(raw: unknown): TornoMedicionState["rows"] {
  * - clearDraft(): elimina snapshot persistido.
  */
 export function useCrearMovimientoDraft(args: {
+  disabled?: boolean;
   form: MovementFormData;
   fromSection?: number;
   toSection?: number;
@@ -128,6 +129,7 @@ export function useCrearMovimientoDraft(args: {
   setTornoMovimientoId?: Dispatch<SetStateAction<number | null>>;
 }) {
   const {
+    disabled = false,
     form,
     fromSection,
     toSection,
@@ -148,6 +150,10 @@ export function useCrearMovimientoDraft(args: {
 
   /** Autosave con debounce corto para no bloquear UI. */
   useEffect(() => {
+    if (disabled) {
+      if (draftTimer.current) clearTimeout(draftTimer.current);
+      return;
+    }
     const payload: DraftPayload = {
       form,
       fromSection,
@@ -169,10 +175,11 @@ export function useCrearMovimientoDraft(args: {
     return () => {
       if (draftTimer.current) clearTimeout(draftTimer.current);
     };
-  }, [form, fromSection, toSection, locoLockedBy, tornoMedicion, tornoStep2Completed, tornoMovimientoId]);
+  }, [disabled, form, fromSection, toSection, locoLockedBy, tornoMedicion, tornoStep2Completed, tornoMovimientoId]);
 
   /** Restaura draft previo si existe. */
   const hydrateDraft = useCallback(() => {
+    if (disabled) return;
     try {
       const raw = typeof window !== "undefined" ? localStorage.getItem(DRAFT_KEY) : null;
       if (!raw) return;
@@ -203,13 +210,14 @@ export function useCrearMovimientoDraft(args: {
         setTornoStep2Completed(false);
       }
     } catch { }
-  }, [setForm, setFromSection, setToSection, setLocoLockedBy, setTornoMedicion, setTornoStep2Completed, setTornoMovimientoId]);
+  }, [disabled, setForm, setFromSection, setToSection, setLocoLockedBy, setTornoMedicion, setTornoStep2Completed, setTornoMovimientoId]);
 
   const clearDraft = useCallback(() => {
+    if (disabled) return;
     try {
       localStorage.removeItem(DRAFT_KEY);
     } catch { }
-  }, []);
+  }, [disabled]);
 
   return {
     hydrateDraft,

@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useRef, useState, startTransition, Fragment } from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
+import {
+  TRAINING_ROUND_ID,
+  useTrainingTour,
+} from "@/app/Components/GuidedManualAtom/TrainingTourContext";
 import { S } from "./RailQueueBoardCliente.styles";
 import QueueSegmentedFilter, { type QueueSegmentedFilterOption } from "./components/QueueSegmentedFilter";
 import { useRealtimeBoardRefresh } from "../hooks/useRealtimeBoardRefresh";
@@ -92,10 +97,10 @@ export default function RailQueueBoard({
   empresaId?: number | null;
   autoMs?: number;
 }) {
+  const trainingTour = useTrainingTour();
   const [activeEntity, setActiveEntity] = useState<QueueEntityKind>("movimientos");
   const [activeStatus, setActiveStatus] = useState<QueueStatusKind>("pendientes");
-  const empresaQuery = empresaId ? `&empresaId=${empresaId}` : "";
-  const roundsUrl = `/api/cliente/rondas?localidadId=${localidadId}${empresaQuery}&estado=${activeStatus}&entity=${activeEntity}&alcance=localidad`;
+  const roundsUrl = `/api/cliente/rondas?localidadId=${localidadId}&estado=${activeStatus}&entity=${activeEntity}&alcance=localidad`;
   const initialItems = peekCachedJson<Ronda[]>(roundsUrl) ?? [];
   const [items, setItems] = useState<Ronda[]>(() => initialItems);
   const [info, setInfo] = useState<Record<number, RondaInfo>>({});
@@ -129,9 +134,7 @@ export default function RailQueueBoard({
         ac.signal,
         { force: showRefreshing, ttlMs: 20_000 }
       );
-      const data = empresaId
-        ? responseData.filter((item) => Number(item.empresa?.id) === empresaId)
-        : [...responseData];
+      const data = [...responseData];
       data.sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden);
 
       const nextIds = data.map(d => d.id);
@@ -211,23 +214,84 @@ export default function RailQueueBoard({
     });
   }
 
-  const entityItems = items;
+  const trainingQueueItems = useMemo<Ronda[]>(() => {
+    if (!trainingTour.active || activeEntity !== "movimientos" || activeStatus !== "pendientes") return [];
+    const movementById = new Map(trainingTour.movements.map((movement) => [movement.id, movement]));
+    return trainingTour.roundOrder.reduce<Ronda[]>((rounds, movementId, index) => {
+        const movement = movementById.get(movementId);
+        if (!movement || movement.finalizado || ["CONCLUIDO", "CANCELADO"].includes(String(movement.estado).toUpperCase())) return rounds;
+        rounds.push({
+          id: TRAINING_ROUND_ID + index,
+          rondaNumero: 99,
+          orden: index + 1,
+          concluido: false,
+          empresa: { id: movement.empresaId, nombre: movement.empresaNombre || "Empresa de capacitación" },
+          localidadId: movement.localidadId,
+          localidad: { id: movement.localidadId, nombre: movement.localidadNombre || "Localidad de capacitación" },
+          movimientoId: movement.id,
+          createdAt: movement.fechaSolicitud,
+          movimiento: {
+            id: movement.id,
+            idTecnico: movement.id,
+            folioLocalidad: movement.folioLocalidad,
+            folioLocalidadLabel: movement.folioLocalidadLabel,
+            viaOrigen: { nombre: String(movement.viaOrigen || "—") },
+            viaDestino: { nombre: String(movement.viaDestino || "—") },
+            lavado: movement.lavado,
+            torno: movement.torno,
+            estado: movement.estado,
+            prioridad: movement.prioridad === "ALTA" ? "ALTA" : "BAJA",
+            locomotiveNumber: movement.locomotora,
+            locomotora: String(movement.locomotora),
+            fechaSolicitud: movement.fechaSolicitud,
+            fechaInicio: movement.fechaInicio,
+            fechaFin: movement.fechaFin,
+            instrucciones: movement.instrucciones,
+          },
+        });
+        return rounds;
+      }, []);
+  }, [activeEntity, activeStatus, trainingTour.active, trainingTour.movements, trainingTour.roundOrder]);
+  const entityItems = useMemo(() => {
+    if (!trainingQueueItems.length) return items;
+    const ids = new Set(trainingQueueItems.map((item) => item.id));
+    return [...trainingQueueItems, ...items.filter((item) => !ids.has(item.id))];
+  }, [items, trainingQueueItems]);
+  const displayedInfo = useMemo(() => {
+    const next = { ...info };
+    trainingQueueItems.forEach((round) => {
+      const movement = round.movimiento;
+      next[round.id] = {
+        empresa: round.empresa || { id: 0, nombre: "Empresa de capacitación" },
+        movimiento: {
+          ...(movement || {}),
+          lavado: Boolean(movement?.lavado),
+          torno: Boolean(movement?.torno),
+          estado: movement?.estado || undefined,
+          prioridad: movement?.prioridad === "ALTA" ? "ALTA" : "BAJA",
+          locomotiveNumber: movement?.locomotiveNumber || "SIM",
+        },
+        movimientoId: movement?.id,
+      };
+    });
+    return next;
+  }, [info, trainingQueueItems]);
   const entityOptions = useMemo<QueueSegmentedFilterOption<QueueEntityKind>[]>(
     () => ENTITY_OPTIONS.map((option) => ({
       ...option,
-      count: option.value === activeEntity ? items.length : undefined,
+      count: option.value === activeEntity ? entityItems.length : undefined,
     })),
-    [activeEntity, items.length]
+    [activeEntity, entityItems.length]
   );
   const statusOptions = useMemo<QueueSegmentedFilterOption<QueueStatusKind>[]>(
     () => STATUS_OPTIONS.map((option) => ({
       ...option,
-      count: option.value === activeStatus ? items.length : undefined,
+      count: option.value === activeStatus ? entityItems.length : undefined,
     })),
-    [activeStatus, items.length]
+    [activeStatus, entityItems.length]
   );
   const current = entityItems[0];
-  const curInfo = current ? info[current.id] : undefined;
+  const curInfo = current ? displayedInfo[current.id] : undefined;
   const nextItems = useMemo(() => entityItems.slice(1), [entityItems]);
   const isHistoricalView = activeStatus === "terminados";
   const emptyMessage =
@@ -236,9 +300,14 @@ export default function RailQueueBoard({
       : `No hay movimientos ${activeStatus === "pendientes" ? "pendientes" : "terminados"}.`;
 
   return (
-    <div className={S.Layout.root}>
+    <GuidedTarget id="dashboard-rounds-board" className={S.Layout.root}>
+      {trainingTour.active ? (
+        <div className="mb-3 rounded-xl border border-violet-300 bg-violet-50 px-4 py-3 text-sm font-bold text-violet-900 dark:border-violet-800 dark:bg-violet-950/35 dark:text-violet-100" role="status">
+          CAPACITACIÓN ACTIVA · La ronda 99 y sus registros SIM existen sólo en esta sesión.
+        </div>
+      ) : null}
       {/* ─── HEADER ─── */}
-      <header className={S.Layout.header}>
+      <GuidedTarget id="dashboard-rounds-header" as="header" className={S.Layout.header}>
         <div className={S.Header.left}>
           <h1 className={S.Header.title}>Ronda general de la localidad</h1>
           <span className={S.Header.liveBadge}><span className={S.Header.liveDot} /> EN VIVO</span>
@@ -253,30 +322,40 @@ export default function RailQueueBoard({
           <button onClick={() => load(true)} className={S.Header.btn()} title="Actualizar">
             <Ic.Refresh className={refreshing ? "w-4 h-4 animate-spin" : "w-4 h-4"} />
           </button>
-          {activeEntity === "movimientos" ? (
-            <button onClick={() => setOpenEditor(true)} className={S.Header.btnEdit}>
-              <Ic.Pen /> <span className="hidden sm:inline">Editar</span>
-            </button>
+          {activeEntity === "movimientos" && empresaId ? (
+            <GuidedTarget id="dashboard-edit-rounds" className="inline-flex">
+              <button onClick={() => setOpenEditor(true)} className={S.Header.btnEdit}>
+                <Ic.Pen /> <span className="hidden sm:inline">Editar mis rondas</span>
+              </button>
+            </GuidedTarget>
           ) : null}
         </div>
-      </header>
+      </GuidedTarget>
 
       {/* ─── CONTENT ─── */}
       <div className={S.Layout.main}>
-        <section className="flex flex-col gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-2 shadow-[var(--app-shadow-sm)] sm:flex-row sm:items-center sm:justify-between lg:col-span-12">
-          <QueueSegmentedFilter
-            ariaLabel="Tipo de listado"
-            options={entityOptions}
-            value={activeEntity}
-            onChange={setActiveEntity}
-          />
-          <QueueSegmentedFilter
-            ariaLabel="Estado del listado"
-            options={statusOptions}
-            value={activeStatus}
-            onChange={setActiveStatus}
-          />
-        </section>
+        <GuidedTarget
+          id="dashboard-round-filters"
+          as="section"
+          className="flex flex-col gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-2 shadow-[var(--app-shadow-sm)] sm:flex-row sm:items-center sm:justify-between lg:col-span-12"
+        >
+          <GuidedTarget id="dashboard-entity-tabs">
+            <QueueSegmentedFilter
+              ariaLabel="Tipo de listado"
+              options={entityOptions}
+              value={activeEntity}
+              onChange={setActiveEntity}
+            />
+          </GuidedTarget>
+          <GuidedTarget id="dashboard-status-tabs">
+            <QueueSegmentedFilter
+              ariaLabel="Estado del listado"
+              options={statusOptions}
+              value={activeStatus}
+              onChange={setActiveStatus}
+            />
+          </GuidedTarget>
+        </GuidedTarget>
         {/* LEFT — Hero */}
         {isHistoricalView ? (
           <section className="lg:col-span-12">
@@ -308,14 +387,15 @@ export default function RailQueueBoard({
             ) : (
               <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                 <AnimatePresence initial={false}>
-                  {items.map((item, index) => (
+                  {entityItems.map((item, index) => (
                     <QueueCard
                       key={item.id}
                       item={item}
-                      info={info[item.id]}
+                      info={displayedInfo[item.id]}
                       prev={null}
                       idx={index}
                       onViewMeasures={openMeasuresModal}
+                      canAccessMeasures={Boolean(empresaId && Number(item.empresa?.id) === empresaId)}
                       showRoundDivider={false}
                     />
                   ))}
@@ -338,13 +418,19 @@ export default function RailQueueBoard({
                 </button>
               </div>
             ) : (
-              <HeroCard key={current.id} item={current} info={curInfo} onViewMeasures={openMeasuresModal} />
+              <HeroCard
+                key={current.id}
+                item={current}
+                info={curInfo}
+                onViewMeasures={openMeasuresModal}
+                canAccessMeasures={Boolean(empresaId && Number(current.empresa?.id) === empresaId)}
+              />
             )}
           </AnimatePresence>
         </section>
 
         {/* RIGHT — Queue */}
-        <aside className={S.Layout.colRight}>
+        <GuidedTarget id="dashboard-rounds-queue" as="aside" className={S.Layout.colRight}>
           <div className={S.List.header}>
             <span className={S.List.title}>
               {activeEntity === "torneados" ? "Cola de torneados" : "Cola de movimientos"}
@@ -357,15 +443,16 @@ export default function RailQueueBoard({
                 <QueueCard
                   key={item.id}
                   item={item}
-                  info={info[item.id]}
+                  info={displayedInfo[item.id]}
                   prev={i > 0 ? nextItems[i - 1] : null}
                   idx={i}
                   onViewMeasures={openMeasuresModal}
+                  canAccessMeasures={Boolean(empresaId && Number(item.empresa?.id) === empresaId)}
                 />
               ))}
             </AnimatePresence>
           </div>
-        </aside>
+        </GuidedTarget>
           </>
         )}
       </div>
@@ -373,14 +460,16 @@ export default function RailQueueBoard({
       {/* ─── MODAL ─── */}
       {openEditor && (
         <div className={S.Modal.overlay} onClick={() => setOpenEditor(false)}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.97 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="h-[90vh] w-full max-w-5xl overflow-hidden rounded-lg bg-[var(--app-surface)] shadow-[var(--app-shadow-md)]"
-            onClick={e => e.stopPropagation()}
-          >
-            <EditRondas localidadId={localidadId} onClose={() => setOpenEditor(false)} onSaved={() => { setOpenEditor(false); load(true); }} />
-          </motion.div>
+          <GuidedTarget id="dashboard-rounds-editor" className="h-[90vh] w-full max-w-5xl">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="h-full w-full overflow-hidden rounded-lg bg-[var(--app-surface)] shadow-[var(--app-shadow-md)]"
+              onClick={e => e.stopPropagation()}
+            >
+              <EditRondas localidadId={localidadId} onClose={() => setOpenEditor(false)} onSaved={() => { setOpenEditor(false); load(true); }} />
+            </motion.div>
+          </GuidedTarget>
         </div>
       )}
 
@@ -423,7 +512,7 @@ export default function RailQueueBoard({
           ))}
         </AnimatePresence>
       </div>
-    </div>
+    </GuidedTarget>
   );
 }
 
@@ -432,20 +521,23 @@ function HeroCard({
   item,
   info,
   onViewMeasures,
+  canAccessMeasures,
 }: {
   item: Ronda;
   info?: RondaInfo;
   onViewMeasures: (args: { movementId?: number | null; locomotiveLabel?: string; companyName?: string }) => void;
+  canAccessMeasures: boolean;
 }) {
   const hi = info?.movimiento?.prioridad === "ALTA";
   const loco = fmtLoco(info?.movimiento?.locomotora || info?.movimiento?.locomotiveNumber);
   const orig = info?.movimiento?.viaOrigen?.nombre || "—";
   const dest = info?.movimiento?.viaDestino?.nombre || "—";
   const movementId = movementIdFrom(item, info);
-  const canViewMeasures = Boolean(info?.movimiento?.torno && movementId);
+  const canViewMeasures = Boolean(canAccessMeasures && info?.movimiento?.torno && movementId);
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className={S.Card.root}>
+    <GuidedTarget id="dashboard-current-movement">
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className={S.Card.root}>
       <div className={S.Card.accent(hi)} />
 
       <div className={S.Card.body}>
@@ -523,21 +615,24 @@ function HeroCard({
             <span className="font-semibold tabular-nums">{fmtDate(item.createdAt)}</span>
           </div>
           {canViewMeasures && (
-            <button
-              type="button"
-              onClick={() => onViewMeasures({
-                movementId,
-                locomotiveLabel: loco,
-                companyName: info?.empresa?.nombre,
-              })}
-              className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200 dark:hover:bg-emerald-900/40"
-            >
-              Ver mediciones
-            </button>
+            <GuidedTarget id="dashboard-current-measures" className="inline-flex">
+              <button
+                type="button"
+                onClick={() => onViewMeasures({
+                  movementId,
+                  locomotiveLabel: loco,
+                  companyName: info?.empresa?.nombre,
+                })}
+                className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200 dark:hover:bg-emerald-900/40"
+              >
+                Ver mediciones
+              </button>
+            </GuidedTarget>
           )}
         </div>
       </div>
-    </motion.div>
+      </motion.div>
+    </GuidedTarget>
   );
 }
 
@@ -548,6 +643,7 @@ function QueueCard({
   prev,
   idx,
   onViewMeasures,
+  canAccessMeasures,
   showRoundDivider = true,
 }: {
   item: Ronda;
@@ -555,13 +651,14 @@ function QueueCard({
   prev: Ronda | null;
   idx: number;
   onViewMeasures: (args: { movementId?: number | null; locomotiveLabel?: string; companyName?: string }) => void;
+  canAccessMeasures: boolean;
   showRoundDivider?: boolean;
 }) {
   const hi = info?.movimiento?.prioridad === "ALTA";
   const newRound = idx === 0 || item.rondaNumero !== prev?.rondaNumero;
   const loco = fmtLoco(info?.movimiento?.locomotora || info?.movimiento?.locomotiveNumber);
   const movementId = movementIdFrom(item, info);
-  const canViewMeasures = Boolean(info?.movimiento?.torno && movementId);
+  const canViewMeasures = Boolean(canAccessMeasures && info?.movimiento?.torno && movementId);
 
   return (
     <Fragment>
@@ -572,7 +669,13 @@ function QueueCard({
         </div>
       )}
 
-      <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className={S.List.card(hi)}>
+      <motion.div
+        initial={{ opacity: 0, x: 12 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0 }}
+        data-guide-id={idx === 0 ? "training-round-row" : undefined}
+        className={S.List.card(hi)}
+      >
         {hi && <div className={S.List.highBar} />}
 
         <div className={S.List.topRow}>

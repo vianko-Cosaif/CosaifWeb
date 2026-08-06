@@ -9,11 +9,17 @@ import React, {
   useState,
 } from 'react';
 import guidedShared from './GuidedManualAtom.shared.json';
-import { createGuidedManualWebStyles, getGuidedManualAtomWebJsx0Style, getGuidedManualAtomWebJsx1Style } from './GuidedManualAtom.web.styles';
+import {
+  createGuidedManualTargetInteractionCss,
+  createGuidedManualWebStyles,
+  getGuidedManualAtomWebJsx0Style,
+  getGuidedManualAtomWebJsx1Style,
+} from './GuidedManualAtom.web.styles';
 import {
   clampGuidedManualValue,
   createGuidedManualRegistry,
   normalizeGuidedManualSteps,
+  resolveGuidedManualPanelPlacement,
   type GuidedManualAction,
   type GuidedManualActionRunner,
   type GuidedManualAppearance,
@@ -32,6 +38,7 @@ type GuidedManualStateContextValue = {
   totalSteps: number;
   targetsVersion: number;
   isTransitioning: boolean;
+  transitionError: string | null;
   context: Record<string, unknown>;
 
   globalDisableAppElements: string[];
@@ -97,9 +104,9 @@ type GuidedManualConfigContextValue = {
 };
 
 const defaultGuidedManualTracking: Required<GuidedManualTrackingOptions> = {
-  mutations: true,
+  mutations: false,
   resize: true,
-  transitions: true,
+  transitions: false,
   autoScrollWhenHidden: true,
 
   mutationDebounceMs: 40,
@@ -109,7 +116,7 @@ const defaultGuidedManualTracking: Required<GuidedManualTrackingOptions> = {
 const defaultGuidedManualTransition: Required<GuidedManualTransitionOptions> = {
   waitForTarget: true,
   targetStableMs: 120,
-  targetTimeoutMs: 10_000,
+  targetTimeoutMs: 5_000,
 };
 
 const getGuidedContextValue = (source: Record<string, unknown>, key?: string) => {
@@ -132,6 +139,77 @@ const isGuidedContextEqual = (a: unknown, b: unknown) => {
   } catch {
     return false;
   }
+};
+
+const isRenderedGuidedTarget = (node: Element): node is HTMLElement => {
+  if (!(node instanceof HTMLElement) || !node.isConnected) return false;
+  const styles = window.getComputedStyle(node);
+  const rect = node.getBoundingClientRect();
+  return (
+    styles.display !== 'none' &&
+    styles.visibility !== 'hidden' &&
+    Number(styles.opacity || 1) > 0 &&
+    rect.width > 0 &&
+    rect.height > 0
+  );
+};
+
+const isGuidedTargetInViewport = (node: HTMLElement) => {
+  const rect = node.getBoundingClientRect();
+  return (
+    rect.bottom > 0 &&
+    rect.right > 0 &&
+    rect.top < window.innerHeight &&
+    rect.left < window.innerWidth
+  );
+};
+
+const resolveVisibleSelectorNode = (selector: string): HTMLElement | null => {
+  if (typeof document === 'undefined') return null;
+  const nodes = Array.from(document.querySelectorAll(selector));
+  return nodes.find((node): node is HTMLElement => (
+    isRenderedGuidedTarget(node) && isGuidedTargetInViewport(node)
+  )) ??
+    nodes.find(isRenderedGuidedTarget) ??
+    null;
+};
+
+const resolveInteractiveControl = (node: HTMLElement | null) => {
+  if (!node) return null;
+  if (node.matches('button, input, select, textarea, [role="button"]')) return node;
+  return node.querySelector<HTMLElement>('button, input, select, textarea, [role="button"]');
+};
+
+const isUnavailableControl = (node: HTMLElement | null) => Boolean(
+  node?.matches(':disabled, [aria-disabled="true"], [data-disabled="true"]')
+);
+
+const parseMissionCopy = (value: string) => {
+  const lines = value.split('\n').map((line) => line.trim()).filter(Boolean);
+  const take = (prefix: string) => lines
+    .find((line) => line.toLocaleLowerCase('es-MX').startsWith(prefix))
+    ?.slice(prefix.length)
+    .trim()
+    .replace(/\.$/, '');
+  const look = take('qué ves:');
+  const action = take('haz esto:');
+  const result = take('qué pasará:');
+  return look && action && result ? { look, action, result } : null;
+};
+
+const focusFirstIncompleteField = (stepNode: HTMLElement | null) => {
+  const explicitInvalidField = stepNode?.querySelector<HTMLElement>(
+    ':invalid, [aria-invalid="true"], [data-validation-error="true"]'
+  );
+  const emptyTextField = Array.from(stepNode?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+    'input:not(:disabled):not([readonly]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), textarea:not(:disabled):not([readonly])'
+  ) ?? []).find((field) => !field.value.trim());
+  const unopenedChoice = stepNode?.querySelector<HTMLElement>(
+    'button[aria-expanded="false"]:not(:disabled)'
+  );
+  const invalidField = explicitInvalidField ?? emptyTextField ?? unopenedChoice;
+  invalidField?.focus({ preventScroll: true });
+  invalidField?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
 
 const BasicGuidedManualWebButton = ({
@@ -242,7 +320,10 @@ export const GuidedManualProvider = ({
     return activeManual?.steps ?? [];
   }, [steps, activeManual]);
 
-  const globalDisableAppElements = activeManual?.disableAppElements ?? [];
+  const globalDisableAppElements = useMemo(
+    () => activeManual?.disableAppElements ?? [],
+    [activeManual]
+  );
 
 
   const [manualSteps, setManualSteps] = useState<GuidedManualStep[]>(configuredDefaultSteps);
@@ -251,7 +332,10 @@ export const GuidedManualProvider = ({
   const [isOpen, setIsOpen] = useState(startOpen);
   const [currentIndex, setCurrentIndex] = useState(initialStep);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [transitionError, setTransitionError] = useState<string | null>(null);
   const targetsRef = useRef<Map<string, HTMLElement>>(new Map());
+  const isOpenRef = useRef(isOpen);
+  const currentStepRef = useRef<GuidedManualStep | null>(null);
   const [targetsVersion, setTargetsVersion] = useState(0);
   const [manualContext, setManualContextState] = useState<Record<string, unknown>>({});
   const transitionRequestRef = useRef(0);
@@ -280,9 +364,16 @@ export const GuidedManualProvider = ({
         if (node) {
           const originalPointerEvents = node.style.getPropertyValue('pointer-events');
           const originalPriority = node.style.getPropertyPriority('pointer-events');
+          const originalInternalAction = node.getAttribute('data-guide-internal-action');
           node.style.setProperty('pointer-events', 'auto', 'important');
 
-          node.click();
+          node.setAttribute('data-guide-internal-action', 'true');
+          try {
+            node.click();
+          } finally {
+            if (originalInternalAction === null) node.removeAttribute('data-guide-internal-action');
+            else node.setAttribute('data-guide-internal-action', originalInternalAction);
+          }
 
           if (originalPointerEvents) {
             node.style.setProperty('pointer-events', originalPointerEvents, originalPriority);
@@ -314,7 +405,10 @@ export const GuidedManualProvider = ({
     () => (totalSteps > 0 ? manualSteps[Math.min(currentIndex, totalSteps - 1)] : null),
     [manualSteps, currentIndex, totalSteps]
   );
+  isOpenRef.current = isOpen;
+  currentStepRef.current = currentStep;
   const refreshLayout = useCallback(() => {
+    if (!isOpenRef.current) return;
     setTargetsVersion((prevValue) => prevValue + 1);
     waitListenersRef.current.forEach((listener) => listener());
   }, []);
@@ -411,34 +505,26 @@ export const GuidedManualProvider = ({
     if (!isOpen || isTransitioning) return false;
 
     const currentStep = manualSteps[currentIndex];
-    if (currentStep && isStepReady(currentStep)) return false;
+    // Un objetivo que tarda en aparecer no autoriza saltar a cualquier otro
+    // paso listo. Solo omitimos el paso actual cuando su condicion `when`
+    // dejo de aplicar; así el avance siempre es determinista.
+    if (!currentStep || isStepApplicable(currentStep)) return false;
+    const nextApplicable = manualSteps.findIndex(
+      (step, index) => index > currentIndex && isStepApplicable(step)
+    );
 
-    const readyIndexes = manualSteps
-      .map((step, i) => (isStepReady(step) ? i : -1))
-      .filter((i) => i !== -1);
-
-    const forwardIndexes = readyIndexes.filter((i) => i > currentIndex);
-    const backwardIndexes = readyIndexes.filter((i) => i < currentIndex);
-
-    let bestMatch = -1;
-    if (forwardIndexes.length > 0) {
-      bestMatch = Math.min(...forwardIndexes);
-    } else if (backwardIndexes.length > 0) {
-      bestMatch = Math.max(...backwardIndexes);
-    }
-
-    if (bestMatch >= 0) {
+    if (nextApplicable >= 0) {
       if (autoAdvanceTimerRef.current !== null) {
         window.clearTimeout(autoAdvanceTimerRef.current);
       }
       autoAdvanceTimerRef.current = window.setTimeout(() => {
         autoAdvanceTimerRef.current = null;
-        setCurrentIndex(bestMatch);
+        setCurrentIndex(nextApplicable);
       }, 120);
       return true;
     }
     return false;
-  }, [isOpen, isTransitioning, manualSteps, currentIndex, isStepReady]);
+  }, [isOpen, isStepApplicable, isTransitioning, manualSteps, currentIndex]);
 
 
   const applicableIndexes = useMemo(
@@ -459,6 +545,7 @@ export const GuidedManualProvider = ({
       if (!manualSteps.length) return;
       transitionRequestRef.current += 1;
       setIsTransitioning(false);
+      setTransitionError(null);
       setCurrentIndex(Math.min(Math.max(index, 0), manualSteps.length - 1));
       setIsOpen(true);
     },
@@ -471,6 +558,7 @@ export const GuidedManualProvider = ({
       if (!safeSteps.length) return;
       transitionRequestRef.current += 1;
       setIsTransitioning(false);
+      setTransitionError(null);
       setIsCustomSteps(true);
       setManualSteps(safeSteps);
       setCurrentIndex(Math.min(Math.max(index, 0), safeSteps.length - 1));
@@ -482,6 +570,7 @@ export const GuidedManualProvider = ({
   const close = useCallback(() => {
     transitionRequestRef.current += 1;
     setIsTransitioning(false);
+    setTransitionError(null);
     setIsOpen(false);
     if (isCustomSteps) {
       setIsCustomSteps(false);
@@ -493,8 +582,8 @@ export const GuidedManualProvider = ({
   const resolveStepNode = useCallback((step?: GuidedManualStep | null) => {
     if (!step || typeof document === 'undefined') return null;
     if (step.selector) {
-      const selected = document.querySelector(step.selector);
-      if (selected instanceof HTMLElement) return selected;
+      const selected = resolveVisibleSelectorNode(step.selector);
+      if (selected) return selected;
     }
     return step.targetId ? targetsRef.current.get(step.targetId) ?? null : null;
   }, []);
@@ -520,34 +609,49 @@ export const GuidedManualProvider = ({
     return isStepNodeVisible(step);
   }, [isStepNodeVisible, isStepReady]);
 
-  const findReadyStepIndex = useCallback(
+  const findApplicableStepIndex = useCallback(
     (fromIndex: number, direction: 'next' | 'prev') => {
       const indexes = manualSteps
         .map((step, index) => ({ step, index }))
         .filter(({ index }) => (direction === 'next' ? index > fromIndex : index < fromIndex));
       const orderedIndexes = direction === 'next' ? indexes : indexes.reverse();
-      return orderedIndexes.find(({ step }) => isStepReadyForTransition(step))?.index ?? -1;
+      return orderedIndexes.find(({ step }) => isStepApplicable(step))?.index ?? -1;
     },
-    [isStepReadyForTransition, manualSteps]
+    [isStepApplicable, manualSteps]
+  );
+
+  const findReadyStepIndex = useCallback(
+    (fromIndex: number, direction: 'next' | 'prev') => {
+      const candidateIndex = findApplicableStepIndex(fromIndex, direction);
+      if (candidateIndex < 0) return -1;
+      return isStepReadyForTransition(manualSteps[candidateIndex]) ? candidateIndex : -1;
+    },
+    [findApplicableStepIndex, isStepReadyForTransition, manualSteps]
   );
 
   const waitForReadyStepIndex = useCallback(
     (fromIndex: number, direction: 'next' | 'prev', requestId: number) => {
       const immediate = findReadyStepIndex(fromIndex, direction);
-      if (immediate >= 0 || !resolvedTransition.waitForTarget || typeof window === 'undefined') {
+      const stableMs = Math.max(0, resolvedTransition.targetStableMs);
+      if (!resolvedTransition.waitForTarget || typeof window === 'undefined') {
         return Promise.resolve(immediate);
       }
+      if (immediate >= 0 && stableMs === 0) return Promise.resolve(immediate);
 
       return new Promise<number>((resolve) => {
-        const timeoutMs = Math.min(Math.max(resolvedTransition.targetTimeoutMs, 400), 2500);
+        const timeoutMs = Math.min(Math.max(resolvedTransition.targetTimeoutMs, 400), 120_000);
         let frameId = 0;
         let timeoutId = 0;
-        let observer: MutationObserver | null = null;
+        let stableTimerId = 0;
+        let stableIndex = -1;
+        let stableSince = 0;
+        let pollId = 0;
 
         const cleanup = () => {
           if (frameId) window.cancelAnimationFrame(frameId);
           if (timeoutId) window.clearTimeout(timeoutId);
-          observer?.disconnect();
+          if (stableTimerId) window.clearTimeout(stableTimerId);
+          if (pollId) window.clearInterval(pollId);
           waitListenersRef.current.delete(scheduleCheck);
         };
 
@@ -563,8 +667,39 @@ export const GuidedManualProvider = ({
             return;
           }
           const readyIndex = findReadyStepIndex(fromIndex, direction);
-          if (readyIndex >= 0) {
+          if (readyIndex < 0) {
+            stableIndex = -1;
+            stableSince = 0;
+            if (stableTimerId) {
+              window.clearTimeout(stableTimerId);
+              stableTimerId = 0;
+            }
+            return;
+          }
+          if (stableMs === 0) {
             finish(readyIndex);
+            return;
+          }
+          if (stableIndex !== readyIndex) {
+            stableIndex = readyIndex;
+            stableSince = window.performance.now();
+            if (stableTimerId) window.clearTimeout(stableTimerId);
+            stableTimerId = window.setTimeout(() => {
+              stableTimerId = 0;
+              scheduleCheck();
+            }, stableMs);
+            return;
+          }
+          const remainingStableMs = stableMs - (window.performance.now() - stableSince);
+          if (remainingStableMs <= 0) {
+            finish(readyIndex);
+            return;
+          }
+          if (!stableTimerId) {
+            stableTimerId = window.setTimeout(() => {
+              stableTimerId = 0;
+              scheduleCheck();
+            }, remainingStableMs);
           }
         };
 
@@ -574,17 +709,19 @@ export const GuidedManualProvider = ({
         }
 
         waitListenersRef.current.add(scheduleCheck);
-        observer = new MutationObserver(scheduleCheck);
-        observer.observe(document.body, {
-          subtree: true,
-          childList: true,
-          attributes: true,
-        });
+        // El sondeo sólo vive durante una transición. Observar todo el DOM hacía
+        // que tablas, modales y animaciones dispararan trabajo continuamente.
+        pollId = window.setInterval(scheduleCheck, 120);
         timeoutId = window.setTimeout(() => finish(-1), timeoutMs);
         scheduleCheck();
       });
     },
-    [findReadyStepIndex, resolvedTransition.targetTimeoutMs, resolvedTransition.waitForTarget]
+    [
+      findReadyStepIndex,
+      resolvedTransition.targetStableMs,
+      resolvedTransition.targetTimeoutMs,
+      resolvedTransition.waitForTarget,
+    ]
   );
 
   const startManual = useCallback(
@@ -605,8 +742,39 @@ export const GuidedManualProvider = ({
       if (isTransitioning) return;
       const currentStep = manualSteps[currentIndex];
 
+      if (currentStep?.actionOnNext?.type === 'click' && currentStep.actionOnNext.selector) {
+        const actionControl = typeof document === 'undefined'
+          ? null
+          : resolveVisibleSelectorNode(currentStep.actionOnNext.selector);
+        const actionIsDisabled = isUnavailableControl(actionControl);
+
+        if (!actionControl || actionIsDisabled) {
+          setTransitionError(
+            actionIsDisabled
+              ? 'Todavía faltan datos. Completa lo que la pantalla marca y vuelve a pulsar Siguiente; no se guardó nada.'
+              : 'El botón que debe validar este paso todavía no está disponible. Espera a que termine de cargar y vuelve a intentarlo.'
+          );
+          focusFirstIncompleteField(resolveStepNode(currentStep));
+          return;
+        }
+      }
+
+      const nextCandidateIndex = findApplicableStepIndex(currentIndex, 'next');
+      const nextCandidate = nextCandidateIndex >= 0 ? manualSteps[nextCandidateIndex] : null;
+      if (nextCandidate?.advanceOnTargetClick) {
+        const nextControl = resolveInteractiveControl(resolveStepNode(nextCandidate));
+        if (nextControl && isUnavailableControl(nextControl)) {
+          setTransitionError(
+            'Completa el dato solicitado antes de continuar. El botón real sigue deshabilitado y no se ejecutó ninguna acción.'
+          );
+          focusFirstIncompleteField(resolveStepNode(currentStep));
+          return;
+        }
+      }
+
       const requestId = ++transitionRequestRef.current;
       setIsTransitioning(true);
+      setTransitionError(null);
 
       if (autoAdvanceTimerRef.current !== null) {
         window.clearTimeout(autoAdvanceTimerRef.current);
@@ -625,20 +793,26 @@ export const GuidedManualProvider = ({
 
       const nextIndex = await waitForReadyStepIndex(currentIndex, 'next', requestId);
       if (nextIndex < 0) {
-        if (requestId === transitionRequestRef.current) setIsTransitioning(false);
+        if (requestId === transitionRequestRef.current) {
+          setIsTransitioning(false);
+          setTransitionError(
+            'La aplicación no confirmó la acción. Revisa los campos o mensajes marcados; sigues en este paso y puedes intentarlo otra vez.'
+          );
+        }
         return;
       }
       if (requestId !== transitionRequestRef.current) return;
       setIsTransitioning(false);
       setCurrentIndex(nextIndex);
     },
-    [currentIndex, isTransitioning, manualSteps, runAction, waitForReadyStepIndex]
+    [currentIndex, findApplicableStepIndex, isTransitioning, manualSteps, resolveStepNode, runAction, waitForReadyStepIndex]
   );
   const prev = useCallback(async () => {
     if (isTransitioning) return;
 
     const requestId = ++transitionRequestRef.current;
     setIsTransitioning(true);
+    setTransitionError(null);
     if (autoAdvanceTimerRef.current !== null) {
       window.clearTimeout(autoAdvanceTimerRef.current);
       autoAdvanceTimerRef.current = null;
@@ -657,7 +831,10 @@ export const GuidedManualProvider = ({
 
     const previousIndex = await waitForReadyStepIndex(currentIndex, 'prev', requestId);
     if (previousIndex < 0) {
-      if (requestId === transitionRequestRef.current) setIsTransitioning(false);
+      if (requestId === transitionRequestRef.current) {
+        setIsTransitioning(false);
+        setTransitionError('No se encontró el paso anterior en esta pantalla. Sigues en el paso actual.');
+      }
       return;
     }
     if (requestId !== transitionRequestRef.current) return;
@@ -673,13 +850,18 @@ export const GuidedManualProvider = ({
 
   const registerTarget = useCallback((id: string, node: HTMLElement | null) => {
     if (!node) return;
+    if (targetsRef.current.get(id) === node) return;
     targetsRef.current.set(id, node);
+    const activeStep = currentStepRef.current;
+    if (!isOpenRef.current || activeStep?.targetId !== id) return;
     setTargetsVersion((prevValue) => prevValue + 1);
     waitListenersRef.current.forEach((listener) => listener());
   }, []);
 
   const unregisterTarget = useCallback((id: string) => {
     if (targetsRef.current.delete(id)) {
+      const activeStep = currentStepRef.current;
+      if (!isOpenRef.current || activeStep?.targetId !== id) return;
       setTargetsVersion((prevValue) => prevValue + 1);
       waitListenersRef.current.forEach((listener) => listener());
     }
@@ -717,11 +899,12 @@ export const GuidedManualProvider = ({
       totalSteps: visibleTotalSteps,
       targetsVersion,
       isTransitioning,
+      transitionError,
       context: manualContext,
 
       globalDisableAppElements,
     }),
-    [manualSteps, isOpen, currentStep, visibleTotalSteps, targetsVersion, isTransitioning, manualContext, visibleStepIndex, globalDisableAppElements]
+    [manualSteps, isOpen, currentStep, visibleTotalSteps, targetsVersion, isTransitioning, transitionError, manualContext, visibleStepIndex, globalDisableAppElements]
 
   );
 
@@ -823,11 +1006,9 @@ export const useGuidedManual = () => {
   return { ...state, ...api };
 };
 
-type GuidedTargetProps = {
+type GuidedTargetProps = Omit<React.HTMLAttributes<HTMLElement>, 'id' | 'children'> & {
   id: string;
   as?: keyof React.JSX.IntrinsicElements;
-  className?: string;
-  style?: React.CSSProperties;
   children: React.ReactNode;
 };
 
@@ -837,6 +1018,7 @@ export const GuidedTarget = ({
   className,
   style,
   children,
+  ...elementProps
 }: GuidedTargetProps) => {
   const api = useGuidedManualApi();
   const registerTarget = api?.registerTarget;
@@ -854,6 +1036,7 @@ export const GuidedTarget = ({
   return React.createElement(
     as as string,
     {
+      ...elementProps,
       ref,
       className,
       style,
@@ -910,7 +1093,7 @@ const resolveStepTargetNode = (
 ) => {
   if (!step) return null;
   if (step.selector) {
-    const node = document.querySelector(step.selector) as HTMLElement | null;
+    const node = resolveVisibleSelectorNode(step.selector);
     if (node) return node;
   }
   if (step.targetId) return getTarget(step.targetId);
@@ -979,7 +1162,7 @@ const GuidedManualOverlay = () => {
 };
 
 const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext }) => {
-  const { copy, icons, slots, appearance, tracking } = useGuidedManualConfig();
+  const { copy, slots, appearance, tracking } = useGuidedManualConfig();
   const s = useMemo(() => createGuidedManualWebStyles(appearance), [appearance]);
 
   const {
@@ -993,8 +1176,8 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
     getTarget,
     targetsVersion,
     isTransitioning,
+    transitionError,
 
-    checkAutoAdvance,
     isStepApplicable,
     isStepReady,
     globalDisableAppElements,
@@ -1004,12 +1187,18 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const [targetNode, setTargetNode] = useState<HTMLElement | null>(null);
   const [panelSize, setPanelSize] = useState({ width: 320, height: 160 });
-  const [panelOffset, setPanelOffset] = useState({ x: 0, y: 0 });
+  const [viewport, setViewport] = useState(() => ({
+    width: typeof window === 'undefined' ? 1024 : window.innerWidth,
+    height: typeof window === 'undefined' ? 768 : window.innerHeight,
+  }));
 
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [showExitConfirmation, setShowExitConfirmation] = useState(false);
   const [confirmCountdown, setConfirmCountdown] = useState(0);
-
-  const [isDraggingPanel, setIsDraggingPanel] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [showMicroHelp, setShowMicroHelp] = useState(false);
+  const [blockedHint, setBlockedHint] = useState<string | null>(null);
+  const [transitionSlow, setTransitionSlow] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const targetNodeRef = useRef<HTMLElement | null>(null);
   const targetRectRef = useRef<DOMRect | null>(null);
@@ -1017,61 +1206,31 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
   const mutationTimerRef = useRef<number | null>(null);
   const pendingScrollRef = useRef(false);
 
-  const lostTimerRef = useRef<number | null>(null);
-
-  const dragRef = useRef({ pointerId: -1, startX: 0, startY: 0, originX: 0, originY: 0 });
+  const blockedHintTimerRef = useRef<number | null>(null);
+  const targetActionConsumedRef = useRef(false);
   const touchScrollRef = useRef({ x: 0, y: 0 });
   const Button = slots.Button;
   const { prev: prevCopy, next: nextCopy, finish: finishCopy } = copy;
-  const prevIcon = icons?.prev ?? '<';
-  const nextIcon = icons?.next ?? '>';
-  const finishIcon = icons?.finish ?? 'x';
   const spotlightPadding = s.spotlightPadding;
-  const isWizardStep = currentStep?.mode === 'wizard';
-
-  const handlePanelPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    dragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: panelOffset.x,
-      originY: panelOffset.y,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setIsDraggingPanel(true);
-    event.preventDefault();
-  }, [panelOffset]);
-
-  const handlePanelPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDraggingPanel || dragRef.current.pointerId !== event.pointerId) return;
-    setPanelOffset({
-      x: dragRef.current.originX + event.clientX - dragRef.current.startX,
-      y: dragRef.current.originY + event.clientY - dragRef.current.startY,
+  const advancesOnTargetClick = Boolean(currentStep?.advanceOnTargetClick);
+  const isWizardStep = currentStep?.mode === 'wizard' || advancesOnTargetClick;
+  const guideDisabledSelectors = useMemo(
+    () => [
+      ...(globalDisableAppElements ?? []),
+      ...(currentStep?.disableAppElements ?? []),
+    ].filter(Boolean),
+    [currentStep?.disableAppElements, globalDisableAppElements]
+  );
+  const isGuideDisabledNode = useCallback((node: Element | null) => {
+    if (!node) return false;
+    return guideDisabledSelectors.some((selector) => {
+      try {
+        return node.matches(selector) || Boolean(node.closest(selector));
+      } catch {
+        return false;
+      }
     });
-  }, [isDraggingPanel]);
-
-  const handlePanelPointerEnd = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (dragRef.current.pointerId !== event.pointerId) return;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    dragRef.current.pointerId = -1;
-    setIsDraggingPanel(false);
-  }, []);
-
-  const handlePanelKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    const movement: Record<string, { x: number; y: number }> = {
-      ArrowUp: { x: 0, y: -16 },
-      ArrowDown: { x: 0, y: 16 },
-      ArrowLeft: { x: -16, y: 0 },
-      ArrowRight: { x: 16, y: 0 },
-    };
-    const delta = movement[event.key];
-    if (!delta) return;
-    setPanelOffset((current) => ({ x: current.x + delta.x, y: current.y + delta.y }));
-    event.preventDefault();
-  }, []);
+  }, [guideDisabledSelectors]);
 
   const handleBlockedWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -1093,6 +1252,168 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
     event.preventDefault();
   }, []);
 
+  const focusExpectedControl = useCallback(() => {
+    const targetFocusable = targetNode?.matches(
+      'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+    )
+      ? targetNode
+      : targetNode?.querySelector<HTMLElement>(
+          'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+        );
+    const fallback = panelRef.current;
+    const node = isWizardStep && !isPaused ? targetFocusable ?? fallback : fallback;
+    node?.focus({ preventScroll: true });
+    if (isWizardStep && targetNode && !isPaused) {
+      targetNode.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    }
+  }, [isPaused, isWizardStep, targetNode]);
+
+  const showBlockedInteractionHint = useCallback((message?: string) => {
+    setBlockedHint(message ?? 'Todavía no: pulsa solamente el control resaltado.');
+    if (blockedHintTimerRef.current !== null) {
+      window.clearTimeout(blockedHintTimerRef.current);
+    }
+    blockedHintTimerRef.current = window.setTimeout(() => {
+      blockedHintTimerRef.current = null;
+      setBlockedHint(null);
+    }, 2600);
+    window.setTimeout(focusExpectedControl, 0);
+  }, [focusExpectedControl]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const isInside = (container: HTMLElement | null, eventTarget: EventTarget | null) =>
+      Boolean(container && eventTarget instanceof Node && container.contains(eventTarget));
+    const targetInteractionAllowed = () =>
+      isWizardStep &&
+      !isPaused &&
+      !showConfirmation &&
+      !showExitConfirmation &&
+      !isTransitioning &&
+      !targetActionConsumedRef.current;
+    const currentTarget = () =>
+      resolveStepTargetNode(currentStep, getTarget) ?? targetNodeRef.current;
+    const isAllowedEvent = (event: Event) => {
+      // El clic interno que ejecuta la guía debe atravesar su propio bloqueo.
+      // La marca vive sólo durante node.click(), así que otros eventos
+      // programáticos no obtienen acceso general al resto de la pantalla.
+      const internalActionElement = event.target instanceof Element
+        ? event.target.closest('[data-guide-internal-action="true"]')
+        : null;
+      if (internalActionElement) return true;
+      if (isInside(panelRef.current, event.target)) return true;
+      if (typeof SubmitEvent !== 'undefined' && event instanceof SubmitEvent) {
+        const submitElement = event.submitter instanceof Element
+          ? event.submitter
+          : event.target instanceof Element
+            ? event.target
+            : null;
+        if (isGuideDisabledNode(submitElement)) return false;
+        const liveTarget = currentTarget();
+        return targetInteractionAllowed()
+          && (isInside(liveTarget, event.submitter) || isInside(liveTarget, event.target));
+      }
+      if (targetInteractionAllowed() && isInside(currentTarget(), event.target)) {
+        const eventElement = event.target instanceof Element ? event.target : null;
+        if (isGuideDisabledNode(eventElement)) return false;
+        return !eventElement?.closest(
+          'button:disabled, input:disabled, select:disabled, textarea:disabled, [aria-disabled="true"]'
+        );
+      }
+      return false;
+    };
+    const blockEvent = (event: Event) => {
+      if (isAllowedEvent(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      const blockedElement = event.target instanceof Element ? event.target : null;
+      const blockedDisabledControl = blockedElement?.closest(
+        'button:disabled, input:disabled, select:disabled, textarea:disabled, [aria-disabled="true"]'
+      );
+      showBlockedInteractionHint(
+        blockedDisabledControl || isGuideDisabledNode(blockedElement)
+          ? 'Ese control está deshabilitado. Completa primero los datos marcados.'
+          : isTransitioning
+          ? 'Espera un momento: estamos comprobando la acción anterior.'
+          : isPaused
+            ? 'La capacitación está pausada. Pulsa “Continuar capacitación” para seguir.'
+            : isWizardStep
+              ? undefined
+              : 'Todavía no: en este paso usa solamente los botones del panel de capacitación.'
+      );
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        setIsPaused((current) => !current);
+        setShowExitConfirmation(false);
+        return;
+      }
+
+      const targetRoot = targetInteractionAllowed() ? currentTarget() : null;
+      const roots = [panelRef.current, targetRoot].filter((node): node is HTMLElement => Boolean(node));
+      const focusables = roots.flatMap((root) => {
+        const own = root.matches(
+          'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+        ) ? [root] : [];
+        return [
+          ...own,
+          ...Array.from(root.querySelectorAll<HTMLElement>(
+            'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+          )),
+        ].filter((node) => {
+          const rect = node.getBoundingClientRect();
+          const styles = window.getComputedStyle(node);
+          return rect.width > 0 && rect.height > 0 && styles.visibility !== 'hidden' && !isGuideDisabledNode(node);
+        });
+      });
+
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        event.stopPropagation();
+        const currentIndexInFocusables = focusables.indexOf(document.activeElement as HTMLElement);
+        const direction = event.shiftKey ? -1 : 1;
+        const nextFocusIndex = currentIndexInFocusables < 0
+          ? (event.shiftKey ? focusables.length - 1 : 0)
+          : (currentIndexInFocusables + direction + focusables.length) % Math.max(1, focusables.length);
+        focusables[nextFocusIndex]?.focus({ preventScroll: true });
+        return;
+      }
+
+      if (!isAllowedEvent(event)) blockEvent(event);
+    };
+    const handleFocusIn = (event: FocusEvent) => {
+      if (isAllowedEvent(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      window.setTimeout(focusExpectedControl, 0);
+    };
+
+    const blockedEvents: Array<keyof DocumentEventMap> = [
+      'pointerdown',
+      'mousedown',
+      'touchstart',
+      'click',
+      'dblclick',
+      'contextmenu',
+      'submit',
+      'dragstart',
+      'drop',
+    ];
+    blockedEvents.forEach((eventName) => document.addEventListener(eventName, blockEvent, true));
+    document.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('focusin', handleFocusIn, true);
+    return () => {
+      blockedEvents.forEach((eventName) => document.removeEventListener(eventName, blockEvent, true));
+      document.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('focusin', handleFocusIn, true);
+    };
+  }, [currentStep, focusExpectedControl, getTarget, isGuideDisabledNode, isOpen, isPaused, isTransitioning, isWizardStep, showBlockedInteractionHint, showConfirmation, showExitConfirmation]);
+
   const updateTrackedTarget = useCallback(
     (scrollToTarget: boolean) => {
       if (!currentStep) {
@@ -1105,22 +1426,6 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
 
       const node = resolveStepTargetNode(currentStep, getTarget);
       if (!node) {
-        if (!currentStep.selector && !currentStep.targetId) {
-          if (lostTimerRef.current !== null) {
-            window.clearTimeout(lostTimerRef.current);
-            lostTimerRef.current = null;
-          }
-          if (targetNodeRef.current !== null) {
-            targetNodeRef.current = null;
-            setTargetNode(null);
-          }
-          if (targetRectRef.current !== null) {
-            targetRectRef.current = null;
-            setTargetRect(null);
-          }
-          return;
-        }
-
         if (targetNodeRef.current !== null) {
           targetNodeRef.current = null;
           setTargetNode(null);
@@ -1129,27 +1434,7 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
           targetRectRef.current = null;
           setTargetRect(null);
         }
-        if (checkAutoAdvance()) {
-          if (lostTimerRef.current !== null) {
-            window.clearTimeout(lostTimerRef.current);
-            lostTimerRef.current = null;
-          }
-          return;
-        }
-        if (lostTimerRef.current === null) {
-          lostTimerRef.current = window.setTimeout(() => {
-            lostTimerRef.current = null;
-            if (!checkAutoAdvance()) {
-              close();
-            }
-          }, 800);
-        }
         return;
-      }
-
-      if (lostTimerRef.current !== null) {
-        window.clearTimeout(lostTimerRef.current);
-        lostTimerRef.current = null;
       }
 
 
@@ -1210,7 +1495,7 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
   );
 
   useEffect(() => {
-    if (!isOpen || !isWizardStep || !targetNode) return;
+    if (!isOpen || isPaused || !isWizardStep || !targetNode) return;
 
     const previousPosition = targetNode.style.position;
     const previousZIndex = targetNode.style.zIndex;
@@ -1223,14 +1508,72 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
     targetNode.style.zIndex = String(GUIDE_TARGET_Z_INDEX);
     targetNode.style.isolation = 'isolate';
     targetNode.setAttribute('data-guide-wizard-active', 'true');
+    if (advancesOnTargetClick) {
+      targetNode.setAttribute('data-guide-target-click-active', 'true');
+    }
 
     return () => {
       targetNode.style.position = previousPosition;
       targetNode.style.zIndex = previousZIndex;
       targetNode.style.isolation = previousIsolation;
       targetNode.removeAttribute('data-guide-wizard-active');
+      targetNode.removeAttribute('data-guide-target-click-active');
     };
-  }, [isOpen, isWizardStep, targetNode]);
+  }, [advancesOnTargetClick, isOpen, isPaused, isWizardStep, targetNode]);
+
+  useEffect(() => {
+    if (!isTransitioning) targetActionConsumedRef.current = false;
+  }, [currentStep?.id, isTransitioning, transitionError]);
+
+  useEffect(() => {
+    if (!isOpen || isPaused || !advancesOnTargetClick || !targetNode || isTransitioning) return;
+
+    const handleTargetClick = (event: MouseEvent) => {
+      const clickedElement = event.target instanceof Element ? event.target : targetNode;
+      const disabledControl = clickedElement.closest(
+        'button:disabled, input:disabled, select:disabled, textarea:disabled, [aria-disabled="true"]'
+      );
+      if (disabledControl) {
+        event.preventDefault();
+        showBlockedInteractionHint('Ese control todavía no está disponible. Completa primero los datos marcados.');
+        return;
+      }
+      if (targetActionConsumedRef.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        showBlockedInteractionHint('Espera un momento: estamos comprobando tu acción.');
+        return;
+      }
+      targetActionConsumedRef.current = true;
+      window.setTimeout(() => {
+        const relatedForm = clickedElement.closest('form') ?? targetNode.querySelector('form');
+        const invalidField = relatedForm?.querySelector(
+          ':invalid, [aria-invalid="true"], .ant-form-item-has-error, [data-validation-error="true"]'
+        );
+        if (invalidField) {
+          targetActionConsumedRef.current = false;
+          showBlockedInteractionHint('Falta completar o corregir un dato marcado. La capacitación permanece en este paso.');
+          if (invalidField instanceof HTMLElement) invalidField.focus({ preventScroll: true });
+          invalidField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return;
+        }
+        if (currentIndex >= totalSteps - 1) {
+          close();
+          return;
+        }
+        void next();
+      }, 160);
+    };
+
+    targetNode.addEventListener('click', handleTargetClick);
+    return () => targetNode.removeEventListener('click', handleTargetClick);
+  }, [advancesOnTargetClick, close, currentIndex, isOpen, isPaused, isTransitioning, next, showBlockedInteractionHint, targetNode, totalSteps]);
+
+  useEffect(() => {
+    if (!isOpen || isPaused) return;
+    const timer = window.setTimeout(focusExpectedControl, 120);
+    return () => window.clearTimeout(timer);
+  }, [currentStep?.id, focusExpectedControl, isOpen, isPaused, targetNode]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1241,12 +1584,19 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
 
   useEffect(() => {
     if (!isOpen) return;
-    const handleUpdate = () => resolveTargetRect(false);
+    const handleUpdate = () => {
+      setViewport({ width: window.innerWidth, height: window.innerHeight });
+      resolveTargetRect(false);
+    };
     window.addEventListener('resize', handleUpdate);
     window.addEventListener('scroll', handleUpdate, true);
+    window.visualViewport?.addEventListener('resize', handleUpdate);
+    window.visualViewport?.addEventListener('scroll', handleUpdate);
     return () => {
       window.removeEventListener('resize', handleUpdate);
       window.removeEventListener('scroll', handleUpdate, true);
+      window.visualViewport?.removeEventListener('resize', handleUpdate);
+      window.visualViewport?.removeEventListener('scroll', handleUpdate);
     };
   }, [isOpen, resolveTargetRect]);
 
@@ -1285,13 +1635,6 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
       : null;
     if (resizeObserver && targetNode) {
       resizeObserver.observe(targetNode);
-      let ancestor = targetNode.parentElement;
-      let observedAncestors = 0;
-      while (ancestor && ancestor !== document.body && observedAncestors < 8) {
-        resizeObserver.observe(ancestor);
-        ancestor = ancestor.parentElement;
-        observedAncestors += 1;
-      }
     }
 
     const handleVisualTransition = () => scheduleTargetUpdate(false);
@@ -1328,6 +1671,7 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
       if (mutationTimerRef.current !== null) {
         window.clearTimeout(mutationTimerRef.current);
       }
+      if (blockedHintTimerRef.current !== null) window.clearTimeout(blockedHintTimerRef.current);
     };
   }, []);
 
@@ -1341,8 +1685,19 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
 
   useEffect(() => {
     setShowConfirmation(false);
+    setShowExitConfirmation(false);
     setConfirmCountdown(0);
-  }, [currentIndex]);
+    setBlockedHint(null);
+    setShowMicroHelp(false);
+  }, [currentIndex, currentStep?.id]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsPaused(false);
+      setShowExitConfirmation(false);
+      setBlockedHint(null);
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (showConfirmation && confirmCountdown > 0) {
@@ -1351,82 +1706,102 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
     }
   }, [showConfirmation, confirmCountdown]);
 
+  useEffect(() => {
+    if (!isTransitioning) {
+      setTransitionSlow(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setTransitionSlow(true), 1200);
+    return () => window.clearTimeout(timer);
+  }, [isTransitioning]);
+
 
   useLayoutEffect(() => {
     if (!panelRef.current || !isOpen) return;
-    const rect = panelRef.current.getBoundingClientRect();
-    if (rect.width && rect.height) {
-      setPanelSize({ width: rect.width, height: rect.height });
-    }
-  }, [isOpen, currentIndex, currentStep?.description]);
+    const panel = panelRef.current;
+    const updatePanelSize = () => {
+      const rect = panel.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const measuredHeight = Math.max(rect.height, panel.scrollHeight);
+      setPanelSize((current) => (
+        Math.abs(current.width - rect.width) > 0.5 || Math.abs(current.height - measuredHeight) > 0.5
+          ? { width: rect.width, height: measuredHeight }
+          : current
+      ));
+    };
+    updatePanelSize();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updatePanelSize);
+    observer?.observe(panel);
+    return () => observer?.disconnect();
+  }, [isOpen, currentIndex, currentStep?.description, isPaused, showConfirmation, showExitConfirmation]);
 
   if (!isOpen || !currentStep) return null;
 
-  const windowWidth = window.innerWidth;
-  const windowHeight = window.innerHeight;
-  const margin = 16;
+  const windowWidth = viewport.width;
+  const windowHeight = viewport.height;
+  const margin = windowWidth < 640 ? 8 : 12;
+  const expectsTarget = Boolean(currentStep.selector || currentStep.targetId);
+  const targetMissing = expectsTarget && !targetRect;
+  const shouldCenterPanel = showConfirmation || showExitConfirmation || isPaused || targetMissing;
+  const preferredPanelWidth = Number(appearance?.layout?.panelWidth ?? 320);
+  const placement = resolveGuidedManualPanelPlacement({
+    viewportWidth: windowWidth,
+    viewportHeight: windowHeight,
+    panelWidth: preferredPanelWidth,
+    panelHeight: panelSize.height,
+    target: shouldCenterPanel ? null : targetRect,
+    margin,
+    gap: 12,
+  });
 
-  let panelStyle: React.CSSProperties = {
-    top: windowHeight / 2 - panelSize.height / 2,
-    left: windowWidth / 2 - panelSize.width / 2,
-  };
-
-
-  if (targetRect && !showConfirmation) {
-
-    const spaceBelow = windowHeight - targetRect.bottom - margin;
-    const spaceAbove = targetRect.top - margin;
-    const placeBelow = spaceBelow >= panelSize.height || spaceBelow >= spaceAbove;
-    const top = placeBelow
-      ? targetRect.bottom + margin
-      : targetRect.top - panelSize.height - margin;
-    const left = clampGuidedManualValue(targetRect.left, margin, windowWidth - panelSize.width - margin);
-    panelStyle = {
-      top: clampGuidedManualValue(top, margin, windowHeight - panelSize.height - margin),
-      left,
-    };
-  }
-
-  panelStyle = {
-    ...panelStyle,
-    top: clampGuidedManualValue(
-      Number(panelStyle.top ?? margin) + panelOffset.y,
-      margin,
-      Math.max(margin, windowHeight - panelSize.height - margin)
-    ),
-    left: clampGuidedManualValue(
-      Number(panelStyle.left ?? margin) + panelOffset.x,
-      margin,
-      Math.max(margin, windowWidth - panelSize.width - margin)
-    ),
+  const panelStyle: React.CSSProperties = {
+    top: placement.top,
+    left: placement.left,
+    width: placement.width,
+    maxWidth: `calc(100vw - ${margin * 2}px)`,
+    maxHeight: placement.maxHeight,
+    overflowY: 'auto',
+    overscrollBehavior: 'contain',
     zIndex: GUIDE_Z_INDEX + 4,
     pointerEvents: 'auto',
-
-    transition: isDraggingPanel ? 'none' : `${s.panel.transition}, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.4s ease-out`,
-    transform: showConfirmation ? 'scale(1.08)' : 'scale(1)',
-
+    transition: s.panel.transition,
   };
 
   const highlightStyle = targetRect
     ? (() => {
-      let x = targetRect.left - spotlightPadding;
-      let y = targetRect.top - spotlightPadding;
-      let width = targetRect.width + spotlightPadding * 2;
-      let height = targetRect.height + spotlightPadding * 2;
-      const maxWidth = Math.max(0, windowWidth - margin * 2);
-      const maxHeight = Math.max(0, windowHeight - margin * 2);
-      width = Math.min(width, maxWidth);
-      height = Math.min(height, maxHeight);
-      const maxX = windowWidth - margin - width;
-      const maxY = windowHeight - margin - height;
-      x = clampGuidedManualValue(x, margin, maxX);
-      y = clampGuidedManualValue(y, margin, maxY);
-      return { top: y, left: x, width, height };
+      let left = clampGuidedManualValue(targetRect.left - spotlightPadding, 0, windowWidth);
+      let right = clampGuidedManualValue(targetRect.right + spotlightPadding, 0, windowWidth);
+      let top = clampGuidedManualValue(targetRect.top - spotlightPadding, 0, windowHeight);
+      let bottom = clampGuidedManualValue(targetRect.bottom + spotlightPadding, 0, windowHeight);
+      const renderedPanelHeight = Math.min(panelSize.height, placement.maxHeight);
+      const panelBounds = {
+        top: placement.top,
+        right: placement.left + placement.width,
+        bottom: placement.top + renderedPanelHeight,
+        left: placement.left,
+      };
+      const intersectsPanel = !(
+        right <= panelBounds.left ||
+        left >= panelBounds.right ||
+        bottom <= panelBounds.top ||
+        top >= panelBounds.bottom
+      );
+      if (intersectsPanel && !shouldCenterPanel) {
+        if (placement.docked === 'bottom') bottom = Math.min(bottom, panelBounds.top - 8);
+        if (placement.docked === 'top') top = Math.max(top, panelBounds.bottom + 8);
+        if (placement.docked === 'left') left = Math.max(left, panelBounds.right + 8);
+        if (placement.docked === 'right') right = Math.min(right, panelBounds.left - 8);
+      }
+      return {
+        top,
+        left,
+        width: Math.max(0, right - left),
+        height: Math.max(0, bottom - top),
+      };
     })()
     : undefined;
 
   const isLast = currentIndex >= totalSteps - 1;
-  const showFinish = !isLast;
   const progressPercent = totalSteps > 0 ? ((currentIndex + 1) / totalSteps) * 100 : 0;
 
 
@@ -1437,13 +1812,26 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
     } else {
       setShowConfirmation(false);
       setConfirmCountdown(0);
-      isLast ? close() : next();
+      if (isLast) close();
+      else void next();
     }
   };
 
   const handleCancelConfirmation = () => {
     setShowConfirmation(false);
     setConfirmCountdown(0);
+  };
+
+  const handleRequestExit = () => {
+    setIsPaused(false);
+    setShowConfirmation(false);
+    setShowExitConfirmation(true);
+  };
+
+  const handleContinueTour = () => {
+    setShowExitConfirmation(false);
+    setIsPaused(false);
+    window.setTimeout(focusExpectedControl, 0);
   };
 
   const previousStepIndex = [...manualSteps]
@@ -1462,75 +1850,54 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
 
   const showPrev = !currentStep.hidePrevious;
 
-  const activeToneName = showConfirmation && currentStep.confirmation?.tone
-    ? currentStep.confirmation.tone
-    : (currentStep.tone ?? 'default');
+  const activeToneName = showExitConfirmation
+    ? 'critical'
+    : showConfirmation && currentStep.confirmation?.tone
+      ? currentStep.confirmation.tone
+      : (currentStep.tone ?? 'default');
   const tone = s.stepTones[activeToneName] ?? s.stepTones.default;
 
-  const displayIcon = showConfirmation ? currentStep.confirmation?.icon : currentStep.icon;
-  const displayTitle = showConfirmation ? currentStep.confirmation?.title : currentStep.title;
-  const displayDescription = showConfirmation ? currentStep.confirmation?.description : currentStep.description;
+  const displayIcon = showExitConfirmation
+    ? '⚠️'
+    : isPaused
+      ? '⏸️'
+      : showConfirmation
+        ? currentStep.confirmation?.icon
+        : currentStep.icon;
+  const displayTitle = showExitConfirmation
+    ? '¿Salir de la capacitación?'
+    : isPaused
+      ? 'Capacitación pausada'
+      : targetMissing
+        ? 'Buscando el control de este paso…'
+        : showConfirmation
+          ? currentStep.confirmation?.title
+          : currentStep.title;
+  const displayDescription = showExitConfirmation
+    ? 'Si sales, se cerrará el recorrido actual y no se ejecutará el siguiente paso. Puedes volver a iniciarlo desde Ayuda.'
+    : isPaused
+      ? 'La aplicación permanece bloqueada para evitar cambios accidentales. Continúa cuando estés listo o sal de forma segura.'
+      : targetMissing
+        ? 'No avances ni hagas clic al azar. La pantalla todavía está cargando o estás en una ruta distinta. Esperaremos aquí sin saltarnos pasos.'
+        : showConfirmation
+          ? currentStep.confirmation?.description
+          : currentStep.description;
+  const missionCopy = !showConfirmation && !showExitConfirmation && !isPaused
+    ? parseMissionCopy(displayDescription || '')
+    : null;
 
-  const customTitleColor = showConfirmation ? currentStep.confirmation?.customTitleColor : currentStep.customTitleColor;
-  const customTitleSize = showConfirmation ? currentStep.confirmation?.customTitleSize : currentStep.customTitleSize;
-  const customDescColor = showConfirmation ? currentStep.confirmation?.customDescriptionColor : currentStep.customDescriptionColor;
-  const customDescSize = showConfirmation ? currentStep.confirmation?.customDescriptionSize : currentStep.customDescriptionSize;
+  const customTitleColor = showConfirmation && !showExitConfirmation ? currentStep.confirmation?.customTitleColor : currentStep.customTitleColor;
+  const customTitleSize = showConfirmation && !showExitConfirmation ? currentStep.confirmation?.customTitleSize : currentStep.customTitleSize;
+  const customDescColor = showConfirmation && !showExitConfirmation ? currentStep.confirmation?.customDescriptionColor : currentStep.customDescriptionColor;
+  const customDescSize = showConfirmation && !showExitConfirmation ? currentStep.confirmation?.customDescriptionSize : currentStep.customDescriptionSize;
 
 
-  const overlayStyle = targetRect
+  const overlayStyle = targetRect && !isPaused && !showConfirmation && !showExitConfirmation
     ? {
         ...s.overlay,
         pointerEvents: isWizardStep ? 'none' : s.overlay.pointerEvents,
       }
     : { ...s.overlay, ...s.overlayDim };
-
-  const blockerStyle = (style: React.CSSProperties): React.CSSProperties => ({
-    position: 'fixed',
-    zIndex: GUIDE_Z_INDEX,
-    pointerEvents: 'auto',
-    touchAction: 'none',
-    ...style,
-  });
-  const blockerEvents = {
-    onWheel: handleBlockedWheel,
-    onTouchStart: handleBlockedTouchStart,
-    onTouchMove: handleBlockedTouchMove,
-  };
-
-  const wizardBlockers = targetRect && highlightStyle && isWizardStep
-    ? (
-      <>
-        <div {...blockerEvents} style={blockerStyle({ top: 0, left: 0, right: 0, height: highlightStyle.top })} />
-        <div
-          {...blockerEvents}
-          style={blockerStyle({
-            top: highlightStyle.top + highlightStyle.height,
-            left: 0,
-            right: 0,
-            bottom: 0,
-          })}
-        />
-        <div
-          {...blockerEvents}
-          style={blockerStyle({
-            top: highlightStyle.top,
-            left: 0,
-            width: highlightStyle.left,
-            height: highlightStyle.height,
-          })}
-        />
-        <div
-          {...blockerEvents}
-          style={blockerStyle({
-            top: highlightStyle.top,
-            left: highlightStyle.left + highlightStyle.width,
-            right: 0,
-            height: highlightStyle.height,
-          })}
-        />
-      </>
-    )
-    : null;
 
   return (
     <div
@@ -1553,6 +1920,9 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
           `}
         </style>
       )}
+      {advancesOnTargetClick && !isPaused && !isTransitioning ? (
+        <style>{createGuidedManualTargetInteractionCss(tone.accent)}</style>
+      ) : null}
       {currentStep.disableAppElements && currentStep.disableAppElements.length > 0 && (
         <style>
           {`
@@ -1566,60 +1936,94 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
         </style>
       )}
 
-      {wizardBlockers}
-      {targetRect && <div style={getGuidedManualAtomWebJsx0Style(s, highlightStyle)} />}
+      {targetRect && !isPaused && !showConfirmation && !showExitConfirmation && highlightStyle && (
+        <div style={getGuidedManualAtomWebJsx0Style(s, highlightStyle)} />
+      )}
       <div
         ref={panelRef}
-        onWheel={isWizardStep ? handleBlockedWheel : undefined}
+        data-guide-step-id={currentStep.id}
+        data-guide-target-id={currentStep.targetId}
+        data-guide-target-selector={currentStep.selector}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal={!isWizardStep || isPaused || showConfirmation || showExitConfirmation}
+        aria-labelledby="guided-manual-title"
+        aria-describedby="guided-manual-description"
         style={getGuidedManualAtomWebJsx1Style(s, {
           ...panelStyle,
           background: tone.panelBg,
           borderColor: tone.panelBorder,
           color: tone.textMain,
 
-          boxShadow: showConfirmation
+          boxShadow: showConfirmation || showExitConfirmation
             ? `0 0 0 14px rgba(248, 113, 113, 0.15), ${s.panel.boxShadow}, 0 0 0 2px rgba(248, 113, 113, 0.8)`
             : `${s.panel.boxShadow}, 0 0 0 1px ${tone.panelBorder}`,
 
         })}
       >
-        <div
-          role="button"
-          tabIndex={0}
-          aria-label="Mover panel de ayuda"
-          title="Mover panel"
-          onPointerDown={handlePanelPointerDown}
-          onPointerMove={handlePanelPointerMove}
-          onPointerUp={handlePanelPointerEnd}
-          onPointerCancel={handlePanelPointerEnd}
-          onKeyDown={handlePanelKeyDown}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: 18,
-            margin: '-8px -4px 6px',
-            cursor: isDraggingPanel ? 'grabbing' : 'grab',
-            touchAction: 'none',
-            userSelect: 'none',
-            color: s.description.color,
-          }}
-        >
-          <span aria-hidden style={{ letterSpacing: 3, fontSize: 13 }}>....</span>
-        </div>
-        {currentStep.mode === 'wizard' ? (
-          <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase', opacity: 0.72, marginBottom: 6 }}>
-            Wizard paso a paso
+        {!showConfirmation && !showExitConfirmation && !isPaused ? (
+          <div style={s.missionBadge}>
+            <span aria-hidden style={{ fontWeight: 900 }}>GUÍA</span>
+            Paso {currentIndex + 1} de {totalSteps}
+            {currentStep.chapter ? <span style={{ opacity: 0.7 }}>· {currentStep.chapter}</span> : null}
           </div>
         ) : null}
 
         {displayIcon && (
-          <div style={{ fontSize: showConfirmation ? 48 : 32, marginBottom: showConfirmation ? 16 : 12, lineHeight: 1, textAlign: showConfirmation ? 'center' : 'left' }}>
+          <div style={{ fontSize: showConfirmation || showExitConfirmation || isPaused ? 42 : 28, marginBottom: 12, lineHeight: 1, textAlign: showConfirmation || showExitConfirmation || isPaused ? 'center' : 'left' }}>
             {displayIcon}
           </div>
         )}
-        <h3 style={{ ...s.title, color: customTitleColor || tone.textMain, fontSize: customTitleSize || s.title.fontSize, textAlign: showConfirmation ? 'center' : 'left' }}>{displayTitle}</h3>
-        <p style={{ ...s.description, color: customDescColor || tone.textMuted, fontSize: customDescSize || s.description.fontSize, textAlign: showConfirmation ? 'center' : 'left' }}>{displayDescription}</p>
+        <h3 id="guided-manual-title" style={{ ...s.title, color: customTitleColor || tone.textMain, fontSize: customTitleSize || s.title.fontSize, textAlign: showConfirmation || showExitConfirmation || isPaused ? 'center' : 'left' }}>{displayTitle}</h3>
+        {missionCopy ? (
+          <div id="guided-manual-description" style={s.missionCopy}>
+            <div style={s.missionContext}>
+              <span style={s.missionEmoji} aria-hidden>👀</span>
+              <span><strong>Mira:</strong> {missionCopy.look}.</span>
+            </div>
+            <div style={{ ...s.missionAction, borderColor: tone.panelBorder, background: tone.buttonPrimaryBg }}>
+              <span style={s.missionEmoji} aria-hidden>👉</span>
+              <span><strong>Haz sólo esto:</strong> {missionCopy.action}.</span>
+            </div>
+            <details style={s.missionResult}>
+              <summary style={s.missionResultSummary}>¿Qué pasará?</summary>
+              <span>{missionCopy.result}.</span>
+            </details>
+          </div>
+        ) : (
+          <p id="guided-manual-description" style={{ ...s.description, color: customDescColor || tone.textMuted, fontSize: customDescSize || s.description.fontSize, textAlign: showConfirmation || showExitConfirmation || isPaused ? 'center' : 'left' }}>{displayDescription}</p>
+        )}
+        {advancesOnTargetClick && !showConfirmation && !showExitConfirmation && !isPaused && !targetMissing ? (
+          <div style={{ ...s.targetInstruction, borderColor: tone.panelBorder, background: tone.buttonPrimaryBg }} role="status">
+            <span style={{ ...s.targetInstructionDot, background: tone.accent }} aria-hidden />
+            <span>
+              {isTransitioning
+                ? transitionSlow
+                  ? 'La aplicación sigue comprobando la acción. Si hay un campo marcado, corrígelo; no avanzaremos por error.'
+                  : 'Comprobando la acción. No vuelvas a pulsar…'
+                : 'Ahora pulsa una sola vez el control que parpadea.'}
+            </span>
+          </div>
+        ) : null}
+        {isTransitioning && transitionSlow && !advancesOnTargetClick && !showConfirmation && !showExitConfirmation && !isPaused ? (
+          <div style={s.blockedNotice} role="status">
+            La aplicación todavía no confirma el cambio. Esperaremos sin saltar de paso; revisa si aparece un campo o mensaje marcado.
+          </div>
+        ) : null}
+        {transitionError && !showConfirmation && !showExitConfirmation && !isPaused ? (
+          <div style={s.errorNotice} role="alert">{transitionError}</div>
+        ) : null}
+        {blockedHint && !showConfirmation && !showExitConfirmation ? (
+          <div style={s.blockedNotice} role="alert" aria-live="assertive">{blockedHint}</div>
+        ) : null}
+        {showMicroHelp && !showConfirmation && !showExitConfirmation && !isPaused ? (
+          <div style={s.microHelp} role="status">
+            <strong>Vamos juntos:</strong>
+            <span>1. No cierres esta tarjeta.</span>
+            <span>2. Busca el control con el borde que late.</span>
+            <span>3. Púlsalo una sola vez. Si te equivocas, el tutorial no guarda nada.</span>
+          </div>
+        ) : null}
 
         <div
           aria-label={`Progreso ${Math.round(progressPercent)}%`}
@@ -1628,17 +2032,51 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
           aria-valuemax={100}
           aria-valuenow={Math.round(progressPercent)}
 
-          style={{ ...s.progressTrack, borderColor: tone.panelBorder, display: showConfirmation ? 'none' : 'block' }}
+          style={{ ...s.progressTrack, borderColor: tone.panelBorder, display: showConfirmation || showExitConfirmation || isPaused ? 'none' : 'block' }}
         >
           <div style={{ ...s.progressFill, width: `${progressPercent}%`, background: tone.accent }} />
         </div>
-        <div style={{ ...s.controls, marginTop: showConfirmation ? 24 : s.controls.marginTop }}>
-          <div style={{ ...s.progress, color: tone.textMuted, opacity: showConfirmation ? 0 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-            {currentStep.title}
+        <div style={{ ...s.controls, marginTop: showConfirmation || showExitConfirmation || isPaused ? 24 : s.controls.marginTop }}>
+          <div style={{ ...s.progress, color: tone.textMuted, opacity: showConfirmation || showExitConfirmation || isPaused ? 0 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+            {Math.round(progressPercent)}% · {currentStep.mode === 'wizard' ? 'Tu turno' : 'Mira y aprende'}
             {isTransitioning && <GuidedManualSpinner />}
           </div>
           <div style={s.actions}>
-            {showConfirmation ? (
+            {showExitConfirmation ? (
+              <>
+                <Button
+                  tone="neutral"
+                  style={{ ...s.buttonBase, ...s.buttonSecondary, padding: '0 12px' }}
+                  onPress={handleContinueTour}
+                >
+                  Continuar recorrido
+                </Button>
+                <Button
+                  tone="primary"
+                  style={{ ...s.buttonBase, ...s.buttonPrimary, background: tone.buttonPrimaryBg, borderColor: tone.panelBorder, padding: '0 12px' }}
+                  onPress={close}
+                >
+                  Sí, salir
+                </Button>
+              </>
+            ) : isPaused ? (
+              <>
+                <Button
+                  tone="primary"
+                  style={{ ...s.buttonBase, ...s.buttonPrimary, background: tone.buttonPrimaryBg, borderColor: tone.panelBorder, padding: '0 12px' }}
+                  onPress={handleContinueTour}
+                >
+                  Continuar capacitación
+                </Button>
+                <Button
+                  tone="neutral"
+                  style={{ ...s.buttonBase, ...s.buttonSecondary, padding: '0 12px' }}
+                  onPress={handleRequestExit}
+                >
+                  Salir
+                </Button>
+              </>
+            ) : showConfirmation ? (
               <>
                 <Button
                   tone="neutral"
@@ -1660,42 +2098,59 @@ const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext 
               </>
             ) : (
               <>
-                {showFinish && (
-                  <Button
-                    size="icon"
-                    tone="neutral"
-                    style={{ ...s.buttonBase, ...s.buttonSecondary }}
-                    onPress={close}
-                    ariaLabel={finishCopy}
-                    title={finishCopy}
-                    icon={finishIcon}
-                    iconOnly
-                  />
-                )}
+                <Button
+                  tone="neutral"
+                  style={{ ...s.buttonBase, ...s.buttonSecondary, padding: '0 12px' }}
+                  onPress={handleRequestExit}
+                >
+                  Salir
+                </Button>
+                <Button
+                  tone="neutral"
+                  style={{ ...s.buttonBase, ...s.buttonSecondary, padding: '0 12px' }}
+                  onPress={() => setShowMicroHelp((current) => !current)}
+                  disabled={isTransitioning}
+                >
+                  {showMicroHelp ? 'Ocultar ayuda' : 'Ayúdame'}
+                </Button>
                 {showPrev && (
                   <Button
-                    size="icon"
                     tone="neutral"
-                    style={{ ...s.buttonBase, ...s.buttonSecondary }}
+                    style={{ ...s.buttonBase, ...s.buttonSecondary, padding: '0 12px' }}
                     onPress={prev}
                     disabled={isPrevDisabled}
                     ariaLabel={prevCopy}
                     title={prevCopy}
-                    icon={prevIcon}
-                    iconOnly
-                  />
+                  >
+                    Anterior
+                  </Button>
                 )}
-                <Button
-                  size="icon"
-                  tone="primary"
-                  style={{ ...s.buttonBase, ...s.buttonPrimary, background: tone.buttonPrimaryBg, borderColor: tone.panelBorder }}
-                  onPress={handleNextOrFinish}
-                  disabled={!isLast && isTransitioning}
-                  ariaLabel={isLast ? finishCopy : nextCopy}
-                  title={isLast ? finishCopy : nextCopy}
-                  icon={isLast ? finishIcon : nextIcon}
-                  iconOnly
-                />
+                {targetMissing ? (
+                  <Button
+                    tone="primary"
+                    style={{ ...s.buttonBase, ...s.buttonPrimary, background: tone.buttonPrimaryBg, borderColor: tone.panelBorder, padding: '0 12px' }}
+                    onPress={() => resolveTargetRect(true)}
+                  >
+                    Buscar de nuevo
+                  </Button>
+                ) : !advancesOnTargetClick ? (
+                  <Button
+                    tone="primary"
+                    style={{ ...s.buttonBase, ...s.buttonPrimary, background: tone.buttonPrimaryBg, borderColor: tone.panelBorder, padding: '0 12px' }}
+                    onPress={handleNextOrFinish}
+                    disabled={!isLast && isTransitioning}
+                    ariaLabel={isLast ? finishCopy : nextCopy}
+                    title={isLast ? finishCopy : nextCopy}
+                  >
+                    {isLast
+                      ? 'Terminar'
+                      : transitionError
+                        ? 'Corregí los datos; reintentar'
+                        : currentStep.actionOnNext?.type === 'click'
+                          ? 'Validar y continuar'
+                          : 'Continuar'}
+                  </Button>
+                ) : null}
               </>
             )}
 

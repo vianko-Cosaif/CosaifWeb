@@ -1,6 +1,7 @@
 "use client";
 
 import { RefreshCw, Search, X } from "lucide-react";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import type { TornoFilters, TornoHistoryTab } from "../../lib/types";
 import { cn } from "../../lib/tornoFormat";
 
@@ -28,9 +29,13 @@ export default function TornoHistoryFilters({
   };
 
   return (
-    <section className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-3 shadow-[var(--app-shadow-sm)]">
+    <GuidedTarget
+      id="torno-history-filters"
+      as="section"
+      className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-3 shadow-[var(--app-shadow-sm)]"
+    >
       <div className="grid gap-3 xl:grid-cols-[minmax(240px,320px)_minmax(280px,1fr)_auto] xl:items-center">
-        <div className="grid grid-cols-2 rounded-md bg-[var(--app-surface-muted)] p-1">
+        <GuidedTarget id="torno-history-scope-tabs" className="grid grid-cols-2 rounded-md bg-[var(--app-surface-muted)] p-1">
           {[
             { id: "activos" as const, label: "Activos" },
             { id: "concluidos" as const, label: "Pasados" },
@@ -39,6 +44,7 @@ export default function TornoHistoryFilters({
               key={item.id}
               type="button"
               onClick={() => onTabChange(item.id)}
+              aria-pressed={tab === item.id}
               className={cn(
                 "min-h-10 rounded px-4 py-2 text-sm font-black transition",
                 tab === item.id
@@ -49,9 +55,9 @@ export default function TornoHistoryFilters({
               {item.label}
             </button>
           ))}
-        </div>
+        </GuidedTarget>
 
-        <div className="relative min-w-0">
+        <GuidedTarget id="torno-history-search" className="relative min-w-0">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             value={filters.search ?? ""}
@@ -59,7 +65,7 @@ export default function TornoHistoryFilters({
             placeholder="Buscar locomotora, cliente, folio..."
             className="h-11 w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-subtle)] pl-9 pr-3 text-sm font-semibold text-[var(--app-text)] outline-none transition placeholder:text-[var(--app-text-soft)] focus:border-[var(--app-accent)] focus:ring-2 focus:ring-[var(--app-focus)]"
           />
-        </div>
+        </GuidedTarget>
 
         <button
           type="button"
@@ -112,7 +118,7 @@ export default function TornoHistoryFilters({
           Fechas
         </button>
       </div>
-    </section>
+    </GuidedTarget>
   );
 }
 

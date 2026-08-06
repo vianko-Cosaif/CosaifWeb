@@ -65,12 +65,125 @@ export const createGuidedManualWebStyles = (appearance?: GuidedManualAppearance)
       fontSize: typography.descriptionSize,
       lineHeight: 1.45,
       color: colors.textMuted,
+      whiteSpace: 'pre-line',
+      overflowWrap: 'anywhere',
+    } as CSSProperties,
+    missionBadge: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginBottom: 10,
+      borderRadius: 999,
+      background: rgba(colors.accent, 0.12),
+      padding: '6px 10px',
+      color: colors.textMain,
+      fontSize: 11,
+      fontWeight: 900,
+      letterSpacing: '0.035em',
+    } as CSSProperties,
+    missionCopy: {
+      display: 'grid',
+      gap: 9,
+      color: colors.textMain,
+      fontSize: 14,
+      lineHeight: 1.45,
+    } as CSSProperties,
+    missionContext: {
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: 9,
+      color: colors.textMuted,
+    } as CSSProperties,
+    missionAction: {
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: 9,
+      border: `2px solid ${rgba(colors.accent, 0.55)}`,
+      borderRadius: 14,
+      padding: '11px 12px',
+      color: colors.textMain,
+      fontSize: 15,
+      fontWeight: 750,
+    } as CSSProperties,
+    missionEmoji: {
+      flex: '0 0 auto',
+      fontSize: 18,
+      lineHeight: 1.3,
+    } as CSSProperties,
+    missionResult: {
+      borderRadius: 10,
+      color: colors.textMuted,
+      fontSize: 12,
+    } as CSSProperties,
+    missionResultSummary: {
+      cursor: 'pointer',
+      fontWeight: 850,
+      color: colors.textMain,
+      marginBottom: 4,
+    } as CSSProperties,
+    microHelp: {
+      display: 'grid',
+      gap: 4,
+      marginTop: 10,
+      border: `1px dashed ${rgba(colors.accent, 0.75)}`,
+      borderRadius: 12,
+      background: rgba(colors.accent, 0.1),
+      padding: '10px 12px',
+      color: colors.textMain,
+      fontSize: 12,
+      lineHeight: 1.4,
+    } as CSSProperties,
+    targetInstruction: {
+      marginTop: 12,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 9,
+      borderRadius: 12,
+      border: `1px solid ${rgba(colors.accent, 0.5)}`,
+      background: rgba(colors.accent, 0.14),
+      padding: '10px 12px',
+      color: colors.textMain,
+      fontSize: 12,
+      fontWeight: 800,
+      lineHeight: 1.4,
+    } as CSSProperties,
+    targetInstructionDot: {
+      width: 10,
+      height: 10,
+      flex: '0 0 auto',
+      borderRadius: 999,
+      background: colors.accent,
+      boxShadow: `0 0 0 4px ${rgba(colors.accent, 0.2)}`,
+    } as CSSProperties,
+    errorNotice: {
+      marginTop: 10,
+      borderRadius: 12,
+      border: '1px solid rgba(248, 113, 113, 0.7)',
+      background: 'rgba(127, 29, 29, 0.42)',
+      padding: '10px 12px',
+      color: '#fee2e2',
+      fontSize: 12,
+      fontWeight: 750,
+      lineHeight: 1.45,
+    } as CSSProperties,
+    blockedNotice: {
+      marginTop: 10,
+      borderRadius: 12,
+      border: '1px solid rgba(251, 191, 36, 0.72)',
+      background: 'rgba(120, 53, 15, 0.52)',
+      padding: '9px 11px',
+      color: '#fef3c7',
+      fontSize: 12,
+      fontWeight: 800,
+      lineHeight: 1.4,
     } as CSSProperties,
     controls: {
       marginTop: layout.panelGap,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
+      flexWrap: 'wrap',
       gap: 8,
     } as CSSProperties,
     progressTrack: {
@@ -98,6 +211,7 @@ export const createGuidedManualWebStyles = (appearance?: GuidedManualAppearance)
       display: 'flex',
       gap: 8,
       flexWrap: 'wrap',
+      justifyContent: 'flex-end',
     } as CSSProperties,
     startButton: {
       minHeight: 34,
@@ -126,6 +240,34 @@ export const createGuidedManualWebStyles = (appearance?: GuidedManualAppearance)
     stepTones: resolved.stepTones,
   };
 };
+
+export const createGuidedManualTargetInteractionCss = (accent: string) => `
+  @keyframes guided-manual-target-pulse {
+    0%, 100% {
+      outline-color: ${rgba(accent, 0.96)};
+      outline-offset: 2px;
+    }
+    50% {
+      outline-color: ${rgba(accent, 0.42)};
+      outline-offset: 8px;
+    }
+  }
+
+  [data-guide-target-click-active="true"] {
+    outline: 3px solid ${rgba(accent, 0.96)} !important;
+    outline-offset: 2px;
+    cursor: pointer !important;
+    animation: guided-manual-target-pulse 1.15s ease-in-out infinite !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-guide-target-click-active="true"] {
+      animation: none !important;
+      outline-width: 4px !important;
+      outline-offset: 4px !important;
+    }
+  }
+`;
 
 export const getGuidedManualAtomWebJsx0Style = (s: any, highlightStyle: any) => ({ ...s.spotlight, ...highlightStyle });
 

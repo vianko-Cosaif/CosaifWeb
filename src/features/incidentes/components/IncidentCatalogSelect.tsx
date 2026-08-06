@@ -13,6 +13,7 @@ type IncidentCatalogSelectProps = {
   options: IncidentCatalogOption[];
   placeholder: string;
   fullWidth?: boolean;
+  disabled?: boolean;
 };
 
 export default function IncidentCatalogSelect({
@@ -21,13 +22,15 @@ export default function IncidentCatalogSelect({
   options,
   placeholder,
   fullWidth,
+  disabled,
 }: IncidentCatalogSelectProps) {
   return (
     <SelectField
       containerClassName={fullWidth ? "w-full" : "w-48"}
       value={value ?? ""}
       onChange={(event) => onChange(event.target.value ? Number(event.target.value) : null)}
-      className="rounded-xl focus:border-emerald-500 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+      disabled={disabled}
+      className="rounded-xl focus:border-emerald-500 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600 disabled:opacity-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-300"
     >
       <option value="">{placeholder}</option>
       {options.map((option) => (

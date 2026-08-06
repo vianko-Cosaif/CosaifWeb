@@ -85,7 +85,9 @@ function readRequestedLocalidadIdClient(): number | null {
  * Regla de diseno:
  * - Este archivo coordina; no concentra reglas puras complejas.
  */
-export function useCrearMovimientoController(): CrearMovimientoController {
+export function useCrearMovimientoController(
+  { sandbox = false }: { sandbox?: boolean } = {}
+): CrearMovimientoController {
   const [requestedLocalidadId] = useState<number | null>(() => readRequestedLocalidadIdClient());
   const [step, setStep] = useState<CrearMovimientoStep>(1);
   const [form, setForm] = useState<MovementFormData>(baseInitialForm);
@@ -133,11 +135,14 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     empresas,
     localidades,
     vias,
+    viasLoading,
+    viasError,
     sectionsByVia,
     secLoading,
     loadCatalogos,
+    reloadVias,
     ensureSections,
-  } = useCrearMovimientoCatalogos(form.selectedLocalityId);
+  } = useCrearMovimientoCatalogos(form.selectedLocalityId, { sandbox });
 
   /** Capa 3: conectividad y cola offline. */
   const {
@@ -148,10 +153,11 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     pushOutbox,
     clearOutbox,
     hydratePendingCount,
-  } = useCrearMovimientoOutbox();
+  } = useCrearMovimientoOutbox({ disabled: sandbox });
 
   /** Capa 4: persistencia local del wizard. */
   const { hydrateDraft, clearDraft } = useCrearMovimientoDraft({
+    disabled: sandbox,
     form,
     fromSection,
     toSection,
@@ -226,6 +232,14 @@ export function useCrearMovimientoController(): CrearMovimientoController {
             cookieEmp,
           });
 
+          if (sandbox) {
+            return {
+              ...withDefaults,
+              empresaId: Number(withDefaults.empresaId) || 91_001,
+              selectedLocalityId: Number(withDefaults.selectedLocalityId) || 1,
+            };
+          }
+
           if (requestedLocalidadId && localityAdminRoles.includes(String(role).toUpperCase())) {
             return {
               ...withDefaults,
@@ -265,6 +279,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     localityAdminRoles,
     requestedLocalidadId,
     enforceLockedLocality,
+    sandbox,
   ]);
 
   /** Guarda de permisos: re-aplica localidad bloqueada cuando corresponde. */
@@ -339,6 +354,11 @@ export function useCrearMovimientoController(): CrearMovimientoController {
   }, []);
 
   const refreshScheduledTornoMovements = useCallback(async () => {
+    if (sandbox) {
+      setScheduledTornoMovements([]);
+      setScheduledTornoLoading(false);
+      return;
+    }
     try {
       setScheduledTornoLoading(true);
       const response = await Movimiento.fetchWithTimeout(`${API_BASE}/movimientos/torno/agendados`, {
@@ -357,12 +377,12 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     } finally {
       setScheduledTornoLoading(false);
     }
-  }, [normalizeScheduledTornoList]);
+  }, [normalizeScheduledTornoList, sandbox]);
 
   useEffect(() => {
-    if (form.service !== "Torno" || requestedScheduledTornoRef.current) return;
+    if (sandbox || form.service !== "Torno" || requestedScheduledTornoRef.current) return;
     void refreshScheduledTornoMovements();
-  }, [form.service, refreshScheduledTornoMovements]);
+  }, [form.service, refreshScheduledTornoMovements, sandbox]);
 
   /**
    * Seleccion de seccion origen.
@@ -381,6 +401,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
         return;
       }
 
+      if (sandbox) return;
       try {
         const mov = await Movimiento.fetchJSON(`${API_BASE}/movimientos/${s.movimientoId}`);
         const loco = readLocomotiveNumber(mov);
@@ -394,7 +415,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
         setLocoLockedBy(null);
       }
     }
-  }, [fromSection, form.fromTrack, locoLockedBy]);
+  }, [fromSection, form.fromTrack, locoLockedBy, sandbox]);
 
   /** Valida step 1 delegando a dominio puro. */
   const validate1 = useCallback(() => {
@@ -620,6 +641,7 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     pushOutbox,
     onSuccess: onSubmitSuccess,
     redirectOnSuccess: !hasTornoPdfStep,
+    disabled: sandbox,
   });
 
   /** Submit de Step 3: evita recrear movimiento si ya existe en flujo Torno+PDF. */
@@ -743,6 +765,9 @@ export function useCrearMovimientoController(): CrearMovimientoController {
     empresas,
     localidades,
     vias,
+    viasLoading,
+    viasError,
+    reloadVias,
     sectionsByVia,
     secLoading,
     rol,

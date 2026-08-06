@@ -3,6 +3,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { invalidateCachedJson } from '@/lib/clientRequestCache';
+import { isTrainingMovementId, isTrainingRoundId } from '@/lib/routePolicy';
 
 /* =======================
    CONFIG
@@ -254,13 +255,31 @@ function infoFromRonda(ronda: Ronda): InfoExtra {
    API públicas del hook
    ======================= */
 
+type RondaMutationOptions = { sandbox?: boolean };
+
 /** Swap de movimientos entre dos rondas (ruta oficial del backend) */
-export async function apiSwapMovimientos(rondaAId: number | string, rondaBId: number | string, localidadId?: number | string) {
+export async function apiSwapMovimientos(
+  rondaAId: number | string,
+  rondaBId: number | string,
+  localidadId?: number | string,
+  options: RondaMutationOptions = {},
+) {
+  if (options.sandbox || isTrainingRoundId(rondaAId) || isTrainingRoundId(rondaBId)) {
+    return { sandbox: true };
+  }
   return postClienteRondas({ action: 'swap', rondaAId, rondaBId, localidadId });
 }
 
 /** Cancela un movimiento y lo saca de su ronda (ruta oficial del backend) */
-export async function apiCancelarMovimiento(movimientoId: number, razon?: string, localidadId?: number | string) {
+export async function apiCancelarMovimiento(
+  movimientoId: number,
+  razon?: string,
+  localidadId?: number | string,
+  options: RondaMutationOptions = {},
+) {
+  if (options.sandbox || isTrainingMovementId(movimientoId)) {
+    return { sandbox: true };
+  }
   return postClienteRondas({
     action: 'cancel',
     movimientoId,
@@ -270,7 +289,15 @@ export async function apiCancelarMovimiento(movimientoId: number, razon?: string
 }
 
 /** Reordena una ronda/movimiento sin intercambiar contenido. Usado por Torreon. */
-export async function apiOrdenMovimiento(rondaId: number | string, orden: number, localidadId?: number | string) {
+export async function apiOrdenMovimiento(
+  rondaId: number | string,
+  orden: number,
+  localidadId?: number | string,
+  options: RondaMutationOptions = {},
+) {
+  if (options.sandbox || isTrainingRoundId(rondaId)) {
+    return { sandbox: true };
+  }
   return postClienteRondas({ action: 'orden', id: rondaId, orden, localidadId });
 }
 

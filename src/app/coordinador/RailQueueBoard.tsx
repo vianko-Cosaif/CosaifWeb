@@ -5,6 +5,7 @@ import type React from "react";
 import { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import { S } from "./RailQueueBoard.styles";
 import { useRealtimeBoardRefresh } from "../hooks/useRealtimeBoardRefresh";
 import { useTornoMeasuresModal } from "@/features/torno-measures";
@@ -281,7 +282,8 @@ export default function RailQueueBoardPage({
   );
 
   return (
-    <div ref={boardRef} className={S.main}>
+    <GuidedTarget id="dashboard-rounds-board">
+      <div ref={boardRef} className={S.main}>
       {/* TOASTS */}
       <div className={S.toastsWrap}>
         <div className={S.toastsList}>
@@ -337,7 +339,7 @@ export default function RailQueueBoardPage({
       </div>
 
       {/* TOOLBAR */}
-      <div className={S.toolbar}>
+      <GuidedTarget id="dashboard-rounds-toolbar" className={S.toolbar}>
         <div className={S.toolbarInner}>
           
           <div className={S.toolbarRow}>
@@ -399,7 +401,7 @@ export default function RailQueueBoardPage({
             </div>
           </div>
         </div>
-      </div>
+      </GuidedTarget>
       {/* CONTENIDO PRINCIPAL */}
       <section className={S.section} aria-busy={loading || refreshing}>
         <div className={S.grid}>
@@ -423,13 +425,14 @@ export default function RailQueueBoardPage({
               </button>
             </div>
 
-            <motion.div
-              key={current?.id ?? "empty"}
-              initial={{ scale: prefersReduced ? 1 : 0.985, opacity: prefersReduced ? 1 : 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: "spring", stiffness: 260, damping: 26 }}
-              className={S.currentCard}
-            >
+            <GuidedTarget id="dashboard-current-movement">
+              <motion.div
+                key={current?.id ?? "empty"}
+                initial={{ scale: prefersReduced ? 1 : 0.985, opacity: prefersReduced ? 1 : 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 260, damping: 26 }}
+                className={S.currentCard}
+              >
               {loading && !current ? (
                 <SkeletonCurrent />
               ) : current ? (
@@ -546,11 +549,12 @@ export default function RailQueueBoardPage({
                   <div className={S.emptyDesc}>No hay órdenes en la cola actualmente</div>
                 </div>
               )}
-            </motion.div>
+              </motion.div>
+            </GuidedTarget>
           </div>
 
           {/* COLUMNA DERECHA - PRÓXIMAS ÓRDENES */}
-          <aside className={S.aside}>
+          <GuidedTarget id="dashboard-rounds-queue" as="aside" className={S.aside}>
             <div className={S.asideHeader}>
               <h3 className={S.asideTitle}>
                 <span className="text-xl">📋</span> Próximas Órdenes
@@ -679,11 +683,15 @@ export default function RailQueueBoardPage({
                 )}
               </AnimatePresence>
             </div>
-          </aside>
+          </GuidedTarget>
         </div>
       </section>
 
-      <section className="mx-auto w-full max-w-screen-2xl px-3 pb-6 sm:px-4 md:px-6 lg:px-8">
+      <GuidedTarget
+        id="dashboard-rounds-table"
+        as="section"
+        className="mx-auto w-full max-w-screen-2xl px-3 pb-6 sm:px-4 md:px-6 lg:px-8"
+      >
         <TerminalQueueTable
           items={items}
           info={info}
@@ -698,7 +706,7 @@ export default function RailQueueBoardPage({
             });
           }}
         />
-      </section>
+      </GuidedTarget>
 
       <audio ref={bellRef} preload="none" aria-hidden="true">
         <source src="/sounds/notification.mp3" type="audio/mp3" />
@@ -736,7 +744,7 @@ export default function RailQueueBoardPage({
 
       {openEditor && (
         <div className={S.modalOverlay}>
-          <div className={S.modalCard}>
+          <GuidedTarget id="dashboard-rounds-editor" className={S.modalCard}>
             <div className={S.modalScroll}>
               <EditRondas
                 localidadId={localidadId}
@@ -747,10 +755,11 @@ export default function RailQueueBoardPage({
                 }}
               />
             </div>
-          </div>
+          </GuidedTarget>
         </div>
       )}
-    </div>
+      </div>
+    </GuidedTarget>
   );
 }
 

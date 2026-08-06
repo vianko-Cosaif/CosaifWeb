@@ -117,6 +117,10 @@ export default function LoginForm() {
 
     setLoading(true);
     try {
+      // Pedimos el permiso requerido antes de crear una sesión autenticada.
+      const notificationsReady = await prepareNotificationAfterLogin();
+      if (!notificationsReady) return;
+
       // 1) Login al backend
       const r = await fetch(`${API_BASE}${LOGIN_PATH}`, {
         method: "POST",
@@ -134,7 +138,6 @@ export default function LoginForm() {
       }
 
       const payload = (await r.json()) as {
-        token?: string;
         role?: string;
         user?: {
           id?: number;
@@ -148,14 +151,13 @@ export default function LoginForm() {
         id?: number; // por si el API lo manda en la raíz
       };
 
-      const token = payload?.token;
       const role = String(payload?.user?.rol || payload?.role || "").toUpperCase();
       const uid = Number(payload?.user?.id ?? payload?.id ?? NaN);
       const empresaId = Number(payload?.user?.empresaId ?? payload?.user?.empresa?.id ?? NaN);
       const empresaNombre = payload?.user?.empresa?.nombre || "";
       const localidadId = Number(payload?.user?.localidadId ?? NaN);
 
-      if (!token || !role || !Number.isFinite(uid)) {
+      if (!role || !Number.isFinite(uid)) {
         setErr("Respuesta inválida del servidor");
         return;
       }
@@ -166,38 +168,8 @@ export default function LoginForm() {
         return;
       }
 
-      const notificationsReady = await prepareNotificationAfterLogin();
-      if (!notificationsReady) {
-        return;
-      }
-
-      // 2) Set cookies HttpOnly en Next (token/role) + locId (no HttpOnly)
-      const setCookie = await fetch("/api/auth/login", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token,
-          role,
-          // pasamos locId para que el server pueda setear cookie también
-          locId: Number.isFinite(localidadId) ? localidadId : undefined,
-        }),
-      });
-      if (!setCookie.ok) {
-        setErr("No se pudo establecer sesión");
-        return;
-      }
-
-      // 3) Cookies legibles por el cliente para IDs no sensibles
-      document.cookie = `userId=${encodeURIComponent(String(uid))}; path=/; max-age=31536000; samesite=lax`;
-      if (Number.isFinite(empresaId) && empresaId > 0) {
-        document.cookie = `empresaId=${encodeURIComponent(String(empresaId))}; path=/; max-age=31536000; samesite=lax`;
-      }
-      if (Number.isFinite(localidadId)) {
-        document.cookie = `locId=${encodeURIComponent(String(localidadId))}; path=/; max-age=31536000; samesite=lax`;
-      }
-
-      // 4) Persistir user (opcional, sin localidad)
+      // 2) Persistir sólo el perfil de interfaz. La sesión y el token ya fueron
+      // emitidos como cookies por /bff/login después de validar el backend.
       try {
         const storedUser = {
           id: uid,
@@ -209,7 +181,34 @@ export default function LoginForm() {
         localStorage.setItem("user", JSON.stringify(storedUser));
       } catch {}
 
-      // 5) Redirección por rol, sin query ?loc
+      // 3) Registrar el dispositivo antes de salir del login. Esto deja la
+      // suscripción lista para recibir push aunque después se cierre la PWA.
+      if (
+        notificationPolicy.enabled &&
+        typeof Notification !== "undefined" &&
+        Notification.permission === "granted"
+      ) {
+        try {
+          const {
+            registerFirebaseNotificationToken,
+            requestFirebaseNotificationToken,
+          } = await import("@/lib/firebase");
+          const firebaseToken = await requestFirebaseNotificationToken({ requestPermission: false });
+          if (firebaseToken) {
+            await registerFirebaseNotificationToken(
+              firebaseToken,
+              undefined,
+              Number.isFinite(localidadId) ? localidadId : undefined,
+            );
+          }
+        } catch (notificationError) {
+          // El login no se invalida por una caída temporal de FCM; el prompt
+          // global volverá a sincronizar el token al cargar la aplicación.
+          console.warn("No se pudo registrar FCM durante el login.", notificationError);
+        }
+      }
+
+      // 4) Redirección por rol, sin query ?loc
       const shouldEnterTorreon =
         role === "ARRASTRE_TORREON" ||
         (role === "CLIENTE" && !capabilities.canSwitchLocalidad && isTorreonLocalidadId(localidadId));

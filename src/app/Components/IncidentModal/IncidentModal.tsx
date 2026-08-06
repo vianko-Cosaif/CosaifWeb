@@ -192,6 +192,7 @@ export default function IncidentModal({
 
   return (
     <div
+      data-guide-id="incident-alert-dialog"
       className="fixed inset-0 z-50 flex items-stretch sm:items-start justify-center bg-slate-900/70 dark:bg-black/70 p-0 sm:p-4"
       role="dialog"
       aria-labelledby="incident-title"
@@ -392,6 +393,7 @@ export default function IncidentModal({
           {canActOnIncident && tab === 0 ? (
             <>
               <button
+                data-guide-action="incident-alert-skip"
                 onClick={() => setIsSkipConfirmOpen(true)}
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-3 font-semibold text-white hover:bg-amber-600"
               >
@@ -414,6 +416,7 @@ export default function IncidentModal({
         onClose={() => setIsSkipConfirmOpen(false)}
         onConfirm={handleSkip}
         title="¿Cerrar sin resolver?"
+        confirmDataGuideAction="incident-alert-skip-confirm"
       >
         <p>Se cerrará como cierre operativo sin registrar una solución. Para liberar el bloqueo con solución, usa Resolver incidente.</p>
       </ConfirmationModal>

@@ -2,8 +2,17 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Movimiento } from './../../movimientos/Movimiento';
 import ConfirmChoiceAlert from "./../../Components/ui/ConfirmChoiceAlert";
+import { GuidedTarget } from "./../../Components/GuidedManualAtom";
+import {
+  TRAINING_CREATED_MOVEMENT_ID,
+  TRAINING_MOVEMENT_ID,
+  TRAINING_PAST_MOVEMENT_ID,
+  useTrainingTour,
+} from "./../../Components/GuidedManualAtom/TrainingTourContext";
+import type { Movement } from "./../../Components/movimientos/useMovimientos";
 import {
   API_BASE, SECC_BASE, DOUBLE_TAP_MS, Direccion, Posicion, Servicio, Rol, Polo, Via, Seccion, InfoEdicion, EditablePayload, MovementFormData, baseInitialForm
 } from './../../movimientos/movimientos.shared';
@@ -38,6 +47,98 @@ const inputBase =
   "dark:focus:border-emerald-500 dark:focus:ring-emerald-500/20";
 const chipBase = "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium";
 const serializeTornoMedicion = (value: TornoMedicionState) => JSON.stringify(value);
+
+const TRAINING_EDIT_VIAS: Via[] = [
+  { id: 991_001, nombre: "1", lineaDeVida: null },
+  { id: 991_002, nombre: "2", lineaDeVida: null },
+  { id: 991_003, nombre: "3", lineaDeVida: null },
+  { id: 991_004, nombre: "4", lineaDeVida: null },
+  { id: 991_005, nombre: "Torno", lineaDeVida: null },
+];
+
+const TRAINING_EDIT_SECTIONS: Record<number, Seccion[]> = Object.fromEntries(
+  TRAINING_EDIT_VIAS.map((via) => [
+    via.id,
+    [1, 2, 3].map((numero) => ({
+      id: via.id * 10 + numero,
+      numero,
+      nombre: `SIM-${numero}`,
+      ocupada: false,
+      movimientoId: null,
+      movimiento: null,
+    })),
+  ])
+);
+
+function trainingViaFor(value: Movement["viaOrigen"], fallbackId: number): Via {
+  const normalized = String(value ?? "")
+    .replace(/^v[ií]a\s*/i, "")
+    .trim()
+    .toLowerCase();
+  return TRAINING_EDIT_VIAS.find((via) => String(via.nombre).toLowerCase() === normalized)
+    ?? TRAINING_EDIT_VIAS.find((via) => via.id === fallbackId)
+    ?? TRAINING_EDIT_VIAS[0];
+}
+
+function trainingPosition(value: string): Posicion {
+  return value === "DENTRO" || value === "AFUERA" ? value : "Sin_Solicitar";
+}
+
+function trainingDirection(value: string): Direccion {
+  return value === "EMPUJAR" || value === "JALAR" ? value : "Sin_Solicitar";
+}
+
+function buildTrainingEditInfo(movement: Movement): InfoEdicion {
+  const viaOrigen = trainingViaFor(movement.viaOrigen, 991_002);
+  const viaDestino = trainingViaFor(movement.viaDestino, movement.torno ? 991_005 : 991_004);
+  return {
+    editable: true,
+    restricciones: {
+      motivo: null,
+      estadosPermitidos: ["SOLICITADO", "DETENIDO", "EN_PROCESO", "CONCLUIDO"],
+      mismaLocalidadParaVias: true,
+    },
+    movimiento: {
+      id: movement.id,
+      empresa: {
+        id: movement.empresaId,
+        nombre: movement.empresaNombre || "Empresa de capacitación",
+      },
+      localidad: {
+        id: movement.localidadId,
+        nombre: movement.localidadNombre || "Localidad de capacitación",
+      },
+      estado: movement.estado,
+      finalizado: movement.finalizado,
+      instrucciones: movement.instrucciones,
+      locomotiveNumber: movement.locomotora as unknown as number,
+      viaOrigen,
+      viaDestino,
+      tipoMovimiento: movement.tipoMovimiento === "REMOLCADA" ? "REMOLCADA" : "MD_TRABAJANDO",
+      posicionCabina: trainingPosition(movement.posicionCabina),
+      posicionChimenea: trainingPosition(movement.posicionChimenea),
+      direccionEmpuje: trainingDirection(movement.direccionEmpuje),
+      polo: "Sin_Solicitar",
+      meta: { seccion: 2 },
+      tornoMedidas: null,
+      torno: movement.torno,
+      Lavado: movement.lavado,
+    },
+    editableKeys: [
+      "instrucciones",
+      "locomotiveNumber",
+      "viaOrigenId",
+      "viaDestinoId",
+      "tipoMovimiento",
+      "posicionCabina",
+      "posicionChimenea",
+      "direccionEmpuje",
+      "torno",
+      "lavado",
+      "polo",
+    ],
+  } as InfoEdicion;
+}
 
 /** ======= SUBCOMPONENTES ======= */
 
@@ -596,22 +697,24 @@ function Step3Edit({
         {metaHint && <div className="mt-2 text-xs text-slate-400 font-mono bg-slate-50 dark:bg-zinc-900/50 p-2 rounded border border-slate-100 dark:border-zinc-800 break-all">{metaHint}</div>}
       </div>
 
-      <button
-        onClick={onSubmit}
-        disabled={readOnly || saving}
-        className={Movimiento.clsx(
-          "inline-flex items-center justify-center gap-2 rounded-xl px-6 py-4 text-base font-bold text-white shadow-lg transition-all active:scale-[0.98]",
-          readOnly
-            ? "bg-slate-400 cursor-not-allowed shadow-none"
-            : "bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-emerald-500/25",
-          saving && "opacity-70 cursor-wait"
-        )}
-        title={readOnly ? "No editable" : "Guardar cambios"}
-      >
-        {saving ? (
-          <><svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> Guardando cambios…</>
-        ) : "✓ Guardar Cambios"}
-      </button>
+      <GuidedTarget id="edit-movement-save" className="inline-flex">
+        <button
+          onClick={onSubmit}
+          disabled={readOnly || saving}
+          className={Movimiento.clsx(
+            "inline-flex items-center justify-center gap-2 rounded-xl px-6 py-4 text-base font-bold text-white shadow-lg transition-all active:scale-[0.98]",
+            readOnly
+              ? "bg-slate-400 cursor-not-allowed shadow-none"
+              : "bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 shadow-emerald-500/25",
+            saving && "opacity-70 cursor-wait"
+          )}
+          title={readOnly ? "No editable" : "Guardar cambios"}
+        >
+          {saving ? (
+            <><svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> Guardando cambios…</>
+          ) : "✓ Guardar Cambios"}
+        </button>
+      </GuidedTarget>
     </div>
   );
 }
@@ -645,8 +748,21 @@ export default function EditarMovimiento({
   onClose?: () => void;
   onSaved?: (updated: any) => void;
 }) {
+  const router = useRouter();
+  const training = useTrainingTour();
+  const numericMovementId = Number(movimientoId);
+  const reservedTrainingId = [
+    TRAINING_MOVEMENT_ID,
+    TRAINING_PAST_MOVEMENT_ID,
+    TRAINING_CREATED_MOVEMENT_ID,
+  ].includes(numericMovementId);
+  const trainingMovement = training.getMovement(movimientoId);
+  const isTrainingEditor = training.active
+    || reservedTrainingId
+    || training.isTrainingMovement(movimientoId);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showTrainingSaveConfirmation, setShowTrainingSaveConfirmation] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState<"de_via" | "para_via">("de_via");
   const [serviceVia, setServiceVia] = useState<Servicio | undefined>("");
@@ -682,6 +798,7 @@ export default function EditarMovimiento({
   const [mobileStepOnePage, setMobileStepOnePage] = useState(0);
   const [mobileTornoPage, setMobileTornoPage] = useState(0);
   const lastTap = useRef<Record<string, number>>({});
+  const saveLockRef = useRef(false);
 
   // Secciones elegidas para hint META (el backend solo las lee desde instrucciones)
   const [fromSection, setFromSection] = useState<number | undefined>(undefined);
@@ -729,10 +846,71 @@ export default function EditarMovimiento({
     if (R === "SUPERVISOR") return "/supervisor/movimientos";
     return "/cliente/movimientos";
   };
+  const closeEditor = onClose || (isTrainingEditor
+    ? () => router.push(`${training.roleBase}/movimientos`)
+    : () => window.location.assign(roleToPath(rol)));
 
   /** Cargar info edición + vías */
   useEffect(() => {
     let mounted = true;
+
+    if (isTrainingEditor) {
+      setLoading(true);
+      setError(null);
+      if (!trainingMovement) {
+        // El provider puede estar restaurando sessionStorage. Nunca intentamos
+        // resolver un ID SIM contra el backend mientras eso ocurre.
+        setInfo(null);
+        setLoading(false);
+        setError("El movimiento SIM ya no está disponible. Reinicia la capacitación para volver a crearlo.");
+        return () => { mounted = false; };
+      }
+
+      const data = buildTrainingEditInfo(trainingMovement);
+      const origin = data.movimiento.viaOrigen ?? TRAINING_EDIT_VIAS[1];
+      const destination = data.movimiento.viaDestino ?? TRAINING_EDIT_VIAS[3];
+      const initialMeasures: TornoMedicionState = {
+        wheelCount: DEFAULT_TORNO_MEDICION_STATE.wheelCount,
+        rows: {},
+      };
+
+      setInfo(data);
+      setInstrucciones(String(trainingMovement.instrucciones ?? ""));
+      setLocomotiveNumber(String(trainingMovement.locomotora ?? ""));
+      setViaOrigenId(origin.id);
+      setViaDestinoId(destination.id);
+      setTipoMovimiento(trainingMovement.tipoMovimiento === "REMOLCADA" ? "REMOLCADA" : "MD_TRABAJANDO");
+      setPolo("Sin_Solicitar");
+      setPosicionCabina(trainingPosition(trainingMovement.posicionCabina));
+      setPosicionChimenea(trainingPosition(trainingMovement.posicionChimenea));
+      setDireccionEmpuje(trainingDirection(trainingMovement.direccionEmpuje));
+      setServiceVia(trainingMovement.torno ? "Torno" : trainingMovement.lavado ? "Lavado" : "");
+      setForm({
+        ...baseInitialForm,
+        empresaId: trainingMovement.empresaId,
+        selectedLocalityId: trainingMovement.localidadId,
+        locomotiveNumber: String(trainingMovement.locomotora ?? ""),
+        priority: trainingMovement.prioridad === "ALTA",
+        fromTrack: origin.id,
+        toTrack: destination.id,
+        movementType: trainingMovement.tipoMovimiento === "REMOLCADA" ? "REMOLCADA" : "MD_TRABAJANDO",
+        comments: trainingMovement.instrucciones,
+        service: trainingMovement.torno ? "Torno" : trainingMovement.lavado ? "Lavado" : "",
+      });
+      setVias(TRAINING_EDIT_VIAS);
+      setSectionsByVia(TRAINING_EDIT_SECTIONS);
+      setFromSection(1);
+      setToSection(2);
+      setTornoMedicion(initialMeasures);
+      setInitialTornoMedicion(initialMeasures);
+      setInitialTornoSerialized(serializeTornoMedicion(initialMeasures));
+      setEditFlowMode("classic");
+      setTornoEditMode("classic");
+      setStep(1);
+      setLoading(false);
+      return () => { mounted = false; };
+    }
+
     (async () => {
       try {
         setLoading(true);
@@ -787,12 +965,19 @@ export default function EditarMovimiento({
       }
     })();
     return () => { mounted = false; };
-  }, [movimientoId]);
+  }, [isTrainingEditor, movimientoId, trainingMovement]);
 
   /** Secciones por vía (caché) */
   const secLoadingRef = useRef<Record<number, boolean>>({});
   const ensureSections = useCallback(async (viaId: number) => {
     if (!viaId) return;
+    if (isTrainingEditor) {
+      setSectionsByVia((current) => ({
+        ...current,
+        [viaId]: current[viaId] ?? TRAINING_EDIT_SECTIONS[viaId] ?? [],
+      }));
+      return;
+    }
     if (secLoadingRef.current[viaId]) return;
     if (Array.isArray(sectionsByVia[viaId])) return;
 
@@ -809,10 +994,13 @@ export default function EditarMovimiento({
       secLoadingRef.current[viaId] = false;
       setSecLoading((s) => ({ ...s, [viaId]: false }));
     }
-  }, [sectionsByVia]);
+  }, [isTrainingEditor, sectionsByVia]);
 
   /** UI helpers */
-  const viaName = (id?: number | null) => (id ? vias.find((v) => v.id === id)?.nombre || "" : "");
+  const viaName = useCallback(
+    (id?: number | null) => (id ? vias.find((v) => v.id === id)?.nombre || "" : ""),
+    [vias]
+  );
   useEffect(() => { if (viaOrigenId) ensureSections(viaOrigenId); }, [viaOrigenId, ensureSections]);
   useEffect(() => { if (viaDestinoId) ensureSections(viaDestinoId); }, [viaDestinoId, ensureSections]);
 
@@ -1044,17 +1232,68 @@ export default function EditarMovimiento({
   };
 
   /** Guardar */
-  const onSubmit = useCallback(async () => {
+  const onSubmit = useCallback(async (options?: { trainingConfirmed?: boolean }) => {
+    if (saving || saveLockRef.current) return;
     if (!info) return;
     if (!validateStep2()) return;
 
     const payload = buildPayload();
+    if (isTrainingEditor) {
+      if (!options?.trainingConfirmed) {
+        setShowTrainingSaveConfirmation(true);
+        return;
+      }
+      setShowTrainingSaveConfirmation(false);
+      saveLockRef.current = true;
+
+      const originName = viaOrigenId ? viaName(viaOrigenId) : "";
+      const destinationName = viaDestinoId ? viaName(viaDestinoId) : "";
+      const formatTrainingVia = (name: string) => !name
+        ? null
+        : name.toLowerCase() === "torno" ? "Torno" : `Vía ${name}`;
+      const patch: Partial<Movement> = {
+        locomotora: locomotiveNumber || trainingMovement?.locomotora || "SIM",
+        viaOrigen: formatTrainingVia(originName),
+        viaDestino: formatTrainingVia(destinationName),
+        tipoMovimiento: tipoMovimiento || trainingMovement?.tipoMovimiento || "MD_TRABAJANDO",
+        prioridad: form.priority ? "ALTA" : "BAJA",
+        posicionCabina,
+        posicionChimenea,
+        direccionEmpuje,
+        torno: serviceVia === "Torno",
+        lavado: serviceVia === "Lavado",
+        instrucciones: String(
+          payload.instrucciones
+          || instrucciones.trim()
+          || trainingMovement?.instrucciones
+          || "Movimiento editado durante la capacitación."
+        ),
+      };
+
+      try {
+        setSaving(true);
+        // Primero iniciamos la salida del editor. Si actualizamos el contexto
+        // antes, su efecto de hidratación reinicia el formulario al paso 1 y
+        // cancela visualmente la navegación.
+        router.replace(`${training.roleBase}/movimientos`);
+        window.setTimeout(() => {
+          training.updateMovement(numericMovementId, patch);
+          onSaved?.({ ...trainingMovement, ...patch });
+        }, 1_000);
+      } finally {
+        saveLockRef.current = false;
+        setSaving(false);
+      }
+      return;
+    }
+
     if (Object.keys(payload).length === 0) {
       alert("No hay cambios por guardar.");
       return;
     }
 
     try {
+      saveLockRef.current = true;
       setSaving(true);
       const updated = await Movimiento.fetchJSON(`${API_BASE}/movimientos/${movimientoId}/edicion`, {
         method: "PATCH",
@@ -1067,9 +1306,34 @@ export default function EditarMovimiento({
     } catch (e: any) {
       alert(e?.message || "Error al guardar cambios.");
     } finally {
+      saveLockRef.current = false;
       setSaving(false);
     }
-  }, [info, movimientoId, rol, validateStep2, buildPayload, onSaved]);
+  }, [
+    info,
+    saving,
+    movimientoId,
+    rol,
+    validateStep2,
+    buildPayload,
+    onSaved,
+    isTrainingEditor,
+    viaOrigenId,
+    viaDestinoId,
+    viaName,
+    locomotiveNumber,
+    trainingMovement,
+    tipoMovimiento,
+    form.priority,
+    posicionCabina,
+    posicionChimenea,
+    direccionEmpuje,
+    serviceVia,
+    instrucciones,
+    training,
+    numericMovementId,
+    router,
+  ]);
 
 
   if (loading) {
@@ -1085,7 +1349,7 @@ export default function EditarMovimiento({
         <div className="rounded-xl border border-rose-300 bg-rose-50 p-6 text-rose-700 dark:border-rose-700 dark:bg-rose-900/20 dark:text-rose-200 shadow-lg max-w-md text-center">
           <p className="font-medium mb-2">Error</p>
           {error || "No se pudo cargar la información de edición."}
-          <button onClick={onClose || (() => window.location.assign(roleToPath(rol)))} className="mt-4 text-sm underline hover:text-rose-900 dark:hover:text-rose-100">
+          <button onClick={closeEditor} className="mt-4 text-sm underline hover:text-rose-900 dark:hover:text-rose-100">
             Volver
           </button>
         </div>
@@ -1113,6 +1377,19 @@ export default function EditarMovimiento({
       />
 
       <div className="relative z-10 max-w-4xl mx-auto">
+        {isTrainingEditor && (
+          <div
+            role="status"
+            data-training-sandbox="true"
+            className="mb-4 rounded-2xl border-2 border-dashed border-sky-400 bg-sky-50 px-4 py-3 text-sm text-sky-950 shadow-sm dark:border-sky-500 dark:bg-sky-950/40 dark:text-sky-100"
+          >
+            <strong className="block text-xs font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">
+              Capacitación · edición SIM
+            </strong>
+            Estás editando un registro ficticio en el formulario real. Guardar requiere confirmación y nunca ejecutará un PATCH ni modificará datos productivos.
+          </div>
+        )}
+
         {/* Top Bar */}
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Badge tone={readOnly ? "warn" : "ok"}>
@@ -1124,20 +1401,22 @@ export default function EditarMovimiento({
           </Badge>
           <RoleBadge rol={rol} canManageAll={canManageAll} />
 
-          <button
-            onClick={() => setEditFlowMode((current) => current === "mobile" ? "classic" : "mobile")}
-            className={Movimiento.clsx(
-              "rounded-xl border px-3 py-1.5 text-sm font-semibold transition-all active:scale-95",
-              isMobileEditFlow
-                ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
-                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-            )}
-          >
-            {isMobileEditFlow ? "Vista clasica" : "Flujo mobile"}
-          </button>
+          {!isTrainingEditor && (
+            <button
+              onClick={() => setEditFlowMode((current) => current === "mobile" ? "classic" : "mobile")}
+              className={Movimiento.clsx(
+                "rounded-xl border px-3 py-1.5 text-sm font-semibold transition-all active:scale-95",
+                isMobileEditFlow
+                  ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              )}
+            >
+              {isMobileEditFlow ? "Vista clasica" : "Flujo mobile"}
+            </button>
+          )}
 
           <button
-            onClick={onClose || (() => window.location.assign(roleToPath(rol)))}
+            onClick={closeEditor}
             className="ml-auto rounded-xl border border-rose-200 dark:border-rose-800 px-3 py-1.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all active:scale-95"
             title="Volver"
           >
@@ -1225,38 +1504,41 @@ export default function EditarMovimiento({
           ) : null}
           <div key={mobileTransitionKey} className={isMobileEditFlow ? "animate-in fade-in slide-in-from-right-2 duration-200" : undefined}>
           {step === 1 && (
-            <Step1Edit
-              readOnly={readOnly}
-              form={form}
-              vias={vias}
-              sectionsByVia={sectionsByVia}
-              secLoading={secLoading}
-              selectionMode={selectionMode}
-              serviceVia={serviceVia}
-              setServiceVia={setServiceVia}
-              setSelectionMode={setSelectionMode}
-              ensureSections={ensureSections}
-              viaOrigenId={viaOrigenId}
-              setViaOrigenId={setViaOrigenId}
-              viaDestinoId={viaDestinoId}
-              setViaDestinoId={setViaDestinoId}
-              fromSection={fromSection}
-              setFromSection={setFromSection}
-              toSection={toSection}
-              setToSection={setToSection}
-              locomotiveNumber={locomotiveNumber}
-              setLocomotiveNumber={setLocomotiveNumber}
-              viaName={viaName}
-              tapToggle={tapToggle}
-              setForm={setForm}
-              errors={errors}
-              empresaLabel={empresaLabel}
-              localidadLabel={localidadLabel}
-              visualSection={isMobileEditFlow ? mobileStepOneSection : undefined}
-            />
+            <GuidedTarget id="edit-movement-step-1">
+              <Step1Edit
+                readOnly={readOnly}
+                form={form}
+                vias={vias}
+                sectionsByVia={sectionsByVia}
+                secLoading={secLoading}
+                selectionMode={selectionMode}
+                serviceVia={serviceVia}
+                setServiceVia={setServiceVia}
+                setSelectionMode={setSelectionMode}
+                ensureSections={ensureSections}
+                viaOrigenId={viaOrigenId}
+                setViaOrigenId={setViaOrigenId}
+                viaDestinoId={viaDestinoId}
+                setViaDestinoId={setViaDestinoId}
+                fromSection={fromSection}
+                setFromSection={setFromSection}
+                toSection={toSection}
+                setToSection={setToSection}
+                locomotiveNumber={locomotiveNumber}
+                setLocomotiveNumber={setLocomotiveNumber}
+                viaName={viaName}
+                tapToggle={tapToggle}
+                setForm={setForm}
+                errors={errors}
+                empresaLabel={empresaLabel}
+                localidadLabel={localidadLabel}
+                visualSection={isMobileEditFlow ? mobileStepOneSection : undefined}
+              />
+            </GuidedTarget>
           )}
 
           {step === 2 && (
+            <GuidedTarget id="edit-movement-step-2">
             <div className="space-y-4">
               <Step2Edit
                 readOnly={readOnly || saving}
@@ -1343,28 +1625,31 @@ export default function EditarMovimiento({
                 </section>
               ) : null}
             </div>
+            </GuidedTarget>
           )}
 
           {step === 3 && (
-            <Step3Edit
-              readOnly={readOnly}
-              instrucciones={instrucciones}
-              setInstrucciones={setInstrucciones}
-              resumen={{
-                localidad: info.movimiento.localidad?.nombre,
-                origen: viaOrigenId ? `Vía ${viaName(viaOrigenId)}${fromSection ? ` (Sección #${fromSection})` : ""}` : "—",
-                destino: viaDestinoId ? `Vía ${viaName(viaDestinoId)}${toSection ? ` (Sección #${toSection})` : ""}` : "—",
-                loco: locomotiveNumber || "—",
-                tipo: tipoMovimiento || "—",
-                dir: direccionEmpuje || "—",
-              }}
-              metaHint={
-                (fromSection ? `[META ORIGEN:${fromSection}] ` : "") +
-                (toSection ? `[META SECCION:${toSection}]` : "")
-              }
-              saving={saving}
-              onSubmit={onSubmit}
-            />
+            <GuidedTarget id="edit-movement-step-3">
+              <Step3Edit
+                readOnly={readOnly}
+                instrucciones={instrucciones}
+                setInstrucciones={setInstrucciones}
+                resumen={{
+                  localidad: info.movimiento.localidad?.nombre,
+                  origen: viaOrigenId ? `Vía ${viaName(viaOrigenId)}${fromSection ? ` (Sección #${fromSection})` : ""}` : "—",
+                  destino: viaDestinoId ? `Vía ${viaName(viaDestinoId)}${toSection ? ` (Sección #${toSection})` : ""}` : "—",
+                  loco: locomotiveNumber || "—",
+                  tipo: tipoMovimiento || "—",
+                  dir: direccionEmpuje || "—",
+                }}
+                metaHint={
+                  (fromSection ? `[META ORIGEN:${fromSection}] ` : "") +
+                  (toSection ? `[META SECCION:${toSection}]` : "")
+                }
+                saving={saving}
+                onSubmit={onSubmit}
+              />
+            </GuidedTarget>
           )}
           </div>
         </div>
@@ -1380,21 +1665,23 @@ export default function EditarMovimiento({
             </button>
           )}
           {step < 3 && (
-            <button
-              onClick={goNextStep}
-              className={Movimiento.clsx(
-                "rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 transition-all active:scale-[0.97]",
-                readOnly
-                  ? "bg-slate-400 cursor-not-allowed shadow-none"
-                  : "bg-gradient-to-r from-emerald-500 to-emerald-600 hover:shadow-emerald-500/40 hover:from-emerald-600 hover:to-emerald-700"
-              )}
-              disabled={readOnly}
-            >
-              Siguiente →
-            </button>
+            <GuidedTarget id="edit-movement-next-step" className="inline-flex">
+              <button
+                onClick={goNextStep}
+                className={Movimiento.clsx(
+                  "rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 transition-all active:scale-[0.97]",
+                  readOnly
+                    ? "bg-slate-400 cursor-not-allowed shadow-none"
+                    : "bg-gradient-to-r from-emerald-500 to-emerald-600 hover:shadow-emerald-500/40 hover:from-emerald-600 hover:to-emerald-700"
+                )}
+                disabled={readOnly}
+              >
+                Siguiente →
+              </button>
+            </GuidedTarget>
           )}
           <button
-            onClick={onClose || (() => window.location.assign(roleToPath(rol)))}
+            onClick={closeEditor}
             className="ml-auto rounded-xl border border-rose-200 dark:border-rose-800 px-4 py-2.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all active:scale-95"
             title="Volver"
           >
@@ -1409,8 +1696,42 @@ export default function EditarMovimiento({
           locomotiveLabel={locomotiveNumber || String(info.movimiento.locomotiveNumber ?? "")}
           companyName={info.movimiento.empresa?.nombre}
         />
+
+        {showTrainingSaveConfirmation ? (
+          <div
+            className="fixed inset-0 z-[100020] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="training-edit-confirm-title"
+          >
+            <div className="w-full max-w-md rounded-2xl border border-amber-300 bg-white p-5 text-slate-900 shadow-2xl dark:border-amber-700 dark:bg-slate-950 dark:text-white">
+              <h2 id="training-edit-confirm-title" className="text-lg font-black">
+                ¿Guardar este cambio SIM?
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                Sólo se actualizará SIM-MOV-305 dentro de esta capacitación. No se enviará ningún PATCH ni se modificará la operación real.
+              </p>
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowTrainingSaveConfirmation(false)}
+                  className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
+                >
+                  No, seguir revisando
+                </button>
+                <button
+                  type="button"
+                  data-guide-action="confirm-training-edit-save"
+                  onClick={() => void onSubmit({ trainingConfirmed: true })}
+                  className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-emerald-600/25 hover:bg-emerald-700"
+                >
+                  Sí, guardar cambio SIM
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
 }
-

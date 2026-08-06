@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { AlertTriangle, History, ShieldCheck, TriangleAlert, Wrench, X } from "lucide-react";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import IncidentTree from "./IncidentTree";
 import NavajasPanel from "./NavajasPanel";
 import TornoHistoryFilters from "./TornoHistoryFilters/TornoHistoryFilters";
@@ -164,9 +165,13 @@ export default function TornoModule({ roleHint }: { roleHint?: TornoRole }) {
   ].filter((item) => item.show);
 
   return (
-    <section className={moduleCanvasClass}>
+    <GuidedTarget id="torno-module" as="section" className={moduleCanvasClass}>
       <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-4">
-        <header className="overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-[var(--app-shadow-sm)]">
+        <GuidedTarget
+          id="torno-module-header"
+          as="header"
+          className="overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-[var(--app-shadow-sm)]"
+        >
           <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
             <div className="min-w-0">
               <p className="text-[11px] font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
@@ -184,34 +189,40 @@ export default function TornoModule({ roleHint }: { roleHint?: TornoRole }) {
               {role}
             </div>
           </div>
-          <nav className="grid gap-2 border-t border-[var(--app-border)] bg-[var(--app-surface-subtle)] p-3 sm:grid-cols-3">
+          <GuidedTarget
+            id="torno-module-tabs"
+            as="nav"
+            className="grid gap-2 border-t border-[var(--app-border)] bg-[var(--app-surface-subtle)] p-3 sm:grid-cols-3"
+          >
             {views.map((item) => {
               const Icon = item.icon;
               const active = view === item.id;
               return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => goView(item.id)}
-                  className={cn(
-                    "inline-flex min-h-11 items-center justify-center gap-2 rounded-md border px-3 text-sm font-black transition",
-                    active
-                      ? "border-emerald-600 bg-emerald-600 text-white shadow-sm dark:border-emerald-400 dark:bg-emerald-400 dark:text-slate-950"
-                      : "border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text-muted)] hover:border-emerald-300 hover:text-[var(--app-text)]",
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
-                </button>
+                <GuidedTarget key={item.id} id={`torno-tab-${item.id}`}>
+                  <button
+                    type="button"
+                    onClick={() => goView(item.id)}
+                    aria-pressed={active}
+                    className={cn(
+                      "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border px-3 text-sm font-black transition",
+                      active
+                        ? "border-emerald-600 bg-emerald-600 text-white shadow-sm dark:border-emerald-400 dark:bg-emerald-400 dark:text-slate-950"
+                        : "border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text-muted)] hover:border-emerald-300 hover:text-[var(--app-text)]",
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </button>
+                </GuidedTarget>
               );
             })}
-          </nav>
-        </header>
+          </GuidedTarget>
+        </GuidedTarget>
 
         {notice && <NoticeBlock notice={notice} onClose={() => setNotice(null)} />}
 
         {view === "historial" && (
-          <div className="space-y-4">
+          <GuidedTarget id="torno-history-panel" className="space-y-4">
             <TornoHistoryFilters
               tab={history.tab}
               filters={history.filters}
@@ -222,7 +233,9 @@ export default function TornoModule({ roleHint }: { roleHint?: TornoRole }) {
               onFiltersChange={(patch) => history.setFilters((prev) => ({ ...prev, ...patch }))}
               onRefresh={history.reload}
             />
-            <TornoSummaryCards items={history.items} />
+            <GuidedTarget id="torno-summary">
+              <TornoSummaryCards items={history.items} />
+            </GuidedTarget>
             {history.error && <ErrorBlock message={history.error} onRetry={history.reload} />}
             <TornoServiceTable
               items={history.items}
@@ -234,7 +247,7 @@ export default function TornoModule({ roleHint }: { roleHint?: TornoRole }) {
               onRefresh={history.reload}
               onPageChange={history.setPage}
             />
-          </div>
+          </GuidedTarget>
         )}
 
         {view === "incidentes" && permissions.canViewIncidents && (
@@ -278,7 +291,7 @@ export default function TornoModule({ roleHint }: { roleHint?: TornoRole }) {
           </div>
         )}
       </div>
-    </section>
+    </GuidedTarget>
   );
 }
 

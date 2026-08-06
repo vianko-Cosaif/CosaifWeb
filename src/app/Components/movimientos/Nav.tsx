@@ -70,28 +70,30 @@ export default function Nav({
       {/* Row 1: Tabs + Actions */}
       <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         {/* Animated Pill Tabs */}
-        <div className="relative inline-flex w-full min-w-0 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0.5 sm:w-auto sm:min-w-[250px] sm:p-1 lg:flex-none">
-          {/* Animated indicator */}
-          <div
-            className="absolute bottom-0.5 top-0.5 rounded-md bg-[var(--app-surface)] shadow-sm transition-all duration-200 sm:bottom-1 sm:top-1"
-            style={{
-              left: ambito === "actuales" ? "2px" : "50%",
-              width: "calc(50% - 2px)",
-            }}
-          />
-          <TabBoton
-            activo={ambito === "actuales"}
-            onClick={() => onCambiarAmbito("actuales")}
-            etiqueta="Activos"
-            conteo={totalActuales}
-          />
-          <TabBoton
-            activo={ambito === "pasados"}
-            onClick={() => onCambiarAmbito("pasados")}
-            etiqueta="Historial"
-            conteo={totalPasados}
-          />
-        </div>
+        <GuidedTarget id="movements-scope-tabs" className="relative inline-flex w-full min-w-0 sm:w-auto lg:flex-none">
+          <div className="relative inline-flex w-full min-w-0 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0.5 sm:w-auto sm:min-w-[250px] sm:p-1">
+            {/* Animated indicator */}
+            <div
+              className="absolute bottom-0.5 top-0.5 rounded-md bg-[var(--app-surface)] shadow-sm transition-all duration-200 sm:bottom-1 sm:top-1"
+              style={{
+                left: ambito === "actuales" ? "2px" : "50%",
+                width: "calc(50% - 2px)",
+              }}
+            />
+            <TabBoton
+              activo={ambito === "actuales"}
+              onClick={() => onCambiarAmbito("actuales")}
+              etiqueta="Activos"
+              conteo={totalActuales}
+            />
+            <TabBoton
+              activo={ambito === "pasados"}
+              onClick={() => onCambiarAmbito("pasados")}
+              etiqueta="Historial"
+              conteo={totalPasados}
+            />
+          </div>
+        </GuidedTarget>
 
         {/* Controls */}
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-2 lg:flex-1">
@@ -118,18 +120,20 @@ export default function Nav({
             </span>
           </label>
 
-          <Button
-            type="button"
-            title={tituloBotonRefrescar}
-            onClick={onRefrescar}
-            loading={estaCargando}
-            variant="secondary"
-            size="md"
-            className="min-h-[40px] shrink-0 px-3 sm:min-h-[38px] sm:px-4"
-            leftIcon={<RefreshCw size={18} aria-hidden />}
-          >
-            <span className="hidden md:inline">{estaCargando ? "Actualizando…" : "Actualizar"}</span>
-          </Button>
+          <GuidedTarget id="movements-refresh" className="inline-flex shrink-0">
+            <Button
+              type="button"
+              title={tituloBotonRefrescar}
+              onClick={onRefrescar}
+              loading={estaCargando}
+              variant="secondary"
+              size="md"
+              className="min-h-[40px] shrink-0 px-3 sm:min-h-[38px] sm:px-4"
+              leftIcon={<RefreshCw size={18} aria-hidden />}
+            >
+              <span className="hidden md:inline">{estaCargando ? "Actualizando…" : "Actualizar"}</span>
+            </Button>
+          </GuidedTarget>
           </>}
 
           {puedeCrear && (
@@ -154,27 +158,29 @@ export default function Nav({
       </div>
 
       {/* Row 2: Search */}
-      <div className="relative">
-        <SearchInput
-          value={textoBusqueda}
-          onChange={setTextoBusqueda}
-          onClear={() => setTextoBusqueda("")}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") setTextoBusqueda("");
-            if (event.key === "Enter") onBuscar(textoBusqueda);
-          }}
-          placeholder={placeholderBusqueda}
-          label="Buscar movimientos"
-          inputClassName="min-h-[44px] rounded-lg text-[16px] sm:text-sm"
-        />
+      <GuidedTarget id="movements-search" className="relative block">
+        <div className="relative">
+          <SearchInput
+            value={textoBusqueda}
+            onChange={setTextoBusqueda}
+            onClear={() => setTextoBusqueda("")}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setTextoBusqueda("");
+              if (event.key === "Enter") onBuscar(textoBusqueda);
+            }}
+            placeholder={placeholderBusqueda}
+            label="Buscar movimientos"
+            inputClassName="min-h-[44px] rounded-lg text-[16px] sm:text-sm"
+          />
 
-        {/* Loading shimmer bar */}
-        {estaCargando && (
-          <div className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full overflow-hidden">
-            <div className="h-full w-1/3 bg-gradient-to-r from-transparent via-emerald-500 to-transparent animate-[shimmer_1.5s_infinite]" />
-          </div>
-        )}
-      </div>
+          {/* Loading shimmer bar */}
+          {estaCargando && (
+            <div className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full overflow-hidden">
+              <div className="h-full w-1/3 bg-gradient-to-r from-transparent via-emerald-500 to-transparent animate-[shimmer_1.5s_infinite]" />
+            </div>
+          )}
+        </div>
+      </GuidedTarget>
 
       <style jsx>{`
         @keyframes shimmer {
@@ -201,6 +207,7 @@ function TabBoton({
   return (
     <button
       type="button"
+      data-movements-scope={etiqueta === "Activos" ? "actuales" : "pasados"}
       onClick={onClick}
       aria-pressed={activo}
       className={[

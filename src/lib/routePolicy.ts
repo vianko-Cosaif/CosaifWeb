@@ -93,6 +93,73 @@ export function isAllowedInArea(pathname: string, role: Role): boolean {
   return rx ? rx.test(pathname) : false;
 }
 
+/**
+ * Espacios de IDs reservados exclusivamente para la capacitación.
+ *
+ * No deben llegar nunca a una API productiva. Reservamos el namespace completo
+ * (no sólo los ejemplos actuales) para que una URL o payload manipulado tampoco
+ * pueda convertir un futuro registro SIM en una consulta/mutación real.
+ */
+export const TRAINING_MOVEMENT_ID = 910_000_204;
+export const TRAINING_PAST_MOVEMENT_ID = 910_000_119;
+export const TRAINING_CREATED_MOVEMENT_ID = 910_000_305;
+export const TRAINING_INCIDENT_ID = 920_000_041;
+export const TRAINING_ROUND_ID = 930_000_204;
+export const TRAINING_PAST_ROUND_ID = 930_000_119;
+
+const isIdInTrainingNamespace = (value: unknown, namespace: number): boolean => {
+  const id = Number(value);
+  return Number.isInteger(id) && id >= namespace && id < namespace + 1_000_000;
+};
+
+export function isTrainingMovementId(value: unknown): boolean {
+  return isIdInTrainingNamespace(value, 910_000_000);
+}
+
+export function isTrainingIncidentId(value: unknown): boolean {
+  return isIdInTrainingNamespace(value, 920_000_000);
+}
+
+export function isTrainingRoundId(value: unknown): boolean {
+  return isIdInTrainingNamespace(value, 930_000_000);
+}
+
+export function isTrainingReservedId(value: unknown): boolean {
+  return isTrainingMovementId(value) || isTrainingIncidentId(value) || isTrainingRoundId(value);
+}
+
+/** Detecta IDs SIM aun cuando vengan anidados en un payload de outbox/proxy. */
+export function containsTrainingReservedId(value: unknown, depth = 0, seen = new WeakSet<object>()): boolean {
+  if (depth > 12 || value == null) return false;
+  if (typeof value === "number") return isTrainingReservedId(value);
+  if (typeof value === "string") {
+    if (isTrainingReservedId(value)) return true;
+    return (value.match(/\d{6,}/g) || []).some(isTrainingReservedId);
+  }
+  if (typeof value !== "object") return false;
+  if (seen.has(value)) return false;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.some((item) => containsTrainingReservedId(item, depth + 1, seen));
+  }
+
+  return Object.values(value as Record<string, unknown>)
+    .some((item) => containsTrainingReservedId(item, depth + 1, seen));
+}
+
+/**
+ * Excepción mínima para que roles web de otras áreas practiquen la edición SIM.
+ * Exige ruta exacta, flag de capacitación e ID reservado; nunca abre un editor
+ * productivo de cliente a otro rol.
+ */
+export function isTrainingMovementEdit(pathname: string, search = ""): boolean {
+  if (pathname.toLowerCase() !== "/cliente/editar") return false;
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  return params.get("training") === "1"
+    && isTrainingMovementId(params.get("id"));
+}
+
 /** Home destino según rol (fallback a DEFAULT_HOME) */
 export function homeFor(role?: string | null): string {
   const capabilities = getRoleCapabilities(role);
@@ -168,6 +235,10 @@ export function evaluateRoute(input: {
 
   if (!webAllowed) {
     return { allow: false, redirectTo: "/login", reason: "CROSS_AREA" };
+  }
+
+  if (isTrainingMovementEdit(pathname, search)) {
+    return { allow: true, reason: "OK" };
   }
 
   const capabilities = getRoleCapabilities(role);

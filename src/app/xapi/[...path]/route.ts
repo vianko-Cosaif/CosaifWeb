@@ -3,20 +3,41 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { normalizeHttpOrigin } from "@/lib/serverOrigin";
+import { containsTrainingReservedId } from "@/lib/routePolicy";
+import { getVerifiedSession } from "@/lib/server/session";
+import { rejectCrossSiteMutation } from "@/lib/server/requestSecurity";
 
 const API_URL = normalizeHttpOrigin(process.env.API_ORIGIN);
 const TOKEN_COOKIE = process.env.JWT_COOKIE_NAME ?? "token";
-const ROLE_COOKIE = process.env.ROLE_COOKIE_NAME ?? "role";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "default-no-store";
 
 async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
+  const crossSite = rejectCrossSiteMutation(req);
+  if (crossSite) return crossSite;
+  if (!API_URL) return NextResponse.json({ message: "Servicio no configurado" }, { status: 500 });
+
   const { path } = await ctx.params;                         // params async
+  if (!path.length || path.some((segment) => !segment || segment === "." || segment === ".." || segment.includes("/"))) {
+    return NextResponse.json({ message: "Ruta inválida" }, { status: 400 });
+  }
+  const hasBody = !["GET", "HEAD"].includes(req.method);
+  const jsonBody = hasBody && (req.headers.get("content-type") || "").includes("application/json")
+    ? await req.clone().json().catch(() => null)
+    : null;
+  if (containsTrainingReservedId(path) || containsTrainingReservedId(req.nextUrl.search) || containsTrainingReservedId(jsonBody)) {
+    return NextResponse.json(
+      { message: "Los registros SIM sólo existen dentro de la capacitación." },
+      { status: 409 }
+    );
+  }
   const jar = await cookies();                               // cookies async
   const token = jar.get(TOKEN_COOKIE)?.value || "";
-  const role = String(jar.get(ROLE_COOKIE)?.value || "").toUpperCase();
-  const assignedLocalidadId = Number(jar.get("locId")?.value || jar.get("localidadId")?.value || 0);
+  const session = await getVerifiedSession();
+  if (!token || !session) return NextResponse.json({ message: "No autenticado" }, { status: 401 });
+  const role = session.role;
+  const assignedLocalidadId = Number(session.localidadId || 0);
   const restrictedLocality = role !== "ADMINISTRADOR";
 
   const orig = new URL(req.url);
@@ -53,16 +74,12 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
   const search = searchParams.toString();
   const destURL = `${API_URL}/${scopedPath.join("/")}${search ? `?${search}` : ""}`;
 
-  const h = new Headers(req.headers);
-  if (API_URL) {
-    h.set("host", new URL(API_URL).host);
-  }
-  h.delete("connection");
-  if (!h.get("authorization") && token) {
-    h.set("authorization", `Bearer ${token}`);
-  }
+  const h = new Headers();
+  h.set("accept", req.headers.get("accept") || "application/json");
+  const contentType = req.headers.get("content-type");
+  if (contentType) h.set("content-type", contentType);
+  h.set("authorization", `Bearer ${token}`);
 
-  const hasBody = !["GET", "HEAD"].includes(req.method);
   let body: BodyInit | undefined;
   if (hasBody && restrictedLocality && (isMovementCreate || isTorreonMovementCreate)) {
     const payload = await req.json().catch(() => null);
@@ -74,18 +91,26 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
   } else if (hasBody) {
     body = (req as any).body;
   }
-  const upstream = await fetch(destURL, {
-    method: req.method,
-    headers: h,
-     
-    body,
-    duplex: hasBody ? "half" : undefined,
-    cache: "no-store",
-  } as any);
+  let upstream: Response;
+  try {
+    upstream = await fetch(destURL, {
+      method: req.method,
+      headers: h,
+      body,
+      duplex: hasBody ? "half" : undefined,
+      cache: "no-store",
+      redirect: "manual",
+    } as any);
+  } catch {
+    return NextResponse.json({ message: "Servicio no disponible" }, { status: 502 });
+  }
 
-  const rh = new Headers(upstream.headers);
-  rh.delete("content-encoding");
-  rh.delete("transfer-encoding");
+  const rh = new Headers({
+    "content-type": upstream.headers.get("content-type") || "application/json",
+    "cache-control": "no-store",
+  });
+  const disposition = upstream.headers.get("content-disposition");
+  if (disposition) rh.set("content-disposition", disposition);
 
   return new NextResponse(upstream.body, { status: upstream.status, headers: rh });
 }

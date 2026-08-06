@@ -19,6 +19,7 @@ import {
   cn,
   type StatusTone,
 } from "@/app/Components/ui";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import type { IncidenteRow, Meta } from "./types";
 
 function incidentStatusTone(value?: string): StatusTone {
@@ -97,7 +98,12 @@ function IncidentesTableComp({
         {loading || !deferredData.length ? empty : (
           <ul className="space-y-3">
             {deferredData.map((row, index) => (
-              <li key={`${row.fuente}-${row.tipoIncidente}-${row.id}-${index}`}>
+              <GuidedTarget
+                key={`${row.fuente}-${row.tipoIncidente}-${row.id}-${index}`}
+                id={index === 0 ? "incidents-open-first-mobile" : `incident-row-mobile-${row.id}-${index}`}
+                as="li"
+                data-training-incident-id={String(row.id) === "920000041" ? "920000041" : undefined}
+              >
                 <button
                   type="button"
                   onClick={() => onRowPress?.(row)}
@@ -130,7 +136,7 @@ function IncidentesTableComp({
                     <span className="inline-flex items-center gap-1 font-black text-emerald-700 dark:text-emerald-300">Ver detalle <ChevronRight className="h-4 w-4" /></span>
                   </div>
                 </button>
-              </li>
+              </GuidedTarget>
             ))}
           </ul>
         )}
@@ -154,7 +160,13 @@ function IncidentesTableComp({
               {loading || !deferredData.length ? (
                 <tr><td colSpan={6}>{empty}</td></tr>
               ) : deferredData.map((row, index) => (
-                <tr key={`${row.fuente}-${row.tipoIncidente}-${row.id}-${index}`} className="group transition hover:bg-emerald-50/40 dark:hover:bg-emerald-950/10">
+                <GuidedTarget
+                  key={`${row.fuente}-${row.tipoIncidente}-${row.id}-${index}`}
+                  id={index === 0 ? "incidents-open-first-desktop" : `incident-row-desktop-${row.id}-${index}`}
+                  as="tr"
+                  data-training-incident-id={String(row.id) === "920000041" ? "920000041" : undefined}
+                  className="group transition hover:bg-emerald-50/40 dark:hover:bg-emerald-950/10"
+                >
                   <td className="p-0">
                     <button type="button" onClick={() => onRowPress?.(row)} className="block w-full px-4 py-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500" aria-label={`Ver incidente ${row.id ?? ""}`}>
                       <div className="flex items-center gap-2"><span className="font-mono text-xs font-black text-emerald-700 dark:text-emerald-300">#{row.id ?? "—"}</span><span className="text-xs font-semibold text-slate-400">{row.fecha || "Sin fecha"}</span></div>
@@ -166,7 +178,7 @@ function IncidentesTableComp({
                   <td className="px-4 py-4"><div className="flex min-w-0 items-start gap-2"><TrainFront className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" /><div className="min-w-0"><p className="truncate font-bold text-slate-900 dark:text-white">{row.empresa || "Sin empresa"}</p><p className="mt-1 truncate text-xs font-semibold text-slate-500">{row.locomotora || "Sin equipo"}</p></div></div></td>
                   <td className="px-4 py-4"><p className="line-clamp-2 text-xs font-semibold leading-5 text-slate-600 dark:text-slate-300">{row.origen || "—"}<span className="px-2 text-slate-400">→</span>{row.destino || "—"}</p></td>
                   <td className="px-4 py-4"><div className="flex items-center justify-between gap-2"><StatusBadge status={row.estatus} label={row.estatus} tone={incidentStatusTone(row.estatus)} size="sm" dot /><button type="button" onClick={() => onRowPress?.(row)} className="grid h-9 w-9 place-items-center rounded-lg text-slate-400 transition hover:bg-white hover:text-emerald-700 hover:shadow-sm dark:hover:bg-slate-800" aria-label={`Abrir incidente ${row.id ?? ""}`}><ChevronRight className="h-4 w-4" /></button></div></td>
-                </tr>
+                </GuidedTarget>
               ))}
             </tbody>
           </table>

@@ -1,31 +1,38 @@
 "use client";
 
-import { ReactNode, useCallback, useEffect } from "react";
+import { ReactNode, useCallback, useEffect, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { CircleHelp } from "lucide-react";
 import {
   GuidedManualProvider,
+  useGuidedManual,
   useGuidedManualApi,
   GuidedManualAction,
+  GuidedManualDefinition,
   GuidedManualStep,
 } from ".";
+import { normalizeTrainingRole, type TrainingRole } from "./trainingRoles";
 import {
-  CLIENT_MOVEMENT_GUIDE,
-  CLIENT_MOVEMENT_GUIDE_ID,
-  CLIENT_MOVEMENT_MOBILE_GUIDE,
-  CLIENT_MOVEMENT_MOBILE_GUIDE_ID,
-} from "./ClientMovementGuide.config";
+  buildRoleAppTourChapterSteps,
+  buildRoleAppTourSteps,
+  roleBaseForTraining,
+  type RoleAppTourChapterId,
+} from "./RoleAppTour";
+import { TrainingTourProvider, useTrainingTour } from "./TrainingTourContext";
+import { FINISH_ROLE_TUTORIAL_EVENT, START_ROLE_TUTORIAL_EVENT } from "./trainingEvents";
 
 const START_CREATE_MOVEMENT_GUIDE_EVENT = "cosaif:start-create-movement-guide";
 const START_CREATE_MOVEMENT_TORNO_GUIDE_EVENT = "cosaif:start-create-movement-torno-guide";
 const START_GENERAL_HELP_GUIDE_EVENT = "cosaif:start-general-help-guide";
+const TRAINING_ONLY_MANUALS: GuidedManualDefinition[] = [];
+const TRAINING_ONLY_STEPS: GuidedManualStep[] = [];
 
 function getRoleBaseFromPathname(pathname: string): string {
   const parts = pathname.split("/").filter(Boolean);
   if (parts[0] === "cliente" && parts[1] === "torreon") {
     return "/cliente/torreon";
   }
-  if (["cliente", "coordinador", "administrador", "supervisor"].includes(parts[0])) {
+  if (["cliente", "coordinador", "administrador", "supervisor", "comercial"].includes(parts[0])) {
     return `/${parts[0]}`;
   }
   return "/cliente";
@@ -35,264 +42,119 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-function navigateStep(eventId: string, href: string, delayMs = 350): GuidedManualStep["actionOnNext"] {
-  return {
-    type: "event",
-    eventName: "guide:navigate-path",
-    detail: { href, eventId },
-    delayMs,
-  };
+const LIVE_GUIDE_CHAPTERS: Record<string, RoleAppTourChapterId> = {
+  "general-first-steps": "dashboard",
+  "dashboard-training": "dashboard",
+  "client-dashboard-basics": "dashboard",
+  "movements-training": "movements",
+  "operations-monitoring-overview": "movements",
+  "rounds-training": "rounds",
+  "create-movement-overview": "create-edit",
+  "client-create-movement-overview": "create-edit",
+  "torno-training": "torno",
+  "client-torno-overview": "torno",
+  "incidents-training": "incidents",
+  "incidents-overview": "incidents",
+  "admin-users-overview": "access",
+  "admin-config-overview": "access",
+  "reports-overview": "access",
+  "commercial-overview": "commercial",
+  "commercial-clients-overview": "commercial",
+  "commercial-contracts-overview": "commercial",
+  "commercial-packages-overview": "commercial",
+  "commercial-collections-overview": "commercial",
+  "arrastre-overview": "arrastre",
+};
+
+function moduleCompletionCondition(chapterId: RoleAppTourChapterId): GuidedManualStep["when"] {
+  if (chapterId === "create-edit") {
+    return { type: "selector", selector: "[data-guide-id='edit-movement-step-3']", exists: false };
+  }
+  if (chapterId === "rounds") {
+    return () => typeof document !== "undefined"
+      && !Array.from(document.querySelectorAll("[data-guide-id='training-round-edit-row']"))
+        .some((node) => node.textContent?.includes("SIM-MOV-305"));
+  }
+  if (chapterId === "incidents") {
+    return { type: "selector", selector: "[data-guide-id='incident-resolution-panel']", exists: false };
+  }
+  return undefined;
 }
 
-function buildGeneralHelpGuideSteps(guideId: string, roleBase: string): GuidedManualStep[] {
-  const dashboardHref = roleBase || "/cliente";
-  const movementsHref = `${roleBase}/movimientos`;
-  const createMovementHref = "/movimientos/crear";
-  const tornoHref = `${roleBase}/torno`;
-  const incidentsHref = `${roleBase}/incidentes`;
-  const usersHref = `${roleBase}/usuarios`;
-  const reportsHref = `${roleBase}/reporteria`;
-
-  const guides: Record<string, GuidedManualStep[]> = {
-    "general-first-steps": [
-      {
-        id: "general-first-steps-welcome",
-        title: "Primeros pasos en CosaifWeb",
-        description: "Este recorrido te muestra las vistas principales sin pedirte capturar ni confirmar informacion. Avanza para ver donde se concentra cada parte del trabajo.",
-        mode: "guide",
-        icon: "🧭",
-        tone: "info",
-        hidePrevious: true,
-        actionOnNext: navigateStep("general-dashboard", dashboardHref),
-      },
-      {
-        id: "general-first-steps-navigation",
-        targetId: "client-nav-movements",
-        title: "Navegacion basica",
-        description: "El menu lateral muestra los modulos permitidos para tu rol. Movimientos es uno de los accesos principales para consultar solicitudes y servicios.",
-        mode: "guide",
-        actionOnNext: navigateStep("general-movements", movementsHref),
-      },
-      {
-        id: "general-first-steps-workflow",
-        targetId: "client-movements-list",
-        title: "Forma recomendada de trabajar",
-        description: "En los listados revisa pendientes, estados y detalles antes de actuar. Esta guia solo te muestra la pantalla; no inicia ni completa ningun proceso.",
-        mode: "guide",
-        tone: "success",
-      },
-    ],
-    "client-dashboard-basics": [
-      {
-        id: "client-dashboard-basics-start",
-        title: "Inicio del cliente",
-        description: "Primero veremos la pantalla de inicio del cliente y luego el listado donde se consultan movimientos y torneados. No tendras que editar ni capturar datos.",
-        mode: "guide",
-        icon: "🏁",
-        tone: "info",
-        hidePrevious: true,
-        actionOnNext: navigateStep("client-dashboard", dashboardHref),
-      },
-      {
-        id: "client-dashboard-basics-status",
-        targetId: "client-nav-movements",
-        title: "Pendientes y seguimiento",
-        description: "Desde el menu puedes ir al modulo de movimientos. Ahi se consultan pendientes y, segun reglas activas, historicos o terminados.",
-        mode: "guide",
-        actionOnNext: navigateStep("client-movements", movementsHref),
-      },
-      {
-        id: "client-dashboard-basics-detail",
-        targetId: "client-movements-list",
-        title: "Detalle antes de decidir",
-        description: "Abre el detalle para validar locomotora, via, localidad, medidas o comentarios antes de solicitar cambios o generar reportes.",
-        mode: "guide",
-      },
-    ],
-    "client-create-movement-overview": [
-      {
-        id: "client-create-movement-overview-start",
-        title: "Crear un movimiento",
-        description: "Este tutorial solo muestra las etapas del formulario. No tendras que llenar campos ni crear la solicitud.",
-        mode: "guide",
-        icon: "➕",
-        tone: "info",
-        hidePrevious: true,
-        actionOnNext: navigateStep("create-movement-view", createMovementHref),
-      },
-      {
-        id: "client-create-movement-overview-service",
-        targetId: "create-movement-stepper",
-        title: "Estructura por etapas",
-        description: "La pantalla esta dividida en pasos: configuracion inicial, detalles o medidas, comentarios y confirmacion. La barra indica donde estas.",
-        mode: "guide",
-      },
-      {
-        id: "client-create-movement-overview-fields",
-        targetId: "create-movement-step-1",
-        title: "Seleccion del servicio",
-        description: "Puedes capturar movimientos ordinarios o seleccionar Torno cuando el servicio requiere mediciones de ruedas. Algunas opciones cambian segun el tipo elegido.",
-        mode: "guide",
-      },
-      {
-        id: "client-create-movement-overview-confirm",
-        targetId: "create-movement-next-step",
-        title: "Avance controlado",
-        description: "Este boton sirve para avanzar cuando los datos esten listos. En este tutorial no se presionara ni se completara la captura.",
-        mode: "guide",
-        tone: "warning",
-      },
-    ],
-    "client-torno-overview": [
-      {
-        id: "client-torno-overview-entities",
-        title: "Movimiento y Torneado",
-        description: "Veremos donde se inicia un movimiento tipo torno y que significa que Movimiento y Torneado sean entidades relacionadas, pero independientes.",
-        mode: "guide",
-        icon: "⚙️",
-        tone: "info",
-        hidePrevious: true,
-        actionOnNext: navigateStep("torno-create-view", createMovementHref),
-      },
-      {
-        id: "client-torno-overview-measures",
-        targetId: "create-movement-torno-service",
-        title: "Servicio Torno",
-        description: "Al seleccionar Torno se habilitan reglas y secciones propias de medicion de ruedas. Esta guia solo explica la zona; no selecciona el servicio.",
-        mode: "guide",
-      },
-      {
-        id: "client-torno-overview-schedule",
-        targetId: "create-movement-torno-schedule",
-        title: "Agendado y recuperacion",
-        description: "Si se agenda o se recupera una solicitud, el sistema puede proponer datos previos. Siempre revisa el modal antes de reutilizar informacion.",
-        mode: "guide",
-        tone: "warning",
-        actionOnNext: navigateStep("torno-history-view", tornoHref),
-      },
-      {
-        id: "client-torno-overview-history",
-        selector: "#main",
-        title: "Medidas de ruedas",
-        description: "En la vista de torno se consulta el seguimiento o historial relacionado. Movimiento y Torneado pueden tener estados diferentes.",
-        mode: "guide",
-      },
-    ],
-    "operations-monitoring-overview": [
-      {
-        id: "operations-monitoring-overview-start",
-        title: "Seguimiento operativo",
-        description: "Este recorrido muestra las vistas de seguimiento para coordinadores y supervisores. No inicia, finaliza ni cancela servicios.",
-        mode: "guide",
-        icon: "🚦",
-        tone: "info",
-        hidePrevious: true,
-        actionOnNext: navigateStep("operations-movements", movementsHref),
-      },
-      {
-        id: "operations-monitoring-overview-status",
-        targetId: "client-movements-list",
-        title: "Estados y prioridades",
-        description: "Da prioridad a elementos en proceso, detenidos o con incidentes. Evita modificar un servicio sin validar su estado actual.",
-        mode: "guide",
-        actionOnNext: navigateStep("operations-torno", tornoHref),
-      },
-      {
-        id: "operations-monitoring-overview-actions",
-        selector: "#main",
-        title: "Acciones con impacto",
-        description: "La vista de torno permite consultar servicios relacionados. Las acciones operativas deben ejecutarse solo despues de validar localidad, locomotora y estado.",
-        mode: "guide",
-        tone: "warning",
-      },
-    ],
-    "incidents-overview": [
-      {
-        id: "incidents-overview-start",
-        title: "Incidentes",
-        description: "Veremos la vista de incidentes como consulta general. No se creara ni cerrara ningun incidente durante este tutorial.",
-        mode: "guide",
-        icon: "⚠️",
-        tone: "warning",
-        hidePrevious: true,
-        actionOnNext: navigateStep("incidents-view", incidentsHref),
-      },
-      {
-        id: "incidents-overview-rule",
-        selector: "#main",
-        title: "Reglas automaticas",
-        description: "Algunas reglas pueden cancelar un movimiento despues de acumular incidentes. Si el movimiento incluye torno, tambien puede afectar el torneado relacionado.",
-        mode: "guide",
-      },
-      {
-        id: "incidents-overview-history",
-        selector: "#main",
-        title: "Historial y evidencia",
-        description: "Revisa comentarios, fechas y responsables antes de cerrar una incidencia o tomar decisiones operativas.",
-        mode: "guide",
-      },
-    ],
-    "admin-users-overview": [
-      {
-        id: "admin-users-overview-start",
-        title: "Usuarios y permisos",
-        description: "Este recorrido abre la vista de usuarios para explicar roles y permisos. No modificara cuentas ni contrasenas.",
-        mode: "guide",
-        icon: "🛡️",
-        tone: "info",
-        hidePrevious: true,
-        actionOnNext: navigateStep("admin-users-view", usersHref),
-      },
-      {
-        id: "admin-users-overview-passwords",
-        selector: "#main",
-        title: "Cambios sensibles",
-        description: "Cambios como contrasenas requieren validacion del usuario autorizado. Evita compartir credenciales o datos sensibles en observaciones.",
-        mode: "guide",
-        tone: "warning",
-      },
-      {
-        id: "admin-users-overview-review",
-        selector: "#main",
-        title: "Revision periodica",
-        description: "Revisa usuarios activos, empresas asignadas y permisos para mantener el acceso alineado con la operacion real.",
-        mode: "guide",
-      },
-    ],
-    "reports-overview": [
-      {
-        id: "reports-overview-start",
-        title: "Reporteria",
-        description: "Veremos la vista de reporteria y sus puntos generales. No se aplicaran filtros ni se descargaran archivos automaticamente.",
-        mode: "guide",
-        icon: "📊",
-        tone: "info",
-        hidePrevious: true,
-        actionOnNext: navigateStep("reports-view", reportsHref),
-      },
-      {
-        id: "reports-overview-filters",
-        selector: "#main",
-        title: "Filtros",
-        description: "Usa filtros de fecha, localidad, empresa o servicio cuando esten disponibles. Un filtro incorrecto puede ocultar informacion esperada.",
-        mode: "guide",
-      },
-      {
-        id: "reports-overview-export",
-        selector: "#main",
-        title: "Exportacion",
-        description: "Antes de descargar o compartir un reporte, valida que corresponda al periodo, rol y servicio requerido.",
-        mode: "guide",
-      },
-    ],
-  };
-
-  return guides[guideId] ?? guides["general-first-steps"];
+function selectAccessSteps(steps: GuidedManualStep[], guideId: string) {
+  if (guideId === "admin-users-overview") return steps.filter((step) => step.id === "tour-open-users");
+  if (guideId === "admin-config-overview") return steps.filter((step) => step.id === "tour-open-config");
+  if (guideId === "reports-overview") return steps.filter((step) => step.id === "tour-open-reports");
+  return steps;
 }
+
+function selectCommercialSteps(steps: GuidedManualStep[], guideId: string) {
+  const suffixes: Record<string, string> = {
+    "commercial-clients-overview": "commercial_clients",
+    "commercial-contracts-overview": "commercial_contracts",
+    "commercial-packages-overview": "commercial_packages",
+    "commercial-collections-overview": "commercial_collections",
+    "reports-overview": "commercial_reports",
+  };
+  const suffix = suffixes[guideId];
+  return suffix ? steps.filter((step) => step.id.endsWith(suffix)) : steps;
+}
+
+function buildLiveModuleGuideSteps(role: TrainingRole, guideId: string): GuidedManualStep[] {
+  let chapterId = guideId === "reports-overview" && role === "COMERCIAL"
+    ? "commercial"
+    : LIVE_GUIDE_CHAPTERS[guideId];
+  if (!chapterId) return [];
+
+  if (role === "ARRASTRE_TORREON" && chapterId === "dashboard") chapterId = "arrastre";
+
+  let steps = buildRoleAppTourChapterSteps(role, chapterId);
+  if (chapterId === "rounds" && steps.length === 0) {
+    chapterId = "dashboard";
+    steps = buildRoleAppTourChapterSteps(role, chapterId);
+  }
+  if (chapterId === "create-edit" && steps.length) {
+    const openMovements = buildRoleAppTourChapterSteps(role, "movements")[0];
+    if (openMovements) {
+      steps = [{ ...openMovements, id: "module-create-open-movements", chapter: "Crear y editar" }, ...steps];
+    }
+  }
+  if (chapterId === "access") steps = selectAccessSteps(steps, guideId);
+  if (chapterId === "commercial") steps = selectCommercialSteps(steps, guideId);
+  if (!steps.length) return [];
+
+  const chapterLabel = steps[0]?.chapter || "Práctica corta";
+  return [
+    ...steps,
+    {
+      id: `module-${chapterId}-finish`,
+      chapter: chapterLabel,
+      selector: "#main",
+      title: "Práctica terminada",
+      description: "Ya hiciste esta tarea en las pantallas reales. Los datos SIM se descartarán al finalizar y ninguna acción se guardó en producción.",
+      mode: "guide",
+      tone: "success",
+      icon: "✅",
+      when: moduleCompletionCondition(chapterId),
+    },
+  ];
+}
+
 
 function GuidedHelpEventBridge() {
   const api = useGuidedManualApi();
+  const manual = useGuidedManual();
   const pathname = usePathname();
+  const trainingTour = useTrainingTour();
+  const trainingWasOpen = useRef(false);
+
+  useEffect(() => {
+    const isOpen = Boolean(manual?.isOpen);
+    if (trainingWasOpen.current && !isOpen && trainingTour.active) {
+      trainingTour.finish();
+    }
+    trainingWasOpen.current = isOpen && trainingTour.active;
+  }, [manual?.isOpen, trainingTour]);
 
   useEffect(() => {
     if (!api) return;
@@ -300,26 +162,62 @@ function GuidedHelpEventBridge() {
     const startGeneralHelpGuide = (event: Event) => {
       const detail = event instanceof CustomEvent && isRecord(event.detail) ? event.detail : null;
       const guideId = typeof detail?.guideId === "string" ? detail.guideId : "general-first-steps";
-      api.startWithSteps(buildGeneralHelpGuideSteps(guideId, getRoleBaseFromPathname(pathname)), 0);
+      const roleBase = getRoleBaseFromPathname(pathname);
+      const role = normalizeTrainingRole(detail?.role, roleBase);
+      const liveSteps = buildLiveModuleGuideSteps(role, guideId);
+      if (liveSteps.length > 0) {
+        trainingTour.start(
+          role,
+          roleBaseForTraining(role),
+          LIVE_GUIDE_CHAPTERS[guideId] === "torno" ? "torno" : "natural",
+        );
+        if (LIVE_GUIDE_CHAPTERS[guideId] === "rounds") {
+          trainingTour.prepareRoundsPractice();
+        }
+        api.startWithSteps(liveSteps, 0);
+        return;
+      }
+      trainingTour.start(role, roleBaseForTraining(role));
+      api.startWithSteps(buildRoleAppTourSteps(role), 0);
     };
 
     const startCreateMovementGuide = () => {
-      api.startManual(CLIENT_MOVEMENT_GUIDE_ID);
+      window.dispatchEvent(new CustomEvent(START_ROLE_TUTORIAL_EVENT, {
+        detail: { role: normalizeTrainingRole(undefined, getRoleBaseFromPathname(pathname)) },
+      }));
     };
 
     const startCreateMovementTornoGuide = () => {
-      api.startManual(CLIENT_MOVEMENT_MOBILE_GUIDE_ID);
+      window.dispatchEvent(new CustomEvent(START_ROLE_TUTORIAL_EVENT, {
+        detail: { role: normalizeTrainingRole(undefined, getRoleBaseFromPathname(pathname)) },
+      }));
+    };
+
+    const startFullRoleTraining = (event: Event) => {
+      const detail = event instanceof CustomEvent && isRecord(event.detail) ? event.detail : null;
+      const role = normalizeTrainingRole(detail?.role, getRoleBaseFromPathname(pathname));
+      trainingTour.start(role, roleBaseForTraining(role));
+      api.startWithSteps(buildRoleAppTourSteps(role), 0);
+    };
+
+    const finishFullRoleTraining = () => {
+      api.close();
+      trainingTour.finish();
     };
 
     window.addEventListener(START_GENERAL_HELP_GUIDE_EVENT, startGeneralHelpGuide);
     window.addEventListener(START_CREATE_MOVEMENT_GUIDE_EVENT, startCreateMovementGuide);
     window.addEventListener(START_CREATE_MOVEMENT_TORNO_GUIDE_EVENT, startCreateMovementTornoGuide);
+    window.addEventListener(START_ROLE_TUTORIAL_EVENT, startFullRoleTraining);
+    window.addEventListener(FINISH_ROLE_TUTORIAL_EVENT, finishFullRoleTraining);
     return () => {
       window.removeEventListener(START_GENERAL_HELP_GUIDE_EVENT, startGeneralHelpGuide);
       window.removeEventListener(START_CREATE_MOVEMENT_GUIDE_EVENT, startCreateMovementGuide);
       window.removeEventListener(START_CREATE_MOVEMENT_TORNO_GUIDE_EVENT, startCreateMovementTornoGuide);
+      window.removeEventListener(START_ROLE_TUTORIAL_EVENT, startFullRoleTraining);
+      window.removeEventListener(FINISH_ROLE_TUTORIAL_EVENT, finishFullRoleTraining);
     };
-  }, [api, pathname]);
+  }, [api, pathname, trainingTour]);
 
   return null;
 }
@@ -335,7 +233,16 @@ export function ClientMovementGuideProvider({ children }: { children: ReactNode 
       const execute = () => {
         if (action.type === "click" && action.selector) {
           const node = document.querySelector(action.selector) as HTMLElement | null;
-          node?.click();
+          if (node) {
+            const previousMarker = node.getAttribute("data-guide-internal-action");
+            node.setAttribute("data-guide-internal-action", "true");
+            try {
+              node.click();
+            } finally {
+              if (previousMarker === null) node.removeAttribute("data-guide-internal-action");
+              else node.setAttribute("data-guide-internal-action", previousMarker);
+            }
+          }
           return;
         }
 
@@ -352,13 +259,26 @@ export function ClientMovementGuideProvider({ children }: { children: ReactNode 
         }
 
         if (action.eventName === "guide:navigate-create-movement") {
-          window.location.assign("/movimientos/crear");
+          router.push("/movimientos/crear");
           return;
         }
 
         if (action.eventName === "guide:navigate-path") {
           const href = typeof action.detail?.href === "string" ? action.detail.href.trim() : "";
           if (href) router.push(href);
+          return;
+        }
+
+        if (action.eventName === "guide:training-read-path") {
+          const href = typeof action.detail?.href === "string" ? action.detail.href.trim() : "";
+          if (href) router.push(href);
+          return;
+        }
+
+        if (action.eventName === "guide:finish-role-app-tour") {
+          window.dispatchEvent(new CustomEvent(FINISH_ROLE_TUTORIAL_EVENT, {
+            detail: action.detail,
+          }));
         }
       };
 
@@ -374,38 +294,66 @@ export function ClientMovementGuideProvider({ children }: { children: ReactNode 
   );
 
   return (
+    <TrainingTourProvider>
     <GuidedManualProvider
-      manuals={[CLIENT_MOVEMENT_GUIDE, CLIENT_MOVEMENT_MOBILE_GUIDE]}
-      defaultManualId={CLIENT_MOVEMENT_GUIDE_ID}
+      manuals={TRAINING_ONLY_MANUALS}
+      steps={TRAINING_ONLY_STEPS}
       actionRunner={actionRunner}
       transition={{
         waitForTarget: true,
-        targetStableMs: 120,
-        targetTimeoutMs: 12_000,
+        targetStableMs: 80,
+        targetTimeoutMs: 6_000,
+      }}
+      tracking={{
+        mutations: false,
+        transitions: false,
+        resize: true,
+        autoScrollWhenHidden: true,
       }}
       appearance={{
+        mode: "light",
         colors: {
-          accent: "#10b981",
-          panelBg: "rgba(15, 23, 42, 0.97)",
-          panelBorder: "rgba(16, 185, 129, 0.45)",
-          buttonPrimaryBg: "rgba(16, 185, 129, 0.28)",
+          overlay: "rgba(15, 23, 42, 0.58)",
+          accent: "#7c3aed",
+          panelBg: "#ffffff",
+          panelBorder: "#c4b5fd",
+          textMain: "#172033",
+          textMuted: "#475569",
+          buttonBg: "#f1f5f9",
+          buttonPrimaryBg: "#ede9fe",
         },
         layout: {
-          spotlightPadding: 8,
-          spotlightRadius: 12,
-          panelWidth: 360,
-          panelRadius: 12,
+          spotlightPadding: 9,
+          spotlightRadius: 16,
+          panelWidth: 370,
+          panelRadius: 20,
+          panelPadding: 17,
+          controlHeight: 42,
+        },
+        typography: { titleSize: 18, descriptionSize: 14 },
+        effects: {
+          panelShadow: "0 18px 50px rgba(15, 23, 42, 0.22)",
+          panelBackdropFilter: "none",
+          transition: "top 0.14s ease, left 0.14s ease, width 0.14s ease",
+        },
+        stepTones: {
+          default: { panelBg: "#ffffff", panelBorder: "#cbd5e1", accent: "#7c3aed", textMain: "#172033", textMuted: "#475569", buttonPrimaryBg: "#ede9fe" },
+          info: { panelBg: "#ffffff", panelBorder: "#93c5fd", accent: "#2563eb", textMain: "#172033", textMuted: "#475569", buttonPrimaryBg: "#dbeafe" },
+          warning: { panelBg: "#fffbeb", panelBorder: "#f59e0b", accent: "#d97706", textMain: "#451a03", textMuted: "#78350f", buttonPrimaryBg: "#fef3c7" },
+          critical: { panelBg: "#fff1f2", panelBorder: "#fb7185", accent: "#e11d48", textMain: "#4c0519", textMuted: "#881337", buttonPrimaryBg: "#ffe4e6" },
+          success: { panelBg: "#ecfdf5", panelBorder: "#34d399", accent: "#059669", textMain: "#022c22", textMuted: "#065f46", buttonPrimaryBg: "#d1fae5" },
         },
       }}
       copy={{
-        start: "Crear un movimiento",
-        next: "Continuar",
-        finish: "Finalizar",
+        start: "Empezar paso a paso",
+        next: "Siguiente paso",
+        finish: "Terminar capacitación",
       }}
     >
       <GuidedHelpEventBridge />
       {children}
     </GuidedManualProvider>
+    </TrainingTourProvider>
   );
 }
 
@@ -423,10 +371,10 @@ export function ClientMovementGuideButton({
   return (
     <button
       type="button"
-      onClick={() => api.startManual(CLIENT_MOVEMENT_GUIDE_ID)}
+      onClick={() => window.dispatchEvent(new CustomEvent(START_ROLE_TUTORIAL_EVENT))}
       className={className}
-      title="Guia para crear un movimiento"
-      aria-label="Iniciar guia para crear un movimiento"
+      title="Abrir capacitación paso a paso"
+      aria-label="Abrir capacitación paso a paso"
     >
       <CircleHelp aria-hidden className="h-4 w-4" />
       {!compact && <span>Guia</span>}
