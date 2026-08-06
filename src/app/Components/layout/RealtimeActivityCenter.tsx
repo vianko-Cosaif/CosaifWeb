@@ -37,16 +37,32 @@ function eventTitle(event: RealtimeMovementEvent) {
         ? `Incidente #${event.incidenteId}`
         : "Operación";
   if (type === "movimiento.creado") return `Nuevo ${entity.toLowerCase()}`;
+  if (type === "movimiento.estado" || type === "torreon.movimiento.estado") {
+    const estado = String(event.estado ?? "").toUpperCase();
+    const estadoAnterior = String(event.estadoAnterior ?? "").toUpperCase();
+    if (estado === "EN_PROCESO") {
+      return estadoAnterior === "DETENIDO"
+        ? `${entity} reanudado`
+        : `${entity} iniciado`;
+    }
+    if (estado === "DETENIDO") return `${entity} detenido`;
+    if (estado === "CONCLUIDO") return `${entity} finalizado`;
+    if (estado === "CANCELADO") return `${entity} cancelado`;
+    if (estado === "SOLICITADO") return `${entity} solicitado`;
+  }
   if (type === "movimiento.incidente") return `${entity}: incidente reportado`;
   if (type === "incidente.estado") return `${entity}: estado actualizado`;
   return action ? `${entity}: ${action}` : `${entity} actualizado`;
 }
 
 function eventDescription(event: RealtimeMovementEvent) {
+  const transition = event.estadoAnterior && event.estado
+    ? `${String(event.estadoAnterior).replaceAll("_", " ")} → ${String(event.estado).replaceAll("_", " ")}`
+    : null;
   const details = [
     event.descripcion ? String(event.descripcion) : null,
     event.locomotiveNumber ? `Locomotora ${event.locomotiveNumber}` : null,
-    event.estado ? `Estado: ${event.estado}` : null,
+    transition ? `Estado: ${transition}` : event.estado ? `Estado: ${event.estado}` : null,
   ].filter(Boolean);
   return details.join(" · ") || undefined;
 }

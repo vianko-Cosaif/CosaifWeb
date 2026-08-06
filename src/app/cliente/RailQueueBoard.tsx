@@ -11,6 +11,7 @@ import {
 import { S } from "./RailQueueBoardCliente.styles";
 import QueueSegmentedFilter, { type QueueSegmentedFilterOption } from "./components/QueueSegmentedFilter";
 import { useRealtimeBoardRefresh } from "../hooks/useRealtimeBoardRefresh";
+import type { RealtimeMovementEvent } from "../hooks/useRealtimeMovimientos";
 import { useTornoMeasuresModal } from "@/features/torno-measures";
 import {
   API_XAPI_BASE,
@@ -35,6 +36,28 @@ import { peekCachedJson } from "@/lib/clientRequestCache";
 import { playNotificationSound, preloadNotificationSound, primeNotificationSound } from "@/lib/notificationSound";
 
 const fmtLoco = (value: unknown) => formatLoco(value, "—");
+
+function clientRealtimeStateNotice(event: RealtimeMovementEvent) {
+  if (event.type !== "movimiento.estado") return null;
+  const estado = String(event.estado ?? "").toUpperCase();
+  const estadoAnterior = String(event.estadoAnterior ?? "").toUpperCase();
+  const subject = event.locomotiveNumber
+    ? `Locomotora ${event.locomotiveNumber}`
+    : event.movimientoId
+      ? `Movimiento #${event.movimientoId}`
+      : "Movimiento";
+
+  if (estado === "EN_PROCESO") {
+    return {
+      text: estadoAnterior === "DETENIDO" ? `${subject} reanudado` : `${subject} iniciado`,
+      kind: "move" as const,
+    };
+  }
+  if (estado === "DETENIDO") return { text: `${subject} detenido`, kind: "warning" as const };
+  if (estado === "CONCLUIDO") return { text: `${subject} finalizado`, kind: "done" as const };
+  if (estado === "CANCELADO") return { text: `${subject} cancelado`, kind: "warning" as const };
+  return null;
+}
 
 /* ═══════════ SVG ICONS ═══════════ */
 // All monochrome, 16px default, currentColor
@@ -188,7 +211,11 @@ export default function RailQueueBoard({
     enabled: Boolean(localidadId),
     realtimeLocalidadId: localidadId,
     scopeLocalidadId: localidadId,
-    onRefresh: () => load(true),
+    onRefresh: ({ event }) => {
+      const notice = clientRealtimeStateNotice(event);
+      if (notice) pushToast(notice.text, notice.kind);
+      return load(true);
+    },
   });
 
   useEffect(() => {

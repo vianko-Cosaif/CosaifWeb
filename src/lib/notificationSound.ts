@@ -22,16 +22,16 @@ type SoundStep = {
 type SoundPattern = { steps: SoundStep[]; disposeAfterMs: number };
 
 const SOUND_PATTERNS: Record<NotificationSoundKind, SoundPattern> = {
-  // Incidente nuevo/abierto: acorde disminuido grave, lento y disonante.
+  // Incidente nuevo/abierto: firma corporativa firme, urgente y reconocible.
   incidentAlert: {
     steps: [
-      { at: 0, notes: ["G2", "C#3"], duration: 0.72 },
-      { at: 0.58, notes: ["F#2", "C3"], duration: 0.68 },
-      { at: 1.18, notes: ["Ab2", "D3"], duration: 0.72 },
-      { at: 1.82, notes: ["C#4", "G4"], duration: 0.3 },
-      { at: 2.18, notes: ["G2", "C#3", "Ab3"], duration: 0.95 },
+      { at: 0, notes: ["G4", "D5"], duration: 0.2 },
+      { at: 0.3, notes: ["G4", "D5"], duration: 0.2 },
+      { at: 0.72, notes: ["C5", "G5"], duration: 0.24 },
+      { at: 1.04, notes: ["D5", "A5"], duration: 0.3 },
+      { at: 1.48, notes: ["G4", "D5"], duration: 0.42 },
     ],
-    disposeAfterMs: 4_000,
+    disposeAfterMs: 2_350,
   },
   // Todas las confirmaciones son breves y tonales para no confundirse con una alarma.
   resolved: {
@@ -169,25 +169,14 @@ export async function playNotificationSound(notificationType = "generic") {
     const kind = soundKind(notificationType);
     const isIncidentAlert = kind === "incidentAlert";
     const synth = new Tone.PolySynth(Tone.Synth, {
-      oscillator: { type: isIncidentAlert ? "sawtooth" : "triangle" },
+      oscillator: { type: "triangle" },
       envelope: isIncidentAlert
-        ? { attack: 0.08, decay: 0.28, sustain: 0.26, release: 1.15 }
+        ? { attack: 0.008, decay: 0.14, sustain: 0.1, release: 0.42 }
         : { attack: 0.005, decay: 0.12, sustain: 0.12, release: 0.5 },
     });
-    const effects: Array<{ dispose: () => void }> = [];
+    synth.toDestination();
 
-    if (isIncidentAlert) {
-      const lowPass = new Tone.Filter(920, "lowpass").toDestination();
-      lowPass.Q.value = 4.5;
-      const echo = new Tone.FeedbackDelay(0.22, 0.32).connect(lowPass);
-      echo.wet.value = 0.28;
-      synth.connect(echo);
-      effects.push(echo, lowPass);
-    } else {
-      synth.toDestination();
-    }
-
-    synth.volume.value = isIncidentAlert ? -19 : -11;
+    synth.volume.value = isIncidentAlert ? -12 : -11;
     const now = Tone.now();
     const pattern = SOUND_PATTERNS[kind];
     pattern.steps.forEach((step) => {
@@ -202,7 +191,6 @@ export async function playNotificationSound(notificationType = "generic") {
       window.clearTimeout(timeoutId);
       synth.releaseAll();
       synth.dispose();
-      effects.forEach((effect) => effect.dispose());
     };
     timeoutId = window.setTimeout(() => {
       cleanup();
