@@ -114,6 +114,7 @@ export interface LocomotiveWheelSelectorBaseProps {
   title?: string;
   orderCode?: string;
   operatorName?: string;
+  locomotiveNumber?: string | number | null;
   theme?: Partial<LocomotiveWheelTheme>;
   labels?: Partial<SelectorLabels>;
   orientation?: 'vertical' | 'horizontal';
@@ -132,5 +133,6 @@ export interface LocomotiveMapProps {
   labels?: Partial<SelectorLabels>;
   showLabels?: boolean;
   orientation?: 'vertical' | 'horizontal';
+  locomotiveNumber?: string | number | null;
   onWheelSelect?: (wheel: WheelData) => void;
 }

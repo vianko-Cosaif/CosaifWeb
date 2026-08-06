@@ -53,6 +53,7 @@ export function LocomotiveWheelSelector(props: LocomotiveWheelSelectorBaseProps)
     title,
     orderCode = 'OD-2026-1187',
     operatorName = 'Juan Pérez',
+    locomotiveNumber,
     wheels = [],
     theme: customTheme,
     labels: customLabels,
@@ -191,6 +192,7 @@ export function LocomotiveWheelSelector(props: LocomotiveWheelSelectorBaseProps)
               theme={theme}
               labels={labels}
               orientation={orientation}
+              locomotiveNumber={locomotiveNumber}
               onWheelSelect={controller.selectWheel}
             />
           </div>

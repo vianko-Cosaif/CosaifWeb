@@ -1411,7 +1411,7 @@ export default function EditarMovimiento({
                   : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
               )}
             >
-              {isMobileEditFlow ? "Vista clasica" : "Flujo mobile"}
+              {isMobileEditFlow ? "Vista avanzada" : "Flujo guiado"}
             </button>
           )}
 
@@ -1577,7 +1577,7 @@ export default function EditarMovimiento({
                             : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
                         )}
                       >
-                        Mobile
+                        Guiada
                       </button>
                       <button
                         type="button"
@@ -1589,7 +1589,7 @@ export default function EditarMovimiento({
                             : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
                         )}
                       >
-                        Clasica
+                        Avanzada
                       </button>
                     </div>
                   </div>

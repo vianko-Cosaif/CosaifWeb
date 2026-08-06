@@ -320,7 +320,6 @@ function cn(...classes: (string | undefined | null | false)[]) {
 export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }) {
   const router = useRouter();
   const pathname = usePathname();
-
   const [isOpen, setIsOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);

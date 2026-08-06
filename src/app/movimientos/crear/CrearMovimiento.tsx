@@ -490,27 +490,27 @@ export default function CrearMovimiento() {
         className="pointer-events-none absolute inset-0 z-0 bg-[linear-gradient(to_right,rgba(0,0,0,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.03)_1px,transparent_1px)] bg-[size:24px_24px] dark:opacity-[0.05]"
       />
       {guidedMode && (
-        <div className="cosaif-motion-panel fixed inset-x-0 top-0 z-40 border-b border-emerald-100 bg-white/95 px-3 py-2 shadow-lg shadow-emerald-100/30 backdrop-blur dark:border-emerald-900/40 dark:bg-zinc-950/95 dark:shadow-none sm:px-5">
+        <div className="cosaif-motion-panel fixed inset-x-0 top-0 z-40 border-b border-emerald-100 bg-white/95 px-3 py-1.5 shadow-lg shadow-emerald-100/30 backdrop-blur dark:border-emerald-900/40 dark:bg-zinc-950/95 dark:shadow-none sm:px-5 sm:py-2">
           <div className={Movimiento.clsx("mx-auto flex min-w-0 items-center gap-3", contentMaxWidth)}>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/25">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/25 sm:h-10 sm:w-10 sm:rounded-2xl">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 5v14M5 12h14" />
               </svg>
             </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-base font-black text-slate-950 dark:text-white">
+              <div className="truncate text-sm font-black text-slate-950 dark:text-white sm:text-base">
                 {pageTitle}
               </div>
               <div className="truncate text-xs font-bold text-emerald-700 dark:text-emerald-300">
                 {guidedStepTitle}
               </div>
             </div>
-            <div className="cosaif-motion-emphasis rounded-2xl bg-emerald-50 px-3 py-1.5 text-center dark:bg-emerald-950/40">
-              <div className="text-lg font-black leading-5 text-emerald-700 dark:text-emerald-300">{guidedProgress}%</div>
+            <div className="cosaif-motion-emphasis rounded-xl bg-emerald-50 px-2.5 py-1 text-center dark:bg-emerald-950/40 sm:rounded-2xl sm:px-3 sm:py-1.5">
+              <div className="text-base font-black leading-5 text-emerald-700 dark:text-emerald-300 sm:text-lg">{guidedProgress}%</div>
               <div className="text-[9px] font-black uppercase tracking-wide text-emerald-700/70 dark:text-emerald-300/70">completado</div>
             </div>
           </div>
-          <div className={Movimiento.clsx("mx-auto mt-2 h-1.5 overflow-hidden rounded-full bg-emerald-100 dark:bg-emerald-950/70", contentMaxWidth)}>
+          <div className={Movimiento.clsx("mx-auto mt-1.5 h-1 overflow-hidden rounded-full bg-emerald-100 dark:bg-emerald-950/70 sm:mt-2 sm:h-1.5", contentMaxWidth)}>
             <div
               className="cosaif-motion-progress h-full rounded-full bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500"
               style={{ width: `${guidedProgress}%` }}
@@ -523,7 +523,7 @@ export default function CrearMovimiento() {
         data-guide-movement-step={step}
         className={Movimiento.clsx(
           "relative z-10 mx-auto w-full min-w-0",
-          guidedMode && "pt-20 pb-44 sm:pt-24 md:pb-32",
+          guidedMode && "pt-[4.75rem] pb-28 sm:pt-20 sm:pb-28 md:pb-24",
           contentMaxWidth
         )}
       >
@@ -541,7 +541,7 @@ export default function CrearMovimiento() {
           </div>
         )}
 
-        <div className="mb-4 flex min-w-0 flex-wrap items-center gap-2">
+        <div className={Movimiento.clsx("flex min-w-0 flex-wrap items-center gap-2", guidedMode ? "mb-2" : "mb-4")}>
           <Badge tone={online ? "ok" : "error"}>{online ? "En línea" : "Sin conexión"}</Badge>
           <RoleBadge
             rol={rol}
@@ -572,7 +572,7 @@ export default function CrearMovimiento() {
                 : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
             )}
           >
-            {guidedMode ? "Vista clasica" : "Flujo mobile"}
+            {guidedMode ? "Vista avanzada" : "Flujo guiado"}
           </button>
           <button onClick={safeExit} className="cosaif-motion-button ml-auto rounded-xl border border-rose-200 dark:border-rose-800 px-3 py-1.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20" title="Volver a mis movimientos">
             Salir
@@ -652,10 +652,10 @@ export default function CrearMovimiento() {
         {/* Contenido de steps (1,2,3) desacoplado en componentes especializados. */}
         <GuidedTarget id="create-movement-step-content">
         <div className={Movimiento.clsx(
-          "cosaif-motion-card mt-4 min-w-0 overflow-hidden border p-3 backdrop-blur-sm transition-colors min-[380px]:p-4 sm:mt-6 sm:p-6",
+          "cosaif-motion-card min-w-0 overflow-hidden border p-3 backdrop-blur-sm transition-colors min-[380px]:p-4",
           guidedMode
-            ? "rounded-[28px] border-emerald-100 bg-white/95 shadow-2xl shadow-emerald-100/50 dark:border-emerald-900/40 dark:bg-zinc-950/90 dark:shadow-none"
-            : "rounded-2xl border-slate-200/80 dark:border-zinc-800/60 bg-white/95 dark:bg-zinc-950/90 shadow-xl shadow-slate-200/30 dark:shadow-zinc-900/30"
+            ? "mt-2 rounded-2xl border-emerald-100 bg-white/95 shadow-xl shadow-emerald-100/40 dark:border-emerald-900/40 dark:bg-zinc-950/90 dark:shadow-none sm:rounded-[24px]"
+            : "mt-4 rounded-2xl border-slate-200/80 bg-white/95 shadow-xl shadow-slate-200/30 dark:border-zinc-800/60 dark:bg-zinc-950/90 dark:shadow-zinc-900/30 sm:mt-6 sm:p-6"
         )}>
           <div key={stepTransitionKey} className={guidedMode ? "create-movement-guided-step" : undefined}>
           {step === 1 && (
@@ -773,12 +773,12 @@ export default function CrearMovimiento() {
         <div className={Movimiento.clsx(
           "flex min-w-0 flex-wrap gap-2 sm:gap-3",
           guidedMode
-            ? "fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] z-[45] rounded-2xl border border-emerald-100 bg-white/95 p-2.5 shadow-[0_-12px_30px_rgba(16,185,129,0.12)] backdrop-blur dark:border-emerald-900/40 dark:bg-zinc-950/95 dark:shadow-none sm:p-3 md:inset-x-0 md:bottom-0 md:rounded-none md:border-x-0 md:border-b-0 md:pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+            ? "fixed inset-x-2 bottom-[calc(env(safe-area-inset-bottom)+0.5rem)] z-[45] rounded-2xl border border-emerald-100 bg-white/95 p-2 shadow-[0_-10px_24px_rgba(16,185,129,0.12)] backdrop-blur dark:border-emerald-900/40 dark:bg-zinc-950/95 dark:shadow-none sm:inset-x-3 sm:p-2.5 md:inset-x-0 md:bottom-0 md:rounded-none md:border-x-0 md:border-b-0 md:pb-[calc(0.6rem+env(safe-area-inset-bottom))]"
             : "mt-5"
         )}>
           <button
             onClick={clearAction}
-            className="cosaif-motion-button min-h-11 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 min-[420px]:flex-none sm:px-4"
+            className="cosaif-motion-button min-h-10 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 min-[420px]:flex-none sm:min-h-11 sm:px-4 sm:py-2.5 sm:text-sm"
           >
             {clearLabel}
           </button>
@@ -787,7 +787,7 @@ export default function CrearMovimiento() {
             <button
               onClick={guidedGoPrev}
               data-guide-action="create-movement-prev"
-              className="cosaif-motion-button min-h-11 flex-1 rounded-xl border border-amber-300 px-3 py-2.5 text-sm font-medium text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/20 min-[420px]:flex-none sm:px-4"
+              className="cosaif-motion-button min-h-10 flex-1 rounded-xl border border-amber-300 px-3 py-2 text-xs font-bold text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/20 min-[420px]:flex-none sm:min-h-11 sm:px-4 sm:py-2.5 sm:text-sm"
             >
               ← Anterior
             </button>
@@ -800,7 +800,7 @@ export default function CrearMovimiento() {
                 disabled={trainingNextBlocked}
                 aria-describedby={trainingNextBlocked ? "training-next-requirements" : undefined}
                 data-guide-action="create-movement-next"
-                className="cosaif-motion-button min-h-11 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/25 hover:from-emerald-600 hover:to-emerald-700 hover:shadow-emerald-500/40 disabled:cursor-not-allowed disabled:from-slate-400 disabled:to-slate-400 disabled:shadow-none sm:px-5"
+                className="cosaif-motion-button min-h-10 w-full rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 py-2 text-xs font-black text-white shadow-lg shadow-emerald-500/25 hover:from-emerald-600 hover:to-emerald-700 hover:shadow-emerald-500/40 disabled:cursor-not-allowed disabled:from-slate-400 disabled:to-slate-400 disabled:shadow-none sm:min-h-11 sm:px-5 sm:py-2.5 sm:text-sm"
               >
                 {guidedNextLabel}
               </button>
@@ -810,7 +810,7 @@ export default function CrearMovimiento() {
           <button
             onClick={safeExit}
             data-guide-action="create-movement-exit"
-            className="cosaif-motion-button min-h-11 flex-1 rounded-xl border border-rose-200 px-3 py-2.5 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-900/20 min-[420px]:ml-auto min-[420px]:flex-none sm:px-4"
+            className="cosaif-motion-button min-h-10 flex-1 rounded-xl border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-900/20 min-[420px]:ml-auto min-[420px]:flex-none sm:min-h-11 sm:px-4 sm:py-2.5 sm:text-sm"
             title="Volver a mis movimientos"
           >
             Salir

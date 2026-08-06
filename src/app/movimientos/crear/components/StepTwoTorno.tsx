@@ -850,7 +850,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
           ) : null}
         </div>
 
-        {/* Switcher para cambiar entre Vista de Tabla y Vista Visual */}
+        {/* Switcher para cambiar entre tabla y mapa visual */}
         <div className="mb-5 flex gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
           <button
             type="button"
@@ -862,7 +862,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                 : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             )}
           >
-            Vista de Tabla
+            Tabla
           </button>
           <button
             type="button"
@@ -874,7 +874,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                 : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             )}
           >
-            Vista de Locomotora (Visual)
+            Mapa visual
           </button>
         </div>
 
@@ -1024,6 +1024,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                       wheels={wheelOverrides}
                       disabled={false}
                       orientation={screenOrientation}
+                      locomotiveNumber={form.locomotiveNumber}
                       onWheelSelect={(wheel) => {
                         const nextPos = wheelIdToPosition(wheel.id);
                         if (nextPos) setSelectedVisualPosition(nextPos);
