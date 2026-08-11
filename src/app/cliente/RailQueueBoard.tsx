@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, startTransition, Fragment } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import {
@@ -34,6 +36,7 @@ import type {
 } from "@/features/rail-queue/types";
 import { peekCachedJson } from "@/lib/clientRequestCache";
 import { playNotificationSound, preloadNotificationSound, primeNotificationSound } from "@/lib/notificationSound";
+import { PANEL_GRAFICO_ENABLED } from "@/app/Components/PanelGrafico/panelGrafico.config";
 
 const fmtLoco = (value: unknown) => formatLoco(value, "—");
 
@@ -132,6 +135,7 @@ export default function RailQueueBoard({
   const [openEditor, setOpenEditor] = useState(false);
   const [polling, setPolling] = useLocalStorageBoolean("rail-queue:polling", true);
   const [soundOn, setSoundOn] = useLocalStorageBoolean("rail-queue:soundOn", false);
+  const pathname = usePathname();
   const { toasts, push: pushToast, dismiss } = useToasts();
   const { measuresModal, openMeasuresModal, closeMeasuresModal } =
     useTornoMeasuresModal(empresaId ? "/api/cliente" : API_XAPI_BASE);
@@ -321,6 +325,16 @@ export default function RailQueueBoard({
   const curInfo = current ? displayedInfo[current.id] : undefined;
   const nextItems = useMemo(() => entityItems.slice(1), [entityItems]);
   const isHistoricalView = activeStatus === "terminados";
+  const panelGraficoHref = useMemo(() => {
+    const query = new URLSearchParams();
+    query.set("localidadId", String(localidadId));
+    if (empresaId) query.set("empresaId", String(empresaId));
+    const suffix = `?${query.toString()}`;
+    if (pathname.startsWith("/supervisor")) return `/supervisor/panel-grafico${suffix}`;
+    if (pathname.startsWith("/coordinador")) return `/coordinador/panel-grafico${suffix}`;
+    if (pathname.startsWith("/administrador")) return `/administrador/panel-grafico${suffix}`;
+    return `/cliente/panel-grafico${suffix}`;
+  }, [empresaId, localidadId, pathname]);
   const emptyMessage =
     activeEntity === "torneados"
       ? `No hay torneados ${activeStatus === "pendientes" ? "pendientes" : "terminados"}.`
@@ -366,14 +380,24 @@ export default function RailQueueBoard({
           as="section"
           className="flex flex-col gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-2 shadow-[var(--app-shadow-sm)] sm:flex-row sm:items-center sm:justify-between lg:col-span-12"
         >
-          <GuidedTarget id="dashboard-entity-tabs">
-            <QueueSegmentedFilter
-              ariaLabel="Tipo de listado"
-              options={entityOptions}
-              value={activeEntity}
-              onChange={setActiveEntity}
-            />
-          </GuidedTarget>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <GuidedTarget id="dashboard-entity-tabs">
+              <QueueSegmentedFilter
+                ariaLabel="Tipo de listado"
+                options={entityOptions}
+                value={activeEntity}
+                onChange={setActiveEntity}
+              />
+            </GuidedTarget>
+            {PANEL_GRAFICO_ENABLED ? (
+              <Link
+                href={panelGraficoHref}
+                className="inline-flex min-h-9 items-center justify-center rounded-md border border-[var(--app-border)] bg-[var(--app-surface-subtle)] px-3 text-xs font-black text-[var(--app-text-muted)] transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:hover:border-emerald-700 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300"
+              >
+                Panel Grafico
+              </Link>
+            ) : null}
+          </div>
           <GuidedTarget id="dashboard-status-tabs">
             <QueueSegmentedFilter
               ariaLabel="Estado del listado"
@@ -564,7 +588,14 @@ function HeroCard({
 
   return (
     <GuidedTarget id="dashboard-current-movement">
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className={S.Card.root}>
+      <motion.div
+        layout
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0 }}
+        transition={{ layout: { type: "spring", stiffness: 420, damping: 36, mass: 0.7 } }}
+        className={S.Card.root}
+      >
       <div className={S.Card.accent(hi)} />
 
       <div className={S.Card.body}>
@@ -697,9 +728,11 @@ function QueueCard({
       )}
 
       <motion.div
+        layout
         initial={{ opacity: 0, x: 12 }}
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0 }}
+        transition={{ layout: { type: "spring", stiffness: 420, damping: 36, mass: 0.7 } }}
         data-guide-id={idx === 0 ? "training-round-row" : undefined}
         className={S.List.card(hi)}
       >

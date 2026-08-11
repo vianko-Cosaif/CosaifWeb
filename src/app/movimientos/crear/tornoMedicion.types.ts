@@ -59,7 +59,7 @@ export type TornoMedicionState = {
 };
 
 /** Opciones visuales de selector de cantidad de ruedas. */
-export const TORNO_WHEEL_COUNT_OPTIONS: readonly TornoWheelCount[] = [4, 6, 8, 12] as const;
+export const TORNO_WHEEL_COUNT_OPTIONS: readonly TornoWheelCount[] = [8, 12] as const;
 
 /** Type guard para validar cantidades soportadas de ruedas. */
 export function isTornoWheelCount(value: unknown): value is TornoWheelCount {

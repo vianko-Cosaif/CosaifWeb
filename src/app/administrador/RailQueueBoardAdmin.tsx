@@ -737,6 +737,7 @@ function SingleLocalidadBoard(props: {
                 return (
                   <motion.div
                     key={n.id}
+                    layout
                     initial={{ y: prefersReduced ? 0 : 14, opacity: prefersReduced ? 1 : 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     exit={{ y: prefersReduced ? 0 : -14, opacity: prefersReduced ? 1 : 0 }}
@@ -886,6 +887,7 @@ function AllLocalidadesGrid({
           return (
             <motion.div
               key={key}
+              layout
               initial={{ y: prefersReduced ? 0 : 14, opacity: prefersReduced ? 1 : 0 }}
               animate={{ y: 0, opacity: 1 }}
               className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900"

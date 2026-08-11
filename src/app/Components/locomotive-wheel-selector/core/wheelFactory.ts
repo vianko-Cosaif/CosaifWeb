@@ -1,6 +1,6 @@
 import { WheelCount, WheelData, WheelOverride, WheelSide, WheelStatus } from './types';
 
-export const SUPPORTED_WHEEL_COUNTS: WheelCount[] = [4, 6, 8, 12];
+export const SUPPORTED_WHEEL_COUNTS: WheelCount[] = [8, 12];
 
 export function getAxleCount(wheelCount: WheelCount): number {
   return wheelCount / 2;

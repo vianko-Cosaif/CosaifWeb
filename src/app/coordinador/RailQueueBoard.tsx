@@ -593,6 +593,7 @@ export default function RailQueueBoardPage({
                     return (
                       <motion.div
                         key={n.id}
+                        layout
                         initial={{ y: prefersReduced ? 0 : 14, opacity: prefersReduced ? 1 : 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         exit={{ y: prefersReduced ? 0 : -14, opacity: prefersReduced ? 1 : 0 }}
