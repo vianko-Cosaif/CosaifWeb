@@ -45,10 +45,19 @@ type TornoServiceRecord = {
   movimientoId?: number | string | null;
   ruedaSolicitudId?: number | string | null;
   localidadId?: number | string | null;
+  rondaNumero?: number | string | null;
+  orden?: number | string | null;
+  movimientoRondaNumero?: number | string | null;
+  movimientoOrden?: number | string | null;
+  movimientoFechaSolicitud?: string | null;
   numeroLocomotora?: number | string | null;
   locomotiveNumber?: number | string | null;
   locomotora?: number | string | null;
   movimiento?: MovimientoRecord | null;
+  ronda?: {
+    rondaNumero?: number | string | null;
+    orden?: number | string | null;
+  } | null;
   servicio?: {
     id?: number | string | null;
     movimientoId?: number | string | null;
@@ -91,6 +100,10 @@ type MovimientoRecord = {
   fechaFin?: string | null;
   createdAt?: string | null;
   instrucciones?: string | null;
+  ronda?: {
+    rondaNumero?: number | string | null;
+    orden?: number | string | null;
+  } | null;
 };
 
 type RondaInfoRecord = {
@@ -485,6 +498,36 @@ function getTornoQueueCreatedTime(item: RondaOut): number {
   return Number.isFinite(numericId) ? numericId : Number.MAX_SAFE_INTEGER;
 }
 
+function getTornoQueueStatusRank(item: RondaOut): number {
+  const status = String(item.movimiento?.estado ?? "").trim().toUpperCase();
+  if (status === "EN_PROCESO") return 0;
+  if (status === "DETENIDO") return 2;
+  return 1;
+}
+
+function getTornoQueueNumber(value: unknown): number {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : Number.MAX_SAFE_INTEGER;
+}
+
+function sortTornoQueue(rows: RondaOut[]) {
+  return [...rows].sort((a, b) => {
+    const statusDiff = getTornoQueueStatusRank(a) - getTornoQueueStatusRank(b);
+    if (statusDiff !== 0) return statusDiff;
+
+    const rondaDiff = getTornoQueueNumber(a.rondaNumero) - getTornoQueueNumber(b.rondaNumero);
+    if (rondaDiff !== 0) return rondaDiff;
+
+    const ordenDiff = getTornoQueueNumber(a.orden) - getTornoQueueNumber(b.orden);
+    if (ordenDiff !== 0) return ordenDiff;
+
+    const timeDiff = getTornoQueueCreatedTime(a) - getTornoQueueCreatedTime(b);
+    if (timeDiff !== 0) return timeDiff;
+
+    return a.id - b.id;
+  });
+}
+
 function hasVisibleLocomotive(value: unknown) {
   const text = String(value ?? "").trim();
   return Boolean(text && text !== "-" && text !== "â€”" && text.toUpperCase() !== "NULL");
@@ -684,6 +727,8 @@ export async function GET(req: NextRequest) {
       const records = extractArray(await readTextAsJsonSafe(r)) as TornoServiceRecord[];
       const out = await Promise.all(records.map(async (record, index): Promise<RondaOut | null> => {
         const movimientoRecord = asRecord(record.movimiento);
+        const recordRonda = asRecord(record.ronda);
+        const movimientoRonda = asRecord(movimientoRecord.ronda);
         const servicioRecord = asRecord(record.servicio);
         const rondaServicioRecord = asRecord(record.rondaServicio);
         const status = String(record.historialStatus ?? record.status ?? "SOLICITADO").toUpperCase();
@@ -703,6 +748,19 @@ export async function GET(req: NextRequest) {
           index + 1,
         );
         if (!servicioId) return null;
+
+        let rondaNumero = firstPositiveNumber(
+          record.movimientoRondaNumero,
+          record.rondaNumero,
+          recordRonda.rondaNumero,
+          movimientoRonda.rondaNumero,
+        ) ?? 1;
+        let orden = firstPositiveNumber(
+          record.movimientoOrden,
+          record.orden,
+          recordRonda.orden,
+          movimientoRonda.orden,
+        ) ?? index + 1;
 
         const recordEmpresa = asRecord(movimientoRecord.empresa);
         const recordEmpresaId = firstPositiveNumber(movimientoRecord.empresaId, recordEmpresa.id);
@@ -736,6 +794,9 @@ export async function GET(req: NextRequest) {
             if (rr.ok) {
               const detail = (await readTextAsJsonSafe(rr)) as MovimientoDetailRecord;
               const mv = detail?.movimiento ?? detail;
+              const mvRonda = asRecord(asRecord(mv).ronda);
+              rondaNumero = firstPositiveNumber(mvRonda.rondaNumero, rondaNumero) ?? rondaNumero;
+              orden = firstPositiveNumber(mvRonda.orden, orden) ?? orden;
               localidadMovimientoId = firstPositiveNumber(mv?.localidad?.id, mv?.localidadId) ?? localidadMovimientoId;
               empresa = mv?.empresa ? { id: Number(mv.empresa.id ?? 0), nombre: String(mv.empresa.nombre ?? "—") } : null;
               const visibleId = firstPositiveNumber(mv?.folioLocalidad, mv?.id) ?? movimientoId;
@@ -773,13 +834,13 @@ export async function GET(req: NextRequest) {
         }
         return {
           id: -Math.abs(servicioId),
-          rondaNumero: 1,
-          orden: index + 1,
+          rondaNumero,
+          orden,
           concluido: isTornoConcluido(status),
           empresa,
           movimiento,
           movimientoId,
-          createdAt: record.creadoEn ?? record.inicio ?? null,
+          createdAt: record.movimientoFechaSolicitud ?? movimiento?.fechaSolicitud ?? record.creadoEn ?? record.inicio ?? null,
           source: "torno",
         };
       }));
@@ -791,20 +852,10 @@ export async function GET(req: NextRequest) {
         filtered.sort((a, b) => getTornoQueueCreatedTime(b) - getTornoQueueCreatedTime(a));
       } else {
         // Activos/pendientes: FIFO (oldest first), igual a CosaifLogistcs
-        filtered.sort((a, b) => {
-          const diff = getTornoQueueCreatedTime(a) - getTornoQueueCreatedTime(b);
-          if (diff !== 0) return diff;
-          return a.id - b.id; // Desempate por ID (que son negativos)
-        });
+        filtered.splice(0, filtered.length, ...sortTornoQueue(filtered));
       }
 
-      // Re-asignar orden secuencialmente para que el frontend lo ordene de forma estable
-      const finalized = filtered.map((item, idx) => ({
-        ...item,
-        orden: idx + 1,
-      }));
-
-      return NextResponse.json(finalized, { status: 200 });
+      return NextResponse.json(filtered, { status: 200 });
     }
 
     if (isTorreonLocalidad(localidadIdParam)) {

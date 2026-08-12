@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
@@ -70,6 +70,13 @@ type PanelData = {
   torneados: MovementRow[];
 };
 
+type PanelLoadingState = {
+  movements: boolean;
+  torneados: boolean;
+  incidents: boolean;
+  tracks: boolean;
+};
+
 type PatioTrackCatalogItem = {
   id: string;
   label: string;
@@ -89,6 +96,7 @@ type HeaderEvent = {
   time: string;
   occurredAtMs: number;
   tone: HeaderEventTone;
+  firstSeenAtMs?: number;
 };
 
 type ChangeKind = "updated" | "moved" | "removed";
@@ -166,6 +174,45 @@ function panelClass(extra = "") {
 
 const RIGHT_PANEL_ROTATION_MS = 20_000;
 const KPI_PANEL_ROTATION_MS = 20_000;
+const panelEase = [0.22, 1, 0.36, 1] as const;
+const panelEaseIn = [0.4, 0, 1, 1] as const;
+
+const panelMotion = {
+  header: {
+    initial: { opacity: 0, y: -20 },
+    animate: { opacity: 1, y: 0 },
+    transition: { duration: 0.4, ease: panelEase },
+  },
+  left: {
+    initial: { opacity: 0, x: -30 },
+    animate: { opacity: 1, x: 0 },
+    transition: { duration: 0.5, delay: 0.1, ease: panelEase },
+  },
+  center: {
+    initial: { opacity: 0, scale: 0.965 },
+    animate: { opacity: 1, scale: 1 },
+    transition: { duration: 0.42, delay: 0.16, ease: panelEase },
+  },
+  right: {
+    initial: { opacity: 0, x: 30 },
+    animate: { opacity: 1, x: 0 },
+    transition: { duration: 0.5, delay: 0.18, ease: panelEase },
+  },
+};
+
+const listContainerMotion = {
+  hidden: { opacity: 1 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.055, delayChildren: 0.04 },
+  },
+};
+
+const listItemMotion = {
+  hidden: { opacity: 0, y: 10, scale: 0.985 },
+  show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.26, ease: panelEase } },
+  exit: { opacity: 0, x: 18, scale: 0.98, transition: { duration: 0.18, ease: panelEaseIn } },
+};
 
 export default function PanelGrafico({
   backHref = "/coordinador",
@@ -175,12 +222,20 @@ export default function PanelGrafico({
   autoMs = 120_000,
 }: PanelGraficoProps) {
   const [data, setData] = useState<PanelData>(EMPTY_DATA);
-  const [loading, setLoading] = useState(true);
+  const [sectionLoading, setSectionLoading] = useState<PanelLoadingState>(() => ({
+    movements: true,
+    torneados: true,
+    incidents: true,
+    tracks: true,
+  }));
   const [error, setError] = useState("");
   const [mounted, setMounted] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [rightPanelMode, setRightPanelMode] = useState<"movimientos" | "torneados">("movimientos");
   const [rightPanelTimerKey, setRightPanelTimerKey] = useState(0);
+  const [showIncidentsPanel, setShowIncidentsPanel] = useState(true);
+  const [showKpiPanel, setShowKpiPanel] = useState(true);
+  const [rightPanelWidth, setRightPanelWidth] = useState(390);
   const [changedKeys, setChangedKeys] = useState<Map<string, ChangeKind>>(() => new Map());
   const [headerEvents, setHeaderEvents] = useState<HeaderEvent[]>([]);
   const [patioTrackCatalog, setPatioTrackCatalog] = useState<PatioTrackCatalogItem[]>([]);
@@ -189,122 +244,149 @@ export default function PanelGrafico({
   const previousRowsRef = useRef<Map<string, PanelRow>>(new Map());
   const firstLoadRef = useRef(true);
   const changeTimerRef = useRef<number | null>(null);
+  const loading = sectionLoading.movements || sectionLoading.torneados || sectionLoading.incidents || sectionLoading.tracks;
+
+  const startRightPanelResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = rightPanelWidth;
+    const handleMove = (moveEvent: PointerEvent) => {
+      const nextWidth = clampNumber(startWidth - (moveEvent.clientX - startX), 300, Math.min(620, window.innerWidth * 0.48));
+      setRightPanelWidth(nextWidth);
+    };
+    const handleUp = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+  }, [rightPanelWidth]);
+
+  const reconcilePanelData = useCallback((nextData: PanelData) => {
+    const { signatures, positions, rows } = buildPanelSnapshots(nextData);
+    if (!firstLoadRef.current) {
+      const changed = new Map<string, ChangeKind>();
+      signatures.forEach((signature, key) => {
+        if (previousSignaturesRef.current.get(key) !== signature) changed.set(key, "updated");
+      });
+      positions.forEach((position, key) => {
+        if (previousPositionsRef.current.get(key) !== position) changed.set(key, "moved");
+      });
+      previousSignaturesRef.current.forEach((_, key) => {
+        if (!signatures.has(key)) changed.set(key, "removed");
+      });
+      if (changed.size) {
+        setChangedKeys(changed);
+        if (changeTimerRef.current) window.clearTimeout(changeTimerRef.current);
+        changeTimerRef.current = window.setTimeout(() => setChangedKeys(new Map()), 2200);
+      }
+
+      const newEvents = buildRealtimeHeaderEvents({
+        nextData,
+        previousRows: previousRowsRef.current,
+        previousSignatures: previousSignaturesRef.current,
+        nextSignatures: signatures,
+      });
+      if (newEvents.length) {
+        setHeaderEvents((current) => dedupeRowsByKey([...newEvents, ...current]).slice(0, 10));
+      }
+    } else {
+      setHeaderEvents(buildHeaderEvents(nextData));
+    }
+
+    previousSignaturesRef.current = signatures;
+    previousPositionsRef.current = positions;
+    previousRowsRef.current = rows;
+    firstLoadRef.current = false;
+  }, []);
 
   const load = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) setRefreshing(true);
-    else setLoading(true);
+    setSectionLoading({ movements: true, torneados: true, incidents: true, tracks: true });
     setError("");
-    try {
-      const query = new URLSearchParams();
-      if (localidadId) query.set("localidadId", String(localidadId));
-      if (empresaId) query.set("empresaId", String(empresaId));
 
-      const movementQuery = new URLSearchParams(query);
-      movementQuery.set("estado", "pendientes");
-      movementQuery.set("entity", "movimientos");
-      movementQuery.set("alcance", "localidad");
+    const query = new URLSearchParams();
+    if (localidadId) query.set("localidadId", String(localidadId));
+    if (empresaId) query.set("empresaId", String(empresaId));
 
-      const torneadoQuery = new URLSearchParams(query);
-      torneadoQuery.set("estado", "pendientes");
-      torneadoQuery.set("entity", "torneados");
-      torneadoQuery.set("alcance", "localidad");
+    const movementQuery = new URLSearchParams(query);
+    movementQuery.set("estado", "pendientes");
+    movementQuery.set("entity", "movimientos");
+    movementQuery.set("alcance", "localidad");
 
-      const incidentQuery = new URLSearchParams(query);
-      incidentQuery.set("estado", "ABIERTO");
-      incidentQuery.set("page", "1");
-      incidentQuery.set("pageSize", "35");
+    const torneadoQuery = new URLSearchParams(query);
+    torneadoQuery.set("estado", "pendientes");
+    torneadoQuery.set("entity", "torneados");
+    torneadoQuery.set("alcance", "localidad");
 
-      const inactiveIncidentQuery = new URLSearchParams(query);
-      inactiveIncidentQuery.set("estado", "PASADOS");
-      inactiveIncidentQuery.set("page", "1");
-      inactiveIncidentQuery.set("pageSize", "25");
+    const incidentQuery = new URLSearchParams(query);
+    incidentQuery.set("estado", "ABIERTO");
+    incidentQuery.set("page", "1");
+    incidentQuery.set("pageSize", "35");
 
-      const tracksUrl = localidadId ? `/bff/vias/localidad/${encodeURIComponent(String(localidadId))}/lite` : "/bff/vias/lite";
+    const inactiveIncidentQuery = new URLSearchParams(query);
+    inactiveIncidentQuery.set("estado", "PASADOS");
+    inactiveIncidentQuery.set("page", "1");
+    inactiveIncidentQuery.set("pageSize", "25");
 
-      const [movementsResult, torneadosResult, incidentsResult, inactiveIncidentsResult, tracksResult] = await Promise.allSettled([
-        fetch(`/api/cliente/rondas?${movementQuery.toString()}`, { cache: "no-store", credentials: "include" }).then(readJsonSafe),
-        fetch(`/api/cliente/rondas?${torneadoQuery.toString()}`, { cache: "no-store", credentials: "include" }).then(readJsonSafe),
+    const tracksUrl = localidadId ? `/bff/vias/localidad/${encodeURIComponent(String(localidadId))}/lite` : "/bff/vias/lite";
+    let nextMovementsRaw: MovementRow[] | null = null;
+    let nextTorneadosRaw: MovementRow[] | null = null;
+    let nextIncidents: IncidentRow[] | null = null;
+
+    const commitRows = () => {
+      setData((current) => {
+        const incidents = nextIncidents ?? current.incidents;
+        const nextData = {
+          incidents,
+          movements: nextMovementsRaw ? annotateRowsWithIncidents(nextMovementsRaw, incidents) : annotateRowsWithIncidents(current.movements, incidents),
+          torneados: nextTorneadosRaw ? annotateRowsWithIncidents(nextTorneadosRaw, incidents) : annotateRowsWithIncidents(current.torneados, incidents),
+        };
+        reconcilePanelData(nextData);
+        return nextData;
+      });
+    };
+
+    const tasks = [
+      fetch(`/api/cliente/rondas?${movementQuery.toString()}`, { cache: "no-store", credentials: "include" })
+        .then(readJsonSafe)
+        .then((result) => {
+          nextMovementsRaw = (extractArray(result).map(mapMovement).filter(Boolean).slice(0, 30) as MovementRow[]);
+          commitRows();
+        })
+        .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "No se pudieron cargar movimientos."))
+        .finally(() => setSectionLoading((current) => ({ ...current, movements: false }))),
+      fetch(`/api/cliente/rondas?${torneadoQuery.toString()}`, { cache: "no-store", credentials: "include" })
+        .then(readJsonSafe)
+        .then((result) => {
+          nextTorneadosRaw = (extractArray(result).map(mapMovement).filter(Boolean).slice(0, 30) as MovementRow[]);
+          commitRows();
+        })
+        .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "No se pudieron cargar torneados."))
+        .finally(() => setSectionLoading((current) => ({ ...current, torneados: false }))),
+      Promise.all([
         fetch(`/api/incidentes?${incidentQuery.toString()}`, { cache: "no-store", credentials: "include" }).then(readJsonSafe),
         fetch(`/api/incidentes?${inactiveIncidentQuery.toString()}`, { cache: "no-store", credentials: "include" }).then(readJsonSafe),
-        fetch(tracksUrl, { cache: "no-store", credentials: "include" }).then(readJsonSafe),
-      ]);
+      ])
+        .then(([activeResult, inactiveResult]) => {
+          nextIncidents = filterRecentIncidents(
+            sortIncidentsByState(dedupeRowsByKey([...extractArray(activeResult), ...extractArray(inactiveResult)].map(mapIncident).filter(Boolean) as IncidentRow[]))
+          ).slice(0, 40);
+          commitRows();
+        })
+        .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "No se pudieron cargar incidentes."))
+        .finally(() => setSectionLoading((current) => ({ ...current, incidents: false }))),
+      fetch(tracksUrl, { cache: "no-store", credentials: "include" })
+        .then(readJsonSafe)
+        .then((result) => {
+          setPatioTrackCatalog(dedupePatioTrackCatalog(extractArray(result).map(mapViaToPatioTrack).filter(Boolean) as PatioTrackCatalogItem[]));
+        })
+        .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "No se pudieron cargar vias."))
+        .finally(() => setSectionLoading((current) => ({ ...current, tracks: false }))),
+    ];
 
-      const movementsRaw = movementsResult.status === "fulfilled" ? extractArray(movementsResult.value) : [];
-      const torneadosRaw = torneadosResult.status === "fulfilled" ? extractArray(torneadosResult.value) : [];
-      const incidentsRaw = incidentsResult.status === "fulfilled" ? extractArray(incidentsResult.value) : [];
-      const inactiveIncidentsRaw = inactiveIncidentsResult.status === "fulfilled" ? extractArray(inactiveIncidentsResult.value) : [];
-      const tracksRaw = tracksResult.status === "fulfilled" ? extractArray(tracksResult.value) : [];
-      const incidents = filterRecentIncidents(
-        sortIncidentsByState(dedupeRowsByKey([...incidentsRaw, ...inactiveIncidentsRaw].map(mapIncident).filter(Boolean) as IncidentRow[]))
-      ).slice(0, 40);
-      const nextTrackCatalog = dedupePatioTrackCatalog(tracksRaw.map(mapViaToPatioTrack).filter(Boolean) as PatioTrackCatalogItem[]);
-
-      const nextData = {
-        movements: annotateRowsWithIncidents(movementsRaw.map(mapMovement).filter(Boolean).slice(0, 30) as MovementRow[], incidents),
-        torneados: annotateRowsWithIncidents(torneadosRaw.map(mapMovement).filter(Boolean).slice(0, 30) as MovementRow[], incidents),
-        incidents,
-      };
-
-      const nextEntries = [
-        ...nextData.movements.map((row) => [row.key, row.signature] as const),
-        ...nextData.torneados.map((row) => [row.key, row.signature] as const),
-        ...nextData.incidents.map((row) => [row.key, row.signature] as const),
-      ];
-      const nextPositions = new Map<string, number>();
-      nextData.movements.forEach((row, index) => nextPositions.set(row.key, index));
-      nextData.torneados.forEach((row, index) => nextPositions.set(row.key, index + 1000));
-      nextData.incidents.forEach((row, index) => nextPositions.set(row.key, index + 2000));
-      const nextSignatures = new Map<string, string>();
-      nextEntries
-        .forEach(([key, signature]) => nextSignatures.set(key, signature));
-      const nextRows = buildRowLookup(nextData);
-
-      if (!firstLoadRef.current) {
-        const changed = new Map<string, ChangeKind>();
-        nextSignatures.forEach((signature, key) => {
-          if (previousSignaturesRef.current.get(key) !== signature) changed.set(key, "updated");
-        });
-        nextPositions.forEach((position, key) => {
-          if (previousPositionsRef.current.get(key) !== position) changed.set(key, "moved");
-        });
-        previousSignaturesRef.current.forEach((_, key) => {
-          if (!nextSignatures.has(key)) changed.set(key, "removed");
-        });
-        if (changed.size) {
-          setChangedKeys(changed);
-          if (changeTimerRef.current) window.clearTimeout(changeTimerRef.current);
-          changeTimerRef.current = window.setTimeout(() => setChangedKeys(new Map()), 2200);
-        }
-
-        const newEvents = buildRealtimeHeaderEvents({
-          nextData,
-          previousRows: previousRowsRef.current,
-          previousSignatures: previousSignaturesRef.current,
-          previousPositions: previousPositionsRef.current,
-          nextSignatures,
-          nextPositions,
-        });
-        if (newEvents.length) {
-          setHeaderEvents((current) => dedupeRowsByKey([...newEvents, ...current]).slice(0, 10));
-        }
-      } else {
-        setHeaderEvents(buildHeaderEvents(nextData));
-      }
-
-      previousSignaturesRef.current = nextSignatures;
-      previousPositionsRef.current = nextPositions;
-      previousRowsRef.current = nextRows;
-      firstLoadRef.current = false;
-      setData(nextData);
-      setPatioTrackCatalog(nextTrackCatalog);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "No se pudo cargar la informacion del panel.");
-      setData(EMPTY_DATA);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [empresaId, localidadId]);
+    void Promise.allSettled(tasks).finally(() => setRefreshing(false));
+  }, [empresaId, localidadId, reconcilePanelData]);
 
   useEffect(() => {
     void load();
@@ -366,8 +448,20 @@ export default function PanelGrafico({
 
   const content = (
     <main className="fixed inset-0 z-[2147483647] isolate h-dvh w-screen overflow-hidden bg-[var(--app-bg)] text-[var(--app-text)]">
-      <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,.16),transparent_34%),linear-gradient(135deg,var(--app-bg),var(--app-surface-subtle))]" />
-      <div aria-hidden className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(148,163,184,.12)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,.10)_1px,transparent_1px)] bg-[size:32px_32px] opacity-40 dark:opacity-20" />
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,.16),transparent_34%),linear-gradient(135deg,var(--app-bg),var(--app-surface-subtle))]"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+      />
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(148,163,184,.12)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,.10)_1px,transparent_1px)] bg-[size:32px_32px] dark:opacity-20"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 0.4 }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+      />
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -377,6 +471,9 @@ export default function PanelGrafico({
       >
         <motion.header
           layout
+          initial={panelMotion.header.initial}
+          animate={panelMotion.header.animate}
+          transition={panelMotion.header.transition}
           className="flex shrink-0 items-center justify-between gap-3 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)]/95 px-3 py-2.5 shadow-[0_14px_42px_rgba(15,23,42,.12)] backdrop-blur-xl dark:shadow-[0_14px_42px_rgba(0,0,0,.35)]"
         >
           <div className="flex min-w-0 items-center gap-3">
@@ -398,6 +495,22 @@ export default function PanelGrafico({
           </div>
           <LiveEventTicker events={headerEvents} loading={loading} />
           <div className="flex items-center gap-2 text-xs font-black text-[var(--app-text-muted)]">
+            <button
+              type="button"
+              onClick={() => setShowIncidentsPanel((value) => !value)}
+              className={`hidden h-9 items-center rounded-xl border px-3 transition sm:inline-flex ${showIncidentsPanel ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/35 dark:text-amber-200" : "border-[var(--app-border)] bg-[var(--app-surface-subtle)] text-[var(--app-text-muted)]"}`}
+              aria-pressed={showIncidentsPanel}
+            >
+              Incidentes
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowKpiPanel((value) => !value)}
+              className={`hidden h-9 items-center rounded-xl border px-3 transition sm:inline-flex ${showKpiPanel ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/35 dark:text-emerald-200" : "border-[var(--app-border)] bg-[var(--app-surface-subtle)] text-[var(--app-text-muted)]"}`}
+              aria-pressed={showKpiPanel}
+            >
+              KPIs
+            </button>
             {error ? (
               <span className="hidden rounded-full bg-rose-50 px-3 py-1 text-rose-700 dark:bg-rose-950/45 dark:text-rose-200 sm:inline-flex">
                 {error}
@@ -419,30 +532,59 @@ export default function PanelGrafico({
           </div>
         </motion.header>
 
-        <section className="grid min-h-0 flex-1 gap-2 lg:grid-cols-[minmax(210px,240px)_minmax(0,1fr)] xl:grid-cols-[minmax(220px,16vw)_minmax(620px,1fr)_minmax(300px,22vw)] 2xl:grid-cols-[minmax(250px,310px)_minmax(820px,1fr)_minmax(360px,440px)]">
-          <IncidentColumn incidents={data.incidents} metrics={metrics} loading={loading} changedKeys={changedKeys} />
-          <div className="min-h-0 h-full lg:col-span-1 xl:col-span-1">
+        <section
+          className="grid min-h-0 flex-1 gap-2"
+          style={{
+            gridTemplateColumns: `${showIncidentsPanel ? "minmax(210px, min(16vw, 300px)) " : ""}minmax(0, 1fr) minmax(300px, ${rightPanelWidth}px)`,
+          }}
+        >
+          <AnimatePresence initial={false}>
+            {showIncidentsPanel ? (
+              <motion.div
+                key="incidents-panel"
+                className="min-h-0"
+                initial={{ ...panelMotion.left.initial, width: 0 }}
+                animate={{ ...panelMotion.left.animate, width: "auto" }}
+                exit={{ opacity: 0, x: -16, width: 0 }}
+                transition={panelMotion.left.transition}
+              >
+                <IncidentColumn incidents={data.incidents} metrics={metrics} loading={sectionLoading.incidents} changedKeys={changedKeys} />
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+          <motion.div className="min-h-0 h-full" {...panelMotion.center}>
             <WorkArea
               metrics={metrics}
               movements={data.movements}
               torneados={data.torneados}
               trackCatalog={patioTrackCatalog}
+              showKpis={showKpiPanel}
+              loading={sectionLoading.movements || sectionLoading.torneados || sectionLoading.tracks}
               changedKeys={changedKeys}
             />
-          </div>
-          <div className="min-h-0 h-full lg:col-span-2 xl:col-span-1">
+          </motion.div>
+          <motion.div className="relative min-h-0 h-full" {...panelMotion.right}>
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Redimensionar panel derecho"
+              onPointerDown={startRightPanelResize}
+              className="absolute -left-1.5 top-0 z-20 hidden h-full w-3 cursor-col-resize items-center justify-center xl:flex"
+            >
+              <span className="h-20 w-1 rounded-full bg-[var(--app-border)] transition hover:bg-emerald-400" />
+            </div>
             <RightOperationsPanel
               mode={rightPanelMode}
               movements={data.movements}
               torneados={data.torneados}
               metrics={metrics}
-              loading={loading}
+              loading={rightPanelMode === "movimientos" ? sectionLoading.movements : sectionLoading.torneados}
               changedKeys={changedKeys}
               timerKey={rightPanelTimerKey}
               rotationMs={RIGHT_PANEL_ROTATION_MS}
               onModeChange={changeRightPanelMode}
             />
-          </div>
+          </motion.div>
         </section>
       </motion.div>
     </main>
@@ -452,6 +594,7 @@ export default function PanelGrafico({
 }
 
 function LiveEventTicker({ events, loading }: { events: HeaderEvent[]; loading: boolean }) {
+  const [cycleCount, setCycleCount] = useState(0);
   const items = events.length
     ? events
     : [{
@@ -467,31 +610,42 @@ function LiveEventTicker({ events, loading }: { events: HeaderEvent[]; loading: 
       }];
   const loopItems = [...items, ...items];
   const duration = Math.max(42, items.length * 8.5);
+  const tickerKey = events.map((event) => event.key).join("|") || "empty";
+
+  useEffect(() => {
+    setCycleCount(0);
+  }, [tickerKey]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setCycleCount((current) => current + 1), duration * 1000);
+    return () => window.clearInterval(interval);
+  }, [duration, tickerKey]);
 
   return (
     <div className="relative hidden min-w-[220px] flex-1 overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-subtle)]/85 px-2 py-1.5 shadow-inner md:block">
       <div aria-hidden className="pointer-events-none absolute inset-y-0 left-0 z-10 w-10 bg-gradient-to-r from-[var(--app-surface-subtle)] to-transparent" />
       <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-l from-[var(--app-surface-subtle)] to-transparent" />
       <motion.div
-        key={events.map((event) => event.key).join("|") || "empty"}
+        key={tickerKey}
         className="flex w-max items-center gap-2 whitespace-nowrap"
         initial={{ x: "0%" }}
         animate={{ x: "-50%" }}
         transition={{ duration, ease: "linear", repeat: Infinity }}
       >
         {loopItems.map((event, index) => {
+          const highlighted = Date.now() - (event.firstSeenAtMs ?? event.occurredAtMs) < 2 * 60 * 60 * 1000 || cycleCount < 15;
           const relativeIndex = index % items.length;
-          const ageClass = relativeIndex < 2
+          const ageClass = highlighted
             ? "bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,.16),0_0_16px_rgba(16,185,129,.45)] animate-pulse"
             : relativeIndex < 6
-              ? "bg-blue-500 shadow-[0_0_0_3px_rgba(59,130,246,.13)]"
+              ? "bg-blue-500/75 shadow-[0_0_0_3px_rgba(59,130,246,.10)]"
               : "bg-slate-400 opacity-55";
           return (
           <span
             key={`${event.key}-${index}`}
             className={`inline-flex max-w-[520px] items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-black shadow-sm ${tickerTone[event.tone]}`}
           >
-            <span className={`h-2 w-2 shrink-0 rounded-full ${ageClass}`} title={relativeIndex < 2 ? "Evento nuevo" : relativeIndex < 6 ? "Evento reciente" : "Evento anterior"} />
+            <span className={`h-2 w-2 shrink-0 rounded-full ${ageClass}`} title={highlighted ? "Evento destacado" : "Evento anterior"} />
             <span className="uppercase tracking-[.12em] opacity-75">{event.label}</span>
             <span className="min-w-0 max-w-[92px] truncate text-[var(--app-text)] dark:text-white">{event.subject}</span>
             <span className="rounded-full bg-white/70 px-1.5 py-0.5 uppercase tracking-wide text-current ring-1 ring-current/10 dark:bg-black/20">{event.typeLabel}</span>
@@ -545,8 +699,9 @@ function IncidentColumn({
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
         {loading ? <LoadingRows /> : null}
         {!loading && incidents.length === 0 ? <EmptyRows text="No hay incidentes registrados." /> : null}
+        <motion.div variants={listContainerMotion} initial="hidden" animate="show">
         <AnimatePresence initial={false}>
-        {!loading && incidents.map((incident) => {
+        {!loading && incidents.map((incident, index) => {
           const rowKey = incident.key;
           const changeKind = changedKeys.get(rowKey);
           const isInactive = !incident.active;
@@ -554,7 +709,7 @@ function IncidentColumn({
           <motion.article
             key={rowKey}
             layout
-            initial={{ opacity: 0, y: 14, scale: 0.985 }}
+            initial={listItemMotion.hidden}
             animate={{
               opacity: 1,
               y: 0,
@@ -567,8 +722,8 @@ function IncidentColumn({
                     ? "0 0 0 1px rgba(245,158,11,0.36)"
                     : "0 0 0 0 rgba(0,0,0,0)",
             }}
-            exit={{ opacity: 0, x: -18, scale: 0.98 }}
-            transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.8 }}
+            exit={listItemMotion.exit}
+            transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.8, delay: Math.min(index * 0.035, 0.28) }}
             className={`relative grid min-w-0 grid-cols-[8px_minmax(0,1fr)_34px] items-center gap-1.5 rounded-lg border border-transparent px-1.5 py-1 transition hover:border-[var(--app-border)] hover:bg-[var(--app-surface-muted)] 2xl:grid-cols-[10px_minmax(0,1fr)_40px] 2xl:py-1.5 ${
               isInactive ? "opacity-55 grayscale-[.2]" : ""
             } ${
@@ -589,6 +744,7 @@ function IncidentColumn({
         );
         })}
         </AnimatePresence>
+        </motion.div>
       </div>
       <div className="shrink-0 truncate border-t border-[var(--app-border)] px-2.5 py-1.5 text-[10px] font-semibold text-[var(--app-text-muted)]">
         Fuente <span className="font-black text-blue-700 dark:text-blue-300">real</span>
@@ -602,18 +758,35 @@ function WorkArea({
   movements,
   torneados,
   trackCatalog,
+  showKpis,
+  loading,
   changedKeys,
 }: {
   metrics: { totalMovements: number; enProceso: number; detenidos: number; enCola: number; sla: number };
   movements: MovementRow[];
   torneados: MovementRow[];
   trackCatalog: PatioTrackCatalogItem[];
+  showKpis: boolean;
+  loading: boolean;
   changedKeys: Map<string, ChangeKind>;
 }) {
   const hasChanges = changedKeys.size > 0;
   return (
-    <section className="flex min-h-0 flex-col gap-1">
-      <KpiCarousel metrics={metrics} movements={movements} torneados={torneados} active={hasChanges} />
+    <section className="flex h-full min-h-0 flex-col gap-1">
+      <AnimatePresence initial={false}>
+        {showKpis ? (
+          <motion.div
+            key="kpi-carousel"
+            initial={{ opacity: 0, y: -12, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: "auto" }}
+            exit={{ opacity: 0, y: -12, height: 0 }}
+            transition={{ duration: 0.24, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            <KpiCarousel metrics={metrics} movements={movements} torneados={torneados} active={hasChanges} />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
       <div className={`${panelClass("bg-[linear-gradient(180deg,var(--app-surface),var(--app-surface-subtle))]")} flex min-h-0 flex-1 flex-col overflow-hidden`}>
         <div className="shrink-0 px-2.5 py-1">
           <div className="flex flex-col gap-1.5 md:flex-row md:items-center md:justify-between">
@@ -633,9 +806,15 @@ function WorkArea({
           </div>
         </div>
         <div className="min-h-0 flex-1 px-2.5 pb-1">
-          <div className="h-full min-h-[420px] overflow-hidden rounded-2xl border border-[var(--app-border)] bg-[radial-gradient(circle_at_center,rgba(16,185,129,.10),transparent_42%),linear-gradient(135deg,var(--app-surface),var(--app-surface-subtle))] shadow-inner">
+          <motion.div
+            className="relative h-full min-h-0 overflow-hidden rounded-2xl border border-[var(--app-border)] bg-[radial-gradient(circle_at_center,rgba(16,185,129,.10),transparent_42%),linear-gradient(135deg,var(--app-surface),var(--app-surface-subtle))] shadow-inner"
+            initial={{ opacity: 0, scale: 0.985 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.55, delay: 0.2, ease: panelEase }}
+          >
+            <AsyncPanelLoader visible={loading} label="Sincronizando area de trabajo" />
             <PatioFerroviarioCanvas movements={movements} torneados={torneados} trackCatalog={trackCatalog} changedKeys={changedKeys} />
-          </div>
+          </motion.div>
         </div>
         <div className="grid shrink-0 gap-2 border-t border-[var(--app-border)] px-2.5 py-1 text-[10px] font-black text-[var(--app-text)] md:grid-cols-[1fr_1fr]">
           <div className="flex flex-wrap items-center gap-2">
@@ -650,7 +829,12 @@ function WorkArea({
             <span>Capacidad</span>
             <span>{Math.min(100, (metrics.enProceso + metrics.detenidos) * 10)}%</span>
             <div className="h-4 flex-1 overflow-hidden rounded-full border border-[var(--app-border)] bg-[var(--app-surface-muted)]">
-              <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, (metrics.enProceso + metrics.detenidos) * 10)}%` }} />
+              <motion.div
+                className="h-full rounded-full bg-emerald-500"
+                initial={{ width: "0%" }}
+                animate={{ width: `${Math.min(100, (metrics.enProceso + metrics.detenidos) * 10)}%` }}
+                transition={{ duration: 1, ease: "easeInOut" }}
+              />
             </div>
           </div>
         </div>
@@ -726,7 +910,7 @@ function KpiCarousel({
           initial={{ opacity: 0, y: 8, filter: "blur(5px)" }}
           animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
           exit={{ opacity: 0, y: -8, filter: "blur(5px)" }}
-          transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.28, ease: panelEase }}
           className="grid gap-0 divide-y divide-[var(--app-border)] md:grid-cols-3 md:divide-x md:divide-y-0"
         >
           {currentView.map((item) => (
@@ -853,7 +1037,7 @@ function RightOperationsPanel({
           initial={{ opacity: 0, x: mode === "movimientos" ? -18 : 18, filter: "blur(6px)" }}
           animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
           exit={{ opacity: 0, x: mode === "movimientos" ? 18 : -18, filter: "blur(6px)" }}
-          transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.34, ease: panelEase }}
           className="flex min-h-0 flex-1 flex-col"
         >
           <OperationsTable rows={rows} loading={loading} emptyText={emptyText} changedKeys={changedKeys} showRoundDividers={mode === "movimientos"} />
@@ -888,6 +1072,7 @@ function OperationsTable({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {loading ? <LoadingRows /> : null}
         {!loading && rows.length === 0 ? <EmptyRows text={emptyText} /> : null}
+        <motion.div variants={listContainerMotion} initial="hidden" animate="show">
         <AnimatePresence initial={false}>
         {!loading && rows.map((movement, index) => {
           const rowKey = movement.key;
@@ -926,7 +1111,7 @@ function OperationsTable({
             ) : null}
             <motion.article
               layout
-              initial={{ opacity: 0, y: 14, scale: 0.985 }}
+              initial={listItemMotion.hidden}
               animate={{
                 opacity: 1,
                 y: 0,
@@ -946,8 +1131,8 @@ function OperationsTable({
                         ? "0 8px 18px rgba(15,23,42,0.08)"
                         : "0 4px 10px rgba(15,23,42,0.04)",
               }}
-              exit={{ opacity: 0, x: 18, scale: 0.98 }}
-              transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.8 }}
+              exit={listItemMotion.exit}
+              transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.8, delay: Math.min(index * 0.035, 0.28) }}
               style={{ minHeight: rowMinHeight, paddingTop: rowPaddingY, paddingBottom: rowPaddingY }}
               className={`relative mb-1 grid grid-cols-[minmax(70px,1.05fr)_minmax(56px,.68fr)_minmax(46px,.5fr)_minmax(64px,.68fr)_minmax(42px,.42fr)] items-center gap-1 overflow-hidden rounded-lg border px-1.5 text-center text-[10px] transition hover:brightness-[.985] dark:hover:brightness-110 2xl:grid-cols-[minmax(88px,1.12fr)_minmax(70px,.78fr)_minmax(56px,.58fr)_minmax(78px,.78fr)_minmax(52px,.48fr)] 2xl:px-2 2xl:text-[11px] before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-r-full before:content-[''] ${rowTypeTone[movement.type]} ${rowTypeAccentTone[movement.type]} ${isActiveService ? activeTone.className : ""} ${hasIncident ? "after:pointer-events-none after:absolute after:inset-0 after:bg-[radial-gradient(circle_at_14%_50%,rgba(245,158,11,.18),transparent_38%)] after:content-['']" : ""} ${rowPriorityGlow}`}
             >
@@ -991,6 +1176,7 @@ function OperationsTable({
         );
         })}
         </AnimatePresence>
+        </motion.div>
       </div>
     </>
   );
@@ -1022,17 +1208,23 @@ function KpiBlock({
         <p className="truncate text-[8px] font-black uppercase tracking-wide text-slate-700 dark:text-slate-300 2xl:text-[9px]">{label}</p>
         <motion.p
           key={value}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0, y: 8, scale: 0.92 }}
+          animate={{ opacity: 1, y: 0, scale: [1, 1.08, 1] }}
+          transition={{ duration: 0.42, ease: panelEase }}
           className="text-xl font-black leading-none text-slate-950 dark:text-white 2xl:text-2xl"
         >
           {value}
         </motion.p>
         <p className={`truncate text-[9px] font-black 2xl:text-[10px] ${noteTone}`}>{note}</p>
       </div>
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-blue-100 text-blue-700 ring-1 ring-blue-200 shadow-[0_6px_14px_rgba(37,99,235,.14)] dark:bg-blue-950/45 dark:text-blue-200 dark:ring-blue-900 2xl:h-9 2xl:w-9">
+      <motion.span
+        initial={{ opacity: 0, rotate: -15, scale: 0.9 }}
+        animate={{ opacity: 1, rotate: 0, scale: 1 }}
+        transition={{ duration: 0.38, ease: panelEase }}
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-blue-100 text-blue-700 ring-1 ring-blue-200 shadow-[0_6px_14px_rgba(37,99,235,.14)] dark:bg-blue-950/45 dark:text-blue-200 dark:ring-blue-900 2xl:h-9 2xl:w-9"
+      >
         <Icon className="h-4 w-4 2xl:h-5 2xl:w-5" />
-      </span>
+      </motion.span>
     </motion.div>
   );
 }
@@ -1061,7 +1253,11 @@ type PatioTrack = {
     status: PatioLocomotiveStatus;
     type: MovementType;
     activeIncidentCount: number;
+    placement: PatioPlacement | null;
+    originTrackId: string | null;
+    destinationTrackId: string | null;
   } | null;
+  locomotives: Array<NonNullable<PatioTrack["locomotive"]>>;
   originTrackId: string | null;
   destinationTrackId: string | null;
   placement: PatioPlacement | null;
@@ -1164,10 +1360,20 @@ function PatioFerroviarioCanvas({
 
     let frameId = 0;
     let disposed = false;
+    let sizeVersion = 0;
     const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    const observer =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            sizeVersion += 1;
+            resizeCanvas(canvas, container);
+          })
+        : null;
+    observer?.observe(container);
 
     const draw = (time: number) => {
       if (disposed) return;
+      void sizeVersion;
       resizeCanvas(canvas, container);
       drawPatioCanvas(context, canvas, {
         tracks,
@@ -1184,6 +1390,7 @@ function PatioFerroviarioCanvas({
     frameId = window.requestAnimationFrame(draw);
     return () => {
       disposed = true;
+      observer?.disconnect();
       if (frameId) window.cancelAnimationFrame(frameId);
     };
   }, [changedKeys, selectedTrackId, serviceActivity, tracks]);
@@ -1216,7 +1423,7 @@ function PatioFerroviarioCanvas({
   }, [selectedTrackId, tracks]);
 
   return (
-    <div ref={containerRef} className="relative h-full min-h-[420px] w-full overflow-hidden">
+    <div ref={containerRef} className="relative h-full min-h-0 w-full overflow-hidden">
       <canvas
         ref={canvasRef}
         role="img"
@@ -1229,50 +1436,43 @@ function PatioFerroviarioCanvas({
 
 function buildPatioTracks(movements: MovementRow[], catalog: PatioTrackCatalogItem[]): PatioTrack[] {
   const trackDefinitions = buildPatioTrackDefinitions(movements, catalog);
-  const assigned = new Map<string, { movement: MovementRow; placement: PatioPlacement; originTrackId: string | null; destinationTrackId: string | null }>();
+  const assigned = new Map<string, Array<{ movement: MovementRow; placement: PatioPlacement; originTrackId: string | null; destinationTrackId: string | null }>>();
   movements.forEach((movement) => {
     const placement = movementPatioPlacement(movement);
     if (!placement.trackId) return;
 
-    const current = assigned.get(placement.trackId);
-    if (!current) {
-      assigned.set(placement.trackId, { movement, ...placement });
-      return;
-    }
-
-    if (movement.status === "EN PROCESO" && current.movement.status !== "EN PROCESO") {
-      assigned.set(placement.trackId, { movement, ...placement });
-      return;
-    }
-
-    if (
-      movement.status === "EN PROCESO" &&
-      current.movement.status === "EN PROCESO" &&
-      movement.requestedAtMs >= current.movement.requestedAtMs
-    ) {
-      assigned.set(placement.trackId, { movement, ...placement });
-      return;
-    }
-
-    if (
-      movement.status !== "EN PROCESO" &&
-      current.movement.status !== "EN PROCESO" &&
-      movement.requestedAtMs >= current.movement.requestedAtMs
-    ) {
-      assigned.set(placement.trackId, { movement, ...placement });
-    }
+    const current = assigned.get(placement.trackId) ?? [];
+    if (current.length >= 3) return;
+    current.push({ movement, ...placement });
+    assigned.set(placement.trackId, current);
   });
 
   return trackDefinitions.map((track) => {
-    const assignment = assigned.get(track.id);
-    const movement = assignment?.movement ?? null;
+    const assignments = assigned.get(track.id) ?? [];
+    const mainAssignment = assignments[0] ?? null;
+    const movement = mainAssignment?.movement ?? null;
     const status = movement ? toPatioStatus(movement.status) : "waiting";
+    const mode = assignments.some((item) => item.movement.status === "DETENIDO")
+      ? "blocked"
+      : assignments.some((item) => item.movement.status === "EN PROCESO")
+        ? "entry"
+        : "idle";
+    const locomotives = assignments.map(({ movement: itemMovement, ...itemPlacement }) => ({
+      key: itemMovement.key,
+      number: itemMovement.equipment,
+      status: toPatioStatus(itemMovement.status),
+      type: itemMovement.type,
+      activeIncidentCount: itemMovement.activeIncidentCount,
+      placement: itemPlacement.placement,
+      originTrackId: itemPlacement.originTrackId,
+      destinationTrackId: itemPlacement.destinationTrackId,
+    }));
     return {
       ...track,
-      mode: movement?.status === "DETENIDO" ? "blocked" : movement?.status === "EN PROCESO" ? "entry" : "idle",
-      originTrackId: assignment?.originTrackId ?? null,
-      destinationTrackId: assignment?.destinationTrackId ?? null,
-      placement: assignment?.placement ?? null,
+      mode,
+      originTrackId: mainAssignment?.originTrackId ?? null,
+      destinationTrackId: mainAssignment?.destinationTrackId ?? null,
+      placement: mainAssignment?.placement ?? null,
       locomotive: movement
         ? {
             key: movement.key,
@@ -1280,8 +1480,12 @@ function buildPatioTracks(movements: MovementRow[], catalog: PatioTrackCatalogIt
             status,
             type: movement.type,
             activeIncidentCount: movement.activeIncidentCount,
+            placement: mainAssignment?.placement ?? null,
+            originTrackId: mainAssignment?.originTrackId ?? null,
+            destinationTrackId: mainAssignment?.destinationTrackId ?? null,
           }
         : null,
+      locomotives,
     };
   });
 }
@@ -1415,11 +1619,19 @@ function resizeCanvas(canvas: HTMLCanvasElement, container: HTMLDivElement) {
 
 function patioLayout(width: number, height: number) {
   const mobile = width < 760;
+  const wide = width / Math.max(1, height) > 1.55;
+  const sideReserve = mobile ? 76 : clampNumber(width * 0.105, 96, 150);
+  const topReserve = mobile ? 42 : clampNumber(height * 0.08, 34, 58);
+  const bottomReserve = mobile ? 58 : clampNumber(height * 0.08, 42, 70);
+  const availableWidth = Math.max(240, width - sideReserve * 2);
+  const availableHeight = Math.max(180, height - topReserve - bottomReserve);
+  const radiusByWidth = availableWidth / 2.08;
+  const radiusByHeight = availableHeight / (wide ? 1.52 : 1.36);
+  const outerRadius = clampNumber(Math.min(radiusByWidth, radiusByHeight), 120, Math.max(130, Math.min(width, height) * 0.82));
   const center = {
-    x: mobile ? width * 0.50 : width * 0.48,
-    y: mobile ? height * 0.68 : height * 0.76,
+    x: mobile ? width * 0.50 : width * 0.49,
+    y: clampNumber(topReserve + outerRadius, height * (mobile ? 0.55 : 0.60), height - bottomReserve - outerRadius * 0.24),
   };
-  const outerRadius = Math.min(width * (mobile ? 0.48 : 0.405), height * (mobile ? 0.45 : 0.70));
   const innerRadius = outerRadius * 0.76;
   const turntableRadius = outerRadius * 0.27;
   return { center, outerRadius, innerRadius, turntableRadius, mobile, width, height };
@@ -1638,14 +1850,44 @@ function drawTracks(
     const occupied = Boolean(track.locomotive);
     const selected = track.id === selectedTrackId && occupied;
     const pulse = reducedMotion ? 0 : (Math.sin(time / 420) + 1) / 2;
+    const assignedColor = track.locomotive ? patioMovementColor(track.locomotive.type, colors) : colors.operating;
+    const prominentAssignment = track.locomotive?.status === "moving" || track.locomotive?.status === "stopped";
     ctx.save();
     ctx.lineCap = "round";
     drawRailSegment(ctx, start, end, colors, { tieSpacing: 16, alpha: selected ? 0.82 : occupied ? 0.58 : 0.28 });
 
-    if (track.mode !== "idle" || selected) {
-      ctx.strokeStyle = track.mode === "blocked" ? colors.stopped : selected ? colors.moving : colors.operating;
+    if (prominentAssignment) {
+      ctx.strokeStyle = assignedColor;
+      ctx.lineWidth = selected ? 7 : 5.4;
+      ctx.globalAlpha = selected ? 0.36 + pulse * 0.18 : 0.28 + pulse * 0.12;
+      ctx.shadowColor = assignedColor;
+      ctx.shadowBlur = selected ? 18 + pulse * 8 : 12 + pulse * 6;
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(end.x, end.y);
+      ctx.stroke();
+
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = selected ? 0.95 : 0.82;
+      ctx.lineWidth = selected ? 3.2 : 2.5;
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(end.x, end.y);
+      ctx.stroke();
+    } else if (occupied) {
+      ctx.strokeStyle = assignedColor;
       ctx.lineWidth = selected ? 3.5 : 2.6;
-      ctx.globalAlpha = selected ? 0.34 + pulse * 0.22 : 0.24;
+      ctx.globalAlpha = selected ? 0.34 + pulse * 0.18 : 0.22;
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(end.x, end.y);
+      ctx.stroke();
+    }
+
+    if (track.mode !== "idle" || selected) {
+      ctx.strokeStyle = track.mode === "blocked" ? colors.stopped : selected ? colors.moving : assignedColor;
+      ctx.lineWidth = selected ? 4.2 : 3;
+      ctx.globalAlpha = selected ? 0.5 + pulse * 0.22 : 0.38;
       ctx.beginPath();
       ctx.moveTo(start.x, start.y);
       ctx.lineTo(end.x, end.y);
@@ -1701,6 +1943,8 @@ function drawTrackLabel(
   const pulse = reducedMotion ? 0 : (Math.sin(time / 620) + 1) / 2;
   const statusColor =
     status === "moving" ? colors.moving : status === "stopped" ? colors.stopped : status === "operating" ? colors.operating : colors.waiting;
+  const serviceColor = track.locomotive ? patioMovementColor(track.locomotive.type, colors) : statusColor;
+  const badgeColor = status === "waiting" ? serviceColor : statusColor;
 
   ctx.save();
   ctx.textAlign = "center";
@@ -1716,13 +1960,14 @@ function drawTrackLabel(
   }
 
   const labelText = track.label;
-  ctx.font = "950 14px Inter, Arial, sans-serif";
-  const textWidth = Math.max(22, ctx.measureText(labelText).width + 14);
-  const badgeHeight = 22;
-  const badgeRadius = 8;
+  const prominentAssignment = status === "moving" || status === "stopped";
+  ctx.font = prominentAssignment ? "950 18px Inter, Arial, sans-serif" : "950 14px Inter, Arial, sans-serif";
+  const textWidth = Math.max(prominentAssignment ? 32 : 22, ctx.measureText(labelText).width + (prominentAssignment ? 20 : 14));
+  const badgeHeight = prominentAssignment ? 30 : 22;
+  const badgeRadius = prominentAssignment ? 11 : 8;
 
-  ctx.shadowColor = statusColor;
-  ctx.shadowBlur = status === "moving" || status === "stopped" ? 10 + pulse * 7 : 5;
+  ctx.shadowColor = badgeColor;
+  ctx.shadowBlur = prominentAssignment ? 14 + pulse * 9 : 5;
   ctx.fillStyle =
     status === "moving"
       ? "rgba(37,99,235,.16)"
@@ -1730,24 +1975,28 @@ function drawTrackLabel(
         ? "rgba(225,29,72,.16)"
         : status === "operating"
           ? "rgba(16,185,129,.14)"
-          : "rgba(100,116,139,.12)";
+          : track.locomotive?.type === "Torno"
+            ? "rgba(225,29,72,.13)"
+            : track.locomotive?.type === "Lavado"
+              ? "rgba(14,165,233,.13)"
+              : "rgba(16,185,129,.13)";
   roundRect(ctx, x - textWidth / 2, y - badgeHeight / 2, textWidth, badgeHeight, badgeRadius);
   ctx.fill();
   ctx.shadowBlur = 0;
-  ctx.strokeStyle = statusColor;
-  ctx.globalAlpha = status === "waiting" ? 0.7 : 0.95;
-  ctx.lineWidth = status === "moving" || status === "stopped" ? 2.2 : 1.5;
+  ctx.strokeStyle = badgeColor;
+  ctx.globalAlpha = prominentAssignment ? 1 : 0.74;
+  ctx.lineWidth = prominentAssignment ? 2.8 : 1.5;
   roundRect(ctx, x - textWidth / 2, y - badgeHeight / 2, textWidth, badgeHeight, badgeRadius);
   ctx.stroke();
 
   ctx.globalAlpha = 1;
   ctx.fillStyle = colors.text;
-  ctx.fillText(labelText, x, y + 0.5);
+  ctx.fillText(labelText, x, y + 1);
 
-  if (status === "moving" || status === "stopped") {
-    ctx.fillStyle = statusColor;
+  if (prominentAssignment) {
+    ctx.fillStyle = badgeColor;
     ctx.beginPath();
-    ctx.arc(x + textWidth / 2 - 4, y - badgeHeight / 2 + 4, 4 + pulse * 1.5, 0, Math.PI * 2);
+    ctx.arc(x + textWidth / 2 - 5, y - badgeHeight / 2 + 5, 5 + pulse * 1.8, 0, Math.PI * 2);
     ctx.fill();
   } else if (track.locomotive?.activeIncidentCount) {
     ctx.fillStyle = "#f59e0b";
@@ -2050,17 +2299,32 @@ function drawLocomotives(
   });
 
   tracks.forEach((track) => {
-    if (!track.locomotive) return;
-    const radiusFactor =
-      track.placement === "destination"
-        ? 0.86
-        : track.placement === "origin"
-          ? 0.58
-          : 0.72;
-    const point = polarPoint(layout, layout.turntableRadius + (layout.innerRadius - layout.turntableRadius) * radiusFactor, toRad(track.angle));
-    const x = point.x;
-    const y = point.y;
-    drawLocomotiveChip(ctx, x, y, track, colors, time, changedKeys, reducedMotion);
+    const locomotives = track.locomotives?.length ? track.locomotives : track.locomotive ? [track.locomotive] : [];
+    const visibleLocomotives = locomotives.slice(0, 3);
+    [...visibleLocomotives]
+      .sort((left, right) => {
+        const priority = (locomotive: NonNullable<PatioTrack["locomotive"]>) =>
+          locomotive.status === "moving" || locomotive.status === "stopped" ? 2 : locomotive.status === "operating" ? 1 : 0;
+        const priorityDelta = priority(left) - priority(right);
+        if (priorityDelta !== 0) return priorityDelta;
+        return visibleLocomotives.findIndex((item) => item.key === right.key) - visibleLocomotives.findIndex((item) => item.key === left.key);
+      })
+      .forEach((locomotive) => {
+      const index = visibleLocomotives.findIndex((item) => item.key === locomotive.key);
+      const placement = locomotive.placement ?? track.placement;
+      const baseRadiusFactor =
+        placement === "destination"
+          ? 0.86
+          : placement === "origin"
+            ? 0.58
+            : 0.72;
+      const radiusOffset = (index - (visibleLocomotives.length - 1) / 2) * 0.085;
+      const radiusFactor = clampNumber(baseRadiusFactor + radiusOffset, 0.48, 0.92);
+      const point = polarPoint(layout, layout.turntableRadius + (layout.innerRadius - layout.turntableRadius) * radiusFactor, toRad(track.angle));
+      drawLocomotiveChip(ctx, point.x, point.y, { ...track, locomotive, placement }, colors, time, changedKeys, reducedMotion, {
+        scale: index === 0 ? 1 : 0.92,
+      });
+      });
   });
 }
 
@@ -2090,13 +2354,17 @@ function drawLocomotiveChip(
   const changeKind = changedKeys.get(locomotive.key);
   const changed = Boolean(changeKind);
   const zoomPulse = changed && !reducedMotion ? (Math.sin(time / 190) + 1) / 2 : 0;
-  const scale =
-    effect?.scale ??
-    (changeKind === "updated"
-      ? 1.08 + zoomPulse * 0.06
-      : changeKind === "moved"
+  const statusScale =
+    (locomotive.status === "moving" || locomotive.status === "stopped")
+      ? 1.3 + (reducedMotion ? 0 : glow * 0.08)
+      : locomotive.status === "waiting"
+        ? 1
+      : changeKind === "updated"
+        ? 1.08 + zoomPulse * 0.06
+        : changeKind === "moved"
         ? 1.04 + zoomPulse * 0.04
-        : 1);
+        : 1;
+  const scale = effect?.alpha !== undefined ? effect.scale ?? statusScale : statusScale * (effect?.scale ?? 1);
 
   ctx.save();
   ctx.globalAlpha = effect?.alpha ?? 1;
@@ -2181,11 +2449,44 @@ function drawLocomotiveChip(
 
 function LoadingRows() {
   return (
-    <div className="space-y-2 p-2">
+    <motion.div
+      className="space-y-2 p-2"
+      variants={listContainerMotion}
+      initial="hidden"
+      animate="show"
+    >
       {Array.from({ length: 6 }).map((_, index) => (
-        <div key={index} className="h-14 animate-pulse rounded-md bg-[var(--app-surface-muted)]" />
+        <motion.div
+          key={index}
+          variants={listItemMotion}
+          className="relative h-14 overflow-hidden rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)]"
+        >
+          <span className="absolute inset-0 animate-pulse bg-[linear-gradient(90deg,transparent,rgba(148,163,184,.22),transparent)]" />
+          <span className="absolute left-3 top-3 h-3 w-20 rounded-full bg-slate-300/45 dark:bg-slate-700/55" />
+          <span className="absolute bottom-3 left-3 h-2 w-28 rounded-full bg-slate-300/35 dark:bg-slate-700/45" />
+          <span className="absolute right-3 top-1/2 h-6 w-14 -translate-y-1/2 rounded-lg bg-slate-300/35 dark:bg-slate-700/45" />
+        </motion.div>
       ))}
-    </div>
+    </motion.div>
+  );
+}
+
+function AsyncPanelLoader({ visible, label }: { visible: boolean; label: string }) {
+  return (
+    <AnimatePresence>
+      {visible ? (
+        <motion.div
+          className="pointer-events-none absolute right-3 top-3 z-20 inline-flex items-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)]/88 px-3 py-1 text-[10px] font-black text-[var(--app-text-muted)] shadow-lg backdrop-blur-md"
+          initial={{ opacity: 0, y: -8, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -8, scale: 0.96 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+        >
+          <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,.55)]" />
+          {label}
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   );
 }
 
@@ -2381,6 +2682,23 @@ function buildRowLookup(data: PanelData) {
   ]);
 }
 
+function buildPanelSnapshots(data: PanelData) {
+  const entries = [
+    ...data.movements.map((row) => [row.key, row.signature] as const),
+    ...data.torneados.map((row) => [row.key, row.signature] as const),
+    ...data.incidents.map((row) => [row.key, row.signature] as const),
+  ];
+  const positions = new Map<string, number>();
+  data.movements.forEach((row, index) => positions.set(row.key, index));
+  data.torneados.forEach((row, index) => positions.set(row.key, index + 1000));
+  data.incidents.forEach((row, index) => positions.set(row.key, index + 2000));
+  return {
+    signatures: new Map<string, string>(entries),
+    positions,
+    rows: buildRowLookup(data),
+  };
+}
+
 function isMovementRow(row: PanelRow | undefined): row is MovementRow {
   return Boolean(row && "equipment" in row && "route" in row && "type" in row && "status" in row);
 }
@@ -2421,16 +2739,12 @@ function buildRealtimeHeaderEvents({
   nextData,
   previousRows,
   previousSignatures,
-  previousPositions,
   nextSignatures,
-  nextPositions,
 }: {
   nextData: PanelData;
   previousRows: Map<string, PanelRow>;
   previousSignatures: Map<string, string>;
-  previousPositions: Map<string, number>;
   nextSignatures: Map<string, string>;
-  nextPositions: Map<string, number>;
 }) {
   const now = Date.now();
   const nextRows = buildRowLookup(nextData);
@@ -2442,15 +2756,16 @@ function buildRealtimeHeaderEvents({
     const nextSignature = nextSignatures.get(key);
     const wasCreated = !previousSignature;
     const wasUpdated = Boolean(previousSignature && previousSignature !== nextSignature);
-    const wasMoved = previousPositions.get(key) !== undefined && previousPositions.get(key) !== nextPositions.get(key);
 
     if (isIncidentRow(row) && (wasCreated || (wasUpdated && row.active))) {
+      if (!row.active) return;
       events.push({
         key: `event:${now}:incident:${key}`,
-        label: wasCreated ? "Incidente creado" : "Incidente actualizado",
+        label: "Nuevo incidente",
         ...incidentEventBase(row),
         time: eventTimeLabel(now),
         occurredAtMs: now,
+        firstSeenAtMs: now,
         tone: "incident",
       });
       return;
@@ -2463,10 +2778,37 @@ function buildRealtimeHeaderEvents({
     if (wasCreated) {
       events.push({
         key: `event:${now}:created:${key}`,
-        label: isTorneado ? "Torneado creado" : "Movimiento creado",
+        label: isTorneado ? "Nuevo torneo" : "Nuevo movimiento",
         ...movementEventBase(row),
         time: eventTimeLabel(now),
         occurredAtMs: now,
+        firstSeenAtMs: now,
+        tone: movementEventTone(row),
+      });
+      return;
+    }
+
+    if (!isTorneado && row.status === "DETENIDO" && previousMovement?.status !== "DETENIDO") {
+      events.push({
+        key: `event:${now}:stopped:${key}`,
+        label: "Nuevo detenido",
+        ...movementEventBase(row),
+        time: eventTimeLabel(now),
+        occurredAtMs: now,
+        firstSeenAtMs: now,
+        tone: "state",
+      });
+      return;
+    }
+
+    if (!isTorneado && row.status === "EN PROCESO" && previousMovement?.status !== "EN PROCESO") {
+      events.push({
+        key: `event:${now}:started:${key}`,
+        label: "Nuevo iniciado",
+        ...movementEventBase(row),
+        time: eventTimeLabel(now),
+        occurredAtMs: now,
+        firstSeenAtMs: now,
         tone: movementEventTone(row),
       });
       return;
@@ -2475,61 +2817,30 @@ function buildRealtimeHeaderEvents({
     if (isTorneado && row.status === "EN PROCESO" && previousMovement?.status !== "EN PROCESO") {
       events.push({
         key: `event:${now}:torno-start:${key}`,
-        label: "Torneado iniciado",
+        label: "Nuevo torneo",
         ...movementEventBase(row),
         time: eventTimeLabel(now),
         occurredAtMs: now,
+        firstSeenAtMs: now,
         tone: "torno",
       });
       return;
-    }
-
-    if (wasMoved) {
-      events.push({
-        key: `event:${now}:moved:${key}`,
-        label: isTorneado ? "Torneado reordenado" : "Movimiento reordenado",
-        ...movementEventBase(row),
-        time: eventTimeLabel(now),
-        occurredAtMs: now,
-        tone: movementEventTone(row),
-      });
-      return;
-    }
-
-    if (wasUpdated) {
-      events.push({
-        key: `event:${now}:updated:${key}`,
-        label: isTorneado ? "Torneado editado" : "Movimiento editado",
-        ...movementEventBase(row),
-        time: eventTimeLabel(now),
-        occurredAtMs: now,
-        tone: movementEventTone(row),
-      });
     }
   });
 
   previousRows.forEach((row, key) => {
     if (nextRows.has(key)) return;
-    if (isIncidentRow(row)) {
-      events.push({
-        key: `event:${now}:incident-removed:${key}`,
-        label: "Incidente cerrado",
-        ...incidentEventBase(row),
-        time: eventTimeLabel(now),
-        occurredAtMs: now,
-        tone: "incident",
-      });
-      return;
-    }
     if (isMovementRow(row)) {
       const isTorneado = key.startsWith("torneado:");
+      if (!isTorneado || row.status !== "EN PROCESO") return;
       events.push({
         key: `event:${now}:removed:${key}`,
-        label: isTorneado ? "Torneado eliminado" : "Movimiento eliminado",
+        label: "Torneo finalizado",
         ...movementEventBase(row),
         time: eventTimeLabel(now),
         occurredAtMs: now,
-        tone: movementEventTone(row),
+        firstSeenAtMs: now,
+        tone: "torno",
       });
     }
   });
@@ -2541,18 +2852,18 @@ function buildRealtimeHeaderEvents({
 
 function buildHeaderEvents(data: PanelData): HeaderEvent[] {
   const now = Date.now();
-  const incidentEvents = data.incidents.slice(0, 12).map((incident, index) => ({
+  const incidentEvents = data.incidents.filter((incident) => incident.active).slice(0, 12).map((incident, index) => ({
     key: `ticker-${incident.key}`,
-    label: incident.active ? `Incidente ${incident.severity.toLowerCase()}` : "Incidente cerrado",
+    label: "Nuevo incidente",
     ...incidentEventBase(incident),
     time: incident.time,
-    occurredAtMs: now - index * 60_000,
+    occurredAtMs: incident.occurredAtMs || now - index * 60_000,
     tone: "incident" as HeaderEventTone,
   }));
 
   const movementEvents = data.movements.slice(0, 14).map((movement, index) => ({
     key: `ticker-${movement.key}`,
-    label: movement.status.toLowerCase(),
+    label: movement.status === "DETENIDO" ? "Nuevo detenido" : movement.status === "EN PROCESO" ? "Nuevo iniciado" : "Nuevo movimiento",
     ...movementEventBase(movement),
     time: movement.time,
     occurredAtMs: movement.requestedAtMs || now - (index + 12) * 60_000,
@@ -2561,7 +2872,7 @@ function buildHeaderEvents(data: PanelData): HeaderEvent[] {
 
   const tornoEvents = data.torneados.slice(0, 12).map((torno, index) => ({
     key: `ticker-torno-${torno.key}`,
-    label: `Torneado ${torno.status.toLowerCase()}`,
+    label: torno.status === "EN PROCESO" ? "Nuevo torneo" : "Nuevo torneo",
     ...movementEventBase(torno),
     time: torno.time,
     occurredAtMs: torno.requestedAtMs || now - (index + 26) * 60_000,
