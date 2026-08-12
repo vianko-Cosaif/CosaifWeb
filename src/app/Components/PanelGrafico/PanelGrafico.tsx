@@ -41,6 +41,7 @@ type IncidentRow = {
   equipment: string;
   equipmentKey: string;
   time: string;
+  occurredAtMs: number;
   rawStatus: string;
   active: boolean;
   signature: string;
@@ -69,6 +70,13 @@ type PanelData = {
   torneados: MovementRow[];
 };
 
+type PatioTrackCatalogItem = {
+  id: string;
+  label: string;
+  number: number | null;
+  sourceId: number | null;
+};
+
 type HeaderEventTone = "incident" | "movement" | "torno" | "lavado" | "state";
 
 type HeaderEvent = {
@@ -87,13 +95,6 @@ type ChangeKind = "updated" | "moved" | "removed";
 type PanelRow = MovementRow | IncidentRow;
 
 const EMPTY_DATA: PanelData = { incidents: [], movements: [], torneados: [] };
-
-const severityTone = {
-  CRITICO: "border-orange-300 bg-orange-50 text-orange-800 dark:border-orange-900/70 dark:bg-orange-950/35 dark:text-orange-200",
-  ALTO: "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/70 dark:bg-orange-950/30 dark:text-orange-200",
-  MEDIO: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200",
-  BAJO: "border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-900/60 dark:bg-yellow-950/25 dark:text-yellow-200",
-} satisfies Record<IncidentSeverity, string>;
 
 const statusTone = {
   DETENIDO: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/70 dark:bg-rose-950/35 dark:text-rose-200",
@@ -120,6 +121,36 @@ const rowTypeAccentTone = {
   Torno: "before:bg-rose-500",
   Lavado: "before:bg-sky-500",
 } satisfies Record<MovementType, string>;
+
+function activeServiceTone(type: MovementType) {
+  if (type === "Torno") {
+    return {
+      className: "border-rose-300/90 bg-[linear-gradient(90deg,rgba(255,228,230,.98),rgba(255,241,242,.80))] dark:border-rose-800/80 dark:bg-[linear-gradient(90deg,rgba(76,5,25,.74),rgba(127,29,29,.28))]",
+      ring: "ring-2 ring-rose-300/80 dark:ring-rose-700/75",
+      shadow: "0 12px 30px rgba(225,29,72,0.20)",
+      bar: "bg-rose-500 shadow-[0_0_16px_rgba(225,29,72,.55)]",
+      dot: "bg-rose-600 dark:bg-rose-300",
+    };
+  }
+
+  if (type === "Lavado") {
+    return {
+      className: "border-sky-300/90 bg-[linear-gradient(90deg,rgba(224,242,254,.98),rgba(240,249,255,.80))] dark:border-sky-800/80 dark:bg-[linear-gradient(90deg,rgba(8,47,73,.74),rgba(12,74,110,.28))]",
+      ring: "ring-2 ring-sky-300/80 dark:ring-sky-700/75",
+      shadow: "0 12px 30px rgba(14,165,233,0.20)",
+      bar: "bg-sky-500 shadow-[0_0_16px_rgba(14,165,233,.55)]",
+      dot: "bg-sky-600 dark:bg-sky-300",
+    };
+  }
+
+  return {
+    className: "border-emerald-300/90 bg-[linear-gradient(90deg,rgba(209,250,229,.98),rgba(236,253,245,.80))] dark:border-emerald-800/80 dark:bg-[linear-gradient(90deg,rgba(6,78,59,.74),rgba(6,95,70,.28))]",
+    ring: "ring-2 ring-emerald-300/80 dark:ring-emerald-700/75",
+    shadow: "0 12px 30px rgba(16,185,129,0.20)",
+    bar: "bg-emerald-500 shadow-[0_0_16px_rgba(16,185,129,.55)]",
+    dot: "bg-emerald-600 dark:bg-emerald-300",
+  };
+}
 
 const tickerTone = {
   incident: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-200",
@@ -152,6 +183,7 @@ export default function PanelGrafico({
   const [rightPanelTimerKey, setRightPanelTimerKey] = useState(0);
   const [changedKeys, setChangedKeys] = useState<Map<string, ChangeKind>>(() => new Map());
   const [headerEvents, setHeaderEvents] = useState<HeaderEvent[]>([]);
+  const [patioTrackCatalog, setPatioTrackCatalog] = useState<PatioTrackCatalogItem[]>([]);
   const previousSignaturesRef = useRef<Map<string, string>>(new Map());
   const previousPositionsRef = useRef<Map<string, number>>(new Map());
   const previousRowsRef = useRef<Map<string, PanelRow>>(new Map());
@@ -187,18 +219,25 @@ export default function PanelGrafico({
       inactiveIncidentQuery.set("page", "1");
       inactiveIncidentQuery.set("pageSize", "25");
 
-      const [movementsResult, torneadosResult, incidentsResult, inactiveIncidentsResult] = await Promise.allSettled([
+      const tracksUrl = localidadId ? `/bff/vias/localidad/${encodeURIComponent(String(localidadId))}/lite` : "/bff/vias/lite";
+
+      const [movementsResult, torneadosResult, incidentsResult, inactiveIncidentsResult, tracksResult] = await Promise.allSettled([
         fetch(`/api/cliente/rondas?${movementQuery.toString()}`, { cache: "no-store", credentials: "include" }).then(readJsonSafe),
         fetch(`/api/cliente/rondas?${torneadoQuery.toString()}`, { cache: "no-store", credentials: "include" }).then(readJsonSafe),
         fetch(`/api/incidentes?${incidentQuery.toString()}`, { cache: "no-store", credentials: "include" }).then(readJsonSafe),
         fetch(`/api/incidentes?${inactiveIncidentQuery.toString()}`, { cache: "no-store", credentials: "include" }).then(readJsonSafe),
+        fetch(tracksUrl, { cache: "no-store", credentials: "include" }).then(readJsonSafe),
       ]);
 
       const movementsRaw = movementsResult.status === "fulfilled" ? extractArray(movementsResult.value) : [];
       const torneadosRaw = torneadosResult.status === "fulfilled" ? extractArray(torneadosResult.value) : [];
       const incidentsRaw = incidentsResult.status === "fulfilled" ? extractArray(incidentsResult.value) : [];
       const inactiveIncidentsRaw = inactiveIncidentsResult.status === "fulfilled" ? extractArray(inactiveIncidentsResult.value) : [];
-      const incidents = sortIncidentsByState(dedupeRowsByKey([...incidentsRaw, ...inactiveIncidentsRaw].map(mapIncident).filter(Boolean) as IncidentRow[])).slice(0, 40);
+      const tracksRaw = tracksResult.status === "fulfilled" ? extractArray(tracksResult.value) : [];
+      const incidents = filterRecentIncidents(
+        sortIncidentsByState(dedupeRowsByKey([...incidentsRaw, ...inactiveIncidentsRaw].map(mapIncident).filter(Boolean) as IncidentRow[]))
+      ).slice(0, 40);
+      const nextTrackCatalog = dedupePatioTrackCatalog(tracksRaw.map(mapViaToPatioTrack).filter(Boolean) as PatioTrackCatalogItem[]);
 
       const nextData = {
         movements: annotateRowsWithIncidents(movementsRaw.map(mapMovement).filter(Boolean).slice(0, 30) as MovementRow[], incidents),
@@ -257,6 +296,7 @@ export default function PanelGrafico({
       previousRowsRef.current = nextRows;
       firstLoadRef.current = false;
       setData(nextData);
+      setPatioTrackCatalog(nextTrackCatalog);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "No se pudo cargar la informacion del panel.");
       setData(EMPTY_DATA);
@@ -379,10 +419,16 @@ export default function PanelGrafico({
           </div>
         </motion.header>
 
-        <section className="grid min-h-0 flex-1 gap-2 lg:grid-cols-[minmax(230px,260px)_minmax(0,1fr)] xl:grid-cols-[minmax(260px,18vw)_minmax(520px,1fr)_minmax(330px,25vw)] 2xl:grid-cols-[minmax(300px,360px)_minmax(720px,1fr)_minmax(400px,500px)]">
+        <section className="grid min-h-0 flex-1 gap-2 lg:grid-cols-[minmax(210px,240px)_minmax(0,1fr)] xl:grid-cols-[minmax(220px,16vw)_minmax(620px,1fr)_minmax(300px,22vw)] 2xl:grid-cols-[minmax(250px,310px)_minmax(820px,1fr)_minmax(360px,440px)]">
           <IncidentColumn incidents={data.incidents} metrics={metrics} loading={loading} changedKeys={changedKeys} />
           <div className="min-h-0 h-full lg:col-span-1 xl:col-span-1">
-            <WorkArea metrics={metrics} movements={data.movements} torneados={data.torneados} changedKeys={changedKeys} />
+            <WorkArea
+              metrics={metrics}
+              movements={data.movements}
+              torneados={data.torneados}
+              trackCatalog={patioTrackCatalog}
+              changedKeys={changedKeys}
+            />
           </div>
           <div className="min-h-0 h-full lg:col-span-2 xl:col-span-1">
             <RightOperationsPanel
@@ -474,22 +520,29 @@ function IncidentColumn({
   const activeCount = incidents.filter((incident) => incident.active).length;
   return (
     <aside className={`${panelClass("bg-[linear-gradient(180deg,var(--app-surface),var(--app-surface-subtle))]")} flex min-h-0 min-w-0 flex-col overflow-hidden`}>
-      <div className="shrink-0 border-b border-[var(--app-border)] px-3 py-2.5">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="min-w-0 truncate text-sm font-black text-slate-950 dark:text-white 2xl:text-base">Incidentes</h2>
-          <span className="inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 px-2 text-base font-black text-blue-700 ring-1 ring-blue-200 dark:bg-blue-950/60 dark:text-blue-200 dark:ring-blue-900">
+      <div className="shrink-0 border-b border-[var(--app-border)] px-2.5 py-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="min-w-0 truncate text-xs font-black text-slate-950 dark:text-white 2xl:text-sm">Incidentes</h2>
+          <span className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 px-1.5 text-sm font-black text-blue-700 ring-1 ring-blue-200 dark:bg-blue-950/60 dark:text-blue-200 dark:ring-blue-900">
             {activeCount}
           </span>
         </div>
-        <p className="mt-1.5 text-xs font-black">
-          <span className="text-rose-600 dark:text-rose-300">{metrics.criticos} criticos</span>
-          <span className="mx-2 text-[var(--app-text-muted)]">-</span>
-          <span className="text-slate-700 dark:text-slate-200">{metrics.altos} altos</span>
-          <span className="mx-2 text-[var(--app-text-muted)]">-</span>
-          <span className="text-[var(--app-text-muted)]">{incidents.length - activeCount} inactivos</span>
-        </p>
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1 text-[9px] font-black">
+          <span title="Criticos" className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-1.5 py-0.5 text-rose-600 ring-1 ring-rose-100 dark:bg-rose-950/35 dark:text-rose-300 dark:ring-rose-900/60">
+            <AlertTriangle className="h-3 w-3" />
+            {metrics.criticos}
+          </span>
+          <span title="Altos" className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-amber-700 ring-1 ring-amber-100 dark:bg-amber-950/35 dark:text-amber-200 dark:ring-amber-900/60">
+            <Activity className="h-3 w-3" />
+            {metrics.altos}
+          </span>
+          <span title="Inactivos" className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-slate-600 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700">
+            <PauseCircle className="h-3 w-3" />
+            {incidents.length - activeCount}
+          </span>
+        </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2.5 py-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
         {loading ? <LoadingRows /> : null}
         {!loading && incidents.length === 0 ? <EmptyRows text="No hay incidentes registrados." /> : null}
         <AnimatePresence initial={false}>
@@ -516,30 +569,29 @@ function IncidentColumn({
             }}
             exit={{ opacity: 0, x: -18, scale: 0.98 }}
             transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.8 }}
-            className={`grid min-w-0 grid-cols-[58px_minmax(0,1fr)_42px] items-center gap-2 rounded-xl border border-transparent px-2 py-1.5 transition hover:border-[var(--app-border)] hover:bg-[var(--app-surface-muted)] 2xl:grid-cols-[66px_minmax(0,1fr)_48px] 2xl:py-2 ${
+            className={`relative grid min-w-0 grid-cols-[8px_minmax(0,1fr)_34px] items-center gap-1.5 rounded-lg border border-transparent px-1.5 py-1 transition hover:border-[var(--app-border)] hover:bg-[var(--app-surface-muted)] 2xl:grid-cols-[10px_minmax(0,1fr)_40px] 2xl:py-1.5 ${
               isInactive ? "opacity-55 grayscale-[.2]" : ""
             } ${
               incident.severity === "CRITICO" ? "border-rose-100 bg-rose-50/55 dark:border-rose-900/50 dark:bg-rose-950/20" : ""
             }`}
           >
-            <span className={`inline-flex h-7 min-w-0 items-center justify-center truncate rounded-lg border px-1.5 text-[9px] font-black ${severityTone[incident.severity]}`}>
-              {incident.severity}
-            </span>
+            <span className={`h-8 w-1.5 rounded-full ${incidentSeverityRail(incident.severity)}`} title={incident.severity} />
             <span className="min-w-0 overflow-hidden">
-              <span className="block truncate text-[11px] font-black text-slate-950 dark:text-white 2xl:text-xs">
-                {incident.id} <span className="font-bold text-[var(--app-text)]">{incident.title}</span>
+              <span className="flex min-w-0 items-baseline gap-1.5 text-[10px] 2xl:text-[11px]">
+                <span className="shrink-0 font-black text-slate-950 dark:text-white">{incident.id}</span>
+                <span className="min-w-0 truncate font-bold text-[var(--app-text)]">{incident.title}</span>
               </span>
-              <span className="mt-0.5 block truncate text-[11px] font-semibold text-[var(--app-text-muted)]">{incident.equipment}</span>
-              {isInactive ? <span className="mt-0.5 inline-flex rounded-full bg-slate-100 px-1.5 py-px text-[8px] font-black text-slate-500 dark:bg-slate-800 dark:text-slate-300">INACTIVO</span> : null}
+              <span className="mt-0.5 block truncate text-[10px] font-semibold text-[var(--app-text-muted)]">{incident.equipment}</span>
+              {isInactive ? <span className="mt-0.5 inline-flex rounded-full bg-slate-100 px-1 py-px text-[7px] font-black text-slate-500 dark:bg-slate-800 dark:text-slate-300">INACTIVO</span> : null}
             </span>
-            <span className="min-w-0 truncate text-right text-[11px] font-black text-orange-600 dark:text-orange-300">{incident.time}</span>
+            <span className="min-w-0 truncate text-right text-[10px] font-black text-orange-600 dark:text-orange-300">{incident.time}</span>
           </motion.article>
         );
         })}
         </AnimatePresence>
       </div>
-      <div className="shrink-0 truncate border-t border-[var(--app-border)] px-3 py-2 text-xs font-semibold text-[var(--app-text-muted)]">
-        Fuente <span className="font-black text-blue-700 dark:text-blue-300">Incidentes reales</span>
+      <div className="shrink-0 truncate border-t border-[var(--app-border)] px-2.5 py-1.5 text-[10px] font-semibold text-[var(--app-text-muted)]">
+        Fuente <span className="font-black text-blue-700 dark:text-blue-300">real</span>
       </div>
     </aside>
   );
@@ -549,28 +601,30 @@ function WorkArea({
   metrics,
   movements,
   torneados,
+  trackCatalog,
   changedKeys,
 }: {
   metrics: { totalMovements: number; enProceso: number; detenidos: number; enCola: number; sla: number };
   movements: MovementRow[];
   torneados: MovementRow[];
+  trackCatalog: PatioTrackCatalogItem[];
   changedKeys: Map<string, ChangeKind>;
 }) {
   const hasChanges = changedKeys.size > 0;
   return (
-    <section className="flex min-h-0 flex-col gap-1.5">
+    <section className="flex min-h-0 flex-col gap-1">
       <KpiCarousel metrics={metrics} movements={movements} torneados={torneados} active={hasChanges} />
       <div className={`${panelClass("bg-[linear-gradient(180deg,var(--app-surface),var(--app-surface-subtle))]")} flex min-h-0 flex-1 flex-col overflow-hidden`}>
-        <div className="shrink-0 px-3 py-1.5">
+        <div className="shrink-0 px-2.5 py-1">
           <div className="flex flex-col gap-1.5 md:flex-row md:items-center md:justify-between">
-            <div className="flex min-w-0 items-center gap-3">
-              <h2 className="text-sm font-black text-slate-950 dark:text-white">Area de trabajo</h2>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-black text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-950/35 dark:text-emerald-200 dark:ring-emerald-900/50">
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 className="text-xs font-black text-slate-950 dark:text-white 2xl:text-sm">Area de trabajo</h2>
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-black text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-950/35 dark:text-emerald-200 dark:ring-emerald-900/50">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 {new Intl.DateTimeFormat("es-MX", { hour: "2-digit", minute: "2-digit" }).format(new Date())}
               </span>
             </div>
-            <div className="flex flex-wrap justify-end gap-x-4 gap-y-1 text-[10px] font-bold text-[var(--app-text-muted)]">
+            <div className="flex flex-wrap justify-end gap-x-2.5 gap-y-1 text-[9px] font-bold text-[var(--app-text-muted)]">
               <LegendDot color="bg-emerald-500" label="Operando" />
               <LegendDot color="bg-blue-600" label="En movimiento" />
               <LegendDot color="bg-rose-600" label="Detenido" />
@@ -578,15 +632,15 @@ function WorkArea({
             </div>
           </div>
         </div>
-        <div className="min-h-0 flex-1 px-3 pb-1.5">
-          <div className="h-full min-h-[360px] overflow-hidden rounded-2xl border border-[var(--app-border)] bg-[radial-gradient(circle_at_center,rgba(16,185,129,.10),transparent_42%),linear-gradient(135deg,var(--app-surface),var(--app-surface-subtle))] shadow-inner">
-            <PatioFerroviarioCanvas movements={movements} torneados={torneados} changedKeys={changedKeys} />
+        <div className="min-h-0 flex-1 px-2.5 pb-1">
+          <div className="h-full min-h-[420px] overflow-hidden rounded-2xl border border-[var(--app-border)] bg-[radial-gradient(circle_at_center,rgba(16,185,129,.10),transparent_42%),linear-gradient(135deg,var(--app-surface),var(--app-surface-subtle))] shadow-inner">
+            <PatioFerroviarioCanvas movements={movements} torneados={torneados} trackCatalog={trackCatalog} changedKeys={changedKeys} />
           </div>
         </div>
-        <div className="grid shrink-0 gap-2 border-t border-[var(--app-border)] px-3 py-1.5 text-[11px] font-black text-[var(--app-text)] md:grid-cols-[1fr_1fr]">
+        <div className="grid shrink-0 gap-2 border-t border-[var(--app-border)] px-2.5 py-1 text-[10px] font-black text-[var(--app-text)] md:grid-cols-[1fr_1fr]">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="grid h-7 w-7 place-items-center rounded-full bg-blue-50 text-blue-900 dark:bg-blue-950/40 dark:text-blue-200">
-              <MapPinned className="h-4 w-4" />
+            <span className="grid h-6 w-6 place-items-center rounded-full bg-blue-50 text-blue-900 dark:bg-blue-950/40 dark:text-blue-200">
+              <MapPinned className="h-3.5 w-3.5" />
             </span>
             <span>{metrics.enProceso + metrics.detenidos} vias ocupadas</span>
             <span className="text-emerald-600 dark:text-emerald-300">{metrics.enProceso} operando</span>
@@ -841,11 +895,16 @@ function OperationsTable({
           const previous = rows[index - 1];
           const showDivider = showRoundDividers && (!previous || previous.rondaNumero !== movement.rondaNumero);
           const proximity = rows.length <= 1 ? 1 : 1 - index / Math.max(rows.length - 1, 1);
+          const isActiveService = movement.status === "EN PROCESO";
+          const hasIncident = movement.activeIncidentCount > 0;
+          const activeTone = activeServiceTone(movement.type);
           const rowMinHeight = 36 + proximity * 10;
           const rowPaddingY = 2 + proximity * 2;
           const rowPriorityGlow =
-            movement.activeIncidentCount > 0
-              ? "ring-1 ring-amber-300/90 dark:ring-amber-700/70"
+            hasIncident
+              ? "ring-2 ring-amber-300/90 dark:ring-amber-600/80"
+              : isActiveService
+                ? activeTone.ring
               : proximity > 0.72
               ? "ring-1 ring-emerald-200/80 dark:ring-emerald-800/55"
               : proximity > 0.38
@@ -873,14 +932,16 @@ function OperationsTable({
                 y: 0,
                 scale: 1,
                 boxShadow:
-                  movement.activeIncidentCount > 0 && changeKind
+                  hasIncident && changeKind
                     ? "0 14px 34px rgba(245,158,11,0.24)"
+                    : hasIncident
+                      ? "0 10px 28px rgba(245,158,11,0.18)"
+                    : isActiveService
+                      ? activeTone.shadow
                     : changeKind === "moved"
                     ? "0 14px 34px rgba(16,185,129,0.22)"
                     : changeKind === "updated"
                       ? "0 0 0 1px rgba(37,99,235,0.24)"
-                      : movement.activeIncidentCount > 0
-                        ? "0 8px 20px rgba(245,158,11,0.12)"
                       : proximity > 0.72
                         ? "0 8px 18px rgba(15,23,42,0.08)"
                         : "0 4px 10px rgba(15,23,42,0.04)",
@@ -888,11 +949,16 @@ function OperationsTable({
               exit={{ opacity: 0, x: 18, scale: 0.98 }}
               transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.8 }}
               style={{ minHeight: rowMinHeight, paddingTop: rowPaddingY, paddingBottom: rowPaddingY }}
-              className={`relative mb-1 grid grid-cols-[minmax(70px,1.05fr)_minmax(56px,.68fr)_minmax(46px,.5fr)_minmax(64px,.68fr)_minmax(42px,.42fr)] items-center gap-1 overflow-hidden rounded-lg border px-1.5 text-center text-[10px] transition hover:brightness-[.985] dark:hover:brightness-110 2xl:grid-cols-[minmax(88px,1.12fr)_minmax(70px,.78fr)_minmax(56px,.58fr)_minmax(78px,.78fr)_minmax(52px,.48fr)] 2xl:px-2 2xl:text-[11px] before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-r-full before:content-[''] ${rowTypeTone[movement.type]} ${rowTypeAccentTone[movement.type]} ${rowPriorityGlow}`}
+              className={`relative mb-1 grid grid-cols-[minmax(70px,1.05fr)_minmax(56px,.68fr)_minmax(46px,.5fr)_minmax(64px,.68fr)_minmax(42px,.42fr)] items-center gap-1 overflow-hidden rounded-lg border px-1.5 text-center text-[10px] transition hover:brightness-[.985] dark:hover:brightness-110 2xl:grid-cols-[minmax(88px,1.12fr)_minmax(70px,.78fr)_minmax(56px,.58fr)_minmax(78px,.78fr)_minmax(52px,.48fr)] 2xl:px-2 2xl:text-[11px] before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-r-full before:content-[''] ${rowTypeTone[movement.type]} ${rowTypeAccentTone[movement.type]} ${isActiveService ? activeTone.className : ""} ${hasIncident ? "after:pointer-events-none after:absolute after:inset-0 after:bg-[radial-gradient(circle_at_14%_50%,rgba(245,158,11,.18),transparent_38%)] after:content-['']" : ""} ${rowPriorityGlow}`}
             >
+              {isActiveService ? (
+                <span className={`pointer-events-none absolute inset-y-1 left-1 w-1 rounded-full ${activeTone.bar}`}>
+                  <span className={`absolute inset-0 animate-pulse rounded-full ${activeTone.bar}`} />
+                </span>
+              ) : null}
               <span className="min-w-0 rounded-lg bg-slate-50/80 px-1 py-1 text-[12px] font-black leading-tight text-slate-950 ring-1 ring-slate-200/70 dark:bg-slate-900/60 dark:text-white dark:ring-slate-800 2xl:px-1.5 2xl:text-[13px]">
                 <span className="flex min-w-0 items-center justify-center gap-1 truncate">
-                  {movement.activeIncidentCount > 0 ? (
+                  {hasIncident ? (
                     <span className="relative inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 ring-1 ring-amber-300 dark:bg-amber-950/70 dark:text-amber-200 dark:ring-amber-700">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-40" />
                       <AlertTriangle className="relative h-2.5 w-2.5" />
@@ -909,16 +975,16 @@ function OperationsTable({
                 {movement.type}
               </span>
               <span className={`inline-flex min-h-6 min-w-0 items-center justify-center gap-1 truncate rounded-md border px-1 text-[8px] font-black 2xl:px-1.5 2xl:text-[9px] ${statusTone[movement.status]}`}>
-                {movement.status === "EN PROCESO" ? (
+                {isActiveService ? (
                   <span className="relative inline-flex h-2 w-2 shrink-0">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-500 opacity-70 dark:bg-blue-300" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-600 dark:bg-blue-200" />
+                    <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${activeTone.dot} opacity-70`} />
+                    <span className={`relative inline-flex h-2 w-2 rounded-full ${activeTone.dot}`} />
                   </span>
                 ) : null}
                 <span className="truncate">{movement.status}</span>
               </span>
               <span className="truncate rounded-lg bg-amber-50/80 px-1 py-1 text-[10px] font-black text-amber-800 ring-1 ring-amber-100 dark:bg-amber-950/25 dark:text-amber-200 dark:ring-amber-900/50 2xl:px-1.5 2xl:text-[11px]">
-                {movement.activeIncidentCount > 0 ? `${movement.activeIncidentCount} inc.` : movement.time}
+                {hasIncident ? `${movement.activeIncidentCount} inc.` : movement.time}
               </span>
             </motion.article>
           </div>
@@ -950,22 +1016,22 @@ function KpiBlock({
       layout
       animate={{ boxShadow: active ? "inset 0 0 0 1px rgba(37,99,235,.25)" : "inset 0 0 0 1px rgba(0,0,0,0)" }}
       transition={{ duration: 0.5 }}
-      className="flex items-center justify-between gap-2 bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,.14),transparent_48%)] px-2.5 py-2"
+      className="flex items-center justify-between gap-2 bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,.12),transparent_50%)] px-2.5 py-1.5"
     >
-      <div>
-        <p className="text-[9px] font-black uppercase tracking-wide text-slate-700 dark:text-slate-300">{label}</p>
+      <div className="min-w-0">
+        <p className="truncate text-[8px] font-black uppercase tracking-wide text-slate-700 dark:text-slate-300 2xl:text-[9px]">{label}</p>
         <motion.p
           key={value}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mt-0.5 text-2xl font-black text-slate-950 dark:text-white"
+          className="text-xl font-black leading-none text-slate-950 dark:text-white 2xl:text-2xl"
         >
           {value}
         </motion.p>
-        <p className={`text-[11px] font-black ${noteTone}`}>{note}</p>
+        <p className={`truncate text-[9px] font-black 2xl:text-[10px] ${noteTone}`}>{note}</p>
       </div>
-      <span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-100 text-blue-700 ring-1 ring-blue-200 shadow-[0_8px_18px_rgba(37,99,235,.16)] dark:bg-blue-950/45 dark:text-blue-200 dark:ring-blue-900">
-        <Icon className="h-5 w-5" />
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-blue-100 text-blue-700 ring-1 ring-blue-200 shadow-[0_6px_14px_rgba(37,99,235,.14)] dark:bg-blue-950/45 dark:text-blue-200 dark:ring-blue-900 2xl:h-9 2xl:w-9">
+        <Icon className="h-4 w-4 2xl:h-5 2xl:w-5" />
       </span>
     </motion.div>
   );
@@ -973,8 +1039,8 @@ function KpiBlock({
 
 function LegendDot({ color, label }: { color: string; label: string }) {
   return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap">
-      <span className={`h-2.5 w-2.5 rounded-full ${color}`} />
+    <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap">
+      <span className={`h-2 w-2 rounded-full ${color}`} />
       {label}
     </span>
   );
@@ -1012,18 +1078,29 @@ type PatioServiceActivity = {
   type: MovementType;
 } | null;
 
-const PATIO_TRACKS = [
+type PatioTrackDefinition = {
+  id: string;
+  label: string;
+  angle: number;
+};
+
+const PATIO_TRACK_START_ANGLE = 189;
+const PATIO_TRACK_END_ANGLE = 348;
+
+const PATIO_BASE_TRACKS: PatioTrackDefinition[] = [
   { id: "CIL", label: "CIL", angle: 189 },
   { id: "VIA-10", label: "10", angle: 207 },
-  { id: "VIA-25", label: "VIA 25", angle: 225 },
+  { id: "VIA-25", label: "25", angle: 225 },
   { id: "VIA-7", label: "7", angle: 243 },
   { id: "VIA-6", label: "6", angle: 261 },
   { id: "VIA-5", label: "5", angle: 279 },
-  { id: "VIA-4", label: "VIA 4", angle: 297 },
-  { id: "VIA-3", label: "VIA 3", angle: 315 },
+  { id: "VIA-4", label: "4", angle: 297 },
+  { id: "VIA-3", label: "3", angle: 315 },
   { id: "VIA-2", label: "2", angle: 333 },
-  { id: "VIA-1", label: "VIA 1", angle: 348 },
-] as const;
+  { id: "VIA-1", label: "1", angle: 348 },
+];
+
+const PATIO_BASE_LABELS = new Map(PATIO_BASE_TRACKS.map((track) => [track.id, track.label]));
 
 const toRad = (degrees: number) => (degrees * Math.PI) / 180;
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
@@ -1035,10 +1112,12 @@ const polarPoint = (layout: ReturnType<typeof patioLayout>, radius: number, angl
 function PatioFerroviarioCanvas({
   movements,
   torneados,
+  trackCatalog,
   changedKeys,
 }: {
   movements: MovementRow[];
   torneados: MovementRow[];
+  trackCatalog: PatioTrackCatalogItem[];
   changedKeys: Map<string, ChangeKind>;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1047,7 +1126,7 @@ function PatioFerroviarioCanvas({
   const removedGhostsRef = useRef<PatioRemovedGhost[]>([]);
   const [selectedTrackId, setSelectedTrackId] = useState("VIA-4");
 
-  const tracks = useMemo(() => buildPatioTracks(movements), [movements]);
+  const tracks = useMemo(() => buildPatioTracks(movements, trackCatalog), [movements, trackCatalog]);
   const serviceActivity = useMemo(
     () => ({
       torno: buildServiceActivity(torneados, "Torno"),
@@ -1137,7 +1216,7 @@ function PatioFerroviarioCanvas({
   }, [selectedTrackId, tracks]);
 
   return (
-    <div ref={containerRef} className="relative h-full min-h-[360px] w-full overflow-hidden">
+    <div ref={containerRef} className="relative h-full min-h-[420px] w-full overflow-hidden">
       <canvas
         ref={canvasRef}
         role="img"
@@ -1148,7 +1227,8 @@ function PatioFerroviarioCanvas({
   );
 }
 
-function buildPatioTracks(movements: MovementRow[]): PatioTrack[] {
+function buildPatioTracks(movements: MovementRow[], catalog: PatioTrackCatalogItem[]): PatioTrack[] {
+  const trackDefinitions = buildPatioTrackDefinitions(movements, catalog);
   const assigned = new Map<string, { movement: MovementRow; placement: PatioPlacement; originTrackId: string | null; destinationTrackId: string | null }>();
   movements.forEach((movement) => {
     const placement = movementPatioPlacement(movement);
@@ -1183,7 +1263,7 @@ function buildPatioTracks(movements: MovementRow[]): PatioTrack[] {
     }
   });
 
-  return PATIO_TRACKS.map((track) => {
+  return trackDefinitions.map((track) => {
     const assignment = assigned.get(track.id);
     const movement = assignment?.movement ?? null;
     const status = movement ? toPatioStatus(movement.status) : "waiting";
@@ -1204,6 +1284,67 @@ function buildPatioTracks(movements: MovementRow[]): PatioTrack[] {
         : null,
     };
   });
+}
+
+function buildPatioTrackDefinitions(movements: MovementRow[], catalog: PatioTrackCatalogItem[]): PatioTrackDefinition[] {
+  const tracks = new Map<string, PatioTrackDefinition>();
+  const addTrack = (trackId: string | null) => {
+    if (!trackId || tracks.has(trackId)) return;
+    tracks.set(trackId, {
+      id: trackId,
+      label: trackLabelFromId(trackId),
+      angle: 0,
+    });
+  };
+
+  PATIO_BASE_TRACKS.forEach((track) => tracks.set(track.id, { ...track }));
+  catalog.forEach((track) => {
+    tracks.set(track.id, {
+      id: track.id,
+      label: track.label,
+      angle: 0,
+    });
+  });
+  movements.forEach((movement) => {
+    addTrack(routeToTrackId(movement.origin));
+    addTrack(routeToTrackId(movement.destination));
+  });
+
+  const ordered = Array.from(tracks.values()).sort(comparePatioTrackDefinitions);
+  const angleStep =
+    ordered.length > 1 ? (PATIO_TRACK_END_ANGLE - PATIO_TRACK_START_ANGLE) / (ordered.length - 1) : 0;
+
+  return ordered.map((track, index) => ({
+    ...track,
+    angle: PATIO_TRACK_START_ANGLE + angleStep * index,
+  }));
+}
+
+function comparePatioTrackDefinitions(left: PatioTrackDefinition, right: PatioTrackDefinition) {
+  if (left.id === "CIL") return -1;
+  if (right.id === "CIL") return 1;
+
+  const leftNumber = patioTrackNumber(left.id);
+  const rightNumber = patioTrackNumber(right.id);
+  if (leftNumber !== null && rightNumber !== null) return rightNumber - leftNumber;
+  if (leftNumber !== null) return -1;
+  if (rightNumber !== null) return 1;
+  return left.label.localeCompare(right.label);
+}
+
+function patioTrackNumber(trackId: string): number | null {
+  const match = /^VIA-(\d+)$/.exec(trackId);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function trackLabelFromId(trackId: string) {
+  const baseLabel = PATIO_BASE_LABELS.get(trackId);
+  if (baseLabel) return baseLabel;
+  const via = patioTrackNumber(trackId);
+  if (via !== null) return String(via);
+  return trackId.replace(/-/g, " ");
 }
 
 function movementPatioPlacement(movement: MovementRow): {
@@ -1240,8 +1381,7 @@ function routeToTrackId(route: string): string | null {
   if (normalized === "CIL") return "CIL";
   const via = Number(normalized);
   if (!Number.isFinite(via)) return null;
-  const id = `VIA-${via}`;
-  return PATIO_TRACKS.some((track) => track.id === id) ? id : null;
+  return `VIA-${via}`;
 }
 
 function buildServiceActivity(rows: MovementRow[], type: MovementType): PatioServiceActivity {
@@ -1301,6 +1441,26 @@ function distanceToSegment(point: { x: number; y: number }, start: { x: number; 
 function cssColor(name: string, fallback: string) {
   if (typeof document === "undefined") return fallback;
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+  const safeRadius = Math.min(radius, width / 2, height / 2);
+  if (typeof ctx.roundRect === "function") {
+    ctx.beginPath();
+    ctx.roundRect(x, y, width, height, safeRadius);
+    return;
+  }
+  ctx.beginPath();
+  ctx.moveTo(x + safeRadius, y);
+  ctx.lineTo(x + width - safeRadius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+  ctx.lineTo(x + width, y + height - safeRadius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
+  ctx.lineTo(x + safeRadius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+  ctx.lineTo(x, y + safeRadius);
+  ctx.quadraticCurveTo(x, y, x + safeRadius, y);
+  ctx.closePath();
 }
 
 function drawPatioCanvas(
@@ -1520,15 +1680,86 @@ function drawTracks(
       ctx.stroke();
     }
 
-    ctx.fillStyle = colors.text;
-    ctx.globalAlpha = occupied ? 0.94 : 0.58;
-    ctx.font = `${occupied ? "900" : "800"} 12px Inter, Arial, sans-serif`;
-    ctx.textAlign = "center";
     const labelDistance = layout.innerRadius + (layout.outerRadius - layout.innerRadius) * 0.58;
     const label = polarPoint(layout, labelDistance, angle);
-    ctx.fillText(track.label, label.x, label.y);
+    drawTrackLabel(ctx, track, label.x, label.y, colors, time, reducedMotion);
     ctx.restore();
   });
+}
+
+function drawTrackLabel(
+  ctx: CanvasRenderingContext2D,
+  track: PatioTrack,
+  x: number,
+  y: number,
+  colors: Record<string, string>,
+  time: number,
+  reducedMotion: boolean
+) {
+  const occupied = Boolean(track.locomotive);
+  const status = track.locomotive?.status ?? "waiting";
+  const pulse = reducedMotion ? 0 : (Math.sin(time / 620) + 1) / 2;
+  const statusColor =
+    status === "moving" ? colors.moving : status === "stopped" ? colors.stopped : status === "operating" ? colors.operating : colors.waiting;
+
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  if (!occupied) {
+    ctx.globalAlpha = 0.38;
+    ctx.fillStyle = colors.muted;
+    ctx.font = "800 10px Inter, Arial, sans-serif";
+    ctx.fillText(track.label, x, y);
+    ctx.restore();
+    return;
+  }
+
+  const labelText = track.label;
+  ctx.font = "950 14px Inter, Arial, sans-serif";
+  const textWidth = Math.max(22, ctx.measureText(labelText).width + 14);
+  const badgeHeight = 22;
+  const badgeRadius = 8;
+
+  ctx.shadowColor = statusColor;
+  ctx.shadowBlur = status === "moving" || status === "stopped" ? 10 + pulse * 7 : 5;
+  ctx.fillStyle =
+    status === "moving"
+      ? "rgba(37,99,235,.16)"
+      : status === "stopped"
+        ? "rgba(225,29,72,.16)"
+        : status === "operating"
+          ? "rgba(16,185,129,.14)"
+          : "rgba(100,116,139,.12)";
+  roundRect(ctx, x - textWidth / 2, y - badgeHeight / 2, textWidth, badgeHeight, badgeRadius);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = statusColor;
+  ctx.globalAlpha = status === "waiting" ? 0.7 : 0.95;
+  ctx.lineWidth = status === "moving" || status === "stopped" ? 2.2 : 1.5;
+  roundRect(ctx, x - textWidth / 2, y - badgeHeight / 2, textWidth, badgeHeight, badgeRadius);
+  ctx.stroke();
+
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = colors.text;
+  ctx.fillText(labelText, x, y + 0.5);
+
+  if (status === "moving" || status === "stopped") {
+    ctx.fillStyle = statusColor;
+    ctx.beginPath();
+    ctx.arc(x + textWidth / 2 - 4, y - badgeHeight / 2 + 4, 4 + pulse * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (track.locomotive?.activeIncidentCount) {
+    ctx.fillStyle = "#f59e0b";
+    ctx.beginPath();
+    ctx.moveTo(x + textWidth / 2 - 8, y - badgeHeight / 2 + 3);
+    ctx.lineTo(x + textWidth / 2 - 2, y - badgeHeight / 2 + 13);
+    ctx.lineTo(x + textWidth / 2 - 14, y - badgeHeight / 2 + 13);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.restore();
 }
 
 function drawMovingTrackArrows(
@@ -1982,6 +2213,48 @@ function asRecord(value: unknown): JsonRecord {
   return value && typeof value === "object" ? (value as JsonRecord) : {};
 }
 
+function mapViaToPatioTrack(row: unknown): PatioTrackCatalogItem | null {
+  const via = asRecord(row);
+  const trackId = viaToTrackId(via);
+  if (!trackId) return null;
+  return {
+    id: trackId,
+    label: trackLabelFromVia(via, trackId),
+    number: patioTrackNumber(trackId),
+    sourceId: Number.isFinite(Number(via.id)) ? Number(via.id) : null,
+  };
+}
+
+function viaToTrackId(via: JsonRecord): string | null {
+  const numero = Number(via.numero);
+  if (Number.isFinite(numero) && numero > 0) return `VIA-${numero}`;
+  return routeToTrackId(text(via.nombre, ""));
+}
+
+function trackLabelFromVia(via: JsonRecord, trackId: string) {
+  const name = text(via.nombre, "");
+  if (name && name !== "-") {
+    const normalized = name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toUpperCase()
+      .replace(/\s+/g, " ")
+      .trim();
+    if (normalized === "CIL") return "CIL";
+    const viaNameMatch = /^VIA\s+(\d+)$/.exec(normalized);
+    if (viaNameMatch) return viaNameMatch[1];
+  }
+  return trackLabelFromId(trackId);
+}
+
+function dedupePatioTrackCatalog(rows: PatioTrackCatalogItem[]) {
+  const byId = new Map<string, PatioTrackCatalogItem>();
+  rows.forEach((row) => {
+    if (!byId.has(row.id)) byId.set(row.id, row);
+  });
+  return Array.from(byId.values());
+}
+
 function extractArray(value: unknown): unknown[] {
   if (Array.isArray(value)) return value;
   const record = asRecord(value);
@@ -2026,6 +2299,18 @@ function normalizeSeverity(value: unknown): IncidentSeverity {
   if (raw.includes("ALTO") || raw.includes("ALTA") || raw.includes("URG")) return "ALTO";
   if (raw.includes("BAJO") || raw.includes("BAJA")) return "BAJO";
   return "MEDIO";
+}
+
+function incidentSeverityRail(severity: IncidentSeverity) {
+  if (severity === "CRITICO") return "bg-rose-600 shadow-[0_0_14px_rgba(225,29,72,.45)]";
+  if (severity === "ALTO") return "bg-orange-500 shadow-[0_0_12px_rgba(249,115,22,.36)]";
+  if (severity === "BAJO") return "bg-yellow-400 shadow-[0_0_10px_rgba(250,204,21,.28)]";
+  return "bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,.32)]";
+}
+
+function filterRecentIncidents(rows: IncidentRow[]) {
+  const cutoff = Date.now() - 10 * 24 * 60 * 60 * 1000;
+  return rows.filter((row) => Number.isFinite(row.occurredAtMs) && row.occurredAtMs >= cutoff);
 }
 
 function elapsedFrom(value: unknown) {
@@ -2347,14 +2632,16 @@ function mapIncident(row: unknown): IncidentRow | null {
   const id = source.incidenteId ?? source.id;
   const locomotive = source.locomotora ?? movement.locomotiveNumber ?? movement.locomotora ?? movement.locomotoraNumero;
   const rawStatus = text(source.estado ?? source.estatus, "ABIERTO");
+  const occurredAt = source.fechaInicio ?? source.fechaISO ?? source.fecha ?? source.createdAt;
   const output = {
-    key: `incident:${id ?? source.eventId ?? source.fechaInicio ?? source.fechaISO ?? source.createdAt ?? Math.random()}`,
+    key: `incident:${id ?? source.eventId ?? occurredAt ?? Math.random()}`,
     id: id ? `#${id}` : "#",
     severity: normalizeSeverity(source.prioridad ?? source.severidad ?? source.nivel ?? source.tipoIncidente),
     title: text(source.descripcion ?? source.motivo ?? source.tipoIncidente ?? source.titulo, "Incidente activo"),
     equipment: `Eq. ${formatLoco(locomotive)}`,
     equipmentKey: equipmentLookupKey(locomotive),
-    time: elapsedFrom(source.fechaInicio ?? source.fechaISO ?? source.fecha ?? source.createdAt),
+    time: elapsedFrom(occurredAt),
+    occurredAtMs: timestampFrom(occurredAt),
     rawStatus,
     active: isIncidentActiveStatus(rawStatus),
   };
@@ -2367,6 +2654,7 @@ function mapIncident(row: unknown): IncidentRow | null {
       output.equipment,
       output.equipmentKey,
       output.time,
+      output.occurredAtMs,
       output.rawStatus,
       output.active,
       source.fechaInicio,
