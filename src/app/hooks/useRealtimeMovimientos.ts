@@ -7,6 +7,7 @@ export type RealtimeMovementEventType =
   | "movimiento.creado"
   | "movimiento.estado"
   | "movimiento.incidente"
+  | "torno.estado"
   | "incidente.estado"
   | "torreon.movimiento.creado"
   | "torreon.movimiento.estado"

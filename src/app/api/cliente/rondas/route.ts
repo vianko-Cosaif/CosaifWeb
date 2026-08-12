@@ -485,6 +485,11 @@ function getTornoQueueCreatedTime(item: RondaOut): number {
   return Number.isFinite(numericId) ? numericId : Number.MAX_SAFE_INTEGER;
 }
 
+function hasVisibleLocomotive(value: unknown) {
+  const text = String(value ?? "").trim();
+  return Boolean(text && text !== "-" && text !== "â€”" && text.toUpperCase() !== "NULL");
+}
+
 function assertEmpresaScope(shouldScopeEmpresa: boolean, empresaId: number | null, targetEmpresaIds: Array<number | null>) {
   if (!shouldScopeEmpresa) return;
   if (!empresaId) {
@@ -686,10 +691,7 @@ export async function GET(req: NextRequest) {
           record.movimientoId,
           movimientoRecord.id,
           servicioRecord.movimientoId,
-          servicioRecord.ruedaSolicitudId,
           rondaServicioRecord.movimientoId,
-          rondaServicioRecord.ruedaSolicitudId,
-          record.ruedaSolicitudId,
         );
         const servicioId = firstPositiveNumber(
           record.servicioId,
@@ -763,6 +765,12 @@ export async function GET(req: NextRequest) {
 
         if (localidadMovimientoId && localidadId !== localidadMovimientoId) return null;
         if (empresaScopeId && Number(empresa?.id) !== empresaScopeId) return null;
+        if (
+          !concluido &&
+          !hasVisibleLocomotive(movimiento?.locomotiveNumber ?? movimiento?.locomotora ?? record.numeroLocomotora ?? record.locomotiveNumber ?? record.locomotora)
+        ) {
+          return null;
+        }
         return {
           id: -Math.abs(servicioId),
           rondaNumero: 1,

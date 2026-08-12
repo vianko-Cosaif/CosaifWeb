@@ -284,7 +284,7 @@ export default function PanelGrafico({
     maxDelayMs: 650,
     matchesEvent: (event) => {
       const type = String(event.type ?? "");
-      return type === "ronda.reordenada" || type.startsWith("movimiento.") || type.includes("incidente") || type.startsWith("torreon.");
+      return type === "ronda.reordenada" || type.startsWith("movimiento.") || type.startsWith("torno.") || type.includes("incidente") || type.startsWith("torreon.");
     },
     onRefresh: () => load(true),
   });
@@ -824,7 +824,7 @@ function OperationsTable({
 }) {
   return (
     <>
-      <div className="sticky top-0 z-10 grid shrink-0 grid-cols-[minmax(62px,1fr)_minmax(48px,.58fr)_minmax(48px,.52fr)_minmax(68px,.72fr)_minmax(42px,.4fr)] gap-1 border-b border-[var(--app-border)] bg-[var(--app-surface)]/95 px-1.5 py-1 text-center text-[8px] font-black text-blue-900 backdrop-blur dark:text-blue-200 2xl:grid-cols-[minmax(84px,1.05fr)_minmax(60px,.66fr)_minmax(56px,.58fr)_minmax(78px,.8fr)_minmax(50px,.45fr)] 2xl:px-2 2xl:text-[9px]">
+      <div className="sticky top-0 z-10 grid shrink-0 grid-cols-[minmax(70px,1.05fr)_minmax(56px,.68fr)_minmax(46px,.5fr)_minmax(64px,.68fr)_minmax(42px,.42fr)] gap-1 border-b border-[var(--app-border)] bg-[var(--app-surface)]/95 px-1.5 py-1 text-center text-[8px] font-black text-blue-900 backdrop-blur dark:text-blue-200 2xl:grid-cols-[minmax(88px,1.12fr)_minmax(70px,.78fr)_minmax(56px,.58fr)_minmax(78px,.78fr)_minmax(52px,.48fr)] 2xl:px-2 2xl:text-[9px]">
         <span className="rounded-md bg-slate-100/80 px-1.5 py-0.5 dark:bg-slate-800/70">Equipo</span>
         <span className="rounded-md bg-blue-50 px-1.5 py-0.5 dark:bg-blue-950/35">Ruta</span>
         <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 dark:bg-emerald-950/35">Tipo</span>
@@ -888,9 +888,9 @@ function OperationsTable({
               exit={{ opacity: 0, x: 18, scale: 0.98 }}
               transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.8 }}
               style={{ minHeight: rowMinHeight, paddingTop: rowPaddingY, paddingBottom: rowPaddingY }}
-              className={`relative mb-1 grid grid-cols-[minmax(62px,1fr)_minmax(48px,.58fr)_minmax(48px,.52fr)_minmax(68px,.72fr)_minmax(42px,.4fr)] items-center gap-1 overflow-hidden rounded-lg border px-1.5 text-center text-[10px] transition hover:brightness-[.985] dark:hover:brightness-110 2xl:grid-cols-[minmax(84px,1.05fr)_minmax(60px,.66fr)_minmax(56px,.58fr)_minmax(78px,.8fr)_minmax(50px,.45fr)] 2xl:px-2 2xl:text-[11px] before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-r-full before:content-[''] ${rowTypeTone[movement.type]} ${rowTypeAccentTone[movement.type]} ${rowPriorityGlow}`}
+              className={`relative mb-1 grid grid-cols-[minmax(70px,1.05fr)_minmax(56px,.68fr)_minmax(46px,.5fr)_minmax(64px,.68fr)_minmax(42px,.42fr)] items-center gap-1 overflow-hidden rounded-lg border px-1.5 text-center text-[10px] transition hover:brightness-[.985] dark:hover:brightness-110 2xl:grid-cols-[minmax(88px,1.12fr)_minmax(70px,.78fr)_minmax(56px,.58fr)_minmax(78px,.78fr)_minmax(52px,.48fr)] 2xl:px-2 2xl:text-[11px] before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-r-full before:content-[''] ${rowTypeTone[movement.type]} ${rowTypeAccentTone[movement.type]} ${rowPriorityGlow}`}
             >
-              <span className="min-w-0 rounded-lg bg-slate-50/80 px-1 py-1 font-black text-slate-950 ring-1 ring-slate-200/70 dark:bg-slate-900/60 dark:text-white dark:ring-slate-800 2xl:px-1.5">
+              <span className="min-w-0 rounded-lg bg-slate-50/80 px-1 py-1 text-[12px] font-black leading-tight text-slate-950 ring-1 ring-slate-200/70 dark:bg-slate-900/60 dark:text-white dark:ring-slate-800 2xl:px-1.5 2xl:text-[13px]">
                 <span className="flex min-w-0 items-center justify-center gap-1 truncate">
                   {movement.activeIncidentCount > 0 ? (
                     <span className="relative inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 ring-1 ring-amber-300 dark:bg-amber-950/70 dark:text-amber-200 dark:ring-amber-700">
@@ -902,7 +902,7 @@ function OperationsTable({
                 </span>
                 <span className="block truncate text-[9px] font-bold text-[var(--app-text-muted)] 2xl:text-[10px]">{movement.company}</span>
               </span>
-              <span className="min-w-0 truncate rounded-lg bg-blue-50/85 px-1 py-1 font-black text-blue-950 ring-1 ring-blue-100 dark:bg-blue-950/25 dark:text-blue-100 dark:ring-blue-900/50 2xl:px-1.5">
+              <span className="min-w-0 truncate rounded-lg bg-blue-50/85 px-1 py-1 text-[12px] font-black leading-tight text-blue-950 ring-1 ring-blue-100 dark:bg-blue-950/25 dark:text-blue-100 dark:ring-blue-900/50 2xl:px-1.5 2xl:text-[13px]">
                 {movement.route}
               </span>
               <span className={`inline-flex min-h-6 min-w-0 items-center justify-center truncate rounded-md border px-1 text-[9px] font-black 2xl:px-1.5 2xl:text-[10px] ${movementTypeTone[movement.type]}`}>
@@ -917,7 +917,7 @@ function OperationsTable({
                 ) : null}
                 <span className="truncate">{movement.status}</span>
               </span>
-              <span className="truncate rounded-lg bg-amber-50/80 px-1 py-1 text-[9px] font-bold text-amber-800 ring-1 ring-amber-100 dark:bg-amber-950/25 dark:text-amber-200 dark:ring-amber-900/50 2xl:px-1.5 2xl:text-[10px]">
+              <span className="truncate rounded-lg bg-amber-50/80 px-1 py-1 text-[10px] font-black text-amber-800 ring-1 ring-amber-100 dark:bg-amber-950/25 dark:text-amber-200 dark:ring-amber-900/50 2xl:px-1.5 2xl:text-[11px]">
                 {movement.activeIncidentCount > 0 ? `${movement.activeIncidentCount} inc.` : movement.time}
               </span>
             </motion.article>
@@ -982,6 +982,7 @@ function LegendDot({ color, label }: { color: string; label: string }) {
 
 type PatioTrackMode = "idle" | "entry" | "exit" | "blocked";
 type PatioLocomotiveStatus = "operating" | "moving" | "stopped" | "waiting";
+type PatioPlacement = "origin" | "destination" | "both";
 
 type PatioTrack = {
   id: string;
@@ -997,6 +998,7 @@ type PatioTrack = {
   } | null;
   originTrackId: string | null;
   destinationTrackId: string | null;
+  placement: PatioPlacement | null;
 };
 
 type PatioRemovedGhost = PatioTrack & {
@@ -1049,9 +1051,9 @@ function PatioFerroviarioCanvas({
   const serviceActivity = useMemo(
     () => ({
       torno: buildServiceActivity(torneados, "Torno"),
-      lavado: buildServiceActivity(movements, "Lavado"),
+      lavado: null,
     }),
-    [movements, torneados]
+    [torneados]
   );
 
   useEffect(() => {
@@ -1147,48 +1149,50 @@ function PatioFerroviarioCanvas({
 }
 
 function buildPatioTracks(movements: MovementRow[]): PatioTrack[] {
-  const assigned = new Map<string, MovementRow>();
+  const assigned = new Map<string, { movement: MovementRow; placement: PatioPlacement; originTrackId: string | null; destinationTrackId: string | null }>();
   movements.forEach((movement) => {
-    const trackId = routeToTrackId(movement.origin);
-    if (!trackId) return;
+    const placement = movementPatioPlacement(movement);
+    if (!placement.trackId) return;
 
-    const current = assigned.get(trackId);
+    const current = assigned.get(placement.trackId);
     if (!current) {
-      assigned.set(trackId, movement);
+      assigned.set(placement.trackId, { movement, ...placement });
       return;
     }
 
-    if (movement.status === "EN PROCESO" && current.status !== "EN PROCESO") {
-      assigned.set(trackId, movement);
+    if (movement.status === "EN PROCESO" && current.movement.status !== "EN PROCESO") {
+      assigned.set(placement.trackId, { movement, ...placement });
       return;
     }
 
     if (
       movement.status === "EN PROCESO" &&
-      current.status === "EN PROCESO" &&
-      movement.requestedAtMs >= current.requestedAtMs
+      current.movement.status === "EN PROCESO" &&
+      movement.requestedAtMs >= current.movement.requestedAtMs
     ) {
-      assigned.set(trackId, movement);
+      assigned.set(placement.trackId, { movement, ...placement });
       return;
     }
 
     if (
       movement.status !== "EN PROCESO" &&
-      current.status !== "EN PROCESO" &&
-      movement.requestedAtMs >= current.requestedAtMs
+      current.movement.status !== "EN PROCESO" &&
+      movement.requestedAtMs >= current.movement.requestedAtMs
     ) {
-      assigned.set(trackId, movement);
+      assigned.set(placement.trackId, { movement, ...placement });
     }
   });
 
   return PATIO_TRACKS.map((track) => {
-    const movement = assigned.get(track.id);
+    const assignment = assigned.get(track.id);
+    const movement = assignment?.movement ?? null;
     const status = movement ? toPatioStatus(movement.status) : "waiting";
     return {
       ...track,
       mode: movement?.status === "DETENIDO" ? "blocked" : movement?.status === "EN PROCESO" ? "entry" : "idle",
-      originTrackId: movement ? routeToTrackId(movement.origin) : null,
-      destinationTrackId: movement ? routeToTrackId(movement.destination) : null,
+      originTrackId: assignment?.originTrackId ?? null,
+      destinationTrackId: assignment?.destinationTrackId ?? null,
+      placement: assignment?.placement ?? null,
       locomotive: movement
         ? {
             key: movement.key,
@@ -1200,6 +1204,28 @@ function buildPatioTracks(movements: MovementRow[]): PatioTrack[] {
         : null,
     };
   });
+}
+
+function movementPatioPlacement(movement: MovementRow): {
+  trackId: string | null;
+  placement: PatioPlacement;
+  originTrackId: string | null;
+  destinationTrackId: string | null;
+} {
+  const originTrackId = routeToTrackId(movement.origin);
+  const destinationTrackId = routeToTrackId(movement.destination);
+
+  if (originTrackId && destinationTrackId) {
+    return {
+      trackId: originTrackId,
+      placement: originTrackId === destinationTrackId ? "origin" : "both",
+      originTrackId,
+      destinationTrackId,
+    };
+  }
+
+  if (originTrackId) return { trackId: originTrackId, placement: "origin", originTrackId, destinationTrackId };
+  return { trackId: destinationTrackId, placement: "destination", originTrackId, destinationTrackId };
 }
 
 function routeToTrackId(route: string): string | null {
@@ -1687,7 +1713,10 @@ function drawServices(
     x: clampNumber(layout.center.x + layout.outerRadius + (layout.mobile ? 36 : 64), 58, layout.width - 58),
     y: layout.center.y - layout.outerRadius * 0.35,
   };
-  drawServiceBadge(ctx, lavado.x, lavado.y - 18, "drop", "LAVADO", colors, activity.lavado, time, reducedMotion);
+  drawServiceBadge(ctx, lavado.x, lavado.y - 18, "drop", "LAVADO", colors, null, time, reducedMotion, {
+    muted: true,
+    caption: "MOV. EN VIA",
+  });
   drawServiceBadge(ctx, torno.x, torno.y - 18, "gear", "TORNO", colors, activity.torno, time, reducedMotion);
 }
 
@@ -1700,15 +1729,17 @@ function drawServiceBadge(
   colors: Record<string, string>,
   activity: PatioServiceActivity,
   time: number,
-  reducedMotion: boolean
+  reducedMotion: boolean,
+  options: { muted?: boolean; caption?: string } = {}
 ) {
   const active = activity?.status === "moving";
   const pulse = reducedMotion ? 0.35 : 0.25 + ((Math.sin(time / 360) + 1) / 2) * 0.35;
   const tone = icon === "gear" ? colors.stopped : "#0ea5e9";
   ctx.save();
-  ctx.shadowColor = active ? tone : "rgba(0,0,0,0)";
-  ctx.shadowBlur = active ? 12 + pulse * 16 : 0;
-  ctx.fillStyle = icon === "gear" ? "rgba(225,29,72,.12)" : "rgba(59,130,246,.12)";
+  ctx.globalAlpha = options.muted ? 0.74 : 1;
+  ctx.shadowColor = active && !options.muted ? tone : "rgba(0,0,0,0)";
+  ctx.shadowBlur = active && !options.muted ? 12 + pulse * 16 : 0;
+  ctx.fillStyle = icon === "gear" ? "rgba(225,29,72,.12)" : "rgba(59,130,246,.08)";
   ctx.strokeStyle = colors.border;
   ctx.lineWidth = 1.4;
   ctx.beginPath();
@@ -1743,6 +1774,11 @@ function drawServiceBadge(
   ctx.font = "900 13px Inter, Arial, sans-serif";
   ctx.textAlign = "center";
   ctx.fillText(label, x, y + 48);
+  if (!activity && options.caption) {
+    ctx.fillStyle = colors.muted;
+    ctx.font = "900 7px Inter, Arial, sans-serif";
+    ctx.fillText(options.caption, x, y + 61);
+  }
   if (activity) {
     const chipY = y + 66;
     ctx.fillStyle = active ? tone : colors.surface;
@@ -1784,7 +1820,13 @@ function drawLocomotives(
 
   tracks.forEach((track) => {
     if (!track.locomotive) return;
-    const point = polarPoint(layout, layout.turntableRadius + (layout.innerRadius - layout.turntableRadius) * 0.72, toRad(track.angle));
+    const radiusFactor =
+      track.placement === "destination"
+        ? 0.86
+        : track.placement === "origin"
+          ? 0.58
+          : 0.72;
+    const point = polarPoint(layout, layout.turntableRadius + (layout.innerRadius - layout.turntableRadius) * radiusFactor, toRad(track.angle));
     const x = point.x;
     const y = point.y;
     drawLocomotiveChip(ctx, x, y, track, colors, time, changedKeys, reducedMotion);
@@ -1839,6 +1881,30 @@ function drawLocomotiveChip(
   ctx.roundRect(x - 38, y - 18, 76, 36, 8);
   ctx.fill();
   ctx.stroke();
+
+  const placementLabel = track.placement === "destination" ? "PARA" : track.placement === "both" ? "RUTA" : "DE";
+  const placementIcon = track.placement === "destination" ? "→" : track.placement === "both" ? "↔" : "•";
+  const placementColor =
+    track.placement === "destination"
+      ? colors.moving
+      : track.placement === "both"
+        ? "#7c3aed"
+        : colors.operating;
+
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = placementColor;
+  ctx.beginPath();
+  ctx.roundRect(x - 38, y - 31, 34, 14, 7);
+  ctx.fill();
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "900 7px Inter, Arial, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(placementLabel, x - 21, y - 24);
+
+  ctx.fillStyle = placementColor;
+  ctx.font = "900 18px Inter, Arial, sans-serif";
+  ctx.fillText(placementIcon, x + 34, y - 26);
 
   ctx.shadowBlur = 0;
   ctx.fillStyle = statusColor;
@@ -1966,9 +2032,20 @@ function elapsedFrom(value: unknown) {
   const date = value ? new Date(String(value)) : null;
   if (!date || Number.isNaN(date.getTime())) return "-";
   const mins = Math.max(0, Math.round((Date.now() - date.getTime()) / 60_000));
+  if (mins < 1) return "ahora";
   if (mins < 60) return `${mins} min`;
   const hours = Math.floor(mins / 60);
-  return `${hours} h`;
+  if (hours < 24) return `${hours} h`;
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  if (days < 3 && remainingHours > 0) return `${days} d ${remainingHours} h`;
+  if (days < 30) return `${days} d`;
+  const months = Math.floor(days / 30);
+  const remainingDays = days % 30;
+  if (months < 12) return remainingDays > 0 && months < 3 ? `${months} m ${remainingDays} d` : `${months} m`;
+  const years = Math.floor(months / 12);
+  const remainingMonths = months % 12;
+  return remainingMonths > 0 && years < 3 ? `${years} a ${remainingMonths} m` : `${years} a`;
 }
 
 function timestampFrom(value: unknown) {

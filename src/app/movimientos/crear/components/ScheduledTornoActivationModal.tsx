@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { DynamicTable, type DynamicTableColumn } from "@/app/Components/dynamic-table";
 import { resolveTornoProfile, TORNO_PROFILE_FIELDS, type TornoFieldDef } from "../tornoProfiles";
 
@@ -113,6 +114,11 @@ export default function ScheduledTornoActivationModal(props: Props) {
   const [debouncedLocomotive, setDebouncedLocomotive] = useState("");
   const [dismissedMatchId, setDismissedMatchId] = useState<number | null>(null);
   const [activating, setActivating] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const value = locomotiveNumber.trim();
@@ -192,13 +198,18 @@ export default function ScheduledTornoActivationModal(props: Props) {
     ) : null;
   }
 
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/45 p-4">
-      <div className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
+  const modal = (
+    <div className="fixed inset-0 z-[9990] flex min-h-screen w-screen items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-5">
+      <div
+        className="flex max-h-[min(92vh,860px)] w-[min(1180px,calc(100vw-24px))] flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_28px_90px_rgba(15,23,42,.36)] dark:border-slate-800 dark:bg-slate-950"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="scheduled-torno-title"
+      >
         <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
-              <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+              <h3 id="scheduled-torno-title" className="text-base font-semibold text-slate-900 dark:text-white">
                 {isRecovery ? "Torneado cancelado recuperable" : "Movimiento de torno agendado encontrado"}
               </h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -228,7 +239,7 @@ export default function ScheduledTornoActivationModal(props: Props) {
           </div>
         </div>
 
-        <div className="max-h-[calc(92vh-64px)] overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
             <div>Programada: <strong>{formatDate(match?.fechaProgramada)}</strong></div>
             <div className="mt-1">Limite de activacion: <strong>{formatDate(match?.fechaLimiteActivacion)}</strong></div>
@@ -280,4 +291,6 @@ export default function ScheduledTornoActivationModal(props: Props) {
       </div>
     </div>
   );
+
+  return mounted ? createPortal(modal, document.body) : null;
 }
