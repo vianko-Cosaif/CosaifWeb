@@ -114,7 +114,6 @@ function buildExecutionSummary(rows: Movement[]) {
 
 interface MovimientosPanelProps {
   rol?: Rol;
-  token?: string;
   puedeCrear?: boolean;
   apiBase?: string;
   empresaIdUsuario?: number | null;
@@ -128,7 +127,6 @@ interface MovimientosPanelProps {
 export default function MovimientosPanel(props: MovimientosPanelProps) {
   const {
     rol: rolProp,
-    token: tokenProp,
     puedeCrear = false,
     apiBase,
     empresaIdUsuario,
@@ -140,7 +138,6 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
   const trainingTour = useTrainingTour();
 
   const [rol, setRol] = useState<Rol>(() => rolProp ?? getRoleFromSession());
-  const [token, setToken] = useState<string | undefined>(() => tokenProp);
 
   const [userEmpresaId, setUserEmpresaId] = useState<number | null>(
     () => empresaIdUsuario ?? null
@@ -153,15 +150,6 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
   const puedeVerDuracionMovimiento = canViewMovementDuration(rolNormalizado);
 
   /* ================== RESOLVER SESIÓN ================== */
-
-  useEffect(() => {
-    if (tokenProp) {
-      setToken(tokenProp);
-      return;
-    }
-    const t = getCookie("token");
-    if (t) setToken(t);
-  }, [tokenProp]);
 
   useEffect(() => {
     if (rolProp) {
@@ -230,7 +218,6 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     emptyText,
   } = useMovimientos({
     rol,
-    token,
     apiBase,
     autoRefreshMs: intervaloAutoMs,
     initialEmpresaId: roleCapabilities.canViewAllCompanies ? null : userEmpresaId,

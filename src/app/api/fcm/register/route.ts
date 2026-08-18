@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { normalizeHttpOrigin } from "@/lib/serverOrigin";
 import { getNotificationRuntimePolicy } from "@/lib/notificationRuntime";
+import { PERMISSIONS, hasPermission } from "@/lib/accessControl";
+import { getVerifiedSession } from "@/lib/server/session";
 
 const ORIGIN = normalizeHttpOrigin(process.env.API_ORIGIN);
 const FCM_TIMEOUT_MS = Number(process.env.BFF_TIMEOUT_MS || 12000);
@@ -90,8 +92,23 @@ export async function POST(req: NextRequest) {
   const runtimeEnv = readString(body, "runtimeEnv");
   const appEnv = readString(body, "appEnv");
   const cookieStore = await cookies();
-  const accessToken = readString(body, "accessToken") || cookieStore.get(JWT_COOKIE)?.value || "";
-  const localidadId = toPositiveInt(body?.localidadId);
+  const accessToken = cookieStore.get(JWT_COOKIE)?.value || "";
+  const session = await getVerifiedSession();
+  const requestedLocalidadId = toPositiveInt(body?.localidadId);
+
+  if (!accessToken || !session) {
+    return NextResponse.json({ error: "Sesion no valida" }, { status: 401 });
+  }
+  if (!hasPermission(session.authorization, PERMISSIONS.SESSION_READ)) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
+
+  const localityScoped = session.authorization.scope.mode === "LOCALITY"
+    || session.authorization.scope.mode === "COMPANY_LOCALITY";
+  if (localityScoped && requestedLocalidadId && requestedLocalidadId !== session.localidadId) {
+    return NextResponse.json({ error: "Localidad fuera del alcance de la sesion" }, { status: 403 });
+  }
+  const localidadId = localityScoped ? session.localidadId : requestedLocalidadId;
 
   if (!runtimeEnv || runtimeEnv !== policy.runtimeEnv || (appEnv && appEnv !== policy.appEnv)) {
     return NextResponse.json({ error: "Ambiente de notificaciones invalido" }, { status: 409 });
@@ -99,10 +116,6 @@ export async function POST(req: NextRequest) {
 
   if (!isLikelyFcmToken(token)) {
     return NextResponse.json({ error: "Token FCM invalido" }, { status: 400 });
-  }
-
-  if (!accessToken) {
-    return NextResponse.json({ error: "token y accessToken son requeridos" }, { status: 400 });
   }
 
   const controller = new AbortController();

@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { normalizeHttpOrigin } from "@/lib/serverOrigin";
 import { getVerifiedSession } from "@/lib/server/session";
 import { rejectCrossSiteMutation } from "@/lib/server/requestSecurity";
+import { canForwardApiRequest } from "@/lib/server/requestAuthorization";
 
 const ORIGIN = normalizeHttpOrigin(process.env.API_ORIGIN);
 const BFF_TIMEOUT_MS = Number(process.env.BFF_TIMEOUT_MS || 12000);
@@ -56,6 +57,10 @@ async function proxy(req: NextRequest) {
     "";
   const session = await getVerifiedSession();
   if (!token || !session) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  const upstreamPath = req.nextUrl.pathname.replace(/^\/bff/, "");
+  if (!canForwardApiRequest(session.authorization, upstreamPath, req.method)) {
+    return NextResponse.json({ error: "Esta acción no está habilitada para tu perfil." }, { status: 403 });
+  }
   const headers = buildUpstreamHeaders(req, token);
 
   const init: RequestInit = {

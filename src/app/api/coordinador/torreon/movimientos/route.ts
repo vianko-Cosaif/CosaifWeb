@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
 import { toTorreonImageProxyUrl } from "@/lib/torreonImageProxy";
+import { PERMISSIONS, hasPermission } from "@/lib/accessControl";
+import { getVerifiedSession } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
 
@@ -36,36 +38,13 @@ function cleanText(input: unknown) {
   return typeof input === "string" && input.trim() ? input.trim() : null;
 }
 
-function readRole(cookieStore: Awaited<ReturnType<typeof cookies>>) {
-  return String(cookieStore.get(process.env.ROLE_COOKIE_NAME || "role")?.value || "").toUpperCase();
-}
-
-function readEmpresaId(cookieStore: Awaited<ReturnType<typeof cookies>>) {
-  return (
-    asNumber(cookieStore.get("empresaId")?.value) ||
-    asNumber(cookieStore.get("empresald")?.value) ||
-    asNumber(cookieStore.get("empresaID")?.value)
-  );
-}
-
-function readLocalidadId(cookieStore: Awaited<ReturnType<typeof cookies>>) {
-  return (
-    asNumber(cookieStore.get("locId")?.value) ||
-    asNumber(cookieStore.get("localidadId")?.value)
-  );
-}
-
-function canSeeAllEmpresas(role: string) {
-  return ["ADMINISTRADOR", "COORDINADOR"].includes(role);
-}
-
-function requireSession(cookieStore: Awaited<ReturnType<typeof cookies>>) {
+async function requireSession(cookieStore: Awaited<ReturnType<typeof cookies>>) {
   const token = cookieStore.get(process.env.JWT_COOKIE_NAME || "token")?.value || cookieStore.get("token")?.value;
-  const role = readRole(cookieStore);
-  if (!token || !ALLOWED_ROLES.has(role)) {
+  const signed = await getVerifiedSession();
+  if (!token || !signed || !ALLOWED_ROLES.has(signed.role) || !hasPermission(signed.authorization, PERMISSIONS.TORREON_READ)) {
     return { ok: false as const, response: NextResponse.json({ error: "No autorizado" }, { status: 401 }) };
   }
-  return { ok: true as const, role, token };
+  return { ok: true as const, ...signed, token };
 }
 
 function formatRef(snapshot: unknown, fallbackPrefix: string, id: unknown) {
@@ -207,7 +186,7 @@ function isConcluido(estado: string) {
 export async function GET(req: NextRequest) {
   try {
     const cookieStore = await cookies();
-    const session = requireSession(cookieStore);
+    const session = await requireSession(cookieStore);
     if (!session.ok) return session.response;
 
     const { searchParams } = new URL(req.url);
@@ -215,8 +194,9 @@ export async function GET(req: NextRequest) {
     if (!localidadId || !isTorreonLocalidad(localidadId)) {
       return NextResponse.json({ error: "Localidad Torreon requerida" }, { status: 400 });
     }
-    const assignedLocalidadId = readLocalidadId(cookieStore);
-    if (session.role !== "ADMINISTRADOR" && assignedLocalidadId !== asNumber(localidadId)) {
+    const assignedLocalidadId = session.localidadId;
+    const localityScoped = session.authorization.scope.mode === "LOCALITY" || session.authorization.scope.mode === "COMPANY_LOCALITY";
+    if (localityScoped && assignedLocalidadId !== asNumber(localidadId)) {
       return NextResponse.json({ error: "Solo puedes consultar movimientos de tu localidad." }, { status: 403 });
     }
 
@@ -224,8 +204,9 @@ export async function GET(req: NextRequest) {
     if (detailId) {
       const raw = await fetchTorreonMsJson(`/movimientos/${detailId}`);
       const data = mapMovimiento(asRecord(raw));
-      const empresaId = readEmpresaId(cookieStore);
-      if (!canSeeAllEmpresas(session.role) && empresaId && data.empresaId !== empresaId) {
+      const empresaId = session.empresaId;
+      const companyScoped = session.authorization.scope.mode === "COMPANY" || session.authorization.scope.mode === "COMPANY_LOCALITY";
+      if (companyScoped && empresaId && data.empresaId !== empresaId) {
         return NextResponse.json({ success: false, error: "No autorizado" }, { status: 403 });
       }
       if (String(data.localidadId || "") !== String(localidadId)) {
@@ -235,10 +216,11 @@ export async function GET(req: NextRequest) {
     }
 
     const params = new URLSearchParams({ localidadId });
-    const empresaId = readEmpresaId(cookieStore);
+    const empresaId = session.empresaId;
     const requestedEmpresaId = asNumber(searchParams.get("empresaId"));
-    if (canSeeAllEmpresas(session.role) && requestedEmpresaId) params.set("empresaId", String(requestedEmpresaId));
-    if (!canSeeAllEmpresas(session.role) && empresaId) params.set("empresaId", String(empresaId));
+    const companyScoped = session.authorization.scope.mode === "COMPANY" || session.authorization.scope.mode === "COMPANY_LOCALITY";
+    if (!companyScoped && requestedEmpresaId) params.set("empresaId", String(requestedEmpresaId));
+    if (companyScoped && empresaId) params.set("empresaId", String(empresaId));
     const status = String(searchParams.get("status") || "activos").toLowerCase();
     if (status === "concluidos") params.set("vista", "historial");
     if (status === "activos") params.set("vista", "activos");

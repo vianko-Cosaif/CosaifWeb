@@ -11,7 +11,7 @@ export async function POST() {
     res.cookies.set(name, "", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: "strict",
       path: "/",
       maxAge: 0,
       expires: new Date(0),
@@ -21,7 +21,7 @@ export async function POST() {
   for (const name of ["locId", "empresaId", "userId"]) {
     res.cookies.set(name, "", {
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: "strict",
       path: "/",
       maxAge: 0,
       expires: new Date(0),

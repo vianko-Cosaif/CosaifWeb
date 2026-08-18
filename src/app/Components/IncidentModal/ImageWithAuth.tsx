@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -13,17 +12,6 @@ type ImageWithAuthProps = {
 
 const EMPTY_IMAGE =
   "data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='600'%3E%3Crect width='100%25' height='100%25' fill='%23ECEFF1'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23546E7A' font-family='sans-serif' font-size='24'%3ESin imagen%3C/text%3E%3C/svg%3E";
-
-function getCookie(name: string): string {
-  if (typeof document === "undefined") return "";
-  const m = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
-  return m ? decodeURIComponent(m[1]) : "";
-}
-
-function authHeaders() {
-  const t = getCookie("token");
-  return t ? ({ Authorization: `Bearer ${t}` } as Record<string, string>) : {};
-}
 
 function cn(...xs: (string | false | undefined)[]) {
   return xs.filter(Boolean).join(" ");
@@ -54,7 +42,6 @@ export function ImageWithAuth({
         setHasError(false);
 
         const r = await fetch(src, {
-          headers: authHeaders(),
           credentials: "include",
           cache: "no-store",
         });

@@ -17,6 +17,7 @@ export async function clearAuthenticatedSession() {
   }
 
   try {
+    invalidateCachedJson();
     clearStorage(window.localStorage);
     clearStorage(window.sessionStorage);
   } catch {
@@ -27,3 +28,4 @@ export async function clearAuthenticatedSession() {
     document.cookie = `${name}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; samesite=lax`;
   }
 }
+import { invalidateCachedJson } from "@/lib/clientRequestCache";

@@ -1,8 +1,9 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import { getRoleCapabilities } from "@/lib/accessControl";
+import { PERMISSIONS, hasPermission } from "@/lib/accessControl";
 import { normalizeHttpOrigin } from "@/lib/serverOrigin";
+import { getVerifiedSession } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
 
@@ -38,17 +39,16 @@ export async function GET(
 
   const cookieStore = await cookies();
   const token = cookieStore.get(process.env.JWT_COOKIE_NAME ?? "token")?.value;
-  const role = String(cookieStore.get(process.env.ROLE_COOKIE_NAME ?? "role")?.value || "").toUpperCase();
-  const capabilities = getRoleCapabilities(role);
-  const assignedEmpresaId = positiveNumber(cookieStore.get("empresaId")?.value);
-  const assignedLocalidadId = positiveNumber(
-    cookieStore.get("locId")?.value,
-    cookieStore.get("localidadId")?.value,
-  );
+  const session = await getVerifiedSession();
+  const assignedEmpresaId = session?.empresaId ?? null;
+  const assignedLocalidadId = session?.localidadId ?? null;
 
-  if (!token) return NextResponse.json({ message: "No autorizado." }, { status: 401 });
-  if (!capabilities.isClientLike) {
+  if (!token || !session) return NextResponse.json({ message: "No autorizado." }, { status: 401 });
+  if (!session.authorization.capabilities.isClientLike) {
     return NextResponse.json({ message: "Ruta exclusiva para clientes." }, { status: 403 });
+  }
+  if (!hasPermission(session.authorization, PERMISSIONS.MOVEMENTS_EDIT)) {
+    return NextResponse.json({ message: "No puedes editar movimientos." }, { status: 403 });
   }
   if (!assignedEmpresaId) {
     return NextResponse.json({ message: "No hay una empresa asignada a la sesion." }, { status: 403 });
@@ -84,7 +84,7 @@ export async function GET(
   if (movementEmpresaId !== assignedEmpresaId) {
     return NextResponse.json({ message: "Solo puedes ver mediciones de tus locomotoras." }, { status: 403 });
   }
-  if (role === "CLIENTE" && assignedLocalidadId && movementLocalidadId !== assignedLocalidadId) {
+  if (session.authorization.scope.mode === "COMPANY_LOCALITY" && assignedLocalidadId && movementLocalidadId !== assignedLocalidadId) {
     return NextResponse.json({ message: "Solo puedes ver mediciones de tu localidad." }, { status: 403 });
   }
 

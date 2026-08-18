@@ -27,11 +27,6 @@ const getCookie = (name: string) => {
   return m ? decodeURIComponent(m[1]) : null;
 };
 
-const getAuthHeaders = (): HeadersInit => {
-  const token = getCookie("token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
-
 const incidentSourceQuery = (incident: IncidenteEmergente): string => {
   const original = (incident as any)?._original ?? {};
   const source = String(original?._source || (incident as any)?._source || "").toLowerCase();
@@ -523,7 +518,7 @@ export default function IncidentMonitor({
         }
         const response = await handleFetchRequest(`${apiBase}/incidentes/${incident.id}/resuelto${incidentSourceQuery(incident)}`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+          headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({ estado: "RESUELTO", comentario: comments }),
         });
@@ -559,7 +554,6 @@ export default function IncidentMonitor({
         }
         const response = await handleFetchRequest(`${apiBase}/incidentes/${incident.id}/cerrar${incidentSourceQuery(incident)}`, {
           method: "POST",
-          headers: { ...getAuthHeaders() },
           credentials: "include",
         });
         if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);

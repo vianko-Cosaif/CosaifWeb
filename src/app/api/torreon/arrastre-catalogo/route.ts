@@ -1,7 +1,7 @@
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
 import { canViewTorreonArrastreRole, normalizeRoleName } from "@/lib/torreonLocalidad";
+import { getVerifiedSession } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
 
@@ -10,10 +10,10 @@ function jsonError(message: string, status: number) {
 }
 
 async function readSessionScope() {
-  const cookieStore = await cookies();
+  const session = await getVerifiedSession();
   return {
-    role: normalizeRoleName(cookieStore.get(process.env.ROLE_COOKIE_NAME || "role")?.value),
-    localidadId: Number(cookieStore.get("locId")?.value || cookieStore.get("localidadId")?.value || 0),
+    role: normalizeRoleName(session?.role),
+    localidadId: Number(session?.localidadId || 0),
   };
 }
 

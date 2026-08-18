@@ -3,13 +3,14 @@ import { useEffect, useState } from "react";
 import { User, Lock, Eye, EyeOff, LogIn, AlertCircle } from "lucide-react";
 import { getNotificationRuntimePolicy } from "@/lib/notificationRuntime";
 import { isClienteAreaRole, isTorreonLocalidadId } from "@/lib/torreonLocalidad";
-import { getRoleCapabilities } from "@/lib/accessControl";
+import { parseAuthorizationProfile, type AuthorizationProfile } from "@/lib/accessControl";
 
 const DEST: Record<string, string> = {
   CLIENTE: "/cliente",
+  CLIENTE_ADMIN: "/cliente",
+  CLIENTE_COOR: "/cliente",
+  ARRASTRE_TORREON: "/cliente/torreon",
   SUPERVISOR: "/supervisor",
-  MAQUINISTA: "/maquinista",
-  OPERADOR: "/operador",
   ADMINISTRADOR: "/administrador",
   COMERCIAL: "/comercial",
   COORDINADOR: "/coordinador",
@@ -139,6 +140,7 @@ export default function LoginForm() {
 
       const payload = (await r.json()) as {
         role?: string;
+        authorization?: AuthorizationProfile;
         user?: {
           id?: number;
           rol?: string;
@@ -146,25 +148,27 @@ export default function LoginForm() {
           empresaId?: number;
           empresa?: { id?: number; nombre?: string };
           localidadId?: number; // <- importante
+          authorization?: AuthorizationProfile;
         };
         status?: number;
         id?: number; // por si el API lo manda en la raíz
       };
 
-      const role = String(payload?.user?.rol || payload?.role || "").toUpperCase();
+      const authorization = parseAuthorizationProfile(payload.authorization ?? payload.user?.authorization);
+      const role = authorization?.role ?? "";
       const uid = Number(payload?.user?.id ?? payload?.id ?? NaN);
       const empresaId = Number(payload?.user?.empresaId ?? payload?.user?.empresa?.id ?? NaN);
       const empresaNombre = payload?.user?.empresa?.nombre || "";
       const localidadId = Number(payload?.user?.localidadId ?? NaN);
 
-      if (!role || !Number.isFinite(uid)) {
+      if (!authorization || !role || !Number.isFinite(uid)) {
         setErr("Respuesta inválida del servidor");
         return;
       }
 
-      const capabilities = getRoleCapabilities(role);
-      if (!capabilities.canUseWeb) {
-        setErr(`El acceso web para el rol ${capabilities.label} todavía no está habilitado.`);
+      const capabilities = authorization.capabilities;
+      if (!authorization.platforms.web || !capabilities.canUseWeb) {
+        setErr(`El acceso web para el rol ${authorization.roleLabel} no está habilitado.`);
         return;
       }
 
@@ -175,6 +179,7 @@ export default function LoginForm() {
           id: uid,
           rol: role,
           nombre: payload?.user?.nombre || "",
+          authorization,
           ...(Number.isFinite(empresaId) ? { empresaId, empresa: { id: empresaId, nombre: empresaNombre } } : {}),
           ...(Number.isFinite(localidadId) ? { localidadId } : {}),
         };

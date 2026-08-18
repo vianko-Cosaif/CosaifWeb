@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
-import { canResolveTorreonIncidentRole, canViewTorreonArrastreRole } from "@/lib/torreonLocalidad";
+import { TorreonMsError, fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
 import { ARRASTRE_MAX_CAPACITY, ARRASTRE_MIN_VAGONES, arrastreVagonCapacity } from "@/features/torreon/arrastres/constants";
+import { PERMISSIONS, hasAnyPermission, hasPermission } from "@/lib/accessControl";
+import { getVerifiedSession } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
 
-type CookieStore = Awaited<ReturnType<typeof cookies>>;
 type JsonRecord = Record<string, unknown>;
 type FotoInput = {
   dataUrl?: string;
@@ -17,32 +16,6 @@ type FotoInput = {
   comentario?: string;
   tomadaPorId?: number;
 };
-
-function readRole(cookieStore: CookieStore) {
-  return String(cookieStore.get(process.env.ROLE_COOKIE_NAME || "role")?.value || "").toUpperCase();
-}
-
-function readEmpresaId(cookieStore: CookieStore) {
-  return (
-    Number(cookieStore.get("empresaId")?.value) ||
-    Number(cookieStore.get("empId")?.value) ||
-    Number(cookieStore.get("empresald")?.value) ||
-    null
-  );
-}
-
-function readUserId(cookieStore: CookieStore) {
-  return (
-    Number(cookieStore.get("userId")?.value) ||
-    Number(cookieStore.get("uid")?.value) ||
-    Number(cookieStore.get("usuarioId")?.value) ||
-    null
-  );
-}
-
-function canSeeAllEmpresas(role: string) {
-  return ["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR"].includes(role);
-}
 
 function canOperatePatio(role: string) {
   return ["COORDINADOR", "SUPERVISOR"].includes(role);
@@ -151,7 +124,7 @@ function normalizeFotos(input: unknown, userId: number): FotoInput[] {
     .filter((foto): foto is FotoInput => Boolean(foto));
 }
 
-async function getArrastreForAccess(arrastreId: number, role: string, empresaId: number | null) {
+async function getArrastreForAccess(arrastreId: number, companyScoped: boolean, empresaId: number | null) {
   const arrastre = asRecord(await fetchTorreonMsJson(`/arrastres/${arrastreId}`));
   const localidadId = Number(arrastre.localidadId);
   const arrastreEmpresaId = Number(arrastre.empresaId);
@@ -160,7 +133,7 @@ async function getArrastreForAccess(arrastreId: number, role: string, empresaId:
     throw new Error("Arrastre fuera de Torreon");
   }
 
-  if (!canSeeAllEmpresas(role)) {
+  if (companyScoped) {
     if (!empresaId || !Number.isFinite(arrastreEmpresaId) || arrastreEmpresaId !== empresaId) {
       throw new Error("Arrastre fuera de la empresa del usuario");
     }
@@ -169,10 +142,10 @@ async function getArrastreForAccess(arrastreId: number, role: string, empresaId:
   return arrastre;
 }
 
-async function loadPriorityScope(arrastre: JsonRecord, role: string, empresaId: number | null) {
+async function loadPriorityScope(arrastre: JsonRecord, companyScoped: boolean, empresaId: number | null) {
   const localidadId = Number(arrastre.localidadId);
   const qs = new URLSearchParams({ localidadId: String(localidadId) });
-  if (!canSeeAllEmpresas(role) && empresaId) qs.set("empresaId", String(empresaId));
+  if (companyScoped && empresaId) qs.set("empresaId", String(empresaId));
 
   const rows = extractArray(await fetchTorreonMsJson(`/arrastres?${qs.toString()}`))
     .sort((left, right) => orderValue(left) - orderValue(right) || solicitudTime(left) - solicitudTime(right) || Number(left.id) - Number(right.id));
@@ -182,22 +155,28 @@ async function loadPriorityScope(arrastre: JsonRecord, role: string, empresaId: 
 
 export async function POST(req: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const role = readRole(cookieStore);
-    const empresaId = readEmpresaId(cookieStore);
-    const userId = readUserId(cookieStore);
+    const session = await getVerifiedSession();
+    if (!session) return jsonError("Sesion no valida", 401);
+
+    const { authorization } = session;
+    const role = authorization.role;
+    const empresaId = session.empresaId;
+    const userId = session.userId;
+    const companyScoped = authorization.scope.mode === "COMPANY"
+      || authorization.scope.mode === "COMPANY_LOCALITY";
     const body = await req.json().catch(() => ({})) as JsonRecord;
     const action = String(body.action || "").toUpperCase();
 
     if (action === "RESOLVER_INCIDENTE") {
-      if (!canResolveTorreonIncidentRole(role)) {
+      if (!hasPermission(authorization, PERMISSIONS.INCIDENTS_RESOLVE)) {
         return jsonError("No autorizado para resolver incidentes", 403);
       }
-    } else if (!canViewTorreonArrastreRole(role)) {
+    } else if (action === "CREAR_INCIDENTE") {
+      if (!hasPermission(authorization, PERMISSIONS.INCIDENTS_CREATE)) {
+        return jsonError("No autorizado para crear incidentes", 403);
+      }
+    } else if (!hasAnyPermission(authorization, [PERMISSIONS.TORREON_CREATE, PERMISSIONS.TORREON_OPERATE])) {
       return jsonError("No autorizado para operar arrastres", 403);
-    }
-    if (!userId) {
-      return jsonError("No se encontro usuario en sesion", 403);
     }
 
     const arrastreId = asPositiveInt(body.arrastreId);
@@ -206,7 +185,7 @@ export async function POST(req: NextRequest) {
       return jsonError("Arrastre invalido", 400);
     }
 
-    const arrastre = await getArrastreForAccess(arrastreId, role, empresaId);
+    const arrastre = await getArrastreForAccess(arrastreId, companyScoped, empresaId);
 
     if (action === "EDITAR_ARRASTRE") {
       if (statusText(arrastre.estado) !== "SOLICITADO") {
@@ -382,7 +361,7 @@ export async function POST(req: NextRequest) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           arrastreIds,
-          ...(!canSeeAllEmpresas(role) && empresaId ? { empresaId } : {}),
+          ...(companyScoped && empresaId ? { empresaId } : {}),
         }),
       });
       return NextResponse.json(data, { status: 200 });
@@ -393,7 +372,7 @@ export async function POST(req: NextRequest) {
         return jsonError("Solo puedes subir solicitudes solicitadas o detenidas sin vagon en proceso", 409);
       }
 
-      const scopeRows = await loadPriorityScope(arrastre, role, empresaId);
+      const scopeRows = await loadPriorityScope(arrastre, companyScoped, empresaId);
       if (!scopeRows.some(hasOpenIncident)) {
         return jsonError("Solo se puede priorizar cuando existe un incidente abierto en la cola", 409);
       }
@@ -417,7 +396,7 @@ export async function POST(req: NextRequest) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           arrastreIds,
-          ...(!canSeeAllEmpresas(role) && empresaId ? { empresaId } : {}),
+          ...(companyScoped && empresaId ? { empresaId } : {}),
         }),
       });
       return NextResponse.json(data, { status: 200 });
@@ -498,6 +477,7 @@ export async function POST(req: NextRequest) {
     return jsonError("Accion de arrastre no soportada", 400);
   } catch (error) {
     console.error("[api/cliente/torreon/arrastres/action] error:", error);
-    return jsonError(error instanceof Error ? error.message : "No se pudo operar el arrastre", 400);
+    if (error instanceof TorreonMsError) return jsonError(error.message, error.status);
+    return jsonError("No se pudo operar el arrastre. Intenta nuevamente.", 500);
   }
 }

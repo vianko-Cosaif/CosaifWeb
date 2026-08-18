@@ -1,8 +1,9 @@
 // app/movimientos/crear/page.tsx
 import type { Metadata } from "next";
 import CrearMovimiento from "./CrearMovimiento";
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { PERMISSIONS, hasPermission } from "@/lib/accessControl";
+import { getVerifiedSession } from "@/lib/server/session";
 
 export const metadata: Metadata = {
   title: "Crear movimiento | Cosaif",
@@ -10,16 +11,12 @@ export const metadata: Metadata = {
 };
 
 export default async function Page() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(process.env.JWT_COOKIE_NAME ?? "token")?.value;
-  if (!token) {
-    redirect("/login?loc=cliente");
-  }
-
-  const role = cookieStore.get(process.env.ROLE_COOKIE_NAME ?? "role")?.value?.toUpperCase() ?? "";
-  if (role === "ARRASTRE_TORREON") {
+  const session = await getVerifiedSession();
+  if (!session) redirect("/login?loc=cliente");
+  if (session.role === "ARRASTRE_TORREON") {
     redirect("/cliente/torreon/crear");
   }
+  if (!hasPermission(session.authorization, PERMISSIONS.MOVEMENTS_CREATE)) redirect(session.authorization.capabilities.home);
 
   return <CrearMovimiento />;
 }

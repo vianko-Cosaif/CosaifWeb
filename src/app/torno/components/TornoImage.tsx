@@ -12,14 +12,6 @@ type Props = {
   containerClassName?: string;
 };
 
-function authHeaders(): HeadersInit {
-  const headers: Record<string, string> = {};
-  if (typeof document === "undefined") return {};
-  const match = document.cookie.match(/(?:^|;\s*)token=([^;]+)/);
-  if (match) headers.Authorization = `Bearer ${decodeURIComponent(match[1])}`;
-  return headers;
-}
-
 function cn(...classes: Array<string | false | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
@@ -69,7 +61,6 @@ export default function TornoImage({
         const response = await fetch(resolved, {
           credentials: "include",
           cache: "no-store",
-          headers: authHeaders(),
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const blob = await response.blob();

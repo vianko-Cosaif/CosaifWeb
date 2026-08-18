@@ -1,7 +1,8 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import EditarMovimiento from "./EditarMovimiento";
 import { isTrainingMovementId } from "@/lib/routePolicy";
+import { PERMISSIONS, hasPermission } from "@/lib/accessControl";
+import { getVerifiedSession } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
 
@@ -11,13 +12,8 @@ interface PageProps {
 }
 
 export default async function Page({ searchParams }: PageProps) {
-  // cookies() en Next 15 es async, esto está bien
-  const c = await cookies();
-  const token = c.get(process.env.JWT_COOKIE_NAME ?? "token")?.value;
-
-  if (!token) {
-    redirect("/login?loc=cliente");
-  }
+  const session = await getVerifiedSession();
+  if (!session) redirect("/login?loc=cliente");
 
   // Resolvem​os el Promise de searchParams
   const { id: idStr, training } = await searchParams;
@@ -35,12 +31,10 @@ export default async function Page({ searchParams }: PageProps) {
     // cambiando únicamente el ID del query string.
     redirect("/cliente/movimientos?trainingError=invalid-sim-id");
   }
-  const empIdCookie =
-    Number(c.get("empId")?.value ?? "") ||
-    Number(c.get("empresaId")?.value ?? "") ||
-    null;
-
-  if (empIdCookie == null && !isTrainingMovement) {
+  if (!hasPermission(session.authorization, PERMISSIONS.MOVEMENTS_EDIT) && !isTrainingMovement) {
+    redirect(session.authorization.capabilities.home);
+  }
+  if (session.empresaId == null && !isTrainingMovement && session.authorization.scope.mode !== "GLOBAL") {
     redirect("/login?loc=cliente");
   }
 

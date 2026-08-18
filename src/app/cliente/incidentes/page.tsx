@@ -1,19 +1,13 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import IncidenteController from "@/app/incidentes/ui/IncidenteController";
-import { getRoleCapabilities } from "@/lib/accessControl";
+import { PERMISSIONS, hasPermission } from "@/lib/accessControl";
+import { getVerifiedSession } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(process.env.JWT_COOKIE_NAME ?? "token")?.value;
-  if (!token) redirect("/login?loc=cliente");
-
-  const role = cookieStore.get(process.env.ROLE_COOKIE_NAME ?? "role")?.value?.toUpperCase() ?? "CLIENTE";
-  const capabilities = getRoleCapabilities(role);
-
-  if (capabilities.area !== "cliente") {
+  const session = await getVerifiedSession();
+  if (!session || session.authorization.capabilities.area !== "cliente" || !hasPermission(session.authorization, PERMISSIONS.INCIDENTS_READ)) {
     redirect("/");
   }
 

@@ -12,6 +12,18 @@ type CachedFetchOptions = {
   timeoutMs?: number;
 };
 
+export class ClientRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code: string,
+    public readonly retryable: boolean,
+  ) {
+    super(message);
+    this.name = "ClientRequestError";
+  }
+}
+
 const responseCache = new Map<string, CacheEntry>();
 const pendingRequests = new Map<string, Promise<unknown>>();
 
@@ -22,6 +34,34 @@ function requestKey(url: string, init?: RequestInit, explicitKey?: string) {
 
 function abortError() {
   return new DOMException("The operation was aborted", "AbortError");
+}
+
+function cleanServerMessage(value: unknown) {
+  if (typeof value !== "string") return "";
+  return value.replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim().slice(0, 180);
+}
+
+async function responseError(response: Response) {
+  let serverMessage = "";
+  if ((response.headers.get("content-type") || "").includes("application/json")) {
+    const payload = await response.json().catch(() => null) as { message?: unknown; error?: unknown } | null;
+    serverMessage = cleanServerMessage(payload?.message) || cleanServerMessage(payload?.error);
+  }
+
+  const known = {
+    400: serverMessage || "Revisa los datos enviados.",
+    401: "Tu sesión terminó. Vuelve a iniciar sesión.",
+    403: "Esta acción no está habilitada para tu cuenta.",
+    404: serverMessage || "El registro solicitado ya no está disponible.",
+    409: serverMessage || "La información cambió. Actualiza e inténtalo de nuevo.",
+    422: serverMessage || "Hay datos que necesitan corrección.",
+    429: "Hay muchas solicitudes en curso. Espera un momento e inténtalo de nuevo.",
+  } as Record<number, string>;
+  const retryable = response.status === 408 || response.status === 425 || response.status === 429 || response.status >= 500;
+  const message = known[response.status]
+    || (response.status >= 500 ? "El servicio está temporalmente ocupado. Puedes reintentar." : "No se pudo completar la solicitud.");
+
+  return new ClientRequestError(message, response.status, `HTTP_${response.status}`, retryable);
 }
 
 function withConsumerAbort<T>(promise: Promise<T>, signal?: AbortSignal | null): Promise<T> {
@@ -80,8 +120,7 @@ export async function cachedFetchJson<T>(
     pending = fetch(url, { ...sharedInit, signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
-          const message = await response.text().catch(() => "");
-          throw new Error(`${response.status} ${response.statusText}${message ? ` :: ${message.slice(0, 200)}` : ""}`);
+          throw await responseError(response);
         }
         return response.json() as Promise<T>;
       })

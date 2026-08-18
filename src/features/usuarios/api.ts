@@ -1,14 +1,10 @@
 "use client";
 
-import { getCookie } from "./utils";
-
 const FETCH_TIMEOUT_MS = 12000;
 
-function tokenHeader(): Headers {
+function baseHeaders(): Headers {
   const headers = new Headers();
   headers.set("Accept", "application/json");
-  const token = getCookie("token");
-  if (token) headers.set("Authorization", `Bearer ${token}`);
   return headers;
 }
 
@@ -65,7 +61,7 @@ function parseJsonSafe<T>(text: string): T | undefined {
 export async function fetchJSON<T>(url: string, init: RequestInit = {}): Promise<T> {
   const isGet = !init.method || init.method.toUpperCase() === "GET";
   const headers = mergeHeaders(
-    tokenHeader(),
+    baseHeaders(),
     init.headers,
     isGet ? undefined : { "Content-Type": "application/json" }
   );

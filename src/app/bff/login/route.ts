@@ -1,7 +1,7 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getRoleCapabilities, normalizeAppRole } from "@/lib/accessControl";
+import { parseAuthorizationProfile } from "@/lib/accessControl";
 import { normalizeHttpOrigin } from "@/lib/serverOrigin";
 import {
   clientAddress,
@@ -30,12 +30,15 @@ type LoginPayload = {
   token?: unknown;
   role?: unknown;
   id?: unknown;
+  expiresAt?: unknown;
+  authorization?: unknown;
   user?: {
     id?: unknown;
     rol?: unknown;
     empresaId?: unknown;
     empresa?: { id?: unknown };
     localidadId?: unknown;
+    authorization?: unknown;
   };
 };
 
@@ -100,22 +103,45 @@ export async function POST(req: NextRequest) {
     }
 
     const token = typeof payload.token === "string" && payload.token.length <= 16_384 ? payload.token : "";
-    const role = normalizeAppRole(String(payload.user?.rol || payload.role || ""));
+    const authorization = parseAuthorizationProfile(payload.authorization ?? payload.user?.authorization);
+    const role = authorization?.role ?? null;
     const userId = positiveInteger(payload.user?.id ?? payload.id);
-    const empresaId = positiveInteger(payload.user?.empresaId ?? payload.user?.empresa?.id);
-    const localidadId = positiveInteger(payload.user?.localidadId);
-    if (!token || !role || !userId || !getRoleCapabilities(role).canUseWeb) {
+    const empresaId = authorization?.scope.empresaId ?? null;
+    const localidadId = authorization?.scope.localidadId ?? null;
+    const responseEmpresaId = positiveInteger(payload.user?.empresaId ?? payload.user?.empresa?.id);
+    const responseLocalidadId = positiveInteger(payload.user?.localidadId);
+    const scopeMismatch =
+      (responseEmpresaId !== null && responseEmpresaId !== empresaId) ||
+      (responseLocalidadId !== null && responseLocalidadId !== localidadId);
+    if (!token || !role || !userId || !authorization?.platforms.web || !authorization.capabilities.canUseWeb || scopeMismatch) {
       return NextResponse.json({ error: "Cuenta sin acceso web válido" }, { status: 403 });
     }
 
-    const sessionToken = await createSessionToken({ role, userId, empresaId, localidadId }, MAX_AGE);
+    const upstreamExpiresAt = typeof payload.expiresAt === "string" ? Date.parse(payload.expiresAt) : Number.NaN;
+    const upstreamSeconds = Number.isFinite(upstreamExpiresAt)
+      ? Math.floor((upstreamExpiresAt - Date.now()) / 1_000)
+      : MAX_AGE;
+    const sessionMaxAge = Math.min(MAX_AGE, upstreamSeconds);
+    if (sessionMaxAge < 60) {
+      return NextResponse.json({ error: "La sesión recibida ya no es válida" }, { status: 401 });
+    }
+
+    const sessionToken = await createSessionToken(
+      { role, userId, empresaId, localidadId, authorization },
+      sessionMaxAge,
+    );
     const response = NextResponse.json(
-      { ...payload, token: undefined },
+      {
+        ...payload,
+        token: undefined,
+        authorization,
+        user: payload.user ? { ...payload.user, authorization } : payload.user,
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
     const secure = process.env.NODE_ENV === "production";
-    const protectedCookie = { httpOnly: true, secure, sameSite: "lax" as const, path: "/", maxAge: MAX_AGE };
-    const uiCookie = { secure, sameSite: "lax" as const, path: "/", maxAge: MAX_AGE };
+    const protectedCookie = { httpOnly: true, secure, sameSite: "strict" as const, path: "/", maxAge: sessionMaxAge };
+    const uiCookie = { secure, sameSite: "strict" as const, path: "/", maxAge: sessionMaxAge };
 
     response.cookies.set(SESSION_COOKIE_NAME, sessionToken, protectedCookie);
     response.cookies.set(JWT_COOKIE, token, protectedCookie);

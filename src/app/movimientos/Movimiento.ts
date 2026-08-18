@@ -76,15 +76,15 @@ export class Movimiento {
 
   static safeJSON = (t: string) => { try { return JSON.parse(t); } catch { return null; } };
 
+  /** Compatibilidad para preferencias no sensibles; nunca debe usarse para leer el JWT. */
   static getCookie = (name: string) => {
     if (typeof document === "undefined") return "";
-    const m = document.cookie.match(new RegExp("(^|; )" + name + "=([^;]*)"));
-    return m ? decodeURIComponent(m[2]) : "";
+    const match = document.cookie.match(new RegExp("(^|; )" + name + "=([^;]*)"));
+    return match ? decodeURIComponent(match[2]) : "";
   };
-  static tokenHeader = (): HeadersInit => {
-    const t = Movimiento.getCookie("token");
-    return t ? { Authorization: `Bearer ${t}` } : {};
-  };
+
+  /** @deprecated El BFF agrega la autorización en servidor. */
+  static tokenHeader = (): HeadersInit => ({});
 
   static fetchWithTimeout = async (url: string, init: RequestInit = {}, timeoutMs = FETCH_TIMEOUT_MS) => {
     const ctrl = new AbortController();
@@ -101,9 +101,6 @@ export class Movimiento {
     const headers = new Headers(init.headers);
     if (!isGet && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
     if (!headers.has("Accept")) headers.set("Accept", "application/json");
-
-    const tokenHeaders = new Headers(Movimiento.tokenHeader());
-    tokenHeaders.forEach((value, key) => headers.set(key, value));
 
     const res = await Movimiento.fetchWithTimeout(url, {
       credentials: "include",

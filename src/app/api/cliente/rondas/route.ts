@@ -1,10 +1,12 @@
 // app/api/cliente/rondas/route.ts
 import { NextResponse, NextRequest } from "next/server";
 import { cookies } from "next/headers";
-import { getRoleCapabilities } from "@/lib/accessControl";
+import { PERMISSIONS, hasPermission } from "@/lib/accessControl";
 import { normalizeHttpOrigin } from "@/lib/serverOrigin";
 import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
 import { containsTrainingReservedId } from "@/lib/routePolicy";
+import { getVerifiedSession } from "@/lib/server/session";
+import type { VerifiedSession } from "@/lib/sessionToken";
 
 export const dynamic = "force-dynamic";
 
@@ -321,34 +323,14 @@ function authHeaders(req: NextRequest, token?: string) {
   };
 }
 
-function readRole(cookieStore: Awaited<ReturnType<typeof cookies>>) {
-  return String(cookieStore.get(process.env.ROLE_COOKIE_NAME || "role")?.value || "").toUpperCase();
+function isLocalityScoped(session: VerifiedSession) {
+  return session.authorization.scope.mode === "LOCALITY"
+    || session.authorization.scope.mode === "COMPANY_LOCALITY";
 }
 
-function readEmpresaId(cookieStore: Awaited<ReturnType<typeof cookies>>) {
-  return (
-    Number(cookieStore.get("empresaId")?.value) ||
-    Number(cookieStore.get("empresald")?.value) ||
-    Number(cookieStore.get("empresaID")?.value) ||
-    null
-  );
-}
-
-function readLocalidadId(cookieStore: Awaited<ReturnType<typeof cookies>>) {
-  return (
-    Number(cookieStore.get("locId")?.value) ||
-    Number(cookieStore.get("localidadId")?.value) ||
-    null
-  );
-}
-
-function shouldScopeToEmpresa(role: string, empresaId: number | null) {
-  if (!empresaId) return false;
-  return !canSeeAllEmpresas(role);
-}
-
-function canSeeAllEmpresas(role: string) {
-  return ["ADMINISTRADOR", "COORDINADOR"].includes(role);
+function isCompanyScoped(session: VerifiedSession) {
+  return session.authorization.scope.mode === "COMPANY"
+    || session.authorization.scope.mode === "COMPANY_LOCALITY";
 }
 
 function formatTorreonRef(snapshot: unknown, fallbackPrefix: string, id: unknown) {
@@ -606,7 +588,7 @@ async function fetchCosaifRondasOut({
   empresaScopeId?: number | null;
   generalLocalityView?: boolean;
 }): Promise<RondaOut[]> {
-  if (concluido) {
+  if (concluido && !generalLocalityView) {
     const qs = new URLSearchParams({
       localidadId,
       ambito: "pasados",
@@ -634,9 +616,9 @@ async function fetchCosaifRondasOut({
 
   const scopeQuery = generalLocalityView ? "&alcance=localidad" : "";
   const candidates = [
-    `${base}/rondas/localidad/${encodeURIComponent(localidadId)}/estado/false${generalLocalityView ? "?alcance=localidad" : ""}`,
-    `${base}/rondas?localidadId=${encodeURIComponent(localidadId)}&concluido=false${scopeQuery}`,
-    `${base}/movimientos/rondas?localidadId=${encodeURIComponent(localidadId)}&concluido=false${scopeQuery}`,
+    `${base}/rondas/localidad/${encodeURIComponent(localidadId)}/estado/${concluido ? "true" : "false"}${generalLocalityView ? "?alcance=localidad" : ""}`,
+    `${base}/rondas?localidadId=${encodeURIComponent(localidadId)}&concluido=${String(concluido)}${scopeQuery}`,
+    `${base}/movimientos/rondas?localidadId=${encodeURIComponent(localidadId)}&concluido=${String(concluido)}${scopeQuery}`,
   ];
 
   let raw: unknown = [];
@@ -650,15 +632,17 @@ async function fetchCosaifRondasOut({
   const baseList = normalizeRondas(raw);
   if (!baseList.length) return [];
 
-  const infoPairs = await Promise.all(
-    baseList.map(async (r) => {
-      try {
-        return [r.id, await fetchRondaInfo(base, headers, r.id)] as const;
-      } catch {
-        return [r.id, null] as const;
-      }
-    })
-  );
+  const infoPairs = generalLocalityView
+    ? []
+    : await Promise.all(
+        baseList.map(async (r) => {
+          try {
+            return [r.id, await fetchRondaInfo(base, headers, r.id)] as const;
+          } catch {
+            return [r.id, null] as const;
+          }
+        })
+      );
   const infoMap = new Map<number, RondaInfoRecord | null>(infoPairs);
 
   const mapped: RondaOut[] = [];
@@ -717,26 +701,31 @@ export async function GET(req: NextRequest) {
 
     const cookieStore = await cookies();
     const token = cookieStore.get(process.env.JWT_COOKIE_NAME || "token")?.value;
-    const role = readRole(cookieStore);
-    const capabilities = getRoleCapabilities(role);
-    const empresaId = readEmpresaId(cookieStore);
-    const assignedLocalidadId = readLocalidadId(cookieStore);
-    const localidadId = role === "ADMINISTRADOR"
-      ? requestedLocalidadId
-      : assignedLocalidadId;
-    // El dashboard del cliente es una vista operativa de toda la localidad.
-    // Las consultas sin `alcance=localidad` (como el editor) siguen limitadas a su empresa.
-    const generalLocalityView = requestedGeneralLocalityView;
+    const session = await getVerifiedSession();
+    if (!token || !session) return NextResponse.json({ message: "No autorizado" }, { status: 401 });
+    if (!hasPermission(session.authorization, PERMISSIONS.ROUNDS_READ)) {
+      return NextResponse.json({ message: "No autorizado para consultar rondas" }, { status: 403 });
+    }
+    const { authorization } = session;
+    const capabilities = authorization.capabilities;
+    const empresaId = session.empresaId;
+    const assignedLocalidadId = session.localidadId;
+    const localidadId = isLocalityScoped(session) ? assignedLocalidadId : requestedLocalidadId;
+    // El tablero del cliente representa la fila operativa compartida de su
+    // localidad. Esto no amplía su localidad ni sus permisos de escritura:
+    // las acciones POST continúan validadas contra empresa y localidad.
+    const generalLocalityView = requestedGeneralLocalityView
+      && (capabilities.canViewAllCompanies || isLocalityScoped(session));
 
     const requestedEmpresaId = firstPositiveNumber(searchParams.get("empresaId"));
     if (
-      capabilities.isClientLike &&
+      isCompanyScoped(session) &&
       (!empresaId || (requestedEmpresaId && requestedEmpresaId !== empresaId))
     ) {
       return NextResponse.json({ message: "Solo puedes consultar locomotoras de tu empresa." }, { status: 403 });
     }
 
-    if (role !== "ADMINISTRADOR" && requestedLocalidadId && requestedLocalidadId !== assignedLocalidadId) {
+    if (isLocalityScoped(session) && requestedLocalidadId && requestedLocalidadId !== assignedLocalidadId) {
       return NextResponse.json({ message: "Solo puedes consultar rondas de tu localidad." }, { status: 403 });
     }
     if (!localidadId) {
@@ -750,7 +739,7 @@ export async function GET(req: NextRequest) {
     if (entity === "torneados") {
       const statusParam = concluido ? "CONCLUIDO,CANCELADO" : "SOLICITADO,EN_PROCESO,DETENIDO";
       const qs = new URLSearchParams({ status: statusParam, localidadId: localidadIdParam });
-      const empresaScopeId = generalLocalityView || canSeeAllEmpresas(role) ? null : empresaId;
+      const empresaScopeId = generalLocalityView ? null : isCompanyScoped(session) ? empresaId : null;
       if (empresaScopeId) qs.set("empresaId", String(empresaScopeId));
       const r = await fetch(`${base}/torno/rondas-servicio/historial?${qs.toString()}`, {
         cache: "no-store",
@@ -893,8 +882,8 @@ export async function GET(req: NextRequest) {
     }
 
     if (isTorreonLocalidad(localidadIdParam)) {
-      const scopedEmpresaId = generalLocalityView || canSeeAllEmpresas(role) ? null : empresaId;
-      const canReadTorreon = generalLocalityView || Boolean(scopedEmpresaId || canSeeAllEmpresas(role));
+      const scopedEmpresaId = generalLocalityView ? null : isCompanyScoped(session) ? empresaId : null;
+      const canReadTorreon = hasPermission(authorization, PERMISSIONS.TORREON_READ);
       if (!canReadTorreon) return NextResponse.json<RondaOut[]>([], { status: 200 });
 
       let out: RondaOut[] = [];
@@ -911,7 +900,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(sortRondaQueue(out), { status: 200 });
     }
 
-    const empresaScopeId = generalLocalityView || canSeeAllEmpresas(role) ? null : empresaId;
+    const empresaScopeId = generalLocalityView ? null : isCompanyScoped(session) ? empresaId : null;
     const out = await fetchCosaifRondasOut({
       base,
       headers,
@@ -943,19 +932,28 @@ export async function POST(req: NextRequest) {
     const token = cookieStore.get(process.env.JWT_COOKIE_NAME || "token")?.value;
     if (!token) return NextResponse.json({ message: "No autorizado" }, { status: 401 });
 
-    const role = readRole(cookieStore);
-    const empresaId = readEmpresaId(cookieStore);
-    const assignedLocalidadId = readLocalidadId(cookieStore);
+    const session = await getVerifiedSession();
+    if (!session) return NextResponse.json({ message: "No autorizado" }, { status: 401 });
+    const requiredPermission = action === "cancel" ? PERMISSIONS.MOVEMENTS_CANCEL : PERMISSIONS.ROUNDS_EDIT;
+    if (!hasPermission(session.authorization, requiredPermission)) {
+      return NextResponse.json({ message: "No autorizado para esta accion" }, { status: 403 });
+    }
+
+    const empresaId = session.empresaId;
+    const assignedLocalidadId = session.localidadId;
     const requestedLocalidadId = firstPositiveNumber(body?.localidadId);
-    if (role !== "ADMINISTRADOR" && requestedLocalidadId && requestedLocalidadId !== assignedLocalidadId) {
+    if (isLocalityScoped(session) && requestedLocalidadId && requestedLocalidadId !== assignedLocalidadId) {
       return NextResponse.json({ message: "Solo puedes modificar rondas de tu localidad." }, { status: 403 });
     }
-    const scopedLocalidadId = role === "ADMINISTRADOR" ? requestedLocalidadId : assignedLocalidadId;
+    const scopedLocalidadId = isLocalityScoped(session) ? assignedLocalidadId : requestedLocalidadId;
     if (!scopedLocalidadId) {
       return NextResponse.json({ message: "No hay una localidad asignada a la sesion." }, { status: 403 });
     }
     body.localidadId = scopedLocalidadId;
-    const shouldScopeEmpresa = shouldScopeToEmpresa(role, empresaId);
+    const shouldScopeEmpresa = isCompanyScoped(session);
+    if (shouldScopeEmpresa && !empresaId) {
+      return NextResponse.json({ message: "No hay una empresa asignada a la sesion." }, { status: 403 });
+    }
     const base = getApiBase(origin);
     const headers = authHeaders(req, token);
     const jsonHeaders = { ...headers, "content-type": "application/json" };
@@ -1000,9 +998,7 @@ export async function POST(req: NextRequest) {
           fetchRondaInfo(base, headers, rondaBId),
         ]);
         assertEmpresaScope(shouldScopeEmpresa, empresaId, [getInfoEmpresaId(infoA), getInfoEmpresaId(infoB)]);
-        if (role !== "ADMINISTRADOR") {
-          assertLocalidadScope(scopedLocalidadId, [getInfoLocalidadId(infoA), getInfoLocalidadId(infoB)]);
-        }
+        assertLocalidadScope(scopedLocalidadId, [getInfoLocalidadId(infoA), getInfoLocalidadId(infoB)]);
       } catch (error) {
         const message = error instanceof Error ? error.message : "No se pudo validar el intercambio.";
         return NextResponse.json({ message }, { status: message.includes("Solo puedes") ? 403 : 400 });
@@ -1029,9 +1025,7 @@ export async function POST(req: NextRequest) {
         const movimiento = await fetchMovimientoDetail(base, headers, movimientoId);
         const targetEmpresaId = Number(movimiento?.empresa?.id ?? NaN) || null;
         assertEmpresaScope(shouldScopeEmpresa, empresaId, [targetEmpresaId]);
-        if (role !== "ADMINISTRADOR") {
-          assertLocalidadScope(scopedLocalidadId, [getMovimientoLocalidadId(movimiento)]);
-        }
+        assertLocalidadScope(scopedLocalidadId, [getMovimientoLocalidadId(movimiento)]);
       } catch (error) {
         const message = error instanceof Error ? error.message : "No se pudo validar el movimiento.";
         return NextResponse.json({ message }, { status: message.includes("Solo puedes") ? 403 : 400 });

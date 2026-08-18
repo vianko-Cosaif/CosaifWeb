@@ -103,11 +103,9 @@ export function useIncidentMonitor({
     };
   }, []);
 
-  // Función para obtener headers de autenticación
+  // El BFF same-origin agrega la autorización únicamente en servidor.
   const getAuthHeaders = useCallback((): HeadersInit => {
-    if (typeof document === "undefined") return {};
-    const match = document.cookie.match(/(?:^|;\s*)token=([^;]+)/);
-    return match ? { Authorization: `Bearer ${decodeURIComponent(match[1])}` } : {};
+    return {};
   }, []);
 
   // Función para adaptar incidente de la API

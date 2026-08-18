@@ -170,7 +170,6 @@ export interface FiltrosMovimientos {
 
 export interface UseMovimientosOptions {
   rol: Rol;
-  token?: string;
   apiBase?: string;
   autoRefreshMs?: number;
   initialEmpresaId?: number | null;
@@ -552,8 +551,6 @@ function extraerItemsYTotal(
 /* ================== HOOK ================== */
 
 export function useMovimientos({
-  rol,
-  token,
   apiBase,
   autoRefreshMs,
   initialEmpresaId = null,
@@ -635,17 +632,6 @@ export function useMovimientos({
     filtros.campoOrden,
     filtros.direccionOrden,
   ]);
-
-  /* ---------- HEADERS AUTH ---------- */
-  const authHeaders = useMemo(
-    () =>
-      token
-        ? ({
-          Authorization: `Bearer ${token}`,
-        } satisfies HeadersInit)
-        : undefined,
-    [token]
-  );
 
   const queryString = useMemo(() => {
     const qs = new URLSearchParams();
@@ -734,7 +720,7 @@ export function useMovimientos({
       try {
         const data = await cachedFetchJson<unknown>(
           url,
-          { headers: authHeaders },
+          { credentials: "same-origin" },
           { ttlMs: 5 * 60_000 }
         );
         if (esOpcionCatalogoArray(data)) {
@@ -754,7 +740,7 @@ export function useMovimientos({
 
     cargarCatalogo(urlEmpresas, setEmpresas);
     cargarCatalogo(urlLocalidades, setLocalidades);
-  }, [authHeaders, urlEmpresas, urlLocalidades]);
+  }, [urlEmpresas, urlLocalidades]);
 
   /* ---------- Fetch de movimientos (filtros backend + orden local) ---------- */
   const fetchMovimientos = useCallback(async (force = false) => {
@@ -768,7 +754,7 @@ export function useMovimientos({
     try {
       const data = await cachedFetchJson<unknown>(
         `${urlListado}?${queryString}`,
-        { headers: authHeaders, signal: controller.signal },
+        { credentials: "same-origin", signal: controller.signal },
         { ttlMs: 10_000, force }
       );
       const { items: dtoItems, total: totalItems } = extraerItemsYTotal(data);
@@ -846,7 +832,6 @@ export function useMovimientos({
     }
   }, [
     ambito,
-    authHeaders,
     queryString,
     urlListado,
     filtros.campoOrden,

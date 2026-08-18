@@ -7,17 +7,6 @@ async function verify(req: NextRequest) {
   return verifySessionToken(req.cookies.get(SESSION_COOKIE_NAME)?.value);
 }
 
-function contextMatches(req: NextRequest, session: NonNullable<Awaited<ReturnType<typeof verify>>>) {
-  const roleCookie = String(req.cookies.get(process.env.ROLE_COOKIE_NAME || "role")?.value || "").toUpperCase();
-  if (roleCookie !== session.role) return false;
-  const checks: Array<[string, number | null]> = [
-    ["userId", session.userId],
-    ["empresaId", session.empresaId],
-    ["locId", session.localidadId],
-  ];
-  return checks.every(([name, expected]) => expected == null || Number(req.cookies.get(name)?.value) === expected);
-}
-
 function isCrossSiteMutation(req: NextRequest) {
   if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return false;
   if (req.headers.get("sec-fetch-site")?.toLowerCase() === "cross-site") return true;
@@ -65,9 +54,6 @@ export async function middleware(req: NextRequest) {
     if (!session) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401, headers: { "Cache-Control": "no-store" } });
     }
-    if (!contextMatches(req, session)) {
-      return NextResponse.json({ error: "Contexto de sesión inválido" }, { status: 403, headers: { "Cache-Control": "no-store" } });
-    }
     return NextResponse.next();
   }
 
@@ -76,13 +62,19 @@ export async function middleware(req: NextRequest) {
     search,
     isAuthenticated: Boolean(session),
     role: session?.role,
+    authorization: session?.authorization,
   });
 
   if (!evaluation.allow && evaluation.redirectTo) {
     return NextResponse.redirect(new URL(evaluation.redirectTo, req.url));
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+  if (session) {
+    response.headers.set("Cache-Control", "private, no-store, max-age=0");
+    response.headers.set("Pragma", "no-cache");
+  }
+  return response;
 }
 
 export const config = {

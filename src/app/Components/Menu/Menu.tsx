@@ -31,9 +31,9 @@ import type { LucideIcon } from "lucide-react";
 import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 import ThemeToggle from "@/app/Components/ui/ThemeToggle";
 import { START_ROLE_TUTORIAL_EVENT } from "@/app/Components/GuidedManualAtom/trainingEvents";
-import { buildNavigationForRole, isNavigationItemActive, type AppNavigationItem } from "@/lib/appNavigation";
+import { buildNavigationForAuthorization, buildNavigationForRole, isNavigationItemActive, type AppNavigationItem } from "@/lib/appNavigation";
 import { getRoleClient } from "@/lib/cookies";
-import { getRoleCapabilities, normalizeAppRole, type AppRole, type NavModuleId } from "@/lib/accessControl";
+import { getRoleCapabilities, normalizeAppRole, parseAuthorizationProfile, type AppRole, type AuthorizationProfile, type NavModuleId } from "@/lib/accessControl";
 import { clearAuthenticatedSession } from "@/lib/sessionLogout";
 
 /* ==========================================================================
@@ -50,6 +50,8 @@ interface UserSession {
     id: number;
     nombre: string;
   };
+  localidadId?: number | null;
+  authorization?: AuthorizationProfile;
 }
 
 type NavigationItem = {
@@ -325,6 +327,8 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpQuery, setHelpQuery] = useState("");
   const [session, setSession] = useState<UserSession | null>(null);
+  const [authorization, setAuthorization] = useState<AuthorizationProfile | null>(null);
+  const [sessionDegraded, setSessionDegraded] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
   const [mounted, setMounted] = useState(false);
@@ -332,10 +336,41 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
 
   useEffect(() => {
     setMounted(true);
-    setSession(readStoredSession());
+    const stored = readStoredSession();
+    setSession(stored);
+    setAuthorization(parseAuthorizationProfile(stored?.authorization));
     // Auto-collapse on small screens
     if (window.innerWidth < 1024) setIsOpen(false);
   }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    let active = true;
+    const refreshAuthorization = async () => {
+      try {
+        const response = await fetch("/api/auth/session", { credentials: "same-origin", cache: "no-store" });
+        if (!response.ok) {
+          if (response.status === 401 || response.status === 403) {
+            await clearAuthenticatedSession().catch(() => undefined);
+            window.location.replace("/login?sesion=expirada");
+          }
+          return;
+        }
+        const payload = await response.json() as { user?: UserSession; authorization?: unknown; degraded?: boolean };
+        const verified = parseAuthorizationProfile(payload.authorization ?? payload.user?.authorization);
+        if (!active || !verified) return;
+        const nextSession = { ...(readStoredSession() || {}), ...(payload.user || {}), rol: verified.role, authorization: verified } as UserSession;
+        setAuthorization(verified);
+        setSession(nextSession);
+        setSessionDegraded(Boolean(payload.degraded));
+        try { window.localStorage.setItem("user", JSON.stringify(nextSession)); } catch {}
+      } catch {
+        if (active) setSessionDegraded(true);
+      }
+    };
+    void refreshAuthorization();
+    return () => { active = false; };
+  }, [mounted]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -409,7 +444,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
     inferRoleFromPath(pathname) ??
     "CLIENTE"
   ), [session, pathname]);
-  const capabilities = useMemo(() => getRoleCapabilities(appRole), [appRole]);
+  const capabilities = useMemo(() => authorization?.capabilities ?? getRoleCapabilities(appRole), [appRole, authorization]);
   const normRol = useMemo<Rol>(() => {
     if (capabilities.area === "administrador") return "ADMINISTRADOR";
     if (capabilities.area === "comercial") return "COMERCIAL";
@@ -461,12 +496,13 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
   );
 
   const navigation = useMemo<NavigationItem[]>(() => {
-    return buildNavigationForRole(appRole).map((item: AppNavigationItem) => ({
+    const items = authorization ? buildNavigationForAuthorization(authorization) : buildNavigationForRole(appRole);
+    return items.map((item: AppNavigationItem) => ({
       ...item,
       label: item.id === "torno" && capabilities.isClientLike ? "Historial Torno" : item.label,
       icon: NAV_ICONS[item.id],
     }));
-  }, [appRole, capabilities.isClientLike]);
+  }, [appRole, authorization, capabilities.isClientLike]);
   const mobileNavigation = useMemo(() => {
     if (capabilities.area === "comercial") return navigation.slice(0, 3);
     const preferred = [
@@ -680,6 +716,18 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
                     {capabilities.label}
                   </p>
                 </div>
+                <p
+                  className={cn(
+                    "mt-1.5 inline-flex max-w-full items-center gap-1.5 truncate rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide",
+                    sessionDegraded
+                      ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+                      : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                  )}
+                  title={sessionDegraded ? "La sesión sigue válida; se reintentará la sincronización." : "Permisos sincronizados con BackCosaif2"}
+                >
+                  <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", sessionDegraded ? "bg-amber-500" : "bg-emerald-500")} />
+                  {sessionDegraded ? "Sincronización pendiente" : "Acceso verificado"}
+                </p>
               </div>
             )}
 

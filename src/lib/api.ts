@@ -20,12 +20,6 @@ export async function fetchJSON<T = unknown>(url: string, init: RequestInit = {}
     headers.set("Content-Type", "application/json");
   }
 
-  // Auth opcional desde cookie no-HttpOnly "token"
-  if (typeof document !== "undefined" && !headers.has("Authorization")) {
-    const m = document.cookie.match(/(?:^|;\s*)token=([^;]+)/);
-    if (m) headers.set("Authorization", `Bearer ${decodeURIComponent(m[1])}`);
-  }
-
   const res = await fetch(url, { ...init, headers, credentials: "include", cache: "no-store" });
   const text = await res.text();
 

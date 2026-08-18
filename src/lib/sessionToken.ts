@@ -1,5 +1,9 @@
 import { jwtVerify, SignJWT } from "jose";
-import { normalizeAppRole, type AppRole } from "./accessControl";
+import {
+  parseAuthorizationProfile,
+  type AppRole,
+  type AuthorizationProfile,
+} from "./accessControl";
 
 export const SESSION_COOKIE_NAME = "cosaif_session";
 
@@ -8,6 +12,7 @@ export type VerifiedSession = {
   userId: number;
   empresaId: number | null;
   localidadId: number | null;
+  authorization: AuthorizationProfile;
 };
 
 function positiveInteger(value: unknown) {
@@ -33,6 +38,7 @@ export async function createSessionToken(session: VerifiedSession, maxAgeSeconds
     userId: session.userId,
     empresaId: session.empresaId,
     localidadId: session.localidadId,
+    authorization: session.authorization,
   })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setIssuedAt()
@@ -46,17 +52,21 @@ export async function verifySessionToken(raw: string | null | undefined): Promis
   if (!secret || !raw) return null;
   try {
     const { payload } = await jwtVerify(raw, secret, { algorithms: ["HS256"] });
-    const role = normalizeAppRole(String(payload.role || ""));
+    const authorization = parseAuthorizationProfile(payload.authorization);
+    const role = authorization?.role ?? null;
     const userId = positiveInteger(payload.userId ?? payload.sub);
-    if (!role || !userId) return null;
+    if (!authorization || !authorization.platforms.web || !authorization.capabilities.canUseWeb || !role || !userId) return null;
+    const empresaId = positiveInteger(payload.empresaId);
+    const localidadId = positiveInteger(payload.localidadId);
+    if (authorization.scope.empresaId !== empresaId || authorization.scope.localidadId !== localidadId) return null;
     return {
       role,
       userId,
-      empresaId: positiveInteger(payload.empresaId),
-      localidadId: positiveInteger(payload.localidadId),
+      empresaId,
+      localidadId,
+      authorization,
     };
   } catch {
     return null;
   }
 }
-

@@ -1,36 +1,20 @@
 // src/app/cliente/movimientos/page.tsx
 import MovimientosPanel from "@/app/Components/movimientos/MovimientosPanel";
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { getRoleCapabilities, normalizeAppRole } from "@/lib/accessControl";
+import { getVerifiedSession } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
 const MOVIMIENTOS_API_BASE = process.env.NEXT_PUBLIC_API_BASE || "/bff";
 
 export default async function Page() {
-  const c = await cookies();
-  const cookieName = process.env.JWT_COOKIE_NAME ?? "token";
-  const token = c.get(cookieName)?.value;
-  if (!token) redirect("/login");
-
-  const role = normalizeAppRole(c.get(process.env.ROLE_COOKIE_NAME ?? "role")?.value) ?? "CLIENTE";
-  const capabilities = getRoleCapabilities(role);
+  const session = await getVerifiedSession();
+  if (!session) redirect("/login");
+  const role = session.role;
+  const capabilities = session.authorization.capabilities;
   if (role === "ARRASTRE_TORREON") {
     redirect("/cliente/torreon/movimientos");
   }
-
-  const empIdCookie =
-    Number(c.get("empId")?.value ?? "") ||
-    Number(c.get("empresaId")?.value ?? "") ||
-    null;
-  const locIdCookie =
-    Number(c.get("locId")?.value ?? "") ||
-    Number(c.get("localidadId")?.value ?? "") ||
-    null;
-
-  if (empIdCookie == null || locIdCookie == null) {
-    redirect("/login?loc=cliente");
-  }
+  if (session.empresaId == null || (session.authorization.scope.mode === "COMPANY_LOCALITY" && session.localidadId == null)) redirect("/login?loc=cliente");
 
   return (
     <section
@@ -51,10 +35,9 @@ export default async function Page() {
         <MovimientosPanel
           apiBase={MOVIMIENTOS_API_BASE}
           rol={role}
-          token={token}
-          empresaIdUsuario={empIdCookie}
-          localidadIdUsuario={locIdCookie}
-          bloquearLocalidad
+          empresaIdUsuario={session.empresaId}
+          localidadIdUsuario={session.localidadId}
+          bloquearLocalidad={session.authorization.scope.mode === "COMPANY_LOCALITY"}
           puedeCrear={capabilities.canCreateMovements}
           intervaloAutoMs={15000}
         />

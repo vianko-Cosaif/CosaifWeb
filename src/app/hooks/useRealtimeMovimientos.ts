@@ -119,15 +119,8 @@ function setRealtimeStatus(status: RealtimeConnectionStatus) {
   }
 }
 
-function getCookie(name: string): string | null {
-  if (typeof document === "undefined") return null;
-  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
 function buildHeaders(): HeadersInit {
-  const token = getCookie("token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  return {};
 }
 
 function scopedUrl(url: string, localidadId?: number | null): string {

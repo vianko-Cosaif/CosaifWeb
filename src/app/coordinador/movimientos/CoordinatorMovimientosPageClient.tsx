@@ -20,7 +20,6 @@ type LocalidadOption = {
 
 type Props = {
   apiBase: string;
-  token: string;
   empresaIdUsuario: number | null;
   localidadIdUsuario: number | null;
   rol?: "ADMINISTRADOR" | "COORDINADOR";
@@ -104,7 +103,6 @@ function LocalidadSwitch({
 
 export default function CoordinatorMovimientosPageClient({
   apiBase,
-  token,
   empresaIdUsuario,
   localidadIdUsuario,
   rol = "COORDINADOR",
@@ -215,7 +213,6 @@ export default function CoordinatorMovimientosPageClient({
               key={activeLocalidadId ?? "todas"}
               apiBase={apiBase}
               rol={rol}
-              token={token}
               empresaIdUsuario={empresaIdUsuario}
               localidadIdUsuario={activeLocalidadId}
               bloquearLocalidad={!isAdmin}

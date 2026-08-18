@@ -1,6 +1,7 @@
 import {
   getAreaBase,
   getRoleCapabilities,
+  type AuthorizationProfile,
   type NavModuleId,
 } from "./accessControl";
 
@@ -99,6 +100,15 @@ export function buildNavigationForRole(role?: string | null): AppNavigationItem[
   const capabilities = getRoleCapabilities(role);
 
   return capabilities.navModules.map((moduleId) => ({
+    id: moduleId,
+    href: hrefForModule(role, moduleId),
+    ...MODULE_COPY[moduleId],
+  }));
+}
+
+export function buildNavigationForAuthorization(authorization: AuthorizationProfile): AppNavigationItem[] {
+  const role = authorization.role;
+  return authorization.capabilities.navModules.map((moduleId) => ({
     id: moduleId,
     href: hrefForModule(role, moduleId),
     ...MODULE_COPY[moduleId],

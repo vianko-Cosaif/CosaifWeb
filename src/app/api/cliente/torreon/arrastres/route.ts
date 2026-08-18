@@ -1,48 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
 import { canResolveTorreonIncidentRole, canViewTorreonArrastreRole } from "@/lib/torreonLocalidad";
 import { toTorreonImageProxyUrl } from "@/lib/torreonImageProxy";
 import { ARRASTRE_MAX_CAPACITY, ARRASTRE_MIN_VAGONES, arrastreVagonCapacity } from "@/features/torreon/arrastres/constants";
+import { PERMISSIONS, hasAnyPermission, hasPermission } from "@/lib/accessControl";
+import { getVerifiedSession } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
 
-type CookieStore = Awaited<ReturnType<typeof cookies>>;
 type ArrastreRecord = Record<string, unknown>;
-
-function readRole(cookieStore: CookieStore) {
-  return String(cookieStore.get(process.env.ROLE_COOKIE_NAME || "role")?.value || "").toUpperCase();
-}
-
-function readEmpresaId(cookieStore: CookieStore) {
-  return (
-    Number(cookieStore.get("empresaId")?.value) ||
-    Number(cookieStore.get("empId")?.value) ||
-    Number(cookieStore.get("empresald")?.value) ||
-    null
-  );
-}
-
-function readLocalidadId(cookieStore: CookieStore) {
-  return (
-    Number(cookieStore.get("locId")?.value) ||
-    Number(cookieStore.get("localidadId")?.value) ||
-    null
-  );
-}
-
-function readUserId(cookieStore: CookieStore) {
-  return (
-    Number(cookieStore.get("userId")?.value) ||
-    Number(cookieStore.get("uid")?.value) ||
-    Number(cookieStore.get("usuarioId")?.value) ||
-    null
-  );
-}
-
-function canSeeAllEmpresas(role: string) {
-  return ["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR"].includes(role);
-}
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -200,10 +166,15 @@ export async function GET(req: NextRequest) {
     const page = searchParams.get("page");
     const pageSize = searchParams.get("pageSize");
     const includeFotos = searchParams.get("includeFotos");
-    const cookieStore = await cookies();
-    const role = readRole(cookieStore);
-    const empresaId = readEmpresaId(cookieStore);
-    const sessionLocalidadId = readLocalidadId(cookieStore);
+    const session = await getVerifiedSession();
+    if (!session || !hasAnyPermission(session.authorization, [PERMISSIONS.TORREON_READ, PERMISSIONS.INCIDENTS_READ])) {
+      return jsonError("No autorizado", 401);
+    }
+    const role = session.role;
+    const empresaId = session.empresaId;
+    const sessionLocalidadId = session.localidadId;
+    const localityScoped = session.authorization.scope.mode === "LOCALITY" || session.authorization.scope.mode === "COMPANY_LOCALITY";
+    const companyScoped = session.authorization.scope.mode === "COMPANY" || session.authorization.scope.mode === "COMPANY_LOCALITY";
     const generalLocalityView = searchParams.get("alcance") === "localidad" && !id && !auditId;
     if (!canViewTorreonArrastreRole(role) && !canResolveTorreonIncidentRole(role)) {
       return NextResponse.json([], { status: 200 });
@@ -211,7 +182,7 @@ export async function GET(req: NextRequest) {
 
     if (
       generalLocalityView &&
-      !canSeeAllEmpresas(role) &&
+      localityScoped &&
       sessionLocalidadId &&
       sessionLocalidadId !== Number(localidadId)
     ) {
@@ -226,9 +197,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(extractArray(data), { status: 200 });
     }
 
-    const scopedEmpresaId = generalLocalityView || canSeeAllEmpresas(role) ? null : empresaId;
+    const scopedEmpresaId = companyScoped ? empresaId : null;
 
-    if (!canSeeAllEmpresas(role) && !scopedEmpresaId) {
+    if (companyScoped && !scopedEmpresaId) {
       return NextResponse.json([], { status: 200 });
     }
 
@@ -269,12 +240,13 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const role = readRole(cookieStore);
-    const empresaId = readEmpresaId(cookieStore);
-    const userId = readUserId(cookieStore);
+    const session = await getVerifiedSession();
+    if (!session) return jsonError("No autorizado", 401);
+    const role = session.role;
+    const empresaId = session.empresaId;
+    const userId = session.userId;
 
-    if (!canViewTorreonArrastreRole(role)) {
+    if (!canViewTorreonArrastreRole(role) || !hasPermission(session.authorization, PERMISSIONS.TORREON_CREATE)) {
       return jsonError("No autorizado para crear arrastres", 403);
     }
     if (!empresaId) {
@@ -288,6 +260,12 @@ export async function POST(req: NextRequest) {
     const localidadId = Number(body.localidadId);
     if (!Number.isFinite(localidadId) || !isTorreonLocalidad(localidadId)) {
       return jsonError("Localidad Torreon invalida", 400);
+    }
+    if (
+      (session.authorization.scope.mode === "LOCALITY" || session.authorization.scope.mode === "COMPANY_LOCALITY") &&
+      session.localidadId !== localidadId
+    ) {
+      return jsonError("Solo puedes crear arrastres en tu localidad.", 403);
     }
     const instrucciones = typeof body.instrucciones === "string" ? body.instrucciones.trim() : "";
     if (instrucciones.length < 3) {

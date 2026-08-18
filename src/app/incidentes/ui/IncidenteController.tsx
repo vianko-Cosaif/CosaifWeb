@@ -43,25 +43,18 @@ const INCIDENTES = "/api/incidentes";
 const EMPRESAS = "/bff/empresas";
 const LOCALIDADES = "/bff/localidades";
 
-/** Read token from non-HttpOnly cookie and build Authorization header. */
-function authFromCookie(): HeadersInit {
-  if (typeof document === "undefined") return {};
-  const match = document.cookie.match(/(?:^|;\s*)token=([^;]+)/);
-  return match ? { Authorization: `Bearer ${decodeURIComponent(match[1])}` } : {};
-}
-
 const getCookie = (name: string) => {
   if (typeof document === "undefined") return null;
   const m = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
   return m ? decodeURIComponent(m[1]) : null;
 };
 
-/** Helper: always same-origin + credentials + optional Authorization. */
+/** El BFF same-origin agrega la credencial únicamente en servidor. */
 const withCreds = <T = any,>(url: string, init: RequestInit = {}) =>
   fetchJSON<T>(url, {
     credentials: "include",
     mode: "same-origin",
-    headers: { ...(init.headers as any), ...authFromCookie() },
+    headers: { ...(init.headers as any) },
     ...init,
   });
 

@@ -70,13 +70,6 @@ type Grouped = Record<number, Ronda[]>;
    AUTH + FETCH (BFF)
    ======================= */
 
-/** Igual que tu hook de incidentes: lee token de cookie "token" */
-function getAuthHeadersFromCookie(): HeadersInit {
-  if (typeof document === 'undefined') return {};
-  const match = document.cookie.match(/(?:^|;\s*)token=([^;]+)/);
-  return match ? { Authorization: `Bearer ${decodeURIComponent(match[1])}` } : {};
-}
-
 /** Build URL dentro del BFF */
 function bffUrl(path: string) {
   if (path.startsWith('http://') || path.startsWith('https://')) return path;
@@ -87,11 +80,10 @@ function appUrl(path: string) {
   return path.startsWith('/') ? path : `/${path}`;
 }
 
-/** fetch autenticado vía BFF: manda cookie + (opcional) Authorization */
+/** fetch autenticado vía BFF; la credencial nunca entra a JavaScript del navegador. */
 async function bffFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
-    ...getAuthHeadersFromCookie(),
     ...(init.headers || {}),
   };
   return fetch(bffUrl(path), {
@@ -105,7 +97,6 @@ async function bffFetch(path: string, init: RequestInit = {}): Promise<Response>
 async function appFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
-    ...getAuthHeadersFromCookie(),
     ...(init.headers || {}),
   };
   return fetch(appUrl(path), {

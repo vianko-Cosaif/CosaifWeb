@@ -21,6 +21,13 @@ type ServiceCredentials = {
   secret: string;
 };
 
+export class TorreonMsError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = "TorreonMsError";
+  }
+}
+
 function cleanBaseUrl(value?: string) {
   return (value || DEFAULT_TORREON_MS_URL).replace(/\/+$/, "");
 }
@@ -142,7 +149,19 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
 
   if (!response.ok) {
     const record = data && typeof data === "object" ? data as Record<string, unknown> : {};
-    throw new Error(String(record.error || record.message || `ms_torreon respondio ${response.status}`));
+    const rawMessage = String(record.error || record.message || "")
+      .replace(/[\u0000-\u001F\u007F]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 180);
+    const message = response.status >= 500
+      ? "El servicio de Torreon no esta disponible temporalmente"
+      : response.status === 401
+        ? "La sesion con Torreon termino"
+        : response.status === 403
+          ? "La operacion no esta autorizada"
+          : rawMessage || `No se pudo completar la operacion (${response.status})`;
+    throw new TorreonMsError(message, response.status);
   }
 
   return data as T;

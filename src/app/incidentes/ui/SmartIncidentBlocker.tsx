@@ -109,15 +109,6 @@ function normalizeImageUrl(raw: string, incident?: Incident | null) {
   }
   return /^https?:\/\//i.test(raw) ? viaProxy(raw) : viaProxy(`/incidentes/imagen/${encodeURIComponent(raw)}`);
 }
-function getCookie(name: string): string {
-  if (typeof document === "undefined") return "";
-  const m = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
-  return m ? decodeURIComponent(m[1]) : "";
-}
-function authHeaders() {
-  const t = getCookie("token");
-  return t ? ({ Authorization: `Bearer ${t}` } as Record<string, string>) : {};
-}
 function formatTime(ms: number) {
   const s = Math.floor(ms / 1000);
   const m = Math.floor(s / 60);
@@ -166,7 +157,6 @@ const ImageWithAuth = React.memo(function ImageWithAuth({
         setHasError(false);
 
         const r = await fetch(src, {
-          headers: authHeaders(),
           credentials: "include",
           cache: "no-store",
           signal: ac.signal,
@@ -400,7 +390,6 @@ export default function SmartIncidentBlocker({
         const id = (incident?.incidenteId ?? incident?.id) as string | number | undefined;
         if (!id) throw new Error("Incidente sin ID válido");
         const r = await fetch(`${INCIDENTES}/${id}${sourceQuery(incident)}`, {
-          headers: authHeaders(),
           credentials: "include",
           cache: "no-store",
           signal: ac.signal,

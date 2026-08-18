@@ -3,6 +3,8 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { normalizeHttpOrigin } from "@/lib/serverOrigin";
+import { PERMISSIONS, hasPermission } from "@/lib/accessControl";
+import { getVerifiedSession } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
 
@@ -179,15 +181,30 @@ function getApiBase(origin: string) {
 export async function GET(req: Request) {
   try {
     const { searchParams, origin } = new URL(req.url);
-    const loc = searchParams.get("localidadId");
-    if (!loc) return NextResponse.json<RondaOut[]>([], { status: 200 });
+    const requestedLocalidadId = firstPositiveNumber(searchParams.get("localidadId"));
     const entity = String(searchParams.get("entity") ?? "movimientos").toLowerCase();
     const estado = String(searchParams.get("estado") ?? searchParams.get("tab") ?? "pendientes").toLowerCase();
     const concluido = estado === "terminados" || estado === "finalizados" || estado === "true";
 
     const c = await cookies();
     const token = c.get(process.env.JWT_COOKIE_NAME ?? "token")?.value ?? "";
-    const empresaId = Number(c.get("empresaId")?.value) || null;
+    const session = await getVerifiedSession();
+    if (!token || !session) return NextResponse.json({ message: "No autorizado" }, { status: 401 });
+    if (!hasPermission(session.authorization, PERMISSIONS.ROUNDS_READ)) {
+      return NextResponse.json({ message: "No autorizado para consultar rondas" }, { status: 403 });
+    }
+    const localityScoped = session.authorization.scope.mode === "LOCALITY"
+      || session.authorization.scope.mode === "COMPANY_LOCALITY";
+    const companyScoped = session.authorization.scope.mode === "COMPANY"
+      || session.authorization.scope.mode === "COMPANY_LOCALITY";
+    if (localityScoped && requestedLocalidadId && requestedLocalidadId !== session.localidadId) {
+      return NextResponse.json({ message: "Localidad fuera del alcance de la sesion" }, { status: 403 });
+    }
+    const localidadId = localityScoped ? session.localidadId : requestedLocalidadId;
+    if (!localidadId) return NextResponse.json<RondaOut[]>([], { status: 200 });
+    const loc = String(localidadId);
+    const empresaId = companyScoped ? session.empresaId : null;
+    if (companyScoped && !empresaId) return NextResponse.json({ message: "Empresa no asignada" }, { status: 403 });
 
     const base = getApiBase(origin);
 
@@ -402,6 +419,11 @@ export async function POST(req: Request) {
 
     const c = await cookies();
     const token = c.get(process.env.JWT_COOKIE_NAME ?? "token")?.value ?? "";
+    const session = await getVerifiedSession();
+    if (!token || !session) return NextResponse.json({ message: "No autorizado" }, { status: 401 });
+    if (!hasPermission(session.authorization, PERMISSIONS.ROUNDS_EDIT)) {
+      return NextResponse.json({ message: "No autorizado para modificar rondas" }, { status: 403 });
+    }
     const base = getApiBase(origin);
 
     if (action === "swap") {

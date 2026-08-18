@@ -1,11 +1,11 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import { getRoleCapabilities } from "@/lib/accessControl";
 import { normalizeHttpOrigin } from "@/lib/serverOrigin";
 import { containsTrainingReservedId } from "@/lib/routePolicy";
 import { getVerifiedSession } from "@/lib/server/session";
 import { rejectCrossSiteMutation } from "@/lib/server/requestSecurity";
+import { canForwardApiRequest } from "@/lib/server/requestAuthorization";
 
 const ORIGIN = normalizeHttpOrigin(process.env.API_ORIGIN);
 const BFF_TIMEOUT_MS = Number(process.env.BFF_TIMEOUT_MS || 12000);
@@ -112,11 +112,15 @@ async function proxy(req: NextRequest) {
   const role = session.role;
   const assignedEmpresaId = Number(session.empresaId || 0);
   const assignedLocalidadId = Number(session.localidadId || 0);
-  const capabilities = getRoleCapabilities(role);
-  const restrictedLocality = role !== "ADMINISTRADOR";
-  const restrictedCompany = capabilities.isClientLike;
+  const capabilities = session.authorization.capabilities;
+  const scopeMode = session.authorization.scope.mode;
+  const restrictedLocality = scopeMode === "LOCALITY" || scopeMode === "COMPANY_LOCALITY";
+  const restrictedCompany = scopeMode === "COMPANY" || scopeMode === "COMPANY_LOCALITY";
   const restrictedCoordinator = role === "COORDINADOR";
   let upstreamPath = req.nextUrl.pathname.replace(/^\/bff/, "");
+  if (!canForwardApiRequest(session.authorization, upstreamPath, req.method)) {
+    return NextResponse.json({ message: "Esta acción no está habilitada para tu perfil." }, { status: 403 });
+  }
   const searchParams = new URLSearchParams(req.nextUrl.searchParams);
   const hasBody = !["GET", "HEAD"].includes(req.method);
   const jsonBody = hasBody && (req.headers.get("content-type") || "").includes("application/json")

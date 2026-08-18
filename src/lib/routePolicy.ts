@@ -1,10 +1,14 @@
 // src/lib/routePolicy.ts
 import {
   APP_ROLES,
+  PERMISSIONS,
   canUseWeb,
   getRoleCapabilities,
+  hasAnyPermission,
   normalizeAppRole,
   type AppRole,
+  type AuthorizationProfile,
+  type Permission,
 } from "./accessControl";
 
 /** =========================
@@ -166,6 +170,35 @@ export function homeFor(role?: string | null): string {
   return capabilities.canUseWeb ? capabilities.home : "/login";
 }
 
+export function homeForAuthorization(authorization?: AuthorizationProfile | null): string {
+  return authorization?.platforms.web && authorization.capabilities.canUseWeb
+    ? authorization.capabilities.home
+    : "/login";
+}
+
+function permissionsForPage(pathname: string, role: AppRole): Permission[] | null {
+  const path = pathname.toLowerCase();
+  if (path.includes("/usuarios")) return [PERMISSIONS.USERS_READ];
+  if (path.includes("/configuracion")) {
+    return [PERMISSIONS.COMPANIES_MANAGE, PERMISSIONS.OPERATIONAL_CATALOGS_MANAGE, PERMISSIONS.CATALOG_CONFIGURATION_MANAGE];
+  }
+  if (path === "/movimientos/crear") return [PERMISSIONS.MOVEMENTS_CREATE];
+  if (path.includes("/torreon/crear")) return [PERMISSIONS.TORREON_CREATE];
+  if (path.includes("/torreon/incidentes")) return [PERMISSIONS.INCIDENTS_READ];
+  if (path === "/cliente/torreon") return [PERMISSIONS.TORREON_READ, PERMISSIONS.MOVEMENTS_READ];
+  if (path.includes("/torreon")) return [PERMISSIONS.TORREON_READ];
+  if (path.includes("/movimientos")) return [PERMISSIONS.MOVEMENTS_READ];
+  if (path.includes("/incidentes")) return [PERMISSIONS.INCIDENTS_READ];
+  if (path.includes("/torno")) return [PERMISSIONS.TORNO_READ];
+  if (path.includes("/reporteria") || path.includes("/reporte-general")) {
+    if (role === "ADMINISTRADOR") return [PERMISSIONS.REPORTS_ADMIN_READ];
+    if (role === "COORDINADOR") return [PERMISSIONS.REPORTS_COORDINATOR_READ];
+    if (role === "COMERCIAL") return [PERMISSIONS.REPORTS_COMMERCIAL_READ];
+    return [PERMISSIONS.REPORTS_CLIENT_READ];
+  }
+  return null;
+}
+
 /** =========================
  *  Evaluador central de rutas
  *  ========================= */
@@ -176,6 +209,7 @@ export type RouteEvaluation = {
     | "OPEN"
     | "NEEDS_AUTH"
     | "CROSS_AREA"
+    | "MISSING_PERMISSION"
     | "OK"
     | "LOGIN_HAS_SESSION"
     | "ROOT_WITH_SESSION";
@@ -187,6 +221,7 @@ export function evaluateRoute(input: {
   search?: string;
   isAuthenticated?: boolean;
   role?: string | null;
+  authorization?: AuthorizationProfile | null;
   rootIsPublic?: boolean;
 }): RouteEvaluation {
   const {
@@ -194,18 +229,21 @@ export function evaluateRoute(input: {
     search = "",
     isAuthenticated = false,
     role: roleRaw,
+    authorization,
     rootIsPublic = false,
   } = input;
 
-  const role = normalizeRole(roleRaw);
+  const role = authorization?.role ?? normalizeRole(roleRaw);
   const authed = !!isAuthenticated && !!role;
-  const webAllowed = role ? canUseWeb(role) : false;
+  const webAllowed = authorization
+    ? authorization.platforms.web && authorization.capabilities.canUseWeb
+    : role ? canUseWeb(role) : false;
 
   if (isOpenPath(pathname)) {
     if (pathname === "/login" && authed) {
       return {
         allow: false,
-        redirectTo: homeFor(role),
+        redirectTo: authorization ? homeForAuthorization(authorization) : homeFor(role),
         reason: "LOGIN_HAS_SESSION",
       };
     }
@@ -216,7 +254,7 @@ export function evaluateRoute(input: {
     if (authed)
       return {
         allow: false,
-        redirectTo: homeFor(role),
+        redirectTo: authorization ? homeForAuthorization(authorization) : homeFor(role),
         reason: "ROOT_WITH_SESSION",
       };
     return rootIsPublic
@@ -241,7 +279,7 @@ export function evaluateRoute(input: {
     return { allow: true, reason: "OK" };
   }
 
-  const capabilities = getRoleCapabilities(role);
+  const capabilities = authorization?.capabilities ?? getRoleCapabilities(role);
   if (
     pathname.toLowerCase().startsWith("/cliente/reporteria") &&
     !capabilities.canViewReports
@@ -252,7 +290,12 @@ export function evaluateRoute(input: {
   const inAny = isInAnyArea(pathname);
   const hereOk = role ? isAllowedInArea(pathname, role) : false;
   if (inAny && !hereOk) {
-    return { allow: false, redirectTo: homeFor(role), reason: "CROSS_AREA" };
+    return { allow: false, redirectTo: authorization ? homeForAuthorization(authorization) : homeFor(role), reason: "CROSS_AREA" };
+  }
+
+  const requiredPermissions = permissionsForPage(pathname, role);
+  if (authorization && requiredPermissions && !hasAnyPermission(authorization, requiredPermissions)) {
+    return { allow: false, redirectTo: homeForAuthorization(authorization), reason: "MISSING_PERMISSION" };
   }
 
   return { allow: true, reason: "OK" };

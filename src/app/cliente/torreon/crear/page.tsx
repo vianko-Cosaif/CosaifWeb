@@ -1,38 +1,26 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { canViewTorreonArrastreRole, getPrimaryTorreonLocalidadId, isClienteAreaRole, isTorreonLocalidadId } from "@/lib/torreonLocalidad";
-import { getRoleCapabilities } from "@/lib/accessControl";
+import { getPrimaryTorreonLocalidadId, isTorreonLocalidadId } from "@/lib/torreonLocalidad";
+import { PERMISSIONS, hasPermission } from "@/lib/accessControl";
+import { getVerifiedSession } from "@/lib/server/session";
 import TorreonClientePanel from "../TorreonClientePanel";
 
 export const dynamic = "force-dynamic";
 
-function toInt(value?: string | null) {
-  const number = Number(value);
-  return Number.isFinite(number) && number > 0 ? number : null;
-}
-
 export default async function Page() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(process.env.JWT_COOKIE_NAME ?? "token")?.value;
-  if (!token) redirect("/login?loc=cliente");
-
-  const role = cookieStore.get(process.env.ROLE_COOKIE_NAME ?? "role")?.value?.toUpperCase() ?? "";
-  const cookieLocalidadId = toInt(cookieStore.get("locId")?.value) ?? toInt(cookieStore.get("localidadId")?.value);
-  const capabilities = getRoleCapabilities(role);
-  const localidadId = capabilities.canSwitchLocalidad && !isTorreonLocalidadId(cookieLocalidadId)
+  const session = await getVerifiedSession();
+  if (!session || session.authorization.capabilities.area !== "cliente") redirect("/login?loc=cliente");
+  const role = session.role;
+  const capabilities = session.authorization.capabilities;
+  const localidadId = capabilities.canSwitchLocalidad && !isTorreonLocalidadId(session.localidadId)
     ? getPrimaryTorreonLocalidadId()
-    : cookieLocalidadId;
-  const empresaId = toInt(cookieStore.get("empresaId")?.value) ?? toInt(cookieStore.get("empId")?.value);
-
-  if (!isClienteAreaRole(role)) {
-    redirect("/");
-  }
+    : session.localidadId;
+  const empresaId = session.empresaId;
 
   if (!localidadId || !isTorreonLocalidadId(localidadId)) {
     redirect("/cliente");
   }
 
-  if (!canViewTorreonArrastreRole(role)) {
+  if (!hasPermission(session.authorization, PERMISSIONS.TORREON_CREATE)) {
     redirect("/movimientos/crear");
   }
 

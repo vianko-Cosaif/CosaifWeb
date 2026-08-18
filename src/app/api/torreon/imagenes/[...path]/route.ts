@@ -3,6 +3,8 @@ import fs from "fs/promises";
 import path from "path";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { PERMISSIONS, hasAnyPermission } from "@/lib/accessControl";
+import { getVerifiedSession } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
 
@@ -21,8 +23,6 @@ const ALLOWED_ROLES = new Set([
   "CLIENTE_ADMIN",
   "CLIENTE_COOR",
   "ARRASTRE_TORREON",
-  "MAQUINISTA",
-  "MAQUINISTA_ARRASTRE",
 ]);
 
 function getUploadsRoots() {
@@ -38,8 +38,11 @@ function getUploadsRoots() {
 async function hasSession() {
   const cookieStore = await cookies();
   const token = cookieStore.get(process.env.JWT_COOKIE_NAME || "token")?.value || cookieStore.get("token")?.value;
-  const role = String(cookieStore.get(process.env.ROLE_COOKIE_NAME || "role")?.value || "").toUpperCase();
-  return Boolean(token && ALLOWED_ROLES.has(role));
+  const session = await getVerifiedSession();
+  return Boolean(
+    token && session && ALLOWED_ROLES.has(session.role) &&
+    hasAnyPermission(session.authorization, [PERMISSIONS.TORREON_READ, PERMISSIONS.INCIDENTS_READ])
+  );
 }
 
 function isAllowedTorreonImagePath(segments: string[]) {

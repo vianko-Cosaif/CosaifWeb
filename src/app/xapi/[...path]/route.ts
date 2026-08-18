@@ -6,7 +6,7 @@ import { normalizeHttpOrigin } from "@/lib/serverOrigin";
 import { containsTrainingReservedId } from "@/lib/routePolicy";
 import { getVerifiedSession } from "@/lib/server/session";
 import { rejectCrossSiteMutation } from "@/lib/server/requestSecurity";
-import { getRoleCapabilities } from "@/lib/accessControl";
+import { canForwardApiRequest } from "@/lib/server/requestAuthorization";
 
 const API_URL = normalizeHttpOrigin(process.env.API_ORIGIN);
 const TOKEN_COOKIE = process.env.JWT_COOKIE_NAME ?? "token";
@@ -37,11 +37,14 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
   const token = jar.get(TOKEN_COOKIE)?.value || "";
   const session = await getVerifiedSession();
   if (!token || !session) return NextResponse.json({ message: "No autenticado" }, { status: 401 });
-  const role = session.role;
+  if (!canForwardApiRequest(session.authorization, `/${path.join("/")}`, req.method)) {
+    return NextResponse.json({ message: "Esta acción no está habilitada para tu perfil." }, { status: 403 });
+  }
   const assignedEmpresaId = Number(session.empresaId || 0);
   const assignedLocalidadId = Number(session.localidadId || 0);
-  const restrictedLocality = role !== "ADMINISTRADOR";
-  const restrictedCompany = getRoleCapabilities(role).isClientLike;
+  const scopeMode = session.authorization.scope.mode;
+  const restrictedLocality = scopeMode === "LOCALITY" || scopeMode === "COMPANY_LOCALITY";
+  const restrictedCompany = scopeMode === "COMPANY" || scopeMode === "COMPANY_LOCALITY";
 
   const orig = new URL(req.url);
   const scopedPath = [...path];

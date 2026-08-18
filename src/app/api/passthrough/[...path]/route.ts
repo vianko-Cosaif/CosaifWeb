@@ -4,6 +4,7 @@ import { normalizeHttpOrigin } from "@/lib/serverOrigin";
 import { containsTrainingReservedId } from "@/lib/routePolicy";
 import { getVerifiedSession } from "@/lib/server/session";
 import { rejectCrossSiteMutation } from "@/lib/server/requestSecurity";
+import { canForwardApiRequest } from "@/lib/server/requestAuthorization";
 
 const API_BASE = normalizeHttpOrigin(
   process.env.API_BASE ||
@@ -53,6 +54,9 @@ async function forward(req: NextRequest, ctx: RouteCtx) {
   const session = await getVerifiedSession();
   const token = req.cookies.get(JWT_NAME)?.value;
   if (!session || !token) return NextResponse.json({ message: "No autenticado" }, { status: 401 });
+  if (!canForwardApiRequest(session.authorization, `/${path.join("/")}`, req.method)) {
+    return NextResponse.json({ message: "Esta acción no está habilitada para tu perfil." }, { status: 403 });
+  }
 
   const headers = new Headers();
   headers.set("accept", req.headers.get("accept") || "application/json");

@@ -46,18 +46,12 @@ const MEASURE_POSITIONS: TornoMeasurePosition[] = [
   "R6",
 ];
 
-function authFromCookie(): HeadersInit {
-  if (typeof document === "undefined") return {};
-  const match = document.cookie.match(/(?:^|;\s*)token=([^;]+)/);
-  return match ? { Authorization: `Bearer ${decodeURIComponent(match[1])}` } : {};
-}
-
 function withCreds<T>(url: string, init: RequestInit = {}) {
   return fetchJSON<T>(url, {
     credentials: "include",
     mode: "same-origin",
     ...init,
-    headers: { ...(init.headers as Record<string, string> | undefined), ...authFromCookie() },
+    headers: { ...(init.headers as Record<string, string> | undefined) },
   });
 }
 
