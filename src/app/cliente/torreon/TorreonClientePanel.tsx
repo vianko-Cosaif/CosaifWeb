@@ -131,7 +131,9 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
           pageSize: String(pageSize),
           includeFotos: "0",
         });
-        if (view === "dashboard") params.set("alcance", "localidad");
+        if (view === "dashboard" || view === "movimientos") {
+          params.set("alcance", "localidad");
+        }
         return `/api/cliente/torreon/arrastres?${params.toString()}`;
       };
 
@@ -298,7 +300,20 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
       .filter((arrastre) => !dateFilter || dateKey(arrastre.fechaSolicitud || arrastre.fechaInicio) === dateFilter)
       .filter((arrastre) => arrastreMatchesSearch(arrastre, search))
   ), [activeArrastres, ambito, dateFilter, pastArrastres, search]);
-  const hasOpenIncidentInQueue = useMemo(() => activeArrastres.some(hasOpenIncident), [activeArrastres]);
+  const manageableActiveArrastres = useMemo(
+    () => activeArrastres.filter((arrastre) => Boolean(empresaId) && Number(arrastre.empresaId) === empresaId),
+    [activeArrastres, empresaId],
+  );
+  const manageableVisibleRowIds = useMemo(
+    () => visibleArrastres
+      .filter((arrastre) => Boolean(empresaId) && Number(arrastre.empresaId) === empresaId)
+      .map((arrastre) => arrastre.id),
+    [empresaId, visibleArrastres],
+  );
+  const hasOpenIncidentInQueue = useMemo(
+    () => manageableActiveArrastres.some(hasOpenIncident),
+    [manageableActiveArrastres],
+  );
   const incidentRows = useMemo<ClienteArrastreIncidentRow[]>(() => (
     arrastres.flatMap((arrastre) => (
       (arrastre.incidentes || []).map((incident) => ({
@@ -998,6 +1013,7 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
             pastCount={pastArrastres.length}
             busyAction={busyAction}
             dailyCounters={dailyCounters}
+            manageableRowIds={manageableVisibleRowIds}
             canPrioritizeByIncident={hasOpenIncidentInQueue}
             onAmbito={setAmbito}
             onSearch={setSearch}

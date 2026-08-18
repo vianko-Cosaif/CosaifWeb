@@ -159,7 +159,17 @@ export function ArrastreTerminalTable({
                     ) : null}
                   </div>
 
-                  {expanded ? <div className="border-t border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950"><RondaDetail arrastre={arrastre} dailyInfo={dailyInfo} busyAction={busyAction} onEditVagon={onEditVagon} onReorderVagon={onReorderVagon} /></div> : null}
+                  {expanded ? (
+                    <div className="border-t border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
+                      <RondaDetail
+                        arrastre={arrastre}
+                        dailyInfo={dailyInfo}
+                        busyAction={busyAction}
+                        onEditVagon={canManage ? onEditVagon : undefined}
+                        onReorderVagon={canManage ? onReorderVagon : undefined}
+                      />
+                    </div>
+                  ) : null}
                 </article>
               );
             })}
@@ -211,8 +221,8 @@ export function ArrastreTerminalTable({
                               arrastre={arrastre}
                               dailyInfo={dailyInfo}
                               busyAction={busyAction}
-                              onEditVagon={onEditVagon}
-                              onReorderVagon={onReorderVagon}
+                              onEditVagon={canManage ? onEditVagon : undefined}
+                              onReorderVagon={canManage ? onReorderVagon : undefined}
                             />
                           </td>
                         </tr>

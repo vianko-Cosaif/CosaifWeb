@@ -197,9 +197,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(extractArray(data), { status: 200 });
     }
 
-    const scopedEmpresaId = companyScoped ? empresaId : null;
+    // Las consultas de lista con alcance de localidad muestran la ronda
+    // compartida completa. El alcance por empresa se conserva para detalles y
+    // escrituras, donde el cliente solo puede operar sus propios arrastres.
+    const scopedEmpresaId = generalLocalityView ? null : companyScoped ? empresaId : null;
 
-    if (companyScoped && !scopedEmpresaId) {
+    if (companyScoped && !empresaId) {
       return NextResponse.json([], { status: 200 });
     }
 

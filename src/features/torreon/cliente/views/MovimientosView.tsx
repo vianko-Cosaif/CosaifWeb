@@ -17,6 +17,7 @@ type Props = {
   pastCount: number;
   busyAction: string | null;
   dailyCounters: Map<number, DailyInfo>;
+  manageableRowIds: number[];
   canPrioritizeByIncident: boolean;
   onAmbito: (ambito: Ambito) => void;
   onSearch: (value: string) => void;
@@ -52,6 +53,7 @@ export function MovimientosView({
   pastCount,
   busyAction,
   dailyCounters,
+  manageableRowIds,
   canPrioritizeByIncident,
   onAmbito,
   onSearch,
@@ -66,7 +68,13 @@ export function MovimientosView({
   onCancel,
   onIncidentSelect,
 }: Props) {
-  const editableSolicitudIds = useMemo(() => visibleArrastres.filter(canReorderSolicitud).map((arrastre) => arrastre.id), [visibleArrastres]);
+  const manageableIds = useMemo(() => new Set(manageableRowIds), [manageableRowIds]);
+  const editableSolicitudIds = useMemo(
+    () => visibleArrastres
+      .filter((arrastre) => manageableIds.has(arrastre.id) && canReorderSolicitud(arrastre))
+      .map((arrastre) => arrastre.id),
+    [manageableIds, visibleArrastres],
+  );
   return (
     <section className="w-full overflow-x-hidden overflow-y-visible rounded-2xl border border-slate-200/80 bg-white/95 text-slate-900 shadow-xl shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:shadow-black/30">
       <div className="flex min-h-[calc(100svh-7rem)] flex-col gap-5 px-3 py-4 sm:px-5 sm:py-6 lg:px-7">
@@ -98,6 +106,7 @@ export function MovimientosView({
             subtitle={ambito === "actuales" ? "Seguimiento" : "Operaciones anteriores"}
             pageSize={6}
             editableSolicitudIds={editableSolicitudIds}
+            manageableRowIds={manageableRowIds}
             canPrioritizeByIncident={canPrioritizeByIncident}
             onEditArrastre={onEditArrastre}
             onEditVagon={onEditVagon}
