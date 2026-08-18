@@ -710,12 +710,14 @@ export async function GET(req: NextRequest) {
     const capabilities = authorization.capabilities;
     const empresaId = session.empresaId;
     const assignedLocalidadId = session.localidadId;
-    const localidadId = isLocalityScoped(session) ? assignedLocalidadId : requestedLocalidadId;
+    const sharedClientLocalityView = requestedGeneralLocalityView && capabilities.area === "cliente";
+    const useAssignedLocalidad = isLocalityScoped(session) || sharedClientLocalityView;
+    const localidadId = useAssignedLocalidad ? assignedLocalidadId : requestedLocalidadId;
     // El tablero del cliente representa la fila operativa compartida de su
     // localidad. Esto no amplía su localidad ni sus permisos de escritura:
     // las acciones POST continúan validadas contra empresa y localidad.
     const generalLocalityView = requestedGeneralLocalityView
-      && (capabilities.canViewAllCompanies || isLocalityScoped(session));
+      && (capabilities.canViewAllCompanies || capabilities.area === "cliente");
 
     const requestedEmpresaId = firstPositiveNumber(searchParams.get("empresaId"));
     if (
@@ -725,7 +727,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: "Solo puedes consultar locomotoras de tu empresa." }, { status: 403 });
     }
 
-    if (isLocalityScoped(session) && requestedLocalidadId && requestedLocalidadId !== assignedLocalidadId) {
+    if (useAssignedLocalidad && requestedLocalidadId && requestedLocalidadId !== assignedLocalidadId) {
       return NextResponse.json({ message: "Solo puedes consultar rondas de tu localidad." }, { status: 403 });
     }
     if (!localidadId) {
