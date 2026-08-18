@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Building,
   Eye,
@@ -12,7 +12,7 @@ import {
   User as UserIcon,
 } from "lucide-react";
 import { Button, SelectField, cn } from "@/app/Components/ui";
-import { ROLE_LABELS, roleAccent } from "../constants";
+import { ROLE_LABELS, isCompanyAllowedForRole, isRoleAllowedForCompany, roleAccent } from "../constants";
 import type { Empresa, Localidad, Rol, UserData, UserFormValues } from "../types";
 import { passwordScore } from "../utils";
 
@@ -74,6 +74,36 @@ export default function UserForm({
   const passwordReady = !shouldValidatePassword || (passwordDraft.length >= 8 && passwordDraft === confirmDraft);
   const pScore = useMemo(() => passwordScore(passwordDraft), [passwordDraft]);
   const accent = roleAccent(form.rol);
+  const selectedEmpresa = useMemo(
+    () => empresas.find((empresa) => Number(empresa.id) === Number(form.empresaId)),
+    [empresas, form.empresaId]
+  );
+  const compatibleRoleOptions = useMemo(
+    () => roleOptions.filter((role) => isRoleAllowedForCompany(role, selectedEmpresa?.nombre)),
+    [roleOptions, selectedEmpresa?.nombre]
+  );
+  const compatibleEmpresas = useMemo(
+    () => empresas.filter((empresa) => isCompanyAllowedForRole(empresa.nombre, form.rol)),
+    [empresas, form.rol]
+  );
+  const businessRuleMessage = !selectedEmpresa
+    ? ""
+    : !isRoleAllowedForCompany(form.rol, selectedEmpresa.nombre)
+      ? "La empresa seleccionada no es compatible con el rol elegido."
+      : "";
+
+  useEffect(() => {
+    if (compatibleRoleOptions.length && !compatibleRoleOptions.includes(form.rol)) {
+      setForm((current) => ({ ...current, rol: compatibleRoleOptions[0] }));
+    }
+  }, [compatibleRoleOptions, form.rol]);
+
+  useEffect(() => {
+    if (!compatibleEmpresas.length) return;
+    if (!compatibleEmpresas.some((empresa) => Number(empresa.id) === Number(form.empresaId))) {
+      setForm((current) => ({ ...current, empresaId: compatibleEmpresas[0].id }));
+    }
+  }, [compatibleEmpresas, form.empresaId]);
 
   const passwordStatusMessage =
     shouldValidatePassword && passwordDraft.length > 0 && passwordDraft.length < 8
@@ -104,6 +134,7 @@ export default function UserForm({
     form.email.trim() &&
     !!form.empresaId &&
     !!form.localidadId &&
+    !businessRuleMessage &&
     passwordReady &&
     !saving;
 
@@ -261,7 +292,7 @@ export default function UserForm({
       <div>
         <label className="mb-1.5 block text-sm font-black text-slate-700 dark:text-slate-300">Rol</label>
         <div className="grid grid-cols-2 gap-2">
-          {roleOptions.map((role) => (
+          {compatibleRoleOptions.map((role) => (
             <button
               key={role}
               type="button"
@@ -277,6 +308,11 @@ export default function UserForm({
             </button>
           ))}
         </div>
+        {businessRuleMessage ? (
+          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+            {businessRuleMessage}
+          </p>
+        ) : null}
         {mode === "edit" ? (
           <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
             Cambiar rol, empresa o localidad obliga a iniciar sesion de nuevo.
@@ -296,7 +332,7 @@ export default function UserForm({
           }
         >
           <option value="">Selecciona una empresa</option>
-          {empresas.map((empresa) => (
+          {compatibleEmpresas.map((empresa) => (
             <option key={empresa.id} value={empresa.id}>
               {empresa.nombre}
             </option>

@@ -114,6 +114,16 @@ type RondaInfoRecord = {
 
 type UnknownRecord = Record<string, unknown>;
 type MovimientoDetailRecord = MovimientoRecord & { movimiento?: MovimientoRecord | null };
+type NormalizedRondaBase = {
+  id: number;
+  rondaNumero: number;
+  orden: number;
+  concluido: boolean;
+  empresa?: { id?: number; nombre?: string } | null;
+  movimiento?: MovimientoRecord | null;
+  movimientoId?: number | null;
+  createdAt?: string | null;
+};
 
 type TorreonIncidenteRecord = {
   id?: number | string | null;
@@ -213,10 +223,25 @@ function extractArray(input: unknown): UnknownRecord[] {
   return [];
 }
 
-function normalizeRondas(input: unknown): Array<{ id: number; rondaNumero: number; orden: number; concluido: boolean }> {
+function normalizeRondas(input: unknown): NormalizedRondaBase[] {
   return extractArray(input)
     .map((x) => {
       const ronda = asRecord(x.ronda);
+      const movimientoRecord = asRecord(x.movimiento ?? ronda.movimiento);
+      const empresaRecord = asRecord(x.empresa ?? ronda.empresa ?? movimientoRecord.empresa);
+      const movimiento = Object.keys(movimientoRecord).length
+        ? {
+            ...(movimientoRecord as MovimientoRecord),
+            viaOrigen: (movimientoRecord.viaOrigen ?? x.viaOrigen ?? ronda.viaOrigen ?? null) as
+              | MovimientoRecord["viaOrigen"]
+              | null,
+            viaDestino: (movimientoRecord.viaDestino ?? x.viaDestino ?? ronda.viaDestino ?? null) as
+              | MovimientoRecord["viaDestino"]
+              | null,
+          }
+        : null;
+      const empresa = Object.keys(empresaRecord).length ? (empresaRecord as { id?: number; nombre?: string }) : null;
+
       return {
         id: Number(x.id ?? x.rondaId ?? ronda.id),
         rondaNumero: Number(x.rondaNumero ?? x.numero ?? x.num ?? ronda.numero ?? 0),
@@ -227,6 +252,10 @@ function normalizeRondas(input: unknown): Array<{ id: number; rondaNumero: numbe
             x.terminado ??
             (typeof x.estado === "string" ? x.estado.toUpperCase() === "CONCLUIDO" : x.estado === true)
         ),
+        empresa,
+        movimiento,
+        movimientoId: firstPositiveNumber(x.movimientoId, ronda.movimientoId, movimiento?.id),
+        createdAt: asDateString(x.createdAt ?? ronda.createdAt ?? movimiento?.fechaSolicitud ?? movimiento?.createdAt),
       };
     })
     .filter((r) => Number.isFinite(r.id));
@@ -568,12 +597,14 @@ async function fetchCosaifRondasOut({
   localidadId,
   concluido,
   empresaScopeId,
+  generalLocalityView,
 }: {
   base: string;
   headers: HeadersInit;
   localidadId: string;
   concluido: boolean;
   empresaScopeId?: number | null;
+  generalLocalityView?: boolean;
 }): Promise<RondaOut[]> {
   if (concluido) {
     const qs = new URLSearchParams({
@@ -601,10 +632,11 @@ async function fetchCosaifRondasOut({
       .filter((item): item is RondaOut => Boolean(item));
   }
 
+  const scopeQuery = generalLocalityView ? "&alcance=localidad" : "";
   const candidates = [
-    `${base}/rondas/localidad/${encodeURIComponent(localidadId)}/estado/false`,
-    `${base}/rondas?localidadId=${encodeURIComponent(localidadId)}&concluido=false`,
-    `${base}/movimientos/rondas?localidadId=${encodeURIComponent(localidadId)}&concluido=false`,
+    `${base}/rondas/localidad/${encodeURIComponent(localidadId)}/estado/false${generalLocalityView ? "?alcance=localidad" : ""}`,
+    `${base}/rondas?localidadId=${encodeURIComponent(localidadId)}&concluido=false${scopeQuery}`,
+    `${base}/movimientos/rondas?localidadId=${encodeURIComponent(localidadId)}&concluido=false${scopeQuery}`,
   ];
 
   let raw: unknown = [];
@@ -632,11 +664,13 @@ async function fetchCosaifRondasOut({
   const mapped: RondaOut[] = [];
   for (const r of baseList) {
     const info = infoMap.get(r.id);
-    const mv = info?.movimiento ?? null;
-    const emp = info?.empresa ?? mv?.empresa ?? null;
+    const baseMv = r.movimiento ?? null;
+    const baseEmp = r.empresa ?? baseMv?.empresa ?? null;
+    const mv = info?.movimiento ?? baseMv;
+    const emp = info?.empresa ?? mv?.empresa ?? baseEmp;
     const empresaId = firstPositiveNumber(emp?.id, mv?.empresaId);
     if (empresaScopeId && empresaId !== empresaScopeId) continue;
-    const movimientoId = mv ? firstPositiveNumber(mv.idTecnico, info?.movimientoId, mv.id) : null;
+    const movimientoId = mv ? firstPositiveNumber(mv.idTecnico, info?.movimientoId, r.movimientoId, mv.id) : r.movimientoId ?? null;
     const visibleId = mv ? firstPositiveNumber(mv.folioLocalidad, mv.id) ?? movimientoId : null;
 
     mapped.push({
@@ -663,7 +697,7 @@ async function fetchCosaifRondasOut({
           }
         : null,
       movimientoId,
-      createdAt: mv?.fechaSolicitud ?? mv?.createdAt ?? null,
+      createdAt: mv?.fechaSolicitud ?? mv?.createdAt ?? r.createdAt ?? null,
       source: "cosaif",
     });
   }
@@ -884,6 +918,7 @@ export async function GET(req: NextRequest) {
       localidadId: localidadIdParam,
       concluido,
       empresaScopeId,
+      generalLocalityView,
     });
     return NextResponse.json(out, { status: 200 });
   } catch (err) {

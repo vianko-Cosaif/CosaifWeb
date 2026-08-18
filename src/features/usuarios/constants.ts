@@ -24,6 +24,46 @@ export const LOCAL_COORDINATOR_ROLE_OPTIONS: Rol[] = [
 
 export const ADMIN_ROLE_OPTIONS: Rol[] = ["ADMINISTRADOR", "COMERCIAL", ...USER_ROLE_OPTIONS];
 
+export const INTERNAL_COMPANY_NAMES = ["COSAIF", "VIANKO"] as const;
+
+export const INTERNAL_OPERATION_ROLES: Rol[] = [
+  "MAQUINISTA",
+  "MAQUINISTA_ARRASTRE",
+  "TORNO",
+  "COORDINADOR",
+  "SUPERVISOR",
+];
+
+export const CLIENT_COMPANY_ROLES: Rol[] = [
+  "CLIENTE",
+  "CLIENTE_ADMIN",
+  "CLIENTE_COOR",
+  "ARRASTRE_TORREON",
+];
+
+export function normalizeCompanyName(value?: string | null) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
+}
+
+export function isInternalCompanyName(value?: string | null) {
+  return INTERNAL_COMPANY_NAMES.includes(normalizeCompanyName(value) as (typeof INTERNAL_COMPANY_NAMES)[number]);
+}
+
+export function isRoleAllowedForCompany(role: Rol, companyName?: string | null) {
+  const internalCompany = isInternalCompanyName(companyName);
+  if (INTERNAL_OPERATION_ROLES.includes(role)) return internalCompany;
+  if (CLIENT_COMPANY_ROLES.includes(role)) return !internalCompany;
+  return true;
+}
+
+export function isCompanyAllowedForRole(companyName: string | undefined, role: Rol) {
+  return isRoleAllowedForCompany(role, companyName);
+}
+
 export const ROLE_LABELS: Record<Rol, string> = {
   ADMINISTRADOR: "Administrador",
   COMERCIAL: "Comercial",

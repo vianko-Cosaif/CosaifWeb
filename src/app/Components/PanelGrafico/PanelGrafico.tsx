@@ -1716,6 +1716,7 @@ function drawPatioCanvas(
   drawRoundhouse(ctx, layout, colors);
   drawTracks(ctx, layout, options.tracks, options.selectedTrackId, colors, options.time, options.reducedMotion);
   drawTurntable(ctx, layout, options.tracks, options.selectedTrackId, colors);
+  drawBothRouteConnections(ctx, layout, options.tracks, colors, options.time, options.reducedMotion);
   drawMovingTrackArrows(ctx, layout, options.tracks, colors, options.time, options.reducedMotion);
   drawServices(ctx, layout, colors, options.serviceActivity, options.time, options.reducedMotion);
   drawLocomotives(ctx, layout, options.tracks, colors, options.time, options.changedKeys, options.reducedMotion, options.removedGhosts);
@@ -2055,6 +2056,145 @@ function drawMovingTrackArrows(
   });
 }
 
+function quadraticPoint(
+  start: { x: number; y: number },
+  control: { x: number; y: number },
+  end: { x: number; y: number },
+  t: number
+) {
+  const inv = 1 - t;
+  return {
+    x: inv * inv * start.x + 2 * inv * t * control.x + t * t * end.x,
+    y: inv * inv * start.y + 2 * inv * t * control.y + t * t * end.y,
+  };
+}
+
+function quadraticAngle(
+  start: { x: number; y: number },
+  control: { x: number; y: number },
+  end: { x: number; y: number },
+  t: number
+) {
+  const inv = 1 - t;
+  const dx = 2 * inv * (control.x - start.x) + 2 * t * (end.x - control.x);
+  const dy = 2 * inv * (control.y - start.y) + 2 * t * (end.y - control.y);
+  return Math.atan2(dy, dx);
+}
+
+function drawBothRouteConnections(
+  ctx: CanvasRenderingContext2D,
+  layout: ReturnType<typeof patioLayout>,
+  tracks: PatioTrack[],
+  colors: Record<string, string>,
+  time: number,
+  reducedMotion: boolean
+) {
+  const drawn = new Set<string>();
+  tracks.forEach((track) => {
+    const locomotives = track.locomotives?.length ? track.locomotives : track.locomotive ? [track.locomotive] : [];
+    locomotives.forEach((locomotive) => {
+      if (locomotive.placement !== "both" || !locomotive.originTrackId || !locomotive.destinationTrackId) return;
+      if (locomotive.originTrackId === locomotive.destinationTrackId) return;
+      if (drawn.has(locomotive.key)) return;
+      drawn.add(locomotive.key);
+
+      const originTrack = tracks.find((item) => item.id === locomotive.originTrackId);
+      const destinationTrack = tracks.find((item) => item.id === locomotive.destinationTrackId);
+      if (!originTrack || !destinationTrack) return;
+
+      const routeColor = patioMovementColor(locomotive.type, colors);
+      const active = locomotive.status === "moving";
+      const stopped = locomotive.status === "stopped";
+      if (!active) {
+        const markColor = stopped ? colors.stopped : routeColor;
+        drawAssignedRouteTrackMark(ctx, layout, originTrack, markColor, "DE", stopped ? 0.5 : 0.32);
+        drawAssignedRouteTrackMark(ctx, layout, destinationTrack, markColor, "PARA", stopped ? 0.5 : 0.32);
+        return;
+      }
+
+      const start = polarPoint(layout, layout.turntableRadius + (layout.innerRadius - layout.turntableRadius) * 0.42, toRad(originTrack.angle));
+      const end = polarPoint(layout, layout.turntableRadius + (layout.innerRadius - layout.turntableRadius) * 0.72, toRad(destinationTrack.angle));
+      const control = {
+        x: layout.center.x + Math.cos((toRad(originTrack.angle) + toRad(destinationTrack.angle)) / 2) * layout.turntableRadius * 0.72,
+        y: layout.center.y + Math.sin((toRad(originTrack.angle) + toRad(destinationTrack.angle)) / 2) * layout.turntableRadius * 0.72,
+      };
+      const pulse = reducedMotion ? 0.4 : 0.28 + ((Math.sin(time / 520) + 1) / 2) * 0.22;
+
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.setLineDash([14, 8]);
+      ctx.lineDashOffset = reducedMotion ? 0 : -time / 70;
+      ctx.strokeStyle = routeColor;
+      ctx.lineWidth = 4.2;
+      ctx.globalAlpha = 0.46 + pulse * 0.22;
+      ctx.shadowColor = routeColor;
+      ctx.shadowBlur = 14 + pulse * 10;
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.quadraticCurveTo(control.x, control.y, end.x, end.y);
+      ctx.stroke();
+
+      ctx.setLineDash([]);
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 0.95;
+      const markerT = reducedMotion ? 0.62 : 0.18 + ((time / 3600) % 0.64);
+      const markerPoint = quadraticPoint(start, control, end, markerT);
+      const markerAngle = quadraticAngle(start, control, end, markerT);
+      drawPatioArrowHead(ctx, markerPoint.x, markerPoint.y, markerAngle, clampNumber(layout.outerRadius * 0.034, 10, 17), routeColor, 0.82);
+
+      [start, end].forEach((point) => {
+        ctx.fillStyle = routeColor;
+        ctx.shadowColor = routeColor;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, active ? 4.8 : 3.8, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.restore();
+    });
+  });
+}
+
+function drawAssignedRouteTrackMark(
+  ctx: CanvasRenderingContext2D,
+  layout: ReturnType<typeof patioLayout>,
+  track: PatioTrack,
+  color: string,
+  label: "DE" | "PARA",
+  alpha: number
+) {
+  const angle = toRad(track.angle);
+  const start = polarPoint(layout, layout.turntableRadius + 18, angle);
+  const end = trackEndPoint(layout, track.angle);
+  const labelPoint = polarPoint(layout, layout.innerRadius + 28, angle);
+
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = 4;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.moveTo(start.x, start.y);
+  ctx.lineTo(end.x, end.y);
+  ctx.stroke();
+
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = Math.min(0.92, alpha + 0.22);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.roundRect(labelPoint.x - 18, labelPoint.y - 9, 36, 18, 9);
+  ctx.fill();
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "900 8px Inter, Arial, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, labelPoint.x, labelPoint.y);
+  ctx.restore();
+}
+
 function movementArrowVector(layout: ReturnType<typeof patioLayout>, tracks: PatioTrack[], track: PatioTrack) {
   const originTrack = tracks.find((item) => item.id === track.originTrackId) ?? track;
   const destinationTrack = tracks.find((item) => item.id === track.destinationTrackId);
@@ -2172,7 +2312,7 @@ function drawTurntable(ctx: CanvasRenderingContext2D, layout: ReturnType<typeof 
   ctx.fillStyle = colors.text;
   ctx.font = "900 14px Inter, Arial, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("PUENTE", layout.center.x, layout.center.y - 22);
+  ctx.fillText("MESA", layout.center.x, layout.center.y - 22);
   ctx.fillText("GIRATORIO", layout.center.x, layout.center.y + 1);
   ctx.restore();
 }
@@ -2354,6 +2494,7 @@ function drawLocomotiveChip(
   const changeKind = changedKeys.get(locomotive.key);
   const changed = Boolean(changeKind);
   const zoomPulse = changed && !reducedMotion ? (Math.sin(time / 190) + 1) / 2 : 0;
+  const isBothPlacement = track.placement === "both";
   const statusScale =
     (locomotive.status === "moving" || locomotive.status === "stopped")
       ? 1.3 + (reducedMotion ? 0 : glow * 0.08)
@@ -2365,6 +2506,9 @@ function drawLocomotiveChip(
         ? 1.04 + zoomPulse * 0.04
         : 1;
   const scale = effect?.alpha !== undefined ? effect.scale ?? statusScale : statusScale * (effect?.scale ?? 1);
+  const chipWidth = isBothPlacement ? 86 : 76;
+  const chipHalf = chipWidth / 2;
+  const placementBadgeWidth = isBothPlacement ? 48 : 34;
 
   ctx.save();
   ctx.globalAlpha = effect?.alpha ?? 1;
@@ -2377,11 +2521,11 @@ function drawLocomotiveChip(
   ctx.strokeStyle = statusColor;
   ctx.lineWidth = changed ? 4.5 : 3;
   ctx.beginPath();
-  ctx.roundRect(x - 38, y - 18, 76, 36, 8);
+  ctx.roundRect(x - chipHalf, y - 18, chipWidth, 36, 8);
   ctx.fill();
   ctx.stroke();
 
-  const placementLabel = track.placement === "destination" ? "PARA" : track.placement === "both" ? "RUTA" : "DE";
+  const placementLabel = track.placement === "destination" ? "PARA" : isBothPlacement ? "DE/PARA" : "DE";
   const placementIcon = track.placement === "destination" ? "→" : track.placement === "both" ? "↔" : "•";
   const placementColor =
     track.placement === "destination"
@@ -2393,33 +2537,33 @@ function drawLocomotiveChip(
   ctx.shadowBlur = 0;
   ctx.fillStyle = placementColor;
   ctx.beginPath();
-  ctx.roundRect(x - 38, y - 31, 34, 14, 7);
+  ctx.roundRect(x - chipHalf, y - 31, placementBadgeWidth, 14, 7);
   ctx.fill();
   ctx.fillStyle = "#ffffff";
-  ctx.font = "900 7px Inter, Arial, sans-serif";
+  ctx.font = isBothPlacement ? "900 6.5px Inter, Arial, sans-serif" : "900 7px Inter, Arial, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(placementLabel, x - 21, y - 24);
+  ctx.fillText(placementLabel, x - chipHalf + placementBadgeWidth / 2, y - 24);
 
   ctx.fillStyle = placementColor;
   ctx.font = "900 18px Inter, Arial, sans-serif";
-  ctx.fillText(placementIcon, x + 34, y - 26);
+  ctx.fillText(placementIcon, x + chipHalf - 4, y - 26);
 
   ctx.shadowBlur = 0;
   ctx.fillStyle = statusColor;
   ctx.beginPath();
-  ctx.arc(x - 23, y, 6, 0, Math.PI * 2);
+  ctx.arc(x - chipHalf + 15, y, 6, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = "#0f172a";
   ctx.font = "900 14px Inter, Arial, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(locomotive.number, x + 7, y - 2);
+  ctx.fillText(locomotive.number, x + (isBothPlacement ? 10 : 7), y - 2);
 
   ctx.fillStyle = colors.muted;
   ctx.font = "800 8px Inter, Arial, sans-serif";
-  ctx.fillText(locomotive.type.toUpperCase(), x + 7, y + 11);
+  ctx.fillText(locomotive.type.toUpperCase(), x + (isBothPlacement ? 10 : 7), y + 11);
 
   ctx.fillStyle = statusColor;
   ctx.font = "900 9px Inter, Arial, sans-serif";
