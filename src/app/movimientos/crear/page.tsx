@@ -1,6 +1,6 @@
 // app/movimientos/crear/page.tsx
 import type { Metadata } from "next";
-import CrearMovimiento from "./CrearMovimiento";
+import CrearMovimiento from "../../../features/movimientos/crear/CrearMovimiento";
 import { redirect } from "next/navigation";
 import { PERMISSIONS, hasPermission } from "@/lib/accessControl";
 import { getVerifiedSession } from "@/lib/server/session";

@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
-import ClienteReporteriaClient from "./ClienteReporteriaClient";
+import ClienteReporteriaClient from "../../../features/reporteria/cliente/ClienteReporteriaClient";
 import { isClienteAreaRole } from "@/lib/torreonLocalidad";
 
 export const dynamic = "force-dynamic";

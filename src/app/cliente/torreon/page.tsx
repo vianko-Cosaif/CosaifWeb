@@ -2,8 +2,8 @@ import { redirect } from "next/navigation";
 import { getPrimaryTorreonLocalidadId, isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 import { PERMISSIONS, hasPermission } from "@/lib/accessControl";
 import { getVerifiedSession } from "@/lib/server/session";
-import ClientPageWrapper from "../ClientPageWrapper";
-import TorreonClientePanel from "./TorreonClientePanel";
+import ClientPageWrapper from "../../../features/cliente/ClientPageWrapper";
+import TorreonClientePanel from "../../../features/torreon/cliente/TorreonClientePanel";
 
 export const dynamic = "force-dynamic";
 

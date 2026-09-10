@@ -5,6 +5,8 @@ import { toTorreonImageProxyUrl } from "@/lib/torreonImageProxy";
 import { ARRASTRE_MAX_CAPACITY, ARRASTRE_MIN_VAGONES, arrastreVagonCapacity } from "@/features/torreon/arrastres/constants";
 import { PERMISSIONS, hasAnyPermission, hasPermission } from "@/lib/accessControl";
 import { getVerifiedSession } from "@/lib/server/session";
+import { MovementScopeError, recordMatchesMovementScope, resolveMovementReadScope } from "@/lib/auth/movementScope";
+import { getErrorStatus } from "@/lib/server/upstream";
 
 export const dynamic = "force-dynamic";
 
@@ -154,10 +156,7 @@ function normalizeVagones(input: unknown) {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const localidadId = searchParams.get("localidadId");
-    if (!localidadId || !isTorreonLocalidad(localidadId)) {
-      return NextResponse.json([], { status: 200 });
-    }
+    let localidadId = searchParams.get("localidadId");
 
     const estado = searchParams.get("estado");
     const vista = searchParams.get("vista");
@@ -171,11 +170,19 @@ export async function GET(req: NextRequest) {
       return jsonError("No autorizado", 401);
     }
     const role = session.role;
+    const historyRequested = ["HISTORIAL", "COMPLETADOS", "CERRADOS"].includes(String(vista || "").toUpperCase())
+      || String(estado || "").toUpperCase().split(",").some((value) => ["CONCLUIDO", "CANCELADO"].includes(value.trim()));
+    const clientScope = role === "CLIENTE"
+      ? resolveMovementReadScope(session, id || auditId ? "detail" : historyRequested ? "history-list" : "current-list", searchParams)
+      : null;
+    if (clientScope) localidadId = String(clientScope.localidadId);
+    if (!localidadId || !isTorreonLocalidad(localidadId)) return NextResponse.json([], { status: 200 });
+    const effectiveVista = clientScope && !id && !auditId ? historyRequested ? "HISTORIAL" : "ACTIVOS" : vista;
     const empresaId = session.empresaId;
     const sessionLocalidadId = session.localidadId;
     const localityScoped = session.authorization.scope.mode === "LOCALITY" || session.authorization.scope.mode === "COMPANY_LOCALITY";
     const companyScoped = session.authorization.scope.mode === "COMPANY" || session.authorization.scope.mode === "COMPANY_LOCALITY";
-    const generalLocalityView = searchParams.get("alcance") === "localidad" && !id && !auditId;
+    const generalLocalityView = clientScope ? clientScope.sharedCurrentLocality : searchParams.get("alcance") === "localidad" && !id && !auditId;
     if (!canViewTorreonArrastreRole(role) && !canResolveTorreonIncidentRole(role)) {
       return NextResponse.json([], { status: 200 });
     }
@@ -200,7 +207,7 @@ export async function GET(req: NextRequest) {
     // Las consultas de lista con alcance de localidad muestran la ronda
     // compartida completa. El alcance por empresa se conserva para detalles y
     // escrituras, donde el cliente solo puede operar sus propios arrastres.
-    const scopedEmpresaId = generalLocalityView ? null : companyScoped ? empresaId : null;
+    const scopedEmpresaId = clientScope ? clientScope.empresaId : generalLocalityView ? null : companyScoped ? empresaId : null;
 
     if (companyScoped && !empresaId) {
       return NextResponse.json([], { status: 200 });
@@ -214,6 +221,9 @@ export async function GET(req: NextRequest) {
       const recordLocalidadId = asNumber(mapped.localidadId);
       const recordEmpresaId = asNumber(mapped.empresaId);
 
+      if (clientScope && !recordMatchesMovementScope({ empresaId: recordEmpresaId, localidadId: recordLocalidadId }, clientScope)) {
+        return jsonError("No autorizado para este arrastre", 403);
+      }
       if (recordLocalidadId && recordLocalidadId !== Number(localidadId)) {
         return jsonError("No autorizado para este arrastre", 403);
       }
@@ -226,18 +236,23 @@ export async function GET(req: NextRequest) {
 
     const qs = new URLSearchParams({ localidadId });
     if (estado) qs.set("estado", estado);
-    if (vista) qs.set("vista", vista);
+    if (effectiveVista) qs.set("vista", effectiveVista);
     if (page) qs.set("page", page);
     if (pageSize) qs.set("pageSize", pageSize);
     if (includeFotos) qs.set("includeFotos", includeFotos);
     if (generalLocalityView) qs.set("alcance", "localidad");
     if (scopedEmpresaId) qs.set("empresaId", String(scopedEmpresaId));
 
-    const data = await fetchTorreonMsJson(`/arrastres?${qs.toString()}`);
-    return NextResponse.json(filterByVista(extractArray(data).map(mapArrastre), vista), { status: 200 });
+    const data = await fetchTorreonMsJson(`/arrastres?${qs.toString()}`, { signal: req.signal });
+    const rows = extractArray(data).map(mapArrastre).filter((row) => !clientScope || recordMatchesMovementScope({
+      empresaId: asRecord(row).empresaId,
+      localidadId: asRecord(row).localidadId,
+    }, clientScope));
+    return NextResponse.json(filterByVista(rows, effectiveVista), { status: 200 });
   } catch (error) {
+    if (error instanceof MovementScopeError) return jsonError(error.message, error.status);
     console.error("[api/cliente/torreon/arrastres] error:", error);
-    return NextResponse.json([], { status: 200 });
+    return jsonError("No se pudieron consultar los arrastres", getErrorStatus(error));
   }
 }
 

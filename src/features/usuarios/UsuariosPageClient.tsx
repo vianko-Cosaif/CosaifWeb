@@ -11,7 +11,7 @@ import {
   ModuleHeader,
   SearchInput,
   SelectField,
-} from "@/app/Components/ui";
+} from "@/components/ui";
 import { fetchJSON, readCollection } from "./api";
 import {
   ADMIN_ROLE_OPTIONS,

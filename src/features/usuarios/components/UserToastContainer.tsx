@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertCircle, Check, X } from "lucide-react";
-import { cn } from "@/app/Components/ui";
+import { cn } from "@/components/ui";
 import type { Toast } from "../types";
 
 type UserToastContainerProps = {

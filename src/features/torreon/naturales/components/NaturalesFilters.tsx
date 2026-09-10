@@ -1,5 +1,5 @@
 import { CalendarDays, Search } from "lucide-react";
-import FilterPanel from "@/app/Components/ui/FilterPanel";
+import FilterPanel from "@/components/ui/FilterPanel";
 import { STATUS_TABS } from "../constants";
 import type { EmpresaOption, FechaCampo, SortDir, SortKey, StatusTab } from "../types";
 

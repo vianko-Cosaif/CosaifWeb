@@ -20,6 +20,7 @@ export async function clearAuthenticatedSession() {
     invalidateCachedJson();
     clearStorage(window.localStorage);
     clearStorage(window.sessionStorage);
+    window.dispatchEvent(new Event("cosaif:session-ended"));
   } catch {
     // La cookie del servidor ya se eliminó; el almacenamiento puede estar bloqueado.
   }
@@ -28,4 +29,4 @@ export async function clearAuthenticatedSession() {
     document.cookie = `${name}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; samesite=lax`;
   }
 }
-import { invalidateCachedJson } from "@/lib/clientRequestCache";
+import { invalidateCachedJson } from "@/lib/http/client";

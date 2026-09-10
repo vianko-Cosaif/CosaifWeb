@@ -1,7 +1,7 @@
 "use client";
 
 import { LoaderCircle, Wifi, WifiOff } from "lucide-react";
-import type { RealtimeConnectionStatus } from "@/app/hooks/useRealtimeMovimientos";
+import type { RealtimeConnectionStatus } from "@/features/movimientos/useRealtimeMovimientos";
 import { realtimeStatusLabel } from "@/features/torreon/realtime";
 
 export function TorreonRealtimeBadge({ status }: { status: RealtimeConnectionStatus }) {

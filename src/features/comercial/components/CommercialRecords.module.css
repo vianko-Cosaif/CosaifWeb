@@ -1,0 +1,60 @@
+.container {
+  container: commercial-records / inline-size;
+  min-width: 0;
+}
+
+.scroll { overflow-x: auto; }
+.table { width: 100%; }
+.clientLayout { display: grid; gap: 1rem; min-width: 0; }
+.clientList { max-height: 13rem; overflow-y: auto; overscroll-behavior: contain; }
+.groupHeader { display: grid; gap: 1rem; }
+.operationSummary, .operationValues { display: grid; gap: .75rem; min-width: 0; }
+
+@container commercial-records (min-width: 850px) {
+  .clientLayout { grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); }
+  .clientList { max-height: 34rem; }
+  .groupHeader { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .operationSummary { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+}
+
+@container commercial-records (min-width: 560px) {
+  .operationValues { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+}
+
+@container commercial-records (max-width: 1100px) {
+  .scroll { overflow: visible; padding: 1rem; }
+  .container .table { display: block; min-width: 0; }
+  .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .table tbody { display: grid; gap: 1rem; }
+  .table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .75rem 1rem;
+    border: 1px solid var(--app-border);
+    border-radius: .75rem;
+    background: var(--app-surface);
+    padding: 1rem;
+  }
+  .table td { display: block; min-width: 0; padding: 0; overflow-wrap: anywhere; }
+  .table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: .2rem;
+    color: var(--app-text-muted);
+    font-size: .7rem;
+    font-weight: 500;
+  }
+  .table td:nth-child(1), .table td:nth-child(2), .table td:last-child { grid-column: 1 / -1; }
+  .table td:last-child { border-top: 1px solid var(--app-border); padding-top: .75rem; }
+}
+
+@container commercial-records (max-width: 440px) {
+  .table tbody tr { grid-template-columns: minmax(0, 1fr); }
+}

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { EmpresaOption, FechaCampo, MovimientoNatural, SortDir, SortKey, StatusTab } from "./types";
 import { filterNaturalRows, getNaturalMetrics, toLocalDateTimeInput } from "./utils";
-import { cachedFetchJson } from "@/lib/clientRequestCache";
+import { cachedFetchJson } from "@/lib/http/client";
+import { readTorreonJson, useTorreonCollection } from "../useTorreonCollection";
 
 function normalizeBase(base?: string): string {
   return (base || process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL || "/bff").replace(/\/+$/, "");
@@ -30,9 +31,6 @@ export function useTorreonNaturales(localidadId: number, apiBase?: string) {
   const [search, setSearch] = useState("");
   const [empresaId, setEmpresaId] = useState<number | null>(null);
   const [empresas, setEmpresas] = useState<EmpresaOption[]>([]);
-  const [rows, setRows] = useState<MovimientoNatural[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [fechaCampo, setFechaCampo] = useState<FechaCampo>("inicio");
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
@@ -43,78 +41,54 @@ export function useTorreonNaturales(localidadId: number, apiBase?: string) {
   const catalogBase = normalizeBase(apiBase);
 
   useEffect(() => {
-    let alive = true;
+    const controller = new AbortController();
     cachedFetchJson<unknown>(`${catalogBase}/empresas/lite`, {
       cache: "no-store",
       credentials: "include",
+      signal: controller.signal,
     }, { ttlMs: 5 * 60_000 })
       .then((payload) => {
-        if (alive) setEmpresas(normalizeEmpresas(payload));
+        if (!controller.signal.aborted) setEmpresas(normalizeEmpresas(payload));
       })
       .catch(() => {
-        if (alive) setEmpresas([]);
+        if (!controller.signal.aborted) setEmpresas([]);
       });
 
     return () => {
-      alive = false;
+      controller.abort();
     };
   }, [catalogBase]);
 
-  const load = useCallback(async (force = false) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams({
-        localidadId: String(localidadId),
-        status,
-        page: "1",
-        pageSize: "100",
-        includeFotos: "0",
-      });
-      if (empresaId) params.set("empresaId", String(empresaId));
-      const url = `/api/coordinador/torreon/movimientos?${params.toString()}`;
-      const payload = await cachedFetchJson<{ success?: boolean; error?: string; data?: MovimientoNatural[] }>(url, {
-        credentials: "include",
-        cache: "no-store",
-      }, { ttlMs: 15_000, force });
-      if (payload?.success === false) {
-        throw new Error(payload?.error || "No se pudieron cargar movimientos");
-      }
-      setRows(Array.isArray(payload?.data) ? payload.data : []);
-    } catch (err) {
-      setRows([]);
-      setError(err instanceof Error ? err.message : "Error al cargar movimientos");
-    } finally {
-      setLoading(false);
-    }
+  const fetchRows = useCallback(async (signal: AbortSignal, force: boolean) => {
+    const params = new URLSearchParams({ localidadId: String(localidadId), status, page: "1", pageSize: "100", includeFotos: "0" });
+    if (empresaId) params.set("empresaId", String(empresaId));
+    const payload = await readTorreonJson<{ data?: MovimientoNatural[] }>(
+      `/api/coordinador/torreon/movimientos?${params}`, signal, force,
+    );
+    return Array.isArray(payload?.data) ? payload.data : [];
   }, [empresaId, localidadId, status]);
+
+  const { rows, loading: initialLoading, refreshing, error, load, refreshItem } = useTorreonCollection({
+    queryKey: `${localidadId}:${empresaId}:${status}`, fetchRows,
+  });
+  const loading = initialLoading || refreshing;
 
   const refreshById = useCallback(async (id: number) => {
     if (!Number.isFinite(id) || id <= 0) return load(true);
-    try {
+    return refreshItem(id, async (signal) => {
       const params = new URLSearchParams({ localidadId: String(localidadId), id: String(id) });
-      const payload = await cachedFetchJson<{ success?: boolean; data?: MovimientoNatural }>(
-        `/api/coordinador/torreon/movimientos?${params.toString()}`,
-        { credentials: "include", cache: "no-store" },
-        { force: true, ttlMs: 0 },
+      const payload = await readTorreonJson<{ data?: MovimientoNatural }>(
+        `/api/coordinador/torreon/movimientos?${params}`, signal, true,
       );
-      const next = payload?.data;
-      if (!next?.id) return load(true);
-
+      return payload?.data?.id ? payload.data : null;
+    }, (current, next) => {
       const closed = ["CONCLUIDO", "CANCELADO"].includes(String(next.estado ?? "").toUpperCase());
       const belongsToTab = status === "todos" || (status === "concluidos" ? closed : !closed);
-      setRows((current) => {
-        const withoutCurrent = current.filter((row) => Number(row.id) !== Number(next.id));
-        return belongsToTab ? [next, ...withoutCurrent] : withoutCurrent;
-      });
-    } catch {
-      await load(true);
-    }
-  }, [load, localidadId, status]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+      const belongsToCompany = !empresaId || Number(next.empresaId) === empresaId;
+      const withoutCurrent = current.filter((row) => Number(row.id) !== Number(next.id));
+      return belongsToTab && belongsToCompany ? [next, ...withoutCurrent] : withoutCurrent;
+    });
+  }, [empresaId, load, localidadId, refreshItem, status]);
 
   useEffect(() => {
     setPage(1);

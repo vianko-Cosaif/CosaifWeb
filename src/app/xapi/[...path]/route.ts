@@ -1,4 +1,5 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import { MovementScopeError, scopePrivateClientMovementRead } from "@/lib/auth/movementScope";
+import { buildUpstreamHeaders, fetchUpstream, getErrorStatus, upstreamResponseHeaders } from "@/lib/server/upstream";
 // src/app/xapi/[...path]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
@@ -49,6 +50,13 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
   const orig = new URL(req.url);
   const scopedPath = [...path];
   const searchParams = new URLSearchParams(orig.searchParams);
+  try {
+    scopePrivateClientMovementRead(session, `/${scopedPath.join("/")}`, req.method, searchParams);
+  } catch (error) {
+    if (error instanceof MovementScopeError) return NextResponse.json({ message: error.message }, { status: error.status });
+    throw error;
+  }
+
   const isMovementRequest = scopedPath[0] === "movimientos";
   const isMovementCreate = isMovementRequest && scopedPath.length === 1 && req.method === "POST";
   const isTorreonMovementCreate = scopedPath[0] === "torreon" && scopedPath[1] === "movimientos" && req.method === "POST";
@@ -108,11 +116,7 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
   const search = searchParams.toString();
   const destURL = `${API_URL}/${scopedPath.join("/")}${search ? `?${search}` : ""}`;
 
-  const h = new Headers();
-  h.set("accept", req.headers.get("accept") || "application/json");
-  const contentType = req.headers.get("content-type");
-  if (contentType) h.set("content-type", contentType);
-  h.set("authorization", `Bearer ${token}`);
+  const h = buildUpstreamHeaders(req, token);
 
   let body: BodyInit | undefined;
   if (hasBody && restrictedLocality && (isMovementCreate || isTorreonMovementCreate)) {
@@ -127,30 +131,23 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
     });
     h.set("content-type", "application/json");
   } else if (hasBody) {
-    body = (req as any).body;
+    body = req.body ?? undefined;
   }
   let upstream: Response;
   try {
-    upstream = await fetch(destURL, {
+    upstream = await fetchUpstream(destURL, {
       method: req.method,
       headers: h,
       body,
       duplex: hasBody ? "half" : undefined,
       cache: "no-store",
       redirect: "manual",
-    } as any);
-  } catch {
-    return NextResponse.json({ message: "Servicio no disponible" }, { status: 502 });
+    } as RequestInit & { duplex?: "half" }, req.signal, destURL.includes("/realtime/events"));
+  } catch (error) {
+    return NextResponse.json({ message: "Servicio no disponible" }, { status: getErrorStatus(error) });
   }
 
-  const rh = new Headers({
-    "content-type": upstream.headers.get("content-type") || "application/json",
-    "cache-control": "no-store",
-  });
-  const disposition = upstream.headers.get("content-disposition");
-  if (disposition) rh.set("content-disposition", disposition);
-
-  return new NextResponse(upstream.body, { status: upstream.status, headers: rh });
+  return new NextResponse(upstream.body, { status: upstream.status, headers: upstreamResponseHeaders(upstream) });
 }
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) { return proxy(req, ctx); }

@@ -1,7 +1,7 @@
 import type {
   RealtimeConnectionStatus,
   RealtimeMovementEvent,
-} from "@/app/hooks/useRealtimeMovimientos";
+} from "@/features/movimientos/useRealtimeMovimientos";
 import type { Arrastre } from "@/features/torreon/arrastres/types";
 
 export function isTorreonNaturalEvent(event: RealtimeMovementEvent) {

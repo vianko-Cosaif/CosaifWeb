@@ -4,11 +4,11 @@ import "driver.js/dist/driver.css";
 import "./globals.scss";
 import type { Metadata, Viewport } from "next";
 import { initThemeSSRScript } from "@/lib/theme";
-import AdaptiveMode from "@/app/Components/layout/AdaptiveMode";
-import PwaInstallPrompt from "@/app/Components/layout/PwaInstallPrompt";
-import FirebaseNotificationPrompt from "@/app/Components/layout/FirebaseNotificationPrompt";
-import { ClientMovementGuideProvider } from "@/app/Components/GuidedManualAtom/ClientMovementGuide";
-import WebVitalsReporter from "@/app/Components/performance/WebVitalsReporter";
+import AdaptiveMode from "@/components/layout/AdaptiveMode";
+import PwaInstallPrompt from "@/components/layout/PwaInstallPrompt";
+import FirebaseNotificationPrompt from "@/components/layout/FirebaseNotificationPrompt";
+import { ClientMovementGuideProvider } from "@/features/capacitacion/ClientMovementGuide";
+import WebVitalsReporter from "@/components/performance/WebVitalsReporter";
 
 export const metadata: Metadata = {
   title: {

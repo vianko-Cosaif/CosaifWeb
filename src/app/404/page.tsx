@@ -1,11 +1,9 @@
 import Link from "next/link";
 import { Home, LogIn } from "lucide-react";
-import { Ubuntu } from "next/font/google";
 import styles from "./train404.module.scss";
 
 export const dynamic = "force-static";
 
-const ubuntu = Ubuntu({ subsets: ["latin"], weight: ["400", "700"] });
 
 const smokePuffs = ["one", "two", "three", "four", "five", "six"] as const;
 
@@ -47,7 +45,7 @@ function RailWorker({ mode }: { mode: "walking" | "chasing" }) {
 
 export default function NotFound() {
   return (
-    <main id="main" tabIndex={-1} className={`${styles.center} ${ubuntu.className}`}>
+    <main id="main" tabIndex={-1} className={`${styles.center}`}>
       <div className={styles.skyGlow} aria-hidden />
       <div className={styles.stars} aria-hidden />
 

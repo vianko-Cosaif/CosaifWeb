@@ -5,13 +5,13 @@ export function operationStatusLabel(status?: string | null) {
     .replace(/\s+/g, "_");
 
   const labels: Record<string, string> = {
-    SOLICITADO: "En espera",
+    SOLICITADO: "Solicitado",
     PENDIENTE: "Pendiente",
-    EN_PROCESO: "En movimiento",
-    PROCESO: "En movimiento",
-    DETENIDO: "Pausado",
+    EN_PROCESO: "En proceso",
+    PROCESO: "En proceso",
+    DETENIDO: "Detenido",
     BLOQUEADO: "Bloqueado",
-    CONCLUIDO: "Finalizado",
+    CONCLUIDO: "Concluido",
     FINALIZADO: "Finalizado",
     CANCELADO: "Cancelado",
     ABIERTO: "Abierto",

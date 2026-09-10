@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   AlertTriangle,
   Boxes,
@@ -13,14 +14,15 @@ import {
   TrainFront,
   X,
 } from "lucide-react";
-import IncidentesTable from "@/app/incidentes/ui/IncidentesTable";
-import SmartIncidentBlocker from "@/app/incidentes/ui/SmartIncidentBlocker";
-import type { IncidenteRow, Meta } from "@/app/incidentes/ui/types";
-import TorreonIncidentDetailModal from "@/app/coordinador/torreon/TorreonIncidentDetailModal";
-import { SearchInput } from "@/app/Components/ui";
-import { useRealtimeMovimientos, type RealtimeMovementEvent } from "@/app/hooks/useRealtimeMovimientos";
+import IncidentesTable from "@/features/incidentes/operacion/IncidentesTable";
+import type { IncidenteRow, Meta } from "@/features/incidentes/operacion/types";
+import { SearchInput } from "@/components/ui";
+import { useRealtimeMovimientos, type RealtimeMovementEvent } from "@/features/movimientos/useRealtimeMovimientos";
 import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 import IncidentCatalogSelect from "./components/IncidentCatalogSelect";
+
+const SmartIncidentBlocker = dynamic(() => import("@/features/incidentes/operacion/SmartIncidentBlocker"), { ssr: false });
+const TorreonIncidentDetailModal = dynamic(() => import("@/features/torreon/coordinador/TorreonIncidentDetailModal"), { ssr: false });
 
 type UnknownRecord = Record<string, unknown>;
 type Source = "cosaif" | "torreon";
@@ -109,6 +111,7 @@ function routeName(value: unknown) {
 }
 
 async function requestJson<T>(url: string, init: RequestInit = {}): Promise<T> {
+  init.signal?.throwIfAborted();
   const response = await fetch(url, { ...init, credentials: "include", cache: "no-store" });
   const payload = await response.json().catch(() => null) as UnknownRecord | null;
   if (!response.ok) {
@@ -127,16 +130,19 @@ async function fetchAllSourcePages(
     throw new Error(first.error || first.message || `No se pudieron cargar incidentes de ${source === "torreon" ? "Torreón" : "Guadalajara"}`);
   }
 
+  signal.throwIfAborted();
   const totalPages = Math.max(1, Number(first.meta?.totalPages) || 1);
   const rows = asArray(first.data);
   const remainingPages = Array.from({ length: Math.max(0, totalPages - 1) }, (_, index) => index + 2);
 
   for (let index = 0; index < remainingPages.length; index += 4) {
+    signal.throwIfAborted();
     const chunk = remainingPages.slice(index, index + 4);
     const responses = await Promise.all(chunk.map((page) => requestJson<ListResponse>(makeUrl(source, page), { signal })));
     responses.forEach((response) => rows.push(...asArray(response.data)));
   }
 
+  signal.throwIfAborted();
   return rows.map((row) => ({ ...row, _source: source }));
 }
 
@@ -253,12 +259,41 @@ export default function AdminIncidentCenter() {
   const [notice, setNotice] = useState<{ type: "ok" | "error"; text: string } | null>(null);
   const requestVersionRef = useRef(0);
   const realtimeTimerRef = useRef<number | null>(null);
+  const controllerRef = useRef<AbortController | null>(null);
+  const detailControllerRef = useRef<AbortController | null>(null);
+  const pendingLoadRef = useRef<Promise<void> | null>(null);
+  const refreshQueuedRef = useRef(false);
+  const lastSuccessfulLoadRef = useRef<number | null>(null);
+  const mountedRef = useRef(false);
+
+  const cancelReads = useCallback(() => {
+    requestVersionRef.current += 1;
+    controllerRef.current?.abort();
+    controllerRef.current = null;
+    detailControllerRef.current?.abort();
+    detailControllerRef.current = null;
+    pendingLoadRef.current = null;
+    refreshQueuedRef.current = false;
+    if (realtimeTimerRef.current != null) {
+      window.clearTimeout(realtimeTimerRef.current);
+      realtimeTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      cancelReads();
+    };
+  }, [cancelReads]);
 
   useEffect(() => {
     let alive = true;
+    const controller = new AbortController();
     Promise.all([
-      requestJson<unknown>("/bff/empresas").catch(() => []),
-      requestJson<unknown>("/bff/localidades").catch(() => []),
+      requestJson<unknown>("/bff/empresas", { signal: controller.signal }).catch(() => []),
+      requestJson<unknown>("/bff/localidades", { signal: controller.signal }).catch(() => []),
     ]).then(([companies, localities]) => {
       if (!alive) return;
       setCatalogs({
@@ -266,7 +301,7 @@ export default function AdminIncidentCenter() {
         localidades: asArray(localities).map((item) => ({ id: Number(item.id), nombre: text(item.nombre) })).filter((item) => item.id > 0 && item.nombre),
       });
     });
-    return () => { alive = false; };
+    return () => { alive = false; controller.abort(); };
   }, []);
 
   const localityNames = useMemo(() => new Map(catalogs.localidades.map((item) => [item.id, item.nombre])), [catalogs.localidades]);
@@ -283,54 +318,105 @@ export default function AdminIncidentCenter() {
     return `/api/incidentes?${params.toString()}`;
   }, [empresaId, localidadId, operationKind, timeScope]);
 
-  const load = useCallback(async (manual = false) => {
-    const requestVersion = requestVersionRef.current + 1;
-    requestVersionRef.current = requestVersion;
+  const load = useCallback(function loadIncidents(manual = false, maxAgeMs = 0): Promise<void> {
+    if (!mountedRef.current || document.visibilityState !== "visible") return Promise.resolve();
+    if (pendingLoadRef.current) return pendingLoadRef.current;
+    if (lastSuccessfulLoadRef.current !== null && Date.now() - lastSuccessfulLoadRef.current < maxAgeMs) return Promise.resolve();
+
+    const requestVersion = ++requestVersionRef.current;
     const controller = new AbortController();
+    controllerRef.current = controller;
+    const isCurrent = () => mountedRef.current && !controller.signal.aborted && requestVersion === requestVersionRef.current;
     if (manual) setRefreshing(true);
     else setLoading(true);
     setError(null);
     setWarning(null);
 
-    try {
-      let sources: Source[] = scope === "TODOS" ? ["cosaif", "torreon"] : scope === "TORREON" ? ["torreon"] : ["cosaif"];
-      if (localidadId) sources = [isTorreonLocalidadId(localidadId) ? "torreon" : "cosaif"];
-      const results = await Promise.allSettled(sources.map((source) => fetchAllSourcePages(source, makeListUrl, controller.signal)));
-      if (requestVersion !== requestVersionRef.current) return;
-      const fulfilled = results.filter((result): result is PromiseFulfilledResult<UnknownRecord[]> => result.status === "fulfilled");
-      const rejected = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
-      if (!fulfilled.length) throw new Error(rejected.map((result) => result.reason instanceof Error ? result.reason.message : "Error al consultar incidentes").join(" · "));
+    const pending = (async () => {
+      try {
+        let sources: Source[] = scope === "TODOS" ? ["cosaif", "torreon"] : scope === "TORREON" ? ["torreon"] : ["cosaif"];
+        if (localidadId) sources = [isTorreonLocalidadId(localidadId) ? "torreon" : "cosaif"];
+        const results = await Promise.allSettled(sources.map((source) => fetchAllSourcePages(source, makeListUrl, controller.signal)));
+        if (!isCurrent()) return;
+        const fulfilled = results.filter((result): result is PromiseFulfilledResult<UnknownRecord[]> => result.status === "fulfilled");
+        const rejected = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+        if (!fulfilled.length) throw new Error(rejected.map((result) => result.reason instanceof Error ? result.reason.message : "Error al consultar incidentes").join(" · "));
 
-      const merged = new Map<string, UnknownRecord>();
-      fulfilled.flatMap((result) => result.value).forEach((incident) => merged.set(incidentKey(incident), incident));
-      setRawRows(Array.from(merged.values()).sort((left, right) => incidentTime(right) - incidentTime(left)));
-      setWarning(rejected.length ? "Una fuente no respondió. Se muestran los incidentes disponibles; puedes reintentar sin perder los filtros." : null);
-      setLastUpdated(new Date());
-    } catch (loadError) {
-      if (requestVersion !== requestVersionRef.current) return;
-      setRawRows([]);
-      setError(loadError instanceof Error ? loadError.message : "No se pudieron cargar los incidentes");
-    } finally {
-      if (requestVersion === requestVersionRef.current) {
-        setLoading(false);
-        setRefreshing(false);
+        const merged = new Map<string, UnknownRecord>();
+        fulfilled.flatMap((result) => result.value).forEach((incident) => merged.set(incidentKey(incident), incident));
+        setRawRows(Array.from(merged.values()).sort((left, right) => incidentTime(right) - incidentTime(left)));
+        setWarning(rejected.length ? "Una fuente no respondió. Se muestran los incidentes disponibles; puedes reintentar sin perder los filtros." : null);
+        lastSuccessfulLoadRef.current = Date.now();
+        setLastUpdated(new Date());
+      } catch (loadError) {
+        if (!isCurrent()) return;
+        setRawRows([]);
+        setError(loadError instanceof Error ? loadError.message : "No se pudieron cargar los incidentes");
+      } finally {
+        if (isCurrent()) {
+          setLoading(false);
+          setRefreshing(false);
+          // Un evento real durante la descarga puede ser posterior a la primera
+          // página. Renovar una vez al acabar, sin iniciar descargas superpuestas.
+          if (refreshQueuedRef.current) {
+            refreshQueuedRef.current = false;
+            realtimeTimerRef.current = window.setTimeout(() => {
+              realtimeTimerRef.current = null;
+              void loadIncidents(true);
+            }, 650);
+          }
+        }
+        if (controllerRef.current === controller) controllerRef.current = null;
       }
-    }
+    })().finally(() => {
+      if (pendingLoadRef.current === pending) pendingLoadRef.current = null;
+    });
+    pendingLoadRef.current = pending;
+    return pending;
   }, [localidadId, makeListUrl, scope]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    lastSuccessfulLoadRef.current = null;
+    void load();
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        if (pendingLoadRef.current) lastSuccessfulLoadRef.current = null;
+        cancelReads();
+      } else {
+        void load(true, 5_000);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      cancelReads();
+    };
+  }, [cancelReads, load]);
 
   useEffect(() => {
     if (!autoRefresh) return;
-    const interval = window.setInterval(() => { void load(true); }, 60_000);
+    const interval = window.setInterval(() => { void load(true, 5_000); }, 60_000);
     return () => window.clearInterval(interval);
   }, [autoRefresh, load]);
 
   const realtimeStatus = useRealtimeMovimientos({
     localidadId,
     onEvent: (event: RealtimeMovementEvent) => {
+      if (!mountedRef.current) return;
       const type = String(event.type || "");
-      if (!type.includes("incidente") && type !== "realtime.ready" && type !== "realtime.resume") return;
+      if (document.visibilityState !== "visible") {
+        if (type.includes("incidente")) lastSuccessfulLoadRef.current = null;
+        return;
+      }
+      if (type === "realtime.ready" || type === "realtime.resume") {
+        void load(true, 5_000);
+        return;
+      }
+      if (!type.includes("incidente")) return;
+      if (pendingLoadRef.current) {
+        refreshQueuedRef.current = true;
+        return;
+      }
       if (realtimeTimerRef.current != null) return;
       realtimeTimerRef.current = window.setTimeout(() => {
         realtimeTimerRef.current = null;
@@ -338,11 +424,6 @@ export default function AdminIncidentCenter() {
       }, 650);
     },
   });
-
-  useEffect(() => () => {
-    requestVersionRef.current += 1;
-    if (realtimeTimerRef.current != null) window.clearTimeout(realtimeTimerRef.current);
-  }, []);
 
   const mappedRows = useMemo(() => rawRows.map((incident) => mapIncident(incident, localityNames)), [localityNames, rawRows]);
   const queryFilteredRows = useMemo(() => {
@@ -391,12 +472,18 @@ export default function AdminIncidentCenter() {
   const selectIncident = useCallback(async (row: IncidenteRow) => {
     const original = asRecord(row._original);
     setSelectedIncident(original);
+    detailControllerRef.current?.abort();
+    const controller = new AbortController();
+    detailControllerRef.current = controller;
     try {
-      const response = await requestJson<{ data?: unknown }>(`/api/incidentes/${encodeURIComponent(String(original.id))}${detailQuery(original)}`);
+      const response = await requestJson<{ data?: unknown }>(`/api/incidentes/${encodeURIComponent(String(original.id))}${detailQuery(original)}`, { signal: controller.signal });
+      if (!mountedRef.current || controller.signal.aborted) return;
       const detail = asRecord(response.data ?? response);
       setSelectedIncident((current) => current && incidentKey(current) === incidentKey(original) ? { ...current, ...detail, _source: sourceOf(original), _detalle: detail } : current);
     } catch {
       // El resumen sigue disponible aunque el detalle ampliado no responda.
+    } finally {
+      if (detailControllerRef.current === controller) detailControllerRef.current = null;
     }
   }, []);
 
@@ -407,14 +494,16 @@ export default function AdminIncidentCenter() {
       const queryString = detailQuery(selectedIncident);
       const url = action === "resolve" ? `/api/incidentes/${encodeURIComponent(String(selectedIncident.id))}${queryString}` : `/api/incidentes/${encodeURIComponent(String(selectedIncident.id))}/cerrar${queryString}`;
       await requestJson(url, { method: action === "resolve" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ estado: "RESUELTO", comentario: comments, solucion: comments }) });
+      if (!mountedRef.current) return;
       setSelectedIncident(null);
       setNotice({ type: "ok", text: action === "resolve" ? "Incidente resuelto correctamente." : "Incidente cerrado correctamente." });
       await load(true);
     } catch (actionError) {
+      if (!mountedRef.current) return;
       const message = actionError instanceof Error ? actionError.message : "No se pudo actualizar el incidente";
       setNotice({ type: "error", text: message });
       throw actionError;
-    } finally { setActionBusy(false); }
+    } finally { if (mountedRef.current) setActionBusy(false); }
   }, [load, selectedIncident]);
 
   const activeFilterCount = [scope !== "TODOS", operationKind !== "TODOS", Boolean(empresaId), Boolean(localidadId), Boolean(query.trim())].filter(Boolean).length;

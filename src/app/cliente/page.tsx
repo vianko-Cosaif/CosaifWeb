@@ -1,7 +1,7 @@
 // src/app/cliente/page.tsx
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
-import ClientPageWrapper from "./ClientPageWrapper";
+import ClientPageWrapper from "../../features/cliente/ClientPageWrapper";
 import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 import { getVerifiedSession } from "@/lib/server/session";
 

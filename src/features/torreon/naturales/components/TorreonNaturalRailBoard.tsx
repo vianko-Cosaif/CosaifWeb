@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowDownRight, ArrowUpLeft, Clock3, RefreshCw, Route, TrainFront } from "lucide-react";
-import { S } from "@/app/coordinador/RailQueueBoard.styles";
+import { S } from "@/features/rail-queue/coordinador/RailQueueBoard.styles";
 import {
   TerminalQueueTable,
   fmtLoco,

@@ -1,5 +1,5 @@
 // src/app/administrador/movimientos/page.tsx
-import CoordinatorMovimientosPageClient from "@/app/coordinador/movimientos/CoordinatorMovimientosPageClient";
+import CoordinatorMovimientosPageClient from "@/features/movimientos/list/CoordinatorMovimientosPageClient";
 import { redirect } from "next/navigation";
 import { getVerifiedSession } from "@/lib/server/session";
 
@@ -14,6 +14,7 @@ export default async function Page() {
     <section className="mx-auto w-full max-w-[1500px] p-4 sm:p-6">
       <CoordinatorMovimientosPageClient
         apiBase={MOVIMIENTOS_API_BASE}
+          authorization={session.authorization}
         rol="ADMINISTRADOR"
         empresaIdUsuario={null}
         localidadIdUsuario={null}

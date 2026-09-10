@@ -1,5 +1,5 @@
 import type { Localidad, Ronda, RondaInfo } from "./types";
-import { cachedFetchJson } from "@/lib/clientRequestCache";
+import { cachedFetchJson } from "@/lib/http/client";
 
 export const API_XAPI_BASE = process.env.NEXT_PUBLIC_API_URL || "/xapi";
 export const API_BFF_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? "/bff").replace(/\/+$/, "");

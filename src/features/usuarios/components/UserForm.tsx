@@ -11,7 +11,7 @@ import {
   RefreshCw,
   User as UserIcon,
 } from "lucide-react";
-import { Button, SelectField, cn } from "@/app/Components/ui";
+import { Button, SelectField, cn } from "@/components/ui";
 import { ROLE_LABELS, isCompanyAllowedForRole, isRoleAllowedForCompany, roleAccent } from "../constants";
 import type { Empresa, Localidad, Rol, UserData, UserFormValues } from "../types";
 import { passwordScore } from "../utils";

@@ -6,9 +6,9 @@ import { getClientCookie } from "@/lib/cookies";
 import { syncFirebaseNotificationLocalidad } from "@/lib/firebase";
 import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 
-const RailQueueBoard = dynamic(() => import("./RailQueueBoard"));
+const RailQueueBoard = dynamic(() => import("../../features/rail-queue/coordinador/RailQueueBoard"));
 const CoordinatorTorreonDashboard = dynamic(
-  () => import("./torreon/CoordinatorTorreonDashboard")
+  () => import("../../features/torreon/coordinador/CoordinatorTorreonDashboard")
 );
 
 const CoordinadorPage: React.FC = () => {

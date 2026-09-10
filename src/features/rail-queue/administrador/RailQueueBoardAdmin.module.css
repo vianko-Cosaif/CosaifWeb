@@ -1,0 +1,78 @@
+.board {
+  min-width: 0;
+  width: 100%;
+  background: var(--app-bg);
+  color: var(--app-text);
+}
+
+/* Fullscreen removes the shell's painted background and scroll container. */
+.board:fullscreen {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
+
+.board::backdrop {
+  background: var(--app-bg);
+}
+
+.header,
+.toolbarInner,
+.content {
+  width: 100%;
+  max-width: 96rem;
+  margin-inline: auto;
+  padding-inline: clamp(1rem, 2vw, 2rem);
+}
+
+.header {
+  padding-block: 1.5rem 1.25rem;
+}
+
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  border-bottom: 1px solid var(--app-border);
+  background: var(--app-surface);
+}
+
+.toolbarInner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 0.875rem;
+}
+
+.content {
+  padding-block: 1.5rem 2rem;
+}
+
+.currentCard {
+  background: linear-gradient(145deg, var(--app-surface), var(--app-surface-subtle));
+  color: var(--app-text);
+  border: 1px solid var(--app-border);
+}
+
+.nextOrders {
+  height: fit-content;
+  background: var(--app-surface);
+  color: var(--app-text);
+  border: 1px solid var(--app-border);
+}
+
+@media (min-width: 1024px) {
+  .nextOrders {
+    max-height: max(20rem, calc(100dvh - 16rem));
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+}

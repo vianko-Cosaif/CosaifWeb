@@ -76,7 +76,7 @@ export function MovimientosView({
     [manageableIds, visibleArrastres],
   );
   return (
-    <section className="w-full overflow-x-hidden overflow-y-visible rounded-2xl border border-slate-200/80 bg-white/95 text-slate-900 shadow-xl shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:shadow-black/30">
+    <section className="min-w-0 w-full overflow-x-hidden overflow-y-visible rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text)] shadow-[var(--app-shadow-sm)]">
       <div className="flex min-h-[calc(100svh-7rem)] flex-col gap-5 px-3 py-4 sm:px-5 sm:py-6 lg:px-7">
         <ModuleHeader title="Seguimiento de arrastres" subtitle="Solicitudes, turnos y avance" chip={ambito === "actuales" ? "Activos" : "Historial"} total={visibleArrastres.length} icon={TrainFront} />
         <div className="h-px bg-gradient-to-r from-transparent via-emerald-300/40 to-transparent" />
@@ -118,8 +118,8 @@ export function MovimientosView({
           />
         ) : (
           <EmptyState
-            text={ambito === "actuales" ? "No tienes arrastres activos" : "No hay arrastres en el historial"}
-            hint={search ? "Ajusta la búsqueda o cambia de pestaña" : "Crea una solicitud para comenzar el seguimiento"}
+            text={search || dateFilter ? "Sin resultados con estos filtros" : ambito === "actuales" ? "No hay arrastres activos" : "No hay arrastres en el historial"}
+            hint={search || dateFilter ? "Ajusta la búsqueda o limpia los filtros para ver los registros disponibles." : ambito === "actuales" ? "Las solicitudes pendientes aparecerán aquí para darles seguimiento." : "Los arrastres concluidos o cancelados aparecerán aquí."}
           />
         )}
       </div>

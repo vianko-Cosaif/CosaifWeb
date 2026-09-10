@@ -31,7 +31,7 @@ export type NavModuleId =
   | "commercial_collections"
   | "commercial_reports";
 
-export const AUTHORIZATION_POLICY_VERSION = 2;
+export const AUTHORIZATION_POLICY_VERSION = 3;
 
 export const PERMISSIONS = {
   SESSION_READ: "session.read",

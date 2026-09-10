@@ -1,7 +1,7 @@
 "use client";
 
 import { Building, Edit2, Mail, MapPin, Power, PowerOff } from "lucide-react";
-import { Button, cn } from "@/app/Components/ui";
+import { Button, cn } from "@/components/ui";
 import { ROLE_LABELS, roleBadge } from "../constants";
 import type { UserData } from "../types";
 import { userInitials } from "../utils";

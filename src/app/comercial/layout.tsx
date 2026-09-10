@@ -1,8 +1,8 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import AdaptiveAppShell from "@/app/Components/layout/AdaptiveAppShell";
-import CommercialDataProvider from "./_components/CommercialDataProvider";
-import "./commercial.css";
+import AdaptiveAppShell from "@/components/layout/AdaptiveAppShell";
+import CommercialDataProvider from "../../features/comercial/components/CommercialDataProvider";
+import "../../features/comercial/commercial.css";
 
 export default async function ComercialLayout({ children }: { children: React.ReactNode }) {
   const bag = await cookies();

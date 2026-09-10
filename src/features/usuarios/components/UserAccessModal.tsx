@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertCircle } from "lucide-react";
-import { Button, Modal, cn } from "@/app/Components/ui";
+import { Button, Modal, cn } from "@/components/ui";
 import type { UserData } from "../types";
 
 type UserAccessModalProps = {

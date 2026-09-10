@@ -3,7 +3,7 @@ import { AlertTriangle, Boxes, FileClock, Plus, RefreshCw, TrainFront, Play } fr
 import type { Arrastre, DailyInfo, IncidenteArrastre } from "@/features/torreon/arrastres";
 import { ArrastreTerminalTable, Metric } from "../components";
 import type { ClienteArrastreStats } from "../types";
-import type { RealtimeConnectionStatus } from "@/app/hooks/useRealtimeMovimientos";
+import type { RealtimeConnectionStatus } from "@/features/movimientos/useRealtimeMovimientos";
 import { TorreonRealtimeBadge } from "@/features/torreon/components/TorreonRealtimeBadge";
 import { isArrastreEditable, statusText } from "../utils";
 

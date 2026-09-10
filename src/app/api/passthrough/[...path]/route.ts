@@ -1,3 +1,5 @@
+import { MovementScopeError, scopePrivateClientMovementRead } from "@/lib/auth/movementScope";
+import { buildUpstreamHeaders, fetchUpstream, getErrorStatus, upstreamResponseHeaders } from "@/lib/server/upstream";
 // app/api/passthrough/[...path]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { normalizeHttpOrigin } from "@/lib/serverOrigin";
@@ -58,39 +60,27 @@ async function forward(req: NextRequest, ctx: RouteCtx) {
     return NextResponse.json({ message: "Esta acción no está habilitada para tu perfil." }, { status: 403 });
   }
 
-  const headers = new Headers();
-  headers.set("accept", req.headers.get("accept") || "application/json");
-  headers.set("authorization", `Bearer ${token}`);
-  for (const name of ["content-type", "range", "if-none-match", "last-event-id"]) {
-    const value = req.headers.get(name);
-    if (value) headers.set(name, value);
+  try {
+    const scopedUrl = new URL(url);
+    scopePrivateClientMovementRead(session, `/${path.join("/")}`, req.method, scopedUrl.searchParams);
+    url = scopedUrl.toString();
+  } catch (error) {
+    if (error instanceof MovementScopeError) return NextResponse.json({ message: error.message }, { status: error.status });
+    throw error;
   }
+
+  const headers = buildUpstreamHeaders(req, token);
 
   const body = req.method === "GET" || req.method === "HEAD" ? undefined : Buffer.from(await req.arrayBuffer());
 
   let upstream: Response;
   try {
-    upstream = await fetch(url, { method: req.method, headers, body, redirect: "manual", cache: "no-store" });
-  } catch {
-    return NextResponse.json({ message: "Upstream unavailable" }, { status: 502 });
+    upstream = await fetchUpstream(url, { method: req.method, headers, body }, req.signal, isRealtimeStream);
+  } catch (error) {
+    return NextResponse.json({ message: "Servicio no disponible" }, { status: getErrorStatus(error) });
   }
 
-  const responseHeaders = new Headers({
-    "content-type": upstream.headers.get("content-type") || "application/json",
-    "cache-control": isRealtimeStream ? "no-cache, no-transform" : "no-store",
-  });
-  if (isRealtimeStream) {
-    // Sin esta cabecera Nginx retiene el evento `realtime.ready`; el navegador
-    // vence a los 10 s y entra en un ciclo conectar/desconectar.
-    responseHeaders.set("x-accel-buffering", "no");
-  }
-  for (const name of ["content-disposition", "content-range", "etag"]) {
-    const value = upstream.headers.get(name);
-    if (value) responseHeaders.set(name, value);
-  }
-  const resp = new NextResponse(upstream.body, { status: upstream.status, headers: responseHeaders });
-
-  return resp;
+  return new NextResponse(upstream.body, { status: upstream.status, headers: upstreamResponseHeaders(upstream, isRealtimeStream) });
 }
 
 export const dynamic = "force-dynamic";

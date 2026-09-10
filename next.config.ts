@@ -36,10 +36,14 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   // Evita que `next build` reemplace los módulos de un `next dev` activo.
   distDir: process.env.NODE_ENV === "development" ? ".next-dev" : ".next",
+  // Conserva las secciones visitadas durante una revisión local entre roles.
+  onDemandEntries: {
+    maxInactiveAge: 10 * 60 * 1000,
+    pagesBufferLength: 10,
+  },
   outputFileTracingRoot: path.resolve(__dirname),
   productionBrowserSourceMaps: false,
   poweredByHeader: false,
-  eslint: { ignoreDuringBuilds: true },
   async headers() {
     return [
       {

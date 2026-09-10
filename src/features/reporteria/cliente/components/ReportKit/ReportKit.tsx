@@ -82,7 +82,7 @@ export function Kpi({
         {value}
       </div>
       {sub ? (
-        <div className="mt-1 truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+        <div className="mt-1 break-words text-xs font-medium text-slate-500 dark:text-slate-400">
           {sub}
         </div>
       ) : null}
@@ -303,8 +303,8 @@ export function SimpleTable({
 
 export function LoadingState() {
   return (
-    <div className="grid min-h-[360px] place-items-center rounded-lg border border-slate-200 bg-white/80 dark:border-slate-800 dark:bg-slate-950/70">
-      <div className="flex items-center gap-3 text-sm font-semibold text-slate-500">
+    <div role="status" aria-live="polite" className="grid min-h-[220px] sm:min-h-[280px] place-items-center rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)]">
+      <div className="flex items-center gap-3 text-sm font-medium text-[var(--app-text-muted)]">
         <Loader2 className="h-5 w-5 animate-spin" />
         Cargando reporte
       </div>
@@ -314,7 +314,7 @@ export function LoadingState() {
 
 export function EmptyState() {
   return (
-    <div className="grid min-h-[360px] place-items-center rounded-lg border border-slate-200 bg-white/80 p-8 text-center dark:border-slate-800 dark:bg-slate-950/70">
+    <div className="grid min-h-[220px] sm:min-h-[280px] place-items-center rounded-lg border border-slate-200 bg-white/80 p-8 text-center dark:border-slate-800 dark:bg-slate-950/70">
       <div className="max-w-sm space-y-2">
         <BarChart3 className="mx-auto h-8 w-8 text-slate-400" />
         <h2 className="text-base font-black text-slate-900 dark:text-white">Sin reporte cargado</h2>

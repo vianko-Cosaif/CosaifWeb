@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { parseTornoMedicionFromApi } from "@/app/movimientos/torno/tornoMeasureParser";
+import { parseTornoMedicionFromApi } from "@/features/movimientos/torno/tornoMeasureParser";
 import {
   DEFAULT_TORNO_MEDICION_STATE,
   type TornoMedicionState,
-} from "@/app/movimientos/crear/tornoMedicion.types";
+} from "@/features/movimientos/crear/tornoMedicion.types";
 
 export type MeasuresModalState = {
   open: boolean;

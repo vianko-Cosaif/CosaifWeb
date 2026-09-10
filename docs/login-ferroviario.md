@@ -1,0 +1,15 @@
+# Login ferroviario
+
+El login se organiza en `src/features/auth`: composición (`LoginScreen`), formulario (`LoginForm`), cliente de autenticación (`loginClient`), escena decorativa (`RailwayScene`) y estilos aislados (`login.module.scss`).
+
+La locomotora final se dibuja en SVG y se anima con CSS, inspirada en la librea de Ferromex solicitada por el usuario. No carga imágenes externas ni representa datos operativos. La alternativa fotográfica generada con ImageGen se descartó tras la revisión del usuario; no forma parte de la aplicación.
+
+Referencia visual consultada: [Ferromex 4036, Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Ferromex_4036.JPG). No se incorporó la fotografía de referencia al proyecto.
+
+El cuerpo de la locomotora permanece sobre el riel. La altura de los ejes se calcula a partir del riel y el radio de las ruedas; únicamente giran sus radios y se desplazan los durmientes y el fondo. No hay botón de pausa, conforme a la revisión del usuario. Se respeta `prefers-reduced-motion`. En pantallas pequeñas, el contenido se apila; el formulario conserva desplazamiento vertical cuando la altura disponible lo requiere.
+
+El acceso no depende de notificaciones. Se conserva la compatibilidad existente con `JWT_SECRET`, pero `SESSION_SECRET` tiene prioridad y debe tener al menos 32 caracteres. No se cambió el valor de las variables privadas. Los errores de servicio se distinguen de credenciales incorrectas.
+
+## Prompt de la alternativa descartada (ImageGen integrado)
+
+Use case: product-mockup. Asset type: transparent photographic locomotive cutout for a professional Mexican railway operations login page; will be animated horizontally over a dark navy rail yard using CSS. Primary request: very realistic Ferromex EMD SD70ACe diesel freight locomotive, accurate heavy full-size industrial proportions and recognizable authentic red-and-deep-forest-green livery with white diagonal Ferromex side panel. Single engine only, short hood and angular red cab facing LEFT, long green engine hood to the RIGHT. Orthographic pure side elevation, camera at wheel height, zero three-quarter perspective; entire locomotive visible from front coupler to rear coupler with comfortable tiny margins. Exactly two heavy three-axle bogies, six large steel wheels visible on this side, detailed dark undercarriage, tank, springs, steel steps, white handrails, black radiator grilles, real cab windows, twin headlights. Text on white side panel 'Ferromex', cab number '4036'. Do not put COSAIF anywhere. Professional high-end product photograph / engineering visualization, authentic materials, subtle wear, natural soft daylight highlighting red and green. Absolutely no cartoon, toy, steam engine, big round childish wheels, people, scenery, ground, track, shadow rectangle, sky, border, other wagons or background. Genuinely transparent alpha background, no checkerboard baked in. Very wide horizontal composition around 3:1, locomotive fills width, no text outside the locomotive.

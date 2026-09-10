@@ -1,0 +1,72 @@
+"use client";
+
+import type { ReactNode } from "react";
+import { usePathname } from "next/navigation";
+import dynamic from "next/dynamic";
+import SidebarMenu from "@/components/Menu/Menu";
+import RealtimeActivityCenter from "@/components/layout/RealtimeActivityCenter";
+
+const DynamicBanner = dynamic(() => import("@/features/actualizaciones/DynamicBanner"));
+
+type AdaptiveAppShellProps = {
+  children: ReactNode;
+  beforeMain?: ReactNode;
+  backgroundClassName?: string;
+  gridClassName?: string;
+  footerClassName?: string;
+  contentClassName?: string;
+};
+
+function cn(...classes: Array<string | undefined | false | null>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+const defaultBackground = "bg-[var(--app-bg)] text-[var(--app-text)]";
+const defaultGrid = "";
+
+export default function AdaptiveAppShell({
+  children,
+  beforeMain,
+  backgroundClassName = defaultBackground,
+  gridClassName = defaultGrid,
+  footerClassName = "text-slate-500",
+  contentClassName,
+}: AdaptiveAppShellProps) {
+  const pathname = usePathname();
+  const showBanner = /^\/(administrador|coordinador|supervisor|cliente|comercial)\/?$/.test(pathname);
+  return (
+    <div data-app-shell="true" className={cn("relative flex min-h-svh w-full overflow-x-hidden", backgroundClassName)}>
+      <SidebarMenu />
+      <RealtimeActivityCenter />
+
+      {gridClassName ? <div aria-hidden className={cn("pointer-events-none absolute inset-0 z-0", gridClassName)} /> : null}
+
+      <div className="relative z-10 flex min-h-svh min-w-0 flex-1 flex-col overflow-x-hidden">
+        {beforeMain}
+
+        <main
+          id="main"
+          tabIndex={-1}
+          className={cn(
+            "relative z-10 mx-auto w-full max-w-full flex-1 overflow-x-hidden px-3 py-4",
+            "pt-[calc(env(safe-area-inset-top)+4.5rem)] pb-[calc(env(safe-area-inset-bottom)+6rem)]",
+            "sm:px-5 md:max-w-screen-2xl md:p-8 md:pt-[calc(env(safe-area-inset-top)+4.5rem)] md:pb-8",
+            contentClassName
+          )}
+        >
+          {showBanner ? <DynamicBanner className="mb-5 sm:mb-6" /> : null}
+          <div className="contents">{children}</div>
+        </main>
+
+        <footer
+          className={cn(
+            "mx-auto w-full max-w-screen-2xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-xs",
+            footerClassName
+          )}
+        >
+          COSAIF · Operación ferroviaria
+        </footer>
+      </div>
+    </div>
+  );
+}

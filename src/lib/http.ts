@@ -17,7 +17,7 @@ export async function api(path: string, init: RequestInit = {}) {
   });
 
   if (res.status === 401) {
-    if (typeof window !== "undefined") location.href = "/login";
+    if (typeof window !== "undefined") window.location.replace(new URL("/login", window.location.origin).href);
     throw new Error("Unauthorized");
   }
   return res;

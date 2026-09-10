@@ -21,6 +21,8 @@ function positiveInteger(value: unknown) {
 }
 
 function secretBytes() {
+  // Preserve existing installations while they migrate to SESSION_SECRET.
+  // Both names must meet the same minimum length; never generate a fallback key.
   const secret = String(process.env.SESSION_SECRET || process.env.JWT_SECRET || "");
   if (secret.length < 32) return null;
   return new TextEncoder().encode(secret);

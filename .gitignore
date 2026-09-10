@@ -41,8 +41,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-.env.local
 
 certificates
-.env.local
-.env.local
+
+# Configuración privada de cada entorno
+.env.*
+!.env.example

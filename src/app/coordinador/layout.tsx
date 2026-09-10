@@ -1,8 +1,8 @@
 // src/app/coordinador/layout.tsx
 "use client";
 
-import AdaptiveAppShell from "@/app/Components/layout/AdaptiveAppShell";
-import ScopedIncidentMonitor from "@/app/Components/IncidentModal/ScopedIncidentMonitor";
+import AdaptiveAppShell from "@/components/layout/AdaptiveAppShell";
+import ScopedIncidentMonitor from "@/features/incidentes/monitor/ScopedIncidentMonitor";
 
 export default function CoordinadorLayout({
   children,

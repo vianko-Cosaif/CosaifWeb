@@ -10,7 +10,7 @@ import {
   XCircle,
   type LucideIcon,
 } from "lucide-react";
-import KpiCard, { type KpiTone } from "@/app/Components/ui/KpiCard";
+import KpiCard, { type KpiTone } from "@/components/ui/KpiCard";
 import type { ArrastreStats } from "../types";
 
 type StatusStripItem = {

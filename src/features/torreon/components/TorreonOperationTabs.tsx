@@ -1,7 +1,7 @@
 "use client";
 
 import { Boxes, LayoutGrid, TrainFront, type LucideIcon } from "lucide-react";
-import SegmentedControl from "@/app/Components/ui/SegmentedControl";
+import SegmentedControl from "@/components/ui/SegmentedControl";
 
 export type TorreonOperationView = "general" | "naturales" | "arrastres";
 

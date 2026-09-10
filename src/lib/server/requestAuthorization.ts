@@ -1,11 +1,16 @@
 import "server-only";
-import { PERMISSIONS, hasAnyPermission, type AuthorizationProfile, type Permission } from "@/lib/accessControl";
+import { PERMISSIONS, hasAnyPermission, hasPermission, type AuthorizationProfile, type Permission } from "@/lib/accessControl";
 
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 function requiredPermissions(pathname: string, method: string): Permission[] | null {
   const path = `/${pathname.replace(/^\/+/, "")}`.toLowerCase();
-  const read = READ_METHODS.has(method.toUpperCase());
+  method = method.toUpperCase();
+  const read = READ_METHODS.has(method);
+
+  if (path === "/realtime/events" || path === "/realtime/stats") return read ? [PERMISSIONS.SESSION_READ] : [];
+  if (path === "/banner" || path.startsWith("/banner/")) return [read ? PERMISSIONS.UPDATES_READ : PERMISSIONS.UPDATES_MANAGE];
+  if (path === "/comercial" || path.startsWith("/comercial/")) return [PERMISSIONS.REPORTS_COMMERCIAL_READ];
 
   if (path === "/usuarios/me") return [PERMISSIONS.SESSION_READ];
   if (path === "/usuarios" || path.startsWith("/usuarios/")) {
@@ -31,13 +36,16 @@ function requiredPermissions(pathname: string, method: string): Permission[] | n
     if (read) return [PERMISSIONS.MOVEMENTS_READ, PERMISSIONS.TORNO_READ];
     if (method === "POST" && path === "/movimientos") return [PERMISSIONS.MOVEMENTS_CREATE];
     if (method === "DELETE") return [PERMISSIONS.MOVEMENTS_DELETE];
-    return [PERMISSIONS.MOVEMENTS_EDIT, PERMISSIONS.MOVEMENTS_CANCEL, PERMISSIONS.MOVEMENTS_OPERATE, PERMISSIONS.TORNO_OPERATE];
+    if (/\/cancelar$/.test(path)) return [PERMISSIONS.MOVEMENTS_CANCEL];
+    if (/^\/movimientos\/\d+(?:\/edicion)?$/.test(path)) return [PERMISSIONS.MOVEMENTS_EDIT];
+    return [PERMISSIONS.MOVEMENTS_OPERATE, PERMISSIONS.TORNO_OPERATE];
   }
   if (path.startsWith("/incidentes")) {
     if (read) return [PERMISSIONS.INCIDENTS_READ];
     if (method === "POST") return [PERMISSIONS.INCIDENTS_CREATE, PERMISSIONS.INCIDENTS_MANAGE];
     if (method === "DELETE") return [PERMISSIONS.INCIDENTS_DELETE];
-    return [PERMISSIONS.INCIDENTS_UPDATE, PERMISSIONS.INCIDENTS_RESOLVE, PERMISSIONS.INCIDENTS_MANAGE];
+    if (/\/(cerrar|resuelto|resolver)$/.test(path)) return [PERMISSIONS.INCIDENTS_RESOLVE, PERMISSIONS.INCIDENTS_MANAGE];
+    return [PERMISSIONS.INCIDENTS_UPDATE, PERMISSIONS.INCIDENTS_MANAGE];
   }
   if (path.startsWith("/torno")) return [read ? PERMISSIONS.TORNO_READ : PERMISSIONS.TORNO_OPERATE];
   if (path.startsWith("/torreon")) {
@@ -59,5 +67,8 @@ function requiredPermissions(pathname: string, method: string): Permission[] | n
 
 export function canForwardApiRequest(authorization: AuthorizationProfile, pathname: string, method: string) {
   const required = requiredPermissions(pathname, method);
-  return !required || hasAnyPermission(authorization, required);
+  if (!required || !authorization.platforms.web) return false;
+  if ((pathname === "/comercial" || pathname.startsWith("/comercial/")) && !["ADMINISTRADOR", "COMERCIAL"].includes(authorization.role)) return false;
+  if (/\/(pdf|excel)(?:\/|$)/.test(pathname) && /\/(comercial|reporteria|reporterias)(?:\/|$)/.test(pathname) && !hasPermission(authorization, PERMISSIONS.REPORTS_EXPORT)) return false;
+  return hasAnyPermission(authorization, required);
 }

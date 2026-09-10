@@ -1,3 +1,4 @@
+import { buildUpstreamHeaders, fetchUpstream, getErrorStatus, upstreamResponseHeaders } from "@/lib/server/upstream";
 // app/bff/route.ts
 import "server-only";
 import { cookies } from "next/headers";
@@ -8,38 +9,16 @@ import { rejectCrossSiteMutation } from "@/lib/server/requestSecurity";
 import { canForwardApiRequest } from "@/lib/server/requestAuthorization";
 
 const ORIGIN = normalizeHttpOrigin(process.env.API_ORIGIN);
-const BFF_TIMEOUT_MS = Number(process.env.BFF_TIMEOUT_MS || 12000);
+
 
 function upstreamUrl(path: string, search: string) {
   const p = path.replace(/^\/+/, "");
   return `${ORIGIN}/${p}${search || ""}`;
 }
 
-function getErrorStatus(error: unknown): 502 | 504 {
-  const code = (error as { code?: string })?.code;
-  const name = (error as { name?: string })?.name;
-  if (code === "UND_ERR_HEADERS_TIMEOUT" || name === "AbortError") return 504;
-  return 502;
-}
 
-function buildUpstreamHeaders(req: NextRequest, token: string) {
-  const headers = new Headers();
-  const accept = req.headers.get("accept");
-  const contentType = req.headers.get("content-type");
-  const userAgent = req.headers.get("user-agent");
-  const forwardedFor = req.headers.get("x-forwarded-for");
-  const forwardedProto = req.headers.get("x-forwarded-proto");
 
-  if (accept) headers.set("accept", accept);
-  if (contentType) headers.set("content-type", contentType);
-  if (userAgent) headers.set("user-agent", userAgent);
-  if (forwardedFor) headers.set("x-forwarded-for", forwardedFor);
-  if (forwardedProto) headers.set("x-forwarded-proto", forwardedProto);
 
-  if (token) headers.set("authorization", `Bearer ${token}`);
-
-  return headers;
-}
 
 async function proxy(req: NextRequest) {
   const crossSite = rejectCrossSiteMutation(req);
@@ -71,26 +50,17 @@ async function proxy(req: NextRequest) {
     redirect: "manual",
   };
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), BFF_TIMEOUT_MS);
+
 
   try {
-    const r = await fetch(up, { ...init, signal: controller.signal });
-    return new NextResponse(await r.arrayBuffer(), {
-      status: r.status,
-      headers: {
-        "content-type": r.headers.get("content-type") ?? "application/json",
-        "cache-control": "no-store",
-      },
-    });
+    const r = await fetchUpstream(up, init, req.signal);
+    return new NextResponse(r.body, { status: r.status, headers: upstreamResponseHeaders(r) });
   } catch (error) {
     const status = getErrorStatus(error);
     return NextResponse.json(
-      { error: status === 504 ? "Upstream timeout" : "Upstream unavailable" },
+      { error: status === 504 ? "El servicio tardó demasiado" : "Servicio no disponible" },
       { status }
     );
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 

@@ -14,7 +14,7 @@ import {
   Play,
   Route,
 } from "lucide-react";
-import StatusBadge from "@/app/Components/ui/StatusBadge";
+import StatusBadge from "@/components/ui/StatusBadge";
 import type { Arrastre, DailyInfo, IncidenteArrastre, VagonArrastre } from "../types";
 import {
   buildArrastreFolio,

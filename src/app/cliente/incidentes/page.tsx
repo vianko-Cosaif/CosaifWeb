@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import IncidenteController from "@/app/incidentes/ui/IncidenteController";
+import IncidenteController from "@/features/incidentes/operacion/IncidenteController";
 import { PERMISSIONS, hasPermission } from "@/lib/accessControl";
 import { getVerifiedSession } from "@/lib/server/session";
 
@@ -16,7 +16,7 @@ export default async function Page() {
       <div className="w-full">
         <div className="mx-auto max-w-screen-2xl px-3 pb-6 sm:px-6" style={{ paddingTop: "3.5rem" }}>
           <section className="rounded-2xl border bg-card text-card-foreground shadow-sm">
-            <IncidenteController />
+            <IncidenteController authorization={session.authorization} />
           </section>
         </div>
       </div>

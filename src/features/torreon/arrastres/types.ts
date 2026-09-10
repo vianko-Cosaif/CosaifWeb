@@ -1,4 +1,4 @@
-import type { TorreonIncidentDetail } from "@/app/coordinador/torreon/TorreonIncidentDetailModal";
+import type { TorreonIncidentDetail } from "@/features/torreon/coordinador/TorreonIncidentDetailModal";
 
 export type ArrastreStatus =
   | "TODOS"

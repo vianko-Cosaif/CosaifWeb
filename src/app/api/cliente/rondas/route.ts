@@ -1,12 +1,15 @@
+import { fetchUpstream, getErrorStatus } from "@/lib/server/upstream";
+import { mapConcurrent } from "@/lib/http/concurrency";
 // app/api/cliente/rondas/route.ts
 import { NextResponse, NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { PERMISSIONS, hasPermission } from "@/lib/accessControl";
 import { normalizeHttpOrigin } from "@/lib/serverOrigin";
-import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
+import { fetchTorreonMsJson, isTorreonLocalidad, TorreonMsError } from "@/lib/torreonMs";
 import { containsTrainingReservedId } from "@/lib/routePolicy";
 import { getVerifiedSession } from "@/lib/server/session";
 import type { VerifiedSession } from "@/lib/sessionToken";
+import { MovementScopeError, recordMatchesMovementScope, resolveMovementReadScope } from "@/lib/auth/movementScope";
 
 export const dynamic = "force-dynamic";
 
@@ -33,11 +36,14 @@ type RondaOut = {
     fechaInicio?: string | null;
     fechaFin?: string | null;
     createdAt?: string | null;
+    tipoMovimiento?: string | null;
+    accion?: string | null;
     instrucciones?: string | null;
   } | null;
   movimientoId?: number | null;
   createdAt?: string | null;
   source?: "cosaif" | "torreon" | "torno" | string;
+  localidadId?: number | null;
 };
 
 type TornoServiceRecord = {
@@ -56,6 +62,7 @@ type TornoServiceRecord = {
   locomotiveNumber?: number | string | null;
   locomotora?: number | string | null;
   movimiento?: MovimientoRecord | null;
+  movimientoResumen?: MovimientoRecord | null;
   ronda?: {
     rondaNumero?: number | string | null;
     orden?: number | string | null;
@@ -101,6 +108,8 @@ type MovimientoRecord = {
   fechaInicio?: string | null;
   fechaFin?: string | null;
   createdAt?: string | null;
+  tipoMovimiento?: string | null;
+  accion?: string | null;
   instrucciones?: string | null;
   ronda?: {
     rondaNumero?: number | string | null;
@@ -118,6 +127,7 @@ type UnknownRecord = Record<string, unknown>;
 type MovimientoDetailRecord = MovimientoRecord & { movimiento?: MovimientoRecord | null };
 type NormalizedRondaBase = {
   id: number;
+  localidadId: number | null;
   rondaNumero: number;
   orden: number;
   concluido: boolean;
@@ -175,6 +185,7 @@ type TorreonRondaMovimientoRecord = {
 
 type TorreonRondaRecord = {
   id?: number | string | null;
+  localidadId?: number | string | null;
   numeroRonda?: number | string | null;
   estado?: string | null;
   fechaApertura?: string | null;
@@ -215,14 +226,67 @@ function asPriority(input: unknown): "BAJA" | "ALTA" | null {
   return value === "BAJA" || value === "ALTA" ? value : null;
 }
 
+type RondasReadStatus = 401 | 403 | 502 | 504;
+
+class RondasReadError extends Error {
+  constructor(public readonly status: RondasReadStatus) {
+    super("No se pudieron consultar las rondas del servicio de operación.");
+    this.name = "RondasReadError";
+  }
+}
+
+function upstreamReadStatus(status: number): RondasReadStatus {
+  if (status === 401 || status === 403) return status;
+  return status === 408 || status === 504 ? 504 : 502;
+}
+
 function extractArray(input: unknown): UnknownRecord[] {
   const record = asRecord(input);
-  if (Array.isArray(input)) return input as UnknownRecord[];
-  if (Array.isArray(record.data)) return record.data as UnknownRecord[];
-  if (Array.isArray(record.items)) return record.items as UnknownRecord[];
-  if (Array.isArray(record.rows)) return record.rows as UnknownRecord[];
-  if (Array.isArray(record.value)) return record.value as UnknownRecord[];
-  return [];
+  if (record.success === false) throw new RondasReadError(502);
+  const collection = Array.isArray(input)
+    ? input
+    : [record.data, record.items, record.rows, record.value].find(Array.isArray);
+  if (!Array.isArray(collection) || collection.some((item) => !item || typeof item !== "object" || Array.isArray(item))) {
+    throw new RondasReadError(502);
+  }
+  return collection as UnknownRecord[];
+}
+
+// Sólo lecturas GET. Los helpers y respuestas de las acciones POST se conservan.
+async function readRondasJson(response: Response): Promise<unknown> {
+  if (!response.ok) throw new RondasReadError(upstreamReadStatus(response.status));
+  try {
+    const data: unknown = await response.json();
+    if (asRecord(data).success === false) throw new RondasReadError(502);
+    return data;
+  } catch (error) {
+    if (getErrorStatus(error) === 504) throw error;
+    throw new RondasReadError(502);
+  }
+}
+
+async function fetchRondasJsonFirst(urls: string[], headers: HeadersInit, signal: AbortSignal): Promise<unknown> {
+  for (const url of urls) {
+    const response = await fetchUpstream(url, { method: "GET", headers, cache: "no-store" }, signal);
+    if (response.status === 404 || response.status === 405) {
+      await response.body?.cancel();
+      continue;
+    }
+    return readRondasJson(response);
+  }
+  throw new RondasReadError(502);
+}
+
+function readDetailRecord(input: unknown): UnknownRecord {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new RondasReadError(502);
+  const record = input as UnknownRecord;
+  if (record.success === false || !["id", "idTecnico", "movimiento", "movimientoId", "empresa"].some((key) => key in record)) {
+    throw new RondasReadError(502);
+  }
+  if (record.movimiento != null && (typeof record.movimiento !== "object" || Array.isArray(record.movimiento))) {
+    throw new RondasReadError(502);
+  }
+  return record;
 }
 
 function normalizeRondas(input: unknown): NormalizedRondaBase[] {
@@ -244,8 +308,11 @@ function normalizeRondas(input: unknown): NormalizedRondaBase[] {
         : null;
       const empresa = Object.keys(empresaRecord).length ? (empresaRecord as { id?: number; nombre?: string }) : null;
 
+      const id = Number(x.id ?? x.rondaId ?? ronda.id);
+      if (!Number.isFinite(id) || id <= 0) throw new RondasReadError(502);
       return {
-        id: Number(x.id ?? x.rondaId ?? ronda.id),
+        id,
+        localidadId: firstPositiveNumber(x.localidadId, ronda.localidadId, movimiento?.localidadId, movimiento?.localidad?.id),
         rondaNumero: Number(x.rondaNumero ?? x.numero ?? x.num ?? ronda.numero ?? 0),
         orden: Number(x.orden ?? x.order ?? 0),
         concluido: Boolean(
@@ -259,8 +326,7 @@ function normalizeRondas(input: unknown): NormalizedRondaBase[] {
         movimientoId: firstPositiveNumber(x.movimientoId, ronda.movimientoId, movimiento?.id),
         createdAt: asDateString(x.createdAt ?? ronda.createdAt ?? movimiento?.fechaSolicitud ?? movimiento?.createdAt),
       };
-    })
-    .filter((r) => Number.isFinite(r.id));
+    });
 }
 
 function isTornoConcluido(status?: string | null) {
@@ -278,6 +344,7 @@ function movementToRondaOut(mv: MovimientoRecord, index: number, concluido: bool
   const visibleId = firstPositiveNumber(mv.folioLocalidad, mv.id) ?? movimientoId;
   return {
     id: -Math.abs(1_000_000 + movimientoId),
+    localidadId: firstPositiveNumber(mv.localidadId, mv.localidad?.id),
     rondaNumero: 1,
     orden: index + 1,
     concluido,
@@ -296,6 +363,9 @@ function movementToRondaOut(mv: MovimientoRecord, index: number, concluido: bool
       locomotiveNumber: mv.locomotiveNumber ?? mv.locomotora ?? null,
       locomotora: mv.locomotora ?? null,
       fechaSolicitud: mv.fechaSolicitud ?? mv.createdAt ?? null,
+      createdAt: mv.createdAt ?? null,
+      tipoMovimiento: mv.tipoMovimiento ?? null,
+      accion: mv.accion ?? null,
       fechaInicio: mv.fechaInicio ?? null,
       fechaFin: mv.fechaFin ?? null,
       instrucciones: mv.instrucciones ?? null,
@@ -369,13 +439,14 @@ function isTorreonDetailDone(detail: TorreonRondaMovimientoRecord, movimiento: T
   return ["CONCLUIDO", "CANCELADO"].includes(detailState) || ["CONCLUIDO", "CANCELADO"].includes(movementState);
 }
 
-function mapTorreonRondasToOut(input: unknown, concluido: boolean, empresaScopeId?: number | null): RondaOut[] {
+function mapTorreonRondasToOut(input: unknown, concluido: boolean, empresaScopeId: number | null, localidadScopeId: number): RondaOut[] {
   const rondas = extractArray(input) as TorreonRondaRecord[];
   const out: RondaOut[] = [];
 
   for (const ronda of rondas) {
     const numeroRonda = asNumber(ronda.numeroRonda) ?? 0;
-    const movimientos = Array.isArray(ronda.movimientos) ? ronda.movimientos : [];
+    if (!Array.isArray(ronda.movimientos)) throw new RondasReadError(502);
+    const movimientos = extractArray(ronda.movimientos) as TorreonRondaMovimientoRecord[];
 
     movimientos.forEach((detail, index) => {
       const movimiento = detail.movimiento ?? {};
@@ -384,7 +455,8 @@ function mapTorreonRondasToOut(input: unknown, concluido: boolean, empresaScopeI
       if (!detailId || !movimientoId) return;
 
       const empresaId = asNumber(detail.empresaId ?? movimiento.empresaId);
-      if (empresaScopeId && empresaId !== empresaScopeId) return;
+      const localidadId = firstPositiveNumber(ronda.localidadId, movimiento.localidadId);
+      if (!recordMatchesMovementScope({ empresaId, localidadId }, { empresaId: empresaScopeId, localidadId: localidadScopeId })) return;
 
       const itemDone = isTorreonDetailDone(detail, movimiento);
       if (itemDone !== concluido) return;
@@ -400,6 +472,7 @@ function mapTorreonRondasToOut(input: unknown, concluido: boolean, empresaScopeI
 
       out.push({
         id: detailId,
+        localidadId,
         rondaNumero: numeroRonda,
         orden: asNumber(detail.orden) ?? index + 1,
         concluido: itemDone,
@@ -461,7 +534,7 @@ function getMovimientoLocalidadId(movimiento: MovimientoRecord | null) {
 async function fetchJsonFirst(urls: string[], headers: HeadersInit) {
   let lastStatus = 404;
   for (const url of urls) {
-    const response = await fetch(url, { method: "GET", headers, cache: "no-store" });
+    const response = await fetchUpstream(url, { method: "GET", headers, cache: "no-store" });
     lastStatus = response.status;
     if (!response.ok) continue;
     return await readTextAsJsonSafe(response);
@@ -580,6 +653,7 @@ async function fetchCosaifRondasOut({
   concluido,
   empresaScopeId,
   generalLocalityView,
+  signal,
 }: {
   base: string;
   headers: HeadersInit;
@@ -587,6 +661,7 @@ async function fetchCosaifRondasOut({
   concluido: boolean;
   empresaScopeId?: number | null;
   generalLocalityView?: boolean;
+  signal: AbortSignal;
 }): Promise<RondaOut[]> {
   if (concluido && !generalLocalityView) {
     const qs = new URLSearchParams({
@@ -597,51 +672,47 @@ async function fetchCosaifRondasOut({
     });
     if (empresaScopeId) qs.set("empresaId", String(empresaScopeId));
 
-    const response = await fetch(`${base}/movimientos/buscar?${qs.toString()}`, {
+    const response = await fetchUpstream(`${base}/movimientos/buscar?${qs.toString()}`, {
       method: "GET",
       headers,
       cache: "no-store",
-    });
-    if (!response.ok) return [];
+    }, signal);
 
-    return normalizeMovimientoCollection(await readTextAsJsonSafe(response))
+    return normalizeMovimientoCollection(await readRondasJson(response))
       .filter((mv) => {
-        if (!empresaScopeId) return true;
-        const recordEmpresaId = firstPositiveNumber(mv.empresaId, mv.empresa?.id);
-        return recordEmpresaId === empresaScopeId;
+        return recordMatchesMovementScope({
+          empresaId: firstPositiveNumber(mv.empresaId, mv.empresa?.id),
+          localidadId: firstPositiveNumber(mv.localidadId, mv.localidad?.id),
+        }, { empresaId: empresaScopeId ?? null, localidadId: Number(localidadId) });
       })
       .map((mv, index) => movementToRondaOut(mv, index, true))
       .filter((item): item is RondaOut => Boolean(item));
   }
 
-  const scopeQuery = generalLocalityView ? "&alcance=localidad" : "";
+  const scopeParams = new URLSearchParams({ localidadId, concluido: String(concluido) });
+  if (generalLocalityView) scopeParams.set("alcance", "localidad");
+  if (empresaScopeId) scopeParams.set("empresaId", String(empresaScopeId));
   const candidates = [
-    `${base}/rondas/localidad/${encodeURIComponent(localidadId)}/estado/${concluido ? "true" : "false"}${generalLocalityView ? "?alcance=localidad" : ""}`,
-    `${base}/rondas?localidadId=${encodeURIComponent(localidadId)}&concluido=${String(concluido)}${scopeQuery}`,
-    `${base}/movimientos/rondas?localidadId=${encodeURIComponent(localidadId)}&concluido=${String(concluido)}${scopeQuery}`,
+    `${base}/rondas/localidad/${encodeURIComponent(localidadId)}/estado/${concluido ? "true" : "false"}?${scopeParams.toString()}`,
+    `${base}/rondas?${scopeParams.toString()}`,
   ];
 
-  let raw: unknown = [];
-  for (const url of candidates) {
-    const response = await fetch(url, { method: "GET", headers, cache: "no-store" });
-    if (!response.ok) continue;
-    raw = await readTextAsJsonSafe(response);
-    break;
-  }
+  const raw = await fetchRondasJsonFirst(candidates, headers, signal);
 
-  const baseList = normalizeRondas(raw);
+  const baseList = normalizeRondas(raw).filter((round) => round.concluido === concluido
+    && (concluido || !["CONCLUIDO", "CANCELADO", "RESUELTO"].includes(String(round.movimiento?.estado ?? "").toUpperCase())));
   if (!baseList.length) return [];
 
   const infoPairs = generalLocalityView
     ? []
-    : await Promise.all(
-        baseList.map(async (r) => {
-          try {
-            return [r.id, await fetchRondaInfo(base, headers, r.id)] as const;
-          } catch {
-            return [r.id, null] as const;
-          }
-        })
+    : await mapConcurrent(
+        baseList.filter(r => !r.movimiento || !["estado", "viaOrigen", "viaDestino", "locomotiveNumber"].every(key => key in r.movimiento!) || !r.empresa), 4, async (r) => {
+          const info = await fetchRondasJsonFirst([
+            `${base}/movimientos/ronda/${encodeURIComponent(String(r.id))}/info`,
+            `${base}/rondas/${encodeURIComponent(String(r.id))}/info`,
+          ], headers, signal);
+          return [r.id, readDetailRecord(info) as RondaInfoRecord] as const;
+        }
       );
   const infoMap = new Map<number, RondaInfoRecord | null>(infoPairs);
 
@@ -653,7 +724,8 @@ async function fetchCosaifRondasOut({
     const mv = info?.movimiento ?? baseMv;
     const emp = info?.empresa ?? mv?.empresa ?? baseEmp;
     const empresaId = firstPositiveNumber(emp?.id, mv?.empresaId);
-    if (empresaScopeId && empresaId !== empresaScopeId) continue;
+    const movementLocalidadId = firstPositiveNumber(r.localidadId, mv?.localidadId, mv?.localidad?.id);
+    if (!recordMatchesMovementScope({ empresaId, localidadId: movementLocalidadId }, { empresaId: empresaScopeId ?? null, localidadId: Number(localidadId) })) continue;
     const movimientoId = mv ? firstPositiveNumber(mv.idTecnico, info?.movimientoId, r.movimientoId, mv.id) : r.movimientoId ?? null;
     const visibleId = mv ? firstPositiveNumber(mv.folioLocalidad, mv.id) ?? movimientoId : null;
 
@@ -675,6 +747,9 @@ async function fetchCosaifRondasOut({
             locomotiveNumber: mv.locomotiveNumber ?? mv.locomotora ?? null,
             locomotora: mv.locomotora ?? null,
             fechaSolicitud: mv.fechaSolicitud ?? mv.createdAt ?? null,
+            createdAt: mv.createdAt ?? null,
+            tipoMovimiento: mv.tipoMovimiento ?? null,
+            accion: mv.accion ?? null,
             fechaInicio: mv.fechaInicio ?? null,
             fechaFin: mv.fechaFin ?? null,
             instrucciones: mv.instrucciones ?? null,
@@ -689,11 +764,18 @@ async function fetchCosaifRondasOut({
   return mapped.sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden || a.id - b.id);
 }
 
+function projectClientCurrentRounds(rows: RondaOut[], sharedCurrent: boolean, ownEmpresaId: number | null) {
+  if (!sharedCurrent) return rows;
+  return rows.map((row) => Number(row.empresa?.id) === ownEmpresaId || !row.movimiento
+    ? row
+    : { ...row, movimiento: { ...row.movimiento, instrucciones: null } });
+}
+
 export async function GET(req: NextRequest) {
+  const controller = new AbortController();
+  const signal = AbortSignal.any([req.signal, controller.signal]);
   try {
     const { searchParams, origin } = new URL(req.url);
-    const requestedLocalidadId = firstPositiveNumber(searchParams.get("localidadId"));
-
     const entity = String(searchParams.get("entity") ?? "movimientos").toLowerCase();
     const estado = String(searchParams.get("estado") ?? searchParams.get("tab") ?? "pendientes").toLowerCase();
     const concluido = estado === "terminados" || estado === "finalizados" || estado === "true";
@@ -707,29 +789,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: "No autorizado para consultar rondas" }, { status: 403 });
     }
     const { authorization } = session;
-    const capabilities = authorization.capabilities;
-    const empresaId = session.empresaId;
-    const assignedLocalidadId = session.localidadId;
-    const sharedClientLocalityView = requestedGeneralLocalityView && capabilities.area === "cliente";
-    const useAssignedLocalidad = isLocalityScoped(session) || sharedClientLocalityView;
-    const localidadId = useAssignedLocalidad ? assignedLocalidadId : requestedLocalidadId;
-    // El tablero del cliente representa la fila operativa compartida de su
-    // localidad. Esto no amplía su localidad ni sus permisos de escritura:
-    // las acciones POST continúan validadas contra empresa y localidad.
-    const generalLocalityView = requestedGeneralLocalityView
-      && (capabilities.canViewAllCompanies || capabilities.area === "cliente");
+    const readScope = resolveMovementReadScope(session, concluido ? "history-list" : "current-list", searchParams);
+    const { empresaId, localidadId } = readScope;
+    const generalLocalityView = readScope.sharedCurrentLocality
+      || (session.role !== "CLIENTE" && requestedGeneralLocalityView && authorization.capabilities.canViewAllCompanies);
 
-    const requestedEmpresaId = firstPositiveNumber(searchParams.get("empresaId"));
-    if (
-      isCompanyScoped(session) &&
-      (!empresaId || (requestedEmpresaId && requestedEmpresaId !== empresaId))
-    ) {
-      return NextResponse.json({ message: "Solo puedes consultar locomotoras de tu empresa." }, { status: 403 });
-    }
-
-    if (useAssignedLocalidad && requestedLocalidadId && requestedLocalidadId !== assignedLocalidadId) {
-      return NextResponse.json({ message: "Solo puedes consultar rondas de tu localidad." }, { status: 403 });
-    }
     if (!localidadId) {
       return NextResponse.json({ message: "No hay una localidad asignada a la sesion." }, { status: 403 });
     }
@@ -741,17 +805,28 @@ export async function GET(req: NextRequest) {
     if (entity === "torneados") {
       const statusParam = concluido ? "CONCLUIDO,CANCELADO" : "SOLICITADO,EN_PROCESO,DETENIDO";
       const qs = new URLSearchParams({ status: statusParam, localidadId: localidadIdParam });
-      const empresaScopeId = generalLocalityView ? null : isCompanyScoped(session) ? empresaId : null;
+      const empresaScopeId = empresaId;
       if (empresaScopeId) qs.set("empresaId", String(empresaScopeId));
-      const r = await fetch(`${base}/torno/rondas-servicio/historial?${qs.toString()}`, {
+      const r = await fetchUpstream(`${base}/torno/rondas-servicio/historial?${qs.toString()}`, {
         cache: "no-store",
         headers,
-      });
-      if (!r.ok) return NextResponse.json<RondaOut[]>([], { status: 200 });
+      }, signal);
 
-      const records = extractArray(await readTextAsJsonSafe(r)) as TornoServiceRecord[];
-      const out = await Promise.all(records.map(async (record, index): Promise<RondaOut | null> => {
-        const movimientoRecord = asRecord(record.movimiento);
+      const records = extractArray(await readRondasJson(r)) as TornoServiceRecord[];
+      const details = new Map<number, Promise<MovimientoDetailRecord | null>>();
+      const getMovementDetail = (id: number) => {
+        let pending = details.get(id);
+        if (!pending) {
+          pending = fetchRondasJsonFirst([
+            `${base}/movimientos/${id}/edicion`,
+            `${base}/movimientos/${id}`,
+          ], headers, signal).then((raw) => readDetailRecord(raw) as MovimientoDetailRecord);
+          details.set(id, pending);
+        }
+        return pending;
+      };
+      const out = await mapConcurrent(records, 4, async (record, index): Promise<RondaOut | null> => {
+        const movimientoRecord = asRecord(record.movimiento ?? record.movimientoResumen);
         const recordRonda = asRecord(record.ronda);
         const movimientoRonda = asRecord(movimientoRecord.ronda);
         const servicioRecord = asRecord(record.servicio);
@@ -810,47 +885,39 @@ export async function GET(req: NextRequest) {
           fechaFin: record.fin ?? null,
         };
 
-        if (movimientoId) {
-          try {
-            const rr = await fetch(`${base}/movimientos/${encodeURIComponent(String(movimientoId))}/edicion`, {
-              cache: "no-store",
-              headers,
-            });
-            if (rr.ok) {
-              const detail = (await readTextAsJsonSafe(rr)) as MovimientoDetailRecord;
-              const mv = detail?.movimiento ?? detail;
-              const mvRonda = asRecord(asRecord(mv).ronda);
-              rondaNumero = firstPositiveNumber(mvRonda.rondaNumero, rondaNumero) ?? rondaNumero;
-              orden = firstPositiveNumber(mvRonda.orden, orden) ?? orden;
-              localidadMovimientoId = firstPositiveNumber(mv?.localidad?.id, mv?.localidadId) ?? localidadMovimientoId;
-              empresa = mv?.empresa ? { id: Number(mv.empresa.id ?? 0), nombre: String(mv.empresa.nombre ?? "—") } : null;
-              const visibleId = firstPositiveNumber(mv?.folioLocalidad, mv?.id) ?? movimientoId;
-              movimiento = {
-                id: visibleId,
-                idTecnico: firstPositiveNumber(mv?.idTecnico, movimientoId) ?? movimientoId,
-                folioLocalidad: mv?.folioLocalidad ?? visibleId,
-                folioLocalidadLabel: mv?.folioLocalidadLabel ?? `#${visibleId}`,
-                viaOrigen: mv?.viaOrigen ?? null,
-                viaDestino: mv?.viaDestino ?? null,
-                lavado: Boolean(mv?.lavado ?? mv?.Lavado),
-                torno: true,
-                estado: status,
-                prioridad: mv?.prioridad ?? null,
-                locomotiveNumber: mv?.locomotiveNumber ?? mv?.locomotora ?? null,
-                locomotora: mv?.locomotora ?? null,
-                fechaSolicitud: mv?.fechaSolicitud ?? record.creadoEn ?? null,
-                fechaInicio: record.inicio ?? mv?.fechaInicio ?? null,
-                fechaFin: record.fin ?? mv?.fechaFin ?? null,
-                instrucciones: mv?.instrucciones ?? null,
-              };
-            }
-          } catch {
-            // Si el detalle falla, conservamos el registro de Torno con la informacion disponible.
+        if (movimientoId && (!readScope.sharedCurrentLocality || recordEmpresaId === session.empresaId)) {
+          const detail = await getMovementDetail(movimientoId);
+          if (detail) {
+            const mv = detail?.movimiento ?? detail;
+            const mvRonda = asRecord(asRecord(mv).ronda);
+            rondaNumero = firstPositiveNumber(mvRonda.rondaNumero, rondaNumero) ?? rondaNumero;
+            orden = firstPositiveNumber(mvRonda.orden, orden) ?? orden;
+            localidadMovimientoId = firstPositiveNumber(mv?.localidad?.id, mv?.localidadId) ?? localidadMovimientoId;
+            empresa = mv?.empresa ? { id: Number(mv.empresa.id ?? 0), nombre: String(mv.empresa.nombre ?? "—") } : null;
+            const visibleId = firstPositiveNumber(mv?.folioLocalidad, mv?.id) ?? movimientoId;
+            movimiento = {
+              id: visibleId,
+              idTecnico: firstPositiveNumber(mv?.idTecnico, movimientoId) ?? movimientoId,
+              folioLocalidad: mv?.folioLocalidad ?? visibleId,
+              folioLocalidadLabel: mv?.folioLocalidadLabel ?? `#${visibleId}`,
+              viaOrigen: mv?.viaOrigen ?? null,
+              viaDestino: mv?.viaDestino ?? null,
+              lavado: Boolean(mv?.lavado ?? mv?.Lavado),
+              torno: true,
+              estado: status,
+              prioridad: mv?.prioridad ?? null,
+              locomotiveNumber: mv?.locomotiveNumber ?? mv?.locomotora ?? null,
+              locomotora: mv?.locomotora ?? null,
+              fechaSolicitud: mv?.fechaSolicitud ?? record.creadoEn ?? null,
+              fechaInicio: record.inicio ?? mv?.fechaInicio ?? null,
+              fechaFin: record.fin ?? mv?.fechaFin ?? null,
+              instrucciones: mv?.instrucciones ?? null,
+            };
           }
         }
 
-        if (localidadMovimientoId && localidadId !== localidadMovimientoId) return null;
-        if (empresaScopeId && Number(empresa?.id) !== empresaScopeId) return null;
+        if (!recordMatchesMovementScope({ localidadId: localidadMovimientoId, empresaId: empresa?.id }, { localidadId, empresaId: empresaScopeId })) return null;
+        if (isTornoConcluido(status) !== concluido) return null;
         if (
           !concluido &&
           !hasVisibleLocomotive(movimiento?.locomotiveNumber ?? movimiento?.locomotora ?? record.numeroLocomotora ?? record.locomotiveNumber ?? record.locomotora)
@@ -859,6 +926,7 @@ export async function GET(req: NextRequest) {
         }
         return {
           id: -Math.abs(servicioId),
+          localidadId: localidadMovimientoId,
           rondaNumero,
           orden,
           concluido: isTornoConcluido(status),
@@ -868,7 +936,7 @@ export async function GET(req: NextRequest) {
           createdAt: record.movimientoFechaSolicitud ?? movimiento?.fechaSolicitud ?? record.creadoEn ?? record.inicio ?? null,
           source: "torno",
         };
-      }));
+      });
 
       const filtered = out.filter((item): item is RondaOut => Boolean(item));
 
@@ -880,29 +948,27 @@ export async function GET(req: NextRequest) {
         filtered.splice(0, filtered.length, ...sortTornoQueue(filtered));
       }
 
-      return NextResponse.json(filtered, { status: 200 });
+      return NextResponse.json(projectClientCurrentRounds(filtered, readScope.sharedCurrentLocality, session.empresaId), { status: 200 });
     }
 
     if (isTorreonLocalidad(localidadIdParam)) {
-      const scopedEmpresaId = generalLocalityView ? null : isCompanyScoped(session) ? empresaId : null;
+      const scopedEmpresaId = empresaId;
       const canReadTorreon = hasPermission(authorization, PERMISSIONS.TORREON_READ);
       if (!canReadTorreon) return NextResponse.json<RondaOut[]>([], { status: 200 });
 
-      let out: RondaOut[] = [];
-      try {
-        const params = new URLSearchParams({ localidadId: localidadIdParam });
-        if (generalLocalityView) params.set("alcance", "localidad");
-        if (concluido) params.set("estado", "CERRADA");
-        const raw = await fetchTorreonMsJson(`/rondas?${params.toString()}`);
-        out = mapTorreonRondasToOut(raw, concluido, scopedEmpresaId);
-      } catch (error) {
-        console.warn("[api/cliente/rondas] rondas Torreon error:", error);
-      }
+      const params = new URLSearchParams({ localidadId: localidadIdParam });
+      if (generalLocalityView) params.set("alcance", "localidad");
+      if (concluido) params.set("estado", "CERRADA");
+      if (scopedEmpresaId) params.set("empresaId", String(scopedEmpresaId));
+      const raw = await fetchTorreonMsJson(`/rondas?${params.toString()}`, {
+        signal: AbortSignal.any([signal, AbortSignal.timeout(12_000)]),
+      });
+      const out = mapTorreonRondasToOut(raw, concluido, scopedEmpresaId, localidadId);
 
-      return NextResponse.json(sortRondaQueue(out), { status: 200 });
+      return NextResponse.json(projectClientCurrentRounds(sortRondaQueue(out), readScope.sharedCurrentLocality, session.empresaId), { status: 200 });
     }
 
-    const empresaScopeId = generalLocalityView ? null : isCompanyScoped(session) ? empresaId : null;
+    const empresaScopeId = empresaId;
     const out = await fetchCosaifRondasOut({
       base,
       headers,
@@ -910,11 +976,30 @@ export async function GET(req: NextRequest) {
       concluido,
       empresaScopeId,
       generalLocalityView,
+      signal,
     });
-    return NextResponse.json(out, { status: 200 });
+    return NextResponse.json(projectClientCurrentRounds(out, readScope.sharedCurrentLocality, session.empresaId), { status: 200 });
   } catch (err) {
+    if (err instanceof MovementScopeError) return NextResponse.json({ message: err.message }, { status: err.status });
+    const status = err instanceof RondasReadError
+      ? err.status
+      : err instanceof TorreonMsError
+        // GET Torreón usa credenciales HMAC de servicio, no la sesión del
+        // usuario. Un rechazo del microservicio no debe cerrar esa sesión.
+        ? err.status === 408 || err.status === 504 ? 504 : 502
+        : getErrorStatus(err);
+    const message = status === 401
+      ? "La sesión de operación terminó. Vuelve a iniciar sesión."
+      : status === 403
+        ? "No estás autorizado para consultar estas rondas."
+        : status === 504
+          ? "La consulta de rondas tardó demasiado. Inténtalo de nuevo."
+          : "No se pudieron cargar las rondas. Inténtalo de nuevo.";
     console.error("[api/cliente/rondas] error:", err);
-    return NextResponse.json<RondaOut[]>([], { status: 200 });
+    return NextResponse.json({ message }, { status, headers: { "cache-control": "no-store" } });
+  } finally {
+    // Detiene también consultas de detalle paralelas si una de ellas falla.
+    controller.abort();
   }
 }
 
@@ -1006,7 +1091,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message }, { status: message.includes("Solo puedes") ? 403 : 400 });
       }
 
-      const response = await fetch(`${base}/rondas/intercambiar-movimientos`, {
+      const response = await fetchUpstream(`${base}/rondas/intercambiar-movimientos`, {
         method: "PATCH",
         headers: jsonHeaders,
         body: JSON.stringify({ rondaAId, rondaBId }),
@@ -1033,7 +1118,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message }, { status: message.includes("Solo puedes") ? 403 : 400 });
       }
 
-      const response = await fetch(`${base}/movimientos/${encodeURIComponent(String(movimientoId))}/cancelar`, {
+      const response = await fetchUpstream(`${base}/movimientos/${encodeURIComponent(String(movimientoId))}/cancelar`, {
         method: "PATCH",
         headers: jsonHeaders,
         body: JSON.stringify({ razon }),

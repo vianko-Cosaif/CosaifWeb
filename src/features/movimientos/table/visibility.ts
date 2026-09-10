@@ -1,6 +1,6 @@
 "use client";
 
-import type { Rol } from "@/app/Components/movimientos/useMovimientos";
+import type { Rol } from "@/features/movimientos/list/useMovimientos";
 import {
   canViewMovementDuration as canViewDurationByRole,
   isClientLikeRole as isClientLikeRoleByPolicy,

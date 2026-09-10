@@ -1,4 +1,4 @@
-import type { TornoMedicionState } from "@/app/movimientos/crear/tornoMedicion.types";
+import type { TornoMedicionState } from "@/features/movimientos/crear/tornoMedicion.types";
 
 export type RondaMovement = {
   id?: number;

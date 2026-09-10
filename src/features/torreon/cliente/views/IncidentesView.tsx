@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, Camera, CheckCircle2, RefreshCw, Search, ShieldAlert } from "lucide-react";
+import { Camera, CheckCircle2, RefreshCw, ShieldAlert } from "lucide-react";
 import {
   buildArrastreFolio,
   fmtDate,
@@ -7,6 +7,10 @@ import {
   type DailyInfo,
   type IncidenteArrastre,
 } from "@/features/torreon/arrastres";
+import SearchInput from "@/components/ui/SearchInput";
+import Button from "@/components/ui/Button";
+import SegmentedControl from "@/components/ui/SegmentedControl";
+import StatusBadge from "@/components/ui/StatusBadge";
 import { EmptyState, ModuleHeader } from "../components";
 import { statusText } from "../utils";
 
@@ -45,12 +49,6 @@ function incidentText(row: ClienteArrastreIncidentRow) {
   ].join(" ").toLowerCase();
 }
 
-function statusClass(status: string) {
-  if (status === "ABIERTO") return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200";
-  if (status === "RESUELTO" || status === "CERRADO") return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200";
-  return "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300";
-}
-
 export function IncidentesView({
   feedback,
   rows,
@@ -80,41 +78,18 @@ export function IncidentesView({
   const solvedCount = rows.length - openCount;
 
   return (
-    <section className="w-full overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 text-slate-900 shadow-xl shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:shadow-black/30">
+    <section className="min-w-0 w-full overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text)] shadow-[var(--app-shadow-sm)]">
       <div className="flex min-h-[calc(100svh-7rem)] flex-col gap-5 px-3 py-4 sm:px-5 sm:py-6 lg:px-7">
         <ModuleHeader title="Incidentes" chip={tab === "abiertos" ? "Abiertos" : "Historial"} total={visibleRows.length} icon={ShieldAlert} />
         <div className="h-px bg-gradient-to-r from-transparent via-amber-300/40 to-transparent" />
         {feedback}
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        <div className="min-w-0 space-y-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-subtle)] p-4 sm:p-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="inline-flex w-full rounded-2xl bg-slate-100 p-1 dark:bg-slate-800 lg:w-auto">
-              <TabButton active={tab === "abiertos"} onClick={() => setTab("abiertos")}>
-                Abiertos <span>{openCount}</span>
-              </TabButton>
-              <TabButton active={tab === "resueltos"} onClick={() => setTab("resueltos")}>
-                Resueltos <span>{solvedCount}</span>
-              </TabButton>
-            </div>
-            <button
-              type="button"
-              onClick={onRefresh}
-              disabled={refreshing}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:border-emerald-300 hover:text-emerald-700 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-              Actualizar
-            </button>
+            <SegmentedControl value={tab} onChange={setTab} ariaLabel="Estado de incidentes de arrastre" className="w-full [&>button]:flex-1 lg:w-auto" options={[{ value: "abiertos", label: "Abiertos", count: openCount }, { value: "resueltos", label: "Historial", count: solvedCount }]} />
+            <Button onClick={onRefresh} loading={refreshing} disabled={loading} leftIcon={<RefreshCw className="h-4 w-4" aria-hidden />}>Actualizar</Button>
           </div>
-          <label className="mt-3 flex h-12 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-950">
-            <Search className="h-4 w-4" />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar por folio, vagon, via, motivo..."
-              className="h-full min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-800 outline-none placeholder:text-slate-400 dark:text-slate-100"
-            />
-          </label>
+          <SearchInput value={search} onChange={setSearch} onClear={() => setSearch("")} label="Buscar incidentes por folio, vagón, vía o motivo" placeholder="Folio, vagón, vía o motivo…" inputClassName="text-base sm:text-sm" />
         </div>
 
         {loading ? (
@@ -149,15 +124,13 @@ export function IncidentesView({
                           <div className="mt-1 text-xs font-bold text-slate-400">Arrastre #{row.arrastre.id} · Incidente #{row.incident.id}</div>
                         </td>
                         <td className="px-4 py-4">
-                          <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-black ${statusClass(status)}`}>
-                            {status || "SIN ESTADO"}
-                          </span>
+                          <StatusBadge status={status} />
                         </td>
                         <td className="px-4 py-4">
                           <div className="flex flex-wrap gap-1.5 text-xs font-black text-slate-600 dark:text-slate-300">
-                            {row.incident.viaBloqueadaId ? <span className="rounded-lg bg-slate-100 px-2 py-1 dark:bg-slate-900">Via {row.incident.viaBloqueadaId}</span> : null}
-                            {row.incident.seccionBloqueadaId ? <span className="rounded-lg bg-slate-100 px-2 py-1 dark:bg-slate-900">Seccion {row.incident.seccionBloqueadaId}</span> : null}
-                            {row.incident.vagonId ? <span className="rounded-lg bg-slate-100 px-2 py-1 dark:bg-slate-900">Vagon #{row.incident.vagonId}</span> : null}
+                            {row.incident.viaBloqueadaId ? <span className="rounded-lg bg-slate-100 px-2 py-1 dark:bg-slate-900">Vía {row.incident.viaBloqueadaId}</span> : null}
+                            {row.incident.seccionBloqueadaId ? <span className="rounded-lg bg-slate-100 px-2 py-1 dark:bg-slate-900">Sección {row.incident.seccionBloqueadaId}</span> : null}
+                            {row.incident.vagonId ? <span className="rounded-lg bg-slate-100 px-2 py-1 dark:bg-slate-900">Vagón #{row.incident.vagonId}</span> : null}
                             {!row.incident.viaBloqueadaId && !row.incident.seccionBloqueadaId && !row.incident.vagonId ? "-" : null}
                           </div>
                         </td>
@@ -212,27 +185,11 @@ export function IncidentesView({
           </div>
         ) : (
           <EmptyState
-            text={tab === "abiertos" ? "No hay incidentes abiertos" : "No hay incidentes resueltos"}
-            hint={search ? "Ajusta la busqueda o cambia de pestana" : "Los bloqueos de arrastre apareceran aqui"}
+            text={search ? "Sin resultados con esta búsqueda" : tab === "abiertos" ? "No hay incidentes abiertos" : "No hay incidentes en el historial"}
+            hint={search ? "Ajusta o limpia la búsqueda para consultar otros incidentes." : "Los incidentes de arrastre aparecerán aquí."}
           />
         )}
       </div>
     </section>
-  );
-}
-
-function TabButton({ active, children, onClick }: { active: boolean; children: ReactNode; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-black transition lg:min-w-40 ${
-        active
-          ? "bg-white text-slate-950 shadow-sm dark:bg-slate-950 dark:text-white"
-          : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100"
-      }`}
-    >
-      {children}
-    </button>
   );
 }

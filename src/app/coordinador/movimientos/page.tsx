@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import CoordinatorMovimientosPageClient from "./CoordinatorMovimientosPageClient";
+import CoordinatorMovimientosPageClient from "../../../features/movimientos/list/CoordinatorMovimientosPageClient";
 import { getVerifiedSession } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +12,7 @@ export default async function Page() {
   return (
     <CoordinatorMovimientosPageClient
       apiBase={MOVIMIENTOS_API_BASE}
+          authorization={session.authorization}
       rol="COORDINADOR"
       empresaIdUsuario={session.empresaId}
       localidadIdUsuario={session.localidadId}

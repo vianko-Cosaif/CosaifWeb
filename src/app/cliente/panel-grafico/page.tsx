@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import PanelGrafico from "@/app/Components/PanelGrafico/PanelGrafico";
-import { PANEL_GRAFICO_ENABLED } from "@/app/Components/PanelGrafico/panelGrafico.config";
+import PanelGrafico from "@/features/panel-grafico/PanelGrafico";
+import { PANEL_GRAFICO_ENABLED } from "@/features/panel-grafico/panelGrafico.config";
 
 export const dynamic = "force-dynamic";
 

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, LogIn } from "lucide-react";
-import RailQueueBoard from "./RailQueueBoard";
+import RailQueueBoard from "../../features/rail-queue/supervisor/RailQueueBoard";
 import { getClientCookie } from "@/lib/cookies";
 import { syncFirebaseNotificationLocalidad } from "@/lib/firebase";
 import { clearAuthenticatedSession } from "@/lib/sessionLogout";

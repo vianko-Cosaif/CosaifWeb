@@ -1,0 +1,33 @@
+.board {
+  min-width: 0;
+  background: var(--app-bg);
+  color: var(--app-text);
+}
+
+.board:fullscreen {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.board::backdrop {
+  background: var(--app-bg);
+}
+
+.appear {
+  animation: queue-appear 180ms ease-out;
+}
+
+@keyframes queue-appear {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .appear { animation: none; }
+}

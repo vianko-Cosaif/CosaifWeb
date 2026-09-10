@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type DependencyList } from "react";
+import { useCallback, useEffect, useRef, useState, type DependencyList, type SetStateAction } from "react";
 import type { Toast, ToastKind } from "./types";
 
 export function useVisibleInterval(
@@ -24,33 +24,55 @@ export function useVisibleInterval(
 }
 
 export function useLocalStorageBoolean(key: string, initial = false) {
-  const [value, setValue] = useState<boolean>(() => {
-    if (typeof window === "undefined") return initial;
-    const raw = window.localStorage.getItem(key);
-    return raw === null ? initial : raw === "1";
-  });
+  // The first client render must match the HTML rendered on the server.
+  const [preference, setPreference] = useState({ key: null as string | null, value: initial, canPersist: false });
 
   useEffect(() => {
+    let value = initial;
+    let canPersist = false;
     try {
-      window.localStorage.setItem(key, value ? "1" : "0");
+      const raw = window.localStorage.getItem(key);
+      value = raw === null ? initial : raw === "1";
+      canPersist = true;
+    } catch {
+      // Keep a usable in-memory preference if storage is unavailable.
+    }
+    setPreference({ key, value, canPersist });
+  }, [key, initial]);
+
+  useEffect(() => {
+    // Never persist the SSR default before reading this key's saved preference.
+    if (preference.key !== key || !preference.canPersist) return;
+    try {
+      window.localStorage.setItem(key, preference.value ? "1" : "0");
     } catch {
       // localStorage puede fallar en modo privado; el estado en memoria basta.
     }
-  }, [key, value]);
+  }, [key, preference]);
 
-  return [value, setValue] as const;
+  const setValue = useCallback((update: SetStateAction<boolean>) => {
+    setPreference((current) => {
+      const previous = current.key === key ? current.value : initial;
+      const value = typeof update === "function" ? update(previous) : update;
+      if (current.key === key && current.value === value) return current;
+      return { key, value, canPersist: current.key === key && current.canPersist };
+    });
+  }, [key, initial]);
+
+  return [preference.key === key ? preference.value : initial, setValue] as const;
 }
 
 export function useOnline() {
-  const [online, setOnline] = useState<boolean>(
-    typeof navigator === "undefined" ? true : navigator.onLine
-  );
+  // Node 24 has navigator but no onLine. Keep the server and first browser
+  // render identical, then synchronize the browser's connection state.
+  const [online, setOnline] = useState(true);
 
   useEffect(() => {
     const on = () => setOnline(true);
     const off = () => setOnline(false);
     window.addEventListener("online", on);
     window.addEventListener("offline", off);
+    setOnline(typeof navigator === "undefined" || navigator.onLine !== false);
     return () => {
       window.removeEventListener("online", on);
       window.removeEventListener("offline", off);

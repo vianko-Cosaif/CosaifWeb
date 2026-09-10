@@ -16,8 +16,9 @@
   --app-border-strong:#c5d0d9;
   --app-text:#17212b;
   --app-text-muted:#5f6f7d;
-  --app-text-soft:#84919d;
+  --app-text-soft:#60717f;
   --app-accent:#0f766e;
+  --app-accent-contrast:#ffffff;
   --app-accent-hover:#0b5f59;
   --app-accent-soft:#e8f5f2;
   --app-focus:rgba(15,118,110,.22);
@@ -48,8 +49,9 @@
   --app-border-strong:#394954;
   --app-text:#e8edf1;
   --app-text-muted:#a3afb9;
-  --app-text-soft:#75838f;
+  --app-text-soft:#95a2ae;
   --app-accent:#49c5aa;
+  --app-accent-contrast:#082b24;
   --app-accent-hover:#67d5bd;
   --app-accent-soft:#15352f;
   --app-focus:rgba(73,197,170,.28);
@@ -131,7 +133,16 @@
 }
 
 [data-app-shell="true"] :focus-visible {
-  outline-color:var(--app-accent);
+  outline:2px solid var(--app-accent);
+  outline-offset:2px;
+}
+
+@media (max-width: 767px) {
+  [data-app-shell="true"] input:not([type="checkbox"]):not([type="radio"]),
+  [data-app-shell="true"] select,
+  [data-app-shell="true"] textarea {
+    font-size:1rem;
+  }
 }
 
 [data-app-shell="true"] {

@@ -1,4 +1,4 @@
-import { ConfigurationSectionNav } from "./ConfigurationSectionNav";
+import { ConfigurationSectionNav } from "../../../features/configuracion/ConfigurationSectionNav";
 
 export default function ConfigurationLayout({ children }: { children: React.ReactNode }) {
   return (

@@ -1,5 +1,5 @@
 // src/app/cliente/movimientos/page.tsx
-import MovimientosPanel from "@/app/Components/movimientos/MovimientosPanel";
+import MovimientosPanel from "@/features/movimientos/list/MovimientosPanel";
 import { redirect } from "next/navigation";
 import { getVerifiedSession } from "@/lib/server/session";
 
@@ -34,6 +34,7 @@ export default async function Page() {
       >
         <MovimientosPanel
           apiBase={MOVIMIENTOS_API_BASE}
+          authorization={session.authorization}
           rol={role}
           empresaIdUsuario={session.empresaId}
           localidadIdUsuario={session.localidadId}

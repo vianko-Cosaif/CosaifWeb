@@ -1,6 +1,6 @@
 # Contrato de autorización web
 
-La web consume el perfil `authorization` emitido por BackCosaif2. El contrato vigente es `policyVersion: 2`; si falta, cambia de versión o no permite la plataforma web, la sesión se rechaza y se solicita iniciar sesión nuevamente.
+La web consume el perfil `authorization` emitido por BackCosaif2. El contrato vigente es `policyVersion: 3`; si falta, cambia de versión o no permite la plataforma web, la sesión se rechaza y se solicita iniciar sesión nuevamente.
 
 ## Alcance de esta ofensiva
 
@@ -30,7 +30,8 @@ Los roles `OPERADOR`, `MAQUINISTA`, `MAQUINISTA_ARRASTRE`, `TORNO` y `LAVADO` no
 
 | Función | Administrador | Coordinador | Supervisor | Cliente | Cliente admin/coor | Arrastre Torreón |
 |---|---:|---:|---:|---:|---:|---:|
-| Ver movimientos naturales | permiso backend | localidad | localidad | empresa + localidad | empresa | no |
+| Ver rondas actuales naturales | permiso backend | localidad | localidad | todas las empresas de su localidad | empresa | no |
+| Ver historial y detalle de movimientos naturales | permiso backend | localidad | localidad | empresa + localidad | empresa | no |
 | Crear movimientos naturales | permiso backend | localidad | localidad | empresa + localidad | empresa | no |
 | Ver incidentes | permiso backend | localidad | localidad | empresa + localidad | empresa | empresa + localidad |
 | Resolver incidentes | permiso backend | permiso backend | permiso backend | permiso backend | permiso backend | permiso backend |
@@ -41,9 +42,17 @@ Los roles `OPERADOR`, `MAQUINISTA`, `MAQUINISTA_ARRASTRE`, `TORNO` y `LAVADO` no
 
 “Permiso backend” significa que la web no deduce autoridad por el nombre del rol: exige el permiso recibido en el token vigente.
 
+## Filtros de movimientos y rondas compartidas
+
+- Para `CLIENTE`, Activos utiliza la proyección de rondas actuales de la localidad firmada. Puede filtrar por empresa, pero no cambiar de localidad. La lista incluye pendientes y movimientos operativos de otras empresas; no concede permiso para editarlos ni consultar sus detalles privados.
+- Historial fuerza empresa y localidad de la sesión. Cambiar de Activos a Historial aplica el nuevo alcance y reinicia la página en una sola actualización; los enlaces y las vistas guardadas pasan por la misma normalización.
+- Los proxies generales, los detalles, las mutaciones, Torno y el historial de Arrastre no heredan la excepción de las rondas compartidas. Un parámetro `alcance=localidad` no amplía esos permisos.
+- Los demás roles usan el modo firmado (`GLOBAL`, `LOCALITY`, `COMPANY` o `COMPANY_LOCALITY`) para habilitar filtros. Una selección externa de patio también limita el selector interno.
+- Estados, prioridades, paginación y rangos de fechas se validan antes de consultar. Los estados operativos de rondas y de Torreón tienen reglas explícitas para no confundir un movimiento detenido con uno concluido.
+
 ## Operación
 
 - Una modificación de rol, permisos, empresa o localidad entra en vigor al renovar/revalidar la sesión.
-- Las sesiones antiguas que no contengan `authorization` v2 se invalidan una sola vez por diseño.
+- Las sesiones antiguas que no contengan `authorization` v3 se invalidan una sola vez por diseño.
 - `SESSION_SECRET` debe tener al menos 32 caracteres y ser distinto de cualquier secreto del backend.
 - No registrar tokens, contraseñas, cookies, cuerpos completos ni respuestas internas en el navegador.

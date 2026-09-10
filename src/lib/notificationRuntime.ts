@@ -33,8 +33,8 @@ export function getNotificationRuntimePolicy() {
   const devEnabled = isTrue(process.env.NEXT_PUBLIC_ENABLE_DEV_NOTIFICATIONS);
   const prodDisabled = isFalse(process.env.NEXT_PUBLIC_ENABLE_PUSH_NOTIFICATIONS);
   const enabled = runtimeEnv === "production" ? !prodDisabled : devEnabled;
-  const requireLoginFlag = process.env.NEXT_PUBLIC_REQUIRE_PUSH_NOTIFICATIONS;
-  const requiredForLogin = enabled && (runtimeEnv === "production" ? !isFalse(requireLoginFlag) : isTrue(requireLoginFlag));
+  // Push availability never determines whether an authenticated user can work.
+  const requiredForLogin = false;
   const reason = enabled
     ? "enabled"
     : runtimeEnv === "development"

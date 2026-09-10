@@ -1,8 +1,8 @@
 // src/app/cliente/page.tsx  (SERVER component)
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import IncidenteController from "./ui/IncidenteController";
-import Menu from "@/app/Components/Menu/Menu";
+import IncidenteController from "../../features/incidentes/operacion/IncidenteController";
+import Menu from "@/components/Menu/Menu";
 
 export const dynamic = "force-dynamic"; // opcional
 

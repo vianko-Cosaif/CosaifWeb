@@ -1,6 +1,6 @@
 "use client";
 
-import { SelectField } from "@/app/Components/ui";
+import { SelectField } from "@/components/ui";
 
 export type IncidentCatalogOption = {
   id: number;

@@ -1,21 +1,20 @@
 import { Suspense } from "react";
-import { cookies } from "next/headers";
+import { getVerifiedSession } from "@/lib/server/session";
+import { normalizeTornoRole } from "@/features/torno/lib/permissions";
 import { redirect } from "next/navigation";
-import TornoModule from "@/app/torno/components/TornoModule";
+import TornoModule from "@/features/torno/components/TornoModule";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("token")?.value;
-  const role = cookieStore.get("role")?.value?.toUpperCase();
-
-  if (!token) redirect("/login?loc=coordinador");
-  if (role && role !== "COORDINADOR") redirect("/");
+  const session = await getVerifiedSession();
+  if (!session) redirect("/login?loc=coordinador");
+  const role = session.role;
+  if (role !== "COORDINADOR") redirect("/");
 
   return (
     <Suspense fallback={<div className="h-28 animate-pulse rounded-md border border-slate-200 bg-white" />}>
-      <TornoModule roleHint="COORDINADOR" />
+      <TornoModule roleHint={normalizeTornoRole(role)} initialSession={{ id: session.userId, rol: role, empresaId: session.empresaId, localidadId: session.localidadId }} />
     </Suspense>
   );
 }

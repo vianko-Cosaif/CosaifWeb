@@ -1,3 +1,5 @@
+import { MovementScopeError, scopePrivateClientMovementRead } from "@/lib/auth/movementScope";
+import { buildUpstreamHeaders, fetchUpstream, getErrorStatus, upstreamResponseHeaders } from "@/lib/server/upstream";
 import "server-only";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
@@ -8,38 +10,16 @@ import { rejectCrossSiteMutation } from "@/lib/server/requestSecurity";
 import { canForwardApiRequest } from "@/lib/server/requestAuthorization";
 
 const ORIGIN = normalizeHttpOrigin(process.env.API_ORIGIN);
-const BFF_TIMEOUT_MS = Number(process.env.BFF_TIMEOUT_MS || 12000);
 
-function getErrorStatus(error: unknown): 502 | 504 {
-  const code = (error as { code?: string })?.code;
-  const name = (error as { name?: string })?.name;
-  if (code === "UND_ERR_HEADERS_TIMEOUT" || name === "AbortError") return 504;
-  return 502;
-}
+
+
 
 function upstreamUrl(path: string, search: string) {
   const p = path.replace(/^\/+/, "");
   return `${ORIGIN}/${p}${search || ""}`;
 }
 
-function buildUpstreamHeaders(req: NextRequest, token: string) {
-  const headers = new Headers();
-  const accept = req.headers.get("accept");
-  const contentType = req.headers.get("content-type");
-  const userAgent = req.headers.get("user-agent");
-  const forwardedFor = req.headers.get("x-forwarded-for");
-  const forwardedProto = req.headers.get("x-forwarded-proto");
 
-  if (accept) headers.set("accept", accept);
-  if (contentType) headers.set("content-type", contentType);
-  if (userAgent) headers.set("user-agent", userAgent);
-  if (forwardedFor) headers.set("x-forwarded-for", forwardedFor);
-  if (forwardedProto) headers.set("x-forwarded-proto", forwardedProto);
-
-  if (token) headers.set("authorization", `Bearer ${token}`);
-
-  return headers;
-}
 
 function readUsersCollection(value: unknown): Record<string, unknown>[] {
   if (Array.isArray(value)) return value.filter((item): item is Record<string, unknown> => !!item && typeof item === "object");
@@ -80,25 +60,22 @@ function filterUsersPayload(value: unknown, localidadId: number): unknown {
 }
 
 async function coordinatorCanManageUser(headers: Headers, userId: number, localidadId: number): Promise<boolean> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), BFF_TIMEOUT_MS);
+
   try {
     const url = upstreamUrl("/usuarios", `?localidadId=${localidadId}`);
-    const response = await fetch(url, { headers, cache: "no-store", signal: controller.signal });
+    const response = await fetchUpstream(url, { headers });
     if (!response.ok) return false;
     const value = await response.json().catch(() => null);
     const user = readUsersCollection(value).find((item) => Number(item.id) === userId);
     return !!user && userLocalidadId(user) === localidadId && String(user.rol || "").toUpperCase() !== "ADMINISTRADOR";
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  } catch { return false; }
 }
 
 async function proxy(req: NextRequest) {
   const crossSite = rejectCrossSiteMutation(req);
   if (crossSite) return crossSite;
   if (!ORIGIN) {
-    return NextResponse.json({ error: "API_ORIGIN not set" }, { status: 500 });
+    return NextResponse.json({ error: "Servicio no configurado" }, { status: 500 });
   }
 
   const cookieStore = await cookies();
@@ -122,6 +99,13 @@ async function proxy(req: NextRequest) {
     return NextResponse.json({ message: "Esta acción no está habilitada para tu perfil." }, { status: 403 });
   }
   const searchParams = new URLSearchParams(req.nextUrl.searchParams);
+  try {
+    scopePrivateClientMovementRead(session, upstreamPath, req.method, searchParams);
+  } catch (error) {
+    if (error instanceof MovementScopeError) return NextResponse.json({ message: error.message }, { status: error.status });
+    throw error;
+  }
+
   const hasBody = !["GET", "HEAD"].includes(req.method);
   const jsonBody = hasBody && (req.headers.get("content-type") || "").includes("application/json")
     ? await req.clone().json().catch(() => null)
@@ -300,44 +284,27 @@ async function proxy(req: NextRequest) {
     redirect: "manual",
   };
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), BFF_TIMEOUT_MS);
+
 
   try {
-    const r = await fetch(url, { ...init, signal: controller.signal });
-    const responseBody = await r.arrayBuffer();
+    const r = await fetchUpstream(url, init, req.signal);
     const contentType = r.headers.get("content-type") ?? "application/json";
 
     if (restrictedCoordinator && isUsersCollection && req.method === "GET" && r.ok && contentType.includes("application/json")) {
-      const parsed = JSON.parse(new TextDecoder().decode(responseBody)) as unknown;
+      const parsed = await r.json() as unknown;
       return NextResponse.json(filterUsersPayload(parsed, assignedLocalidadId), {
         status: r.status,
         headers: { "cache-control": "no-store" },
       });
     }
 
-    const responseHeaders: Record<string, string> = {
-      "content-type": contentType,
-      "cache-control": "no-store",
-    };
-    const contentDisposition = r.headers.get("content-disposition");
-    const contentLength = r.headers.get("content-length");
-    if (contentDisposition) responseHeaders["content-disposition"] = contentDisposition;
-    if (contentLength) responseHeaders["content-length"] = contentLength;
-
-    return new NextResponse(responseBody, {
-      status: r.status,
-      headers: responseHeaders,
-    });
+    return new NextResponse(r.body, { status: r.status, headers: upstreamResponseHeaders(r) });
   } catch (error) {
     const status = getErrorStatus(error);
-    console.error("[/bff/*] fetch error:", error);
     return NextResponse.json(
-      { error: status === 504 ? "Upstream timeout" : "Upstream unavailable" },
+      { error: status === 504 ? "El servicio tardó demasiado" : "Servicio no disponible" },
       { status }
     );
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 

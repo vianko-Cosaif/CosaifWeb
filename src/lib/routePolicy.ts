@@ -1,6 +1,7 @@
 // src/lib/routePolicy.ts
 import {
   APP_ROLES,
+  AUTHORIZATION_POLICY_VERSION,
   PERMISSIONS,
   canUseWeb,
   getRoleCapabilities,
@@ -66,7 +67,7 @@ export const OPEN_PREFIXES = [
 /** =========================
  *  Utils de path
  *  ========================= */
-export const policyVersion = 2;
+export const policyVersion = AUTHORIZATION_POLICY_VERSION;
 
 export function normalizeRole(input?: string | null): Role | null {
   return normalizeAppRole(input);
@@ -178,6 +179,7 @@ export function homeForAuthorization(authorization?: AuthorizationProfile | null
 
 function permissionsForPage(pathname: string, role: AppRole): Permission[] | null {
   const path = pathname.toLowerCase();
+  if (path.endsWith("/editar")) return [PERMISSIONS.MOVEMENTS_EDIT];
   if (path.includes("/usuarios")) return [PERMISSIONS.USERS_READ];
   if (path.includes("/configuracion")) {
     return [PERMISSIONS.COMPANIES_MANAGE, PERMISSIONS.OPERATIONAL_CATALOGS_MANAGE, PERMISSIONS.CATALOG_CONFIGURATION_MANAGE];
@@ -317,11 +319,25 @@ export type UserMeta = {
   empresaId?: number | null;
   localidadId?: number | null;
   rol?: string | null;
+  authorization?: AuthorizationProfile | null;
 };
 
-/** Solo administradores pueden operar sin una localidad forzada. */
-export function getFilterPolicy(user: UserMeta): FilterPolicy {
+/** Movement lists follow the signed scope; only the current client queue is shared. */
+export function getFilterPolicy(user: UserMeta, context?: { movementPeriod: "actuales" | "pasados" }): FilterPolicy {
   const capabilities = getRoleCapabilities(user.rol);
+  if (context) {
+    const role = user.authorization?.role ?? normalizeRole(user.rol);
+    const scope = user.authorization?.scope;
+    const mode = scope?.mode;
+    const shared = role === "CLIENTE" && context.movementPeriod === "actuales";
+    const canEditEmpresa = shared || (role !== "CLIENTE" && (mode ? mode === "GLOBAL" || mode === "LOCALITY" : capabilities.canViewAllCompanies));
+    const canEditLocalidad = role !== "CLIENTE" && (mode ? mode === "GLOBAL" || mode === "COMPANY" : capabilities.canSwitchLocalidad);
+    return {
+      forcedEmpresaId: canEditEmpresa ? undefined : scope?.empresaId ?? user.empresaId ?? undefined,
+      forcedLocalidadId: canEditLocalidad ? undefined : scope?.localidadId ?? user.localidadId ?? undefined,
+      canEditEmpresa, canEditLocalidad, canEditDates: true, canSearch: true,
+    };
+  }
   return {
     forcedEmpresaId: capabilities.canViewAllCompanies ? undefined : user.empresaId ?? undefined,
     forcedLocalidadId: capabilities.canSwitchLocalidad ? undefined : user.localidadId ?? undefined,
