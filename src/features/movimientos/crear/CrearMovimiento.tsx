@@ -330,7 +330,7 @@ export default function CrearMovimiento() {
         return false;
       }
     }
-    if (step === 1 && guidedStepOnePage === 1 && form.service === "Torno" && form.agendado) {
+    if (step === 1 && guidedStepOnePage === 1 && useTornoMedicionStep && form.agendado) {
       const scheduledAt = new Date(form.fechaProgramada || "");
       if (Number.isNaN(scheduledAt.getTime()) || scheduledAt <= new Date()) {
         window.alert("Selecciona una fecha y hora valida para agendar el torno.");

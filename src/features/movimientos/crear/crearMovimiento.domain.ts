@@ -92,14 +92,15 @@ export function validateStep1Data(args: {
   selectionMode: SelectionMode;
 }): Record<string, string> {
   const { canManageAll, canChooseLocality, resolvedIds, form, selectionMode } = args;
+  const effectiveMode: SelectionMode = selectionMode;
   const e: Record<string, string> = {};
 
   if (canManageAll && !Number.isFinite(resolvedIds.empresaId)) e.empresaId = "Selecciona empresa.";
   if (canChooseLocality && !Number.isFinite(resolvedIds.localidadId)) e.selectedLocalityId = "Selecciona localidad.";
 
   if (form.service) {
-    if (selectionMode === "de_via" && !form.fromTrack) e.fromTrack = "Selecciona via de origen.";
-    if (selectionMode === "para_via" && !form.toTrack) e.toTrack = "Selecciona via de destino.";
+    if (effectiveMode === "de_via" && !form.fromTrack) e.fromTrack = "Selecciona via de origen.";
+    if (effectiveMode === "para_via" && !form.toTrack) e.toTrack = "Selecciona via de destino.";
   } else {
     if (!form.fromTrack) e.fromTrack = "Selecciona via de origen.";
     if (!form.toTrack) e.toTrack = "Selecciona via de destino.";
@@ -291,7 +292,7 @@ export function buildMovimientoPayload(args: {
     incidenteGlobal: false,
   };
 
-  if (form.service === "Torno" && selectionMode === "de_via") {
+  if (form.service === "Torno" && fromTrack) {
     if (!tornoMedicion) {
       throw new Error("No hay mediciones de torno disponibles para este movimiento.");
     }

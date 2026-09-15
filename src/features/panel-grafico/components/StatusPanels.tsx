@@ -2,11 +2,69 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Activity, AlertTriangle, Clock3, Gauge, MapPinned, PauseCircle, Route, TrainFront, Wrench, type LucideIcon } from "lucide-react";
+import { Activity, AlertTriangle, Clock3, Droplet, Gauge, GitBranch, MapPinned, PauseCircle, Route, TrainFront, Wrench, type LucideIcon } from "lucide-react";
 import { type HeaderEvent, type HeaderEventTone, type IncidentRow, type ChangeKind, type MovementRow, type PatioTrackCatalogItem } from "../types";
 import { tickerTone, panelClass, listContainerMotion, listItemMotion, panelEase, KPI_PANEL_ROTATION_MS, activeServiceTone, rowTypeTone, rowTypeAccentTone, movementTypeTone, statusTone } from "../styles";
 import { incidentSeverityRail } from "../data";
 import { PatioFerroviarioCanvas } from "../patio/PatioFerroviarioCanvas";
+import { isExternalFlowMovement, movementPatioPlacement, trackLabelFromId } from "../patio/model";
+
+type WorkAreaViewMode = "circuit" | "flow";
+
+const movementTypeIcons: Record<MovementRow["type"], LucideIcon> = {
+  Torno: Wrench,
+  Lavado: Droplet,
+  Normal: TrainFront,
+};
+
+function MovementTypeBadge({ type, className = "" }: { type: MovementRow["type"]; className?: string }) {
+  return (
+    <span className={`inline-flex min-w-0 items-center justify-center truncate rounded-md border font-black ${movementTypeTone[type]} ${className}`}>
+      <span className="truncate">{type}</span>
+    </span>
+  );
+}
+
+function getRouteServiceType(segment: string): MovementRow["type"] | null {
+  const normalized = segment
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (normalized.includes("torno") || normalized.includes("torneado")) return "Torno";
+  if (normalized.includes("lavado")) return "Lavado";
+  return null;
+}
+
+function RouteWithServiceIcon({ row }: { row: MovementRow }) {
+  const route = row.route || "-";
+  const segments = route.split("->").map((part) => part.trim()).filter(Boolean);
+  const displaySegments = segments.length ? segments : [route];
+
+  return (
+    <span className="flex min-w-0 items-center justify-center gap-1 overflow-hidden">
+      {displaySegments.map((segment, index) => {
+        const serviceType = getRouteServiceType(segment);
+        const Icon = serviceType ? movementTypeIcons[serviceType] : null;
+        return (
+          <span key={`${segment}-${index}`} className="inline-flex min-w-0 items-center gap-1">
+            {index > 0 ? <span className="shrink-0 text-blue-700 dark:text-blue-200">-&gt;</span> : null}
+            {Icon && serviceType ? (
+              <span
+                className={`inline-flex h-6 w-7 shrink-0 items-center justify-center rounded-md border ${movementTypeTone[serviceType]}`}
+                title={segment}
+                aria-label={segment}
+              >
+                <Icon className="h-3 w-3 shrink-0" aria-hidden="true" strokeWidth={2.5} />
+              </span>
+            ) : (
+              <span className="truncate">{segment}</span>
+            )}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
 
 export function LiveEventTicker({ events, loading }: { events: HeaderEvent[]; loading: boolean }) {
   const [cycleCount, setCycleCount] = useState(0);
@@ -186,6 +244,7 @@ export function WorkArea({
   changedKeys: Map<string, ChangeKind>;
 }) {
   const hasChanges = changedKeys.size > 0;
+  const [viewMode, setViewMode] = useState<WorkAreaViewMode>("circuit");
   return (
     <section className="flex h-full min-h-0 flex-col gap-1">
       <AnimatePresence initial={false}>
@@ -212,11 +271,37 @@ export function WorkArea({
                 {new Intl.DateTimeFormat("es-MX", { hour: "2-digit", minute: "2-digit" }).format(new Date())}
               </span>
             </div>
-            <div className="flex flex-wrap justify-end gap-x-2.5 gap-y-1 text-[9px] font-bold text-[var(--app-text-muted)]">
-              <LegendDot color="bg-emerald-500" label="Operando" />
-              <LegendDot color="bg-blue-600" label="En movimiento" />
-              <LegendDot color="bg-rose-600" label="Detenido" />
-              <LegendDot color="bg-slate-400" label="En espera" />
+            <div className="flex flex-wrap items-center justify-end gap-2 text-[9px] font-bold text-[var(--app-text-muted)]">
+              <div className="inline-flex rounded-full border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0.5 text-[9px] font-black">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("circuit")}
+                  aria-pressed={viewMode === "circuit"}
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-1 transition ${viewMode === "circuit" ? "bg-emerald-600 text-white shadow-sm" : "text-[var(--app-text-muted)] hover:text-[var(--app-text)]"}`}
+                  title="Ver circuito del area"
+                >
+                  <MapPinned className="h-3 w-3" />
+                  Circuito
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("flow")}
+                  aria-pressed={viewMode === "flow"}
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-1 transition ${viewMode === "flow" ? "bg-blue-600 text-white shadow-sm" : "text-[var(--app-text-muted)] hover:text-[var(--app-text)]"}`}
+                  title="Ver flujo por etapa"
+                >
+                  <GitBranch className="h-3 w-3" />
+                  Flujo
+                </button>
+              </div>
+              {viewMode === "circuit" ? (
+                <>
+                  <LegendDot color="bg-emerald-500" label="Operando" />
+                  <LegendDot color="bg-blue-600" label="En movimiento" />
+                  <LegendDot color="bg-rose-600" label="Detenido" />
+                  <LegendDot color="bg-slate-400" label="En espera" />
+                </>
+              ) : null}
             </div>
           </div>
         </div>
@@ -228,7 +313,31 @@ export function WorkArea({
             transition={{ duration: 0.55, delay: 0.2, ease: panelEase }}
           >
             <AsyncPanelLoader visible={loading} label="Sincronizando area de trabajo" />
-            <PatioFerroviarioCanvas movements={movements} torneados={torneados} trackCatalog={trackCatalog} changedKeys={changedKeys} />
+            <AnimatePresence mode="wait" initial={false}>
+              {viewMode === "circuit" ? (
+                <motion.div
+                  key="work-circuit"
+                  className="h-full min-h-0"
+                  initial={{ opacity: 0, scale: 0.985 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.985 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                >
+                  <PatioFerroviarioCanvas movements={movements} torneados={torneados} trackCatalog={trackCatalog} changedKeys={changedKeys} />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="work-flow"
+                  className="h-full min-h-0"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                >
+                  <WorkFlowView movements={movements} torneados={torneados} changedKeys={changedKeys} />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         </div>
         <div className="grid shrink-0 gap-2 border-t border-[var(--app-border)] px-2.5 py-1 text-[10px] font-black text-[var(--app-text)] md:grid-cols-[1fr_1fr]">
@@ -244,6 +353,168 @@ export function WorkArea({
         </div>
       </div>
     </section>
+  );
+}
+
+function isPreEntryMovement(row: MovementRow) {
+  return isExternalFlowMovement(row);
+}
+
+function preEntryDestination(row: MovementRow) {
+  const destinationTrackId = movementPatioPlacement(row).destinationTrackId;
+  return destinationTrackId ? trackLabelFromId(destinationTrackId) : row.destination;
+}
+
+function WorkFlowView({
+  movements,
+  torneados,
+  changedKeys,
+}: {
+  movements: MovementRow[];
+  torneados: MovementRow[];
+  changedKeys: Map<string, ChangeKind>;
+}) {
+  const preEntry = movements.filter(isPreEntryMovement);
+  const stopped = [...movements, ...torneados].filter((row) => row.status === "DETENIDO");
+  const inCircuit = movements.filter((row) => !isPreEntryMovement(row) && row.status !== "DETENIDO");
+  const services = torneados.filter((row) => row.status !== "DETENIDO");
+  const stages = [
+    {
+      key: "pre-entry",
+      title: "Flujo externo",
+      count: preEntry.length,
+      tone: "sky",
+      rows: preEntry,
+      getMeta: (row: MovementRow) => row.route || `Para via ${preEntryDestination(row)}`,
+    },
+    {
+      key: "circuit",
+      title: "En circuito",
+      count: inCircuit.length,
+      tone: "emerald",
+      rows: inCircuit,
+      getMeta: (row: MovementRow) => row.route,
+    },
+    {
+      key: "services",
+      title: "Servicios",
+      count: services.length,
+      tone: "rose",
+      rows: services,
+      getMeta: (row: MovementRow) => row.status,
+    },
+    {
+      key: "stopped",
+      title: "Detenidos",
+      count: stopped.length,
+      tone: "amber",
+      rows: stopped,
+      getMeta: (row: MovementRow) => row.activeIncidentCount ? `${row.activeIncidentCount} incidentes` : row.route,
+    },
+  ] as const;
+
+  return (
+    <div className="grid h-full min-h-0 gap-2 overflow-hidden p-2 lg:grid-cols-4">
+      {stages.map((stage, stageIndex) => (
+        <section
+          key={stage.key}
+          className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border bg-white/82 shadow-sm dark:bg-slate-950/64 ${
+            stage.tone === "sky"
+              ? "border-sky-200 dark:border-sky-900/60"
+              : stage.tone === "emerald"
+                ? "border-emerald-200 dark:border-emerald-900/60"
+                : stage.tone === "rose"
+                  ? "border-rose-200 dark:border-rose-900/60"
+                  : "border-amber-200 dark:border-amber-900/60"
+          }`}
+        >
+          <div
+            className={`flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2 ${
+              stage.tone === "sky"
+                ? "border-sky-100 bg-sky-50/85 dark:border-sky-900/55 dark:bg-sky-950/25"
+                : stage.tone === "emerald"
+                  ? "border-emerald-100 bg-emerald-50/85 dark:border-emerald-900/55 dark:bg-emerald-950/25"
+                  : stage.tone === "rose"
+                    ? "border-rose-100 bg-rose-50/85 dark:border-rose-900/55 dark:bg-rose-950/25"
+                    : "border-amber-100 bg-amber-50/85 dark:border-amber-900/55 dark:bg-amber-950/25"
+            }`}
+          >
+            <div className="min-w-0">
+              <h3 className="truncate text-xs font-black text-slate-950 dark:text-white">{stage.title}</h3>
+              <p className="truncate text-[9px] font-bold text-[var(--app-text-muted)]">
+                {stageIndex === 0 ? "Fuera del area" : stageIndex === 1 ? "Dentro del patio" : stageIndex === 2 ? "Trabajo activo" : "Requiere atencion"}
+              </p>
+            </div>
+            <span
+              className={`grid h-7 min-w-7 shrink-0 place-items-center rounded-full px-2 text-xs font-black ${
+                stage.tone === "sky"
+                  ? "bg-sky-500 text-white"
+                  : stage.tone === "emerald"
+                    ? "bg-emerald-600 text-white"
+                    : stage.tone === "rose"
+                      ? "bg-rose-600 text-white"
+                      : "bg-amber-500 text-white"
+              }`}
+            >
+              {stage.count}
+            </span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            {stage.rows.length ? (
+              <div className="grid gap-2">
+                {stage.rows.slice(0, 12).map((row) => (
+                  <FlowMovementCard key={`${stage.key}-${row.key}`} row={row} meta={stage.getMeta(row)} changed={changedKeys.has(row.key)} />
+                ))}
+                {stage.rows.length > 12 ? (
+                  <div className="rounded-lg bg-slate-100 px-2 py-1 text-center text-[10px] font-black text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                    +{stage.rows.length - 12}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="grid h-full min-h-24 place-items-center rounded-lg border border-dashed border-[var(--app-border)] bg-[var(--app-surface-subtle)] px-3 text-center text-[11px] font-bold text-[var(--app-text-muted)]">
+                Sin registros
+              </div>
+            )}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function FlowMovementCard({
+  row,
+  meta,
+  changed,
+}: {
+  row: MovementRow;
+  meta: string;
+  changed: boolean;
+}) {
+  const activeTone = activeServiceTone(row.type);
+  const isActive = row.status === "EN PROCESO";
+  return (
+    <motion.article
+      layout
+      animate={{ boxShadow: changed ? "0 12px 28px rgba(37,99,235,.18)" : isActive ? activeTone.shadow : "0 5px 14px rgba(15,23,42,.06)" }}
+      className={`relative min-w-0 overflow-hidden rounded-lg border px-2 py-2 text-left ${rowTypeTone[row.type]} ${rowTypeAccentTone[row.type]} ${isActive ? activeTone.className : ""} before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-r-full before:content-['']`}
+    >
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-sm font-black text-slate-950 dark:text-white">{row.equipment}</span>
+        <MovementTypeBadge type={row.type} className="shrink-0 px-1.5 py-0.5 text-[9px]" />
+      </div>
+      <p className="mt-1 truncate text-[10px] font-bold text-[var(--app-text-muted)]">{meta}</p>
+      <div className="mt-2 flex min-w-0 items-center justify-between gap-2">
+        <span className={`inline-flex min-w-0 items-center gap-1 truncate rounded-md border px-1.5 py-0.5 text-[8px] font-black ${statusTone[row.status]}`}>
+          {isActive ? <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${activeTone.dot}`} /> : null}
+          <span className="truncate">{row.status}</span>
+        </span>
+        <span className="shrink-0 rounded-md bg-white/75 px-1.5 py-0.5 text-[9px] font-black text-amber-800 ring-1 ring-amber-100 dark:bg-slate-950/60 dark:text-amber-200 dark:ring-amber-900/50">
+          {row.time}
+        </span>
+      </div>
+    </motion.article>
   );
 }
 
@@ -420,15 +691,17 @@ export function RightOperationsPanel({
               <button
                 type="button"
                 onClick={() => onModeChange("movimientos")}
-                className={`rounded-full px-2 py-1 transition ${mode === "movimientos" ? "bg-emerald-600 text-white shadow-sm" : "text-[var(--app-text-muted)] hover:text-[var(--app-text)]"}`}
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-1 transition ${mode === "movimientos" ? "bg-emerald-600 text-white shadow-sm" : "text-[var(--app-text-muted)] hover:text-[var(--app-text)]"}`}
               >
+                <TrainFront className="h-3 w-3 shrink-0" aria-hidden="true" />
                 Mov.
               </button>
               <button
                 type="button"
                 onClick={() => onModeChange("torneados")}
-                className={`rounded-full px-2 py-1 transition ${mode === "torneados" ? "bg-rose-600 text-white shadow-sm" : "text-[var(--app-text-muted)] hover:text-[var(--app-text)]"}`}
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-1 transition ${mode === "torneados" ? "bg-rose-600 text-white shadow-sm" : "text-[var(--app-text-muted)] hover:text-[var(--app-text)]"}`}
               >
+                <Wrench className="h-3 w-3 shrink-0" aria-hidden="true" />
                 Tor.
               </button>
             </div>
@@ -557,12 +830,10 @@ export function OperationsTable({
                 </span>
                 <span className="block truncate text-[9px] font-bold text-[var(--app-text-muted)] 2xl:text-[10px]">{movement.company}</span>
               </span>
-              <span className="min-w-0 truncate rounded-lg bg-blue-50/85 px-1 py-1 text-[12px] font-black leading-tight text-blue-950 ring-1 ring-blue-100 dark:bg-blue-950/25 dark:text-blue-100 dark:ring-blue-900/50 2xl:px-1.5 2xl:text-[13px]">
-                {movement.route}
+              <span className="min-w-0 overflow-hidden rounded-lg bg-blue-50/85 px-1 py-1 text-[12px] font-black leading-tight text-blue-950 ring-1 ring-blue-100 dark:bg-blue-950/25 dark:text-blue-100 dark:ring-blue-900/50 2xl:px-1.5 2xl:text-[13px]">
+                <RouteWithServiceIcon row={movement} />
               </span>
-              <span className={`inline-flex min-h-6 min-w-0 items-center justify-center truncate rounded-md border px-1 text-[9px] font-black 2xl:px-1.5 2xl:text-[10px] ${movementTypeTone[movement.type]}`}>
-                {movement.type}
-              </span>
+              <MovementTypeBadge type={movement.type} className="min-h-6 px-1 text-[9px] 2xl:px-1.5 2xl:text-[10px]" />
               <span className={`inline-flex min-h-6 min-w-0 items-center justify-center gap-1 truncate rounded-md border px-1 text-[8px] font-black 2xl:px-1.5 2xl:text-[9px] ${statusTone[movement.status]}`}>
                 {isActiveService ? (
                   <span className="relative inline-flex h-2 w-2 shrink-0">

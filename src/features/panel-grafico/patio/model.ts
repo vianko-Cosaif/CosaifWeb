@@ -1,4 +1,4 @@
-import { type PatioTrackDefinition, type MovementRow, type PatioTrackCatalogItem, type PatioTrack, type PatioPlacement, type MovementType, type PatioServiceActivity, type MovementStatus, type PatioLocomotiveStatus } from "../types";
+import { type PatioTrackDefinition, type MovementRow, type PatioTrackCatalogItem, type PatioTrack, type PatioPlacement, type MovementType, type PatioServiceActivity, type MovementStatus, type PatioLocomotiveStatus, type PatioStagingLocomotive, type PatioStagingKind } from "../types";
 
 export const PATIO_TRACK_START_ANGLE = 189;
 
@@ -25,6 +25,7 @@ export function buildPatioTracks(movements: MovementRow[], catalog: PatioTrackCa
   movements.forEach((movement) => {
     const placement = movementPatioPlacement(movement);
     if (!placement.trackId) return;
+    if (placement.placement === "destination" && !placement.originTrackId) return;
 
     const current = assigned.get(placement.trackId) ?? [];
     if (current.length >= 3) return;
@@ -73,6 +74,35 @@ export function buildPatioTracks(movements: MovementRow[], catalog: PatioTrackCa
       locomotives,
     };
   });
+}
+
+export function buildPatioStagingLocomotives(movements: MovementRow[]): PatioStagingLocomotive[] {
+  return movements
+    .map((movement) => {
+      const placement = movementPatioPlacement(movement);
+      const flow = patioMovementFlow(movement, placement);
+      if (!flow || (flow.stageKind === "yard-transfer" && placement.originTrackId && placement.destinationTrackId)) return null;
+      if (placement.originTrackId && placement.destinationTrackId && placement.originTrackId !== placement.destinationTrackId) return null;
+      return {
+        key: movement.key,
+        number: movement.equipment,
+        status: toPatioStatus(movement.status),
+        type: movement.type,
+        activeIncidentCount: movement.activeIncidentCount,
+        placement: "destination" as const,
+        originTrackId: placement.originTrackId,
+        destinationTrackId: placement.destinationTrackId,
+        originLabel: flow.originLabel,
+        destinationLabel: flow.destinationLabel,
+        stageLabel: flow.stageLabel,
+        stageKind: flow.stageKind,
+      };
+    })
+    .filter(Boolean) as PatioStagingLocomotive[];
+}
+
+export function isExternalFlowMovement(movement: MovementRow) {
+  return patioMovementFlow(movement) !== null;
 }
 
 export function buildPatioTrackDefinitions(movements: MovementRow[], catalog: PatioTrackCatalogItem[]): PatioTrackDefinition[] {
@@ -158,6 +188,34 @@ export function movementPatioPlacement(movement: MovementRow): {
   return { trackId: destinationTrackId, placement: "destination", originTrackId, destinationTrackId };
 }
 
+export function patioMovementFlow(
+  movement: MovementRow,
+  placement = movementPatioPlacement(movement)
+): { originLabel: string; destinationLabel: string; stageLabel: string; stageKind: PatioStagingKind } | null {
+  const originExternal = routeToExternalOriginLabel(movement.origin);
+  const destinationSpecial = routeToSpecialLabel(movement.destination);
+  const originLabel = placement.originTrackId
+    ? `Via ${trackLabelFromId(placement.originTrackId)}`
+    : originExternal ?? serviceOriginLabel(movement) ?? "Exterior";
+  const destinationLabel = placement.destinationTrackId
+    ? `Via ${trackLabelFromId(placement.destinationTrackId)}`
+    : destinationSpecial ?? movement.destination ?? "Exterior";
+
+  if (originExternal) {
+    return { originLabel, destinationLabel, stageLabel: "Patio externo", stageKind: "yard-transfer" };
+  }
+
+  if (movement.type !== "Normal" && !placement.originTrackId && placement.destinationTrackId) {
+    return { originLabel, destinationLabel, stageLabel: "Salida servicio", stageKind: "service-exit" };
+  }
+
+  if (!placement.originTrackId && placement.destinationTrackId) {
+    return { originLabel, destinationLabel, stageLabel: "Pre-ingreso", stageKind: "pre-entry" };
+  }
+
+  return null;
+}
+
 export function routeToTrackId(route: string): string | null {
   const rawOrigin = String(route ?? "").split("->")[0]?.trim() ?? "";
   const normalized = rawOrigin
@@ -173,15 +231,58 @@ export function routeToTrackId(route: string): string | null {
   return `VIA-${via}`;
 }
 
+export function routeToSpecialLabel(route: string): string | null {
+  const normalized = String(route ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized || normalized === "-") return null;
+  if (normalized.includes("TORNO") || normalized.includes("TORNE")) return "Torno";
+  if (normalized.includes("LAVADO")) return "Lavado";
+  if (normalized.includes("MESA")) return "Mesa giratoria";
+  if (normalized.includes("COMBUST")) return "Combustible";
+  if (normalized.includes("PALMA")) return "Palma";
+  return null;
+}
+
+export function routeToExternalOriginLabel(route: string): string | null {
+  const label = routeToSpecialLabel(route);
+  return label === "Mesa giratoria" || label === "Combustible" || label === "Palma" ? label : null;
+}
+
+export function serviceOriginLabel(movement: MovementRow) {
+  if (movement.type === "Torno") return "Torno";
+  if (movement.type === "Lavado") return "Lavado";
+  return null;
+}
+
+export function serviceDestinationLabel(movement: MovementRow) {
+  if (movement.type === "Torno") return "Torno";
+  if (movement.type === "Lavado") return "Lavado";
+  return null;
+}
+
 export function buildServiceActivity(rows: MovementRow[], type: MovementType): PatioServiceActivity {
-  const active = rows.find((row) => row.type === type && row.status === "EN PROCESO") ?? rows.find((row) => row.type === type);
-  return active
-    ? {
-        number: active.equipment,
-        status: toPatioStatus(active.status),
-        type: active.type,
-      }
-    : null;
+  const queue = rows
+    .filter((row) => row.type === type)
+    .sort((left, right) => serviceStatusRank(left.status) - serviceStatusRank(right.status))
+    .slice(0, 5)
+    .map((row) => ({
+      number: row.equipment,
+      status: toPatioStatus(row.status),
+      type: row.type,
+    }));
+  const active = queue[0];
+  return active ? { ...active, queue } : null;
+}
+
+export function serviceStatusRank(status: MovementStatus) {
+  if (status === "EN PROCESO") return 0;
+  if (status === "EN COLA" || status === "SOLICITADO" || status === "EN ESPERA") return 1;
+  if (status === "DETENIDO") return 2;
+  return 3;
 }
 
 export function toPatioStatus(status: MovementStatus): PatioLocomotiveStatus {

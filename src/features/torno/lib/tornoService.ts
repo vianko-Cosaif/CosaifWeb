@@ -237,6 +237,10 @@ export function normalizeMeasures(input: any): TornoMeasures {
   return measures;
 }
 
+function firstMeasureSource(...sources: any[]) {
+  return sources.find((source) => Object.keys(normalizeMeasures(source)).length > 0);
+}
+
 function normalizeImages(input: any): TornoImageRef[] {
   const pieces = [
     ...(Array.isArray(input?.imagenes) ? input.imagenes : []),
@@ -423,8 +427,20 @@ function normalizeHistoryItem(input: any): TornoHistoryItem {
     updatedAt: normalizeDate(input.actualizadoEn ?? input.updatedAt),
     operator: asText(input.tornero ?? input.operador ?? input.usuario ?? input.user ?? input.torneroNombre ?? input.torneroId, ""),
     operatorId: input.torneroId ?? input.operadorId ?? null,
-    measuresRequested: normalizeMeasures(input.medidasSolicitadas ?? input.medidasInicio ?? input.medidasIniciales),
-    measuresFinal: normalizeMeasures(input.medidasFinales ?? input.medidasFin),
+    measuresRequested: normalizeMeasures(firstMeasureSource(
+      input.medidasSolicitadas,
+      input.medidasInicio,
+      input.medidasIniciales,
+      input.ruedaSolicitud,
+    )),
+    measuresFinal: normalizeMeasures(firstMeasureSource(
+      input.medidasFinales,
+      input.medidasFin,
+      input.ruedasFinal,
+      input.ruedaSolicitud?.ruedasFinal,
+      input.torno?.ruedasFinal,
+      input.tornoG?.ruedasFinal,
+    )),
     work,
     activeIncidents: Number(input.incidentesActivos ?? 0) || 0,
     hasIncident: Boolean(input.tieneIncidente ?? (Array.isArray(incidentSource) && incidentSource.length > 0)),

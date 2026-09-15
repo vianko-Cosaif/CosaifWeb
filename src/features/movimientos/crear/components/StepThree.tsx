@@ -47,9 +47,10 @@ export default function StepThree({
     hour: "2-digit",
     minute: "2-digit",
   });
+  const canScheduleTorno = form.service === "Torno" && selectionMode === "de_via";
 
   const handleSubmitClick = () => {
-    if (form.service === "Torno" && form.agendado) {
+    if (canScheduleTorno && form.agendado) {
       setShowAgendadoModal(true);
     } else {
       submit();

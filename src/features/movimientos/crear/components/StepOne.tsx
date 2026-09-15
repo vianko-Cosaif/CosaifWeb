@@ -351,12 +351,15 @@ export default function StepOne(props: StepOneProps) {
                 onClick={() =>
                   tapToggle(
                     `svc:${svc}`,
-                    () => setForm((p) => ({
-                      ...p,
-                      service: svc,
-                      toTrack: null,
-                      ...(svc === "Torno" ? {} : { agendado: false, fechaProgramada: "" }),
-                    })),
+                    () => {
+                      if (svc === "Torno") setSelectionMode("de_via");
+                      setForm((p) => ({
+                        ...p,
+                        service: svc,
+                        toTrack: null,
+                        ...(svc === "Torno" ? {} : { agendado: false, fechaProgramada: "" }),
+                      }));
+                    },
                     () => setForm((p) => ({ ...p, service: "", toTrack: p.toTrack, agendado: false, fechaProgramada: "" }))
                   )
                 }
@@ -375,7 +378,7 @@ export default function StepOne(props: StepOneProps) {
         </GuidedTarget>
       </div> : null}
 
-      {showSection("service") && form.service === "Torno" ? (
+      {showSection("service") && form.service === "Torno" && selectionMode === "de_via" ? (
         <GuidedTarget id="create-movement-torno-schedule" className="sm:col-span-2">
           <div className="cosaif-motion-card rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/50">
             <label className="flex items-center gap-2">

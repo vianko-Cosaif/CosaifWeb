@@ -18,6 +18,16 @@ import {
   type TornoWheelPosition,
 } from "../tornoMedicion.types";
 import {
+  buildTornoAutocompleteByAxle,
+  buildTornoAutocompleteByMeasure,
+  countChangedCells,
+  mergeTornoAutocompletePlans,
+  updatesForConflictDecision,
+  type TornoAutocompleteConflict,
+  type TornoAutocompletePlan,
+  type TornoAutocompleteUpdate,
+} from "../tornoAutocomplete";
+import {
   resolveTornoProfile,
   TORNO_PROFILE_FIELDS,
   TORNO_PROFILE_META,
@@ -31,6 +41,7 @@ import {
 } from "@/components/dynamic-table";
 import { LocomotiveWheelMap } from "@/features/torno-measures/locomotive-wheel-selector/LocomotiveWheelMap";
 import TornoMeasurePickerDialog from "../../torno/TornoMeasurePickerDialog";
+import TornoAutocompleteConflictDialog from "./TornoAutocompleteConflictDialog";
 
 /**
  * Props del Step 2 especializado para servicio Torno.
@@ -355,6 +366,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
   const [pasteFeedback, setPasteFeedback] = useState<TornoPasteFeedback | null>(null);
   const [mobileCopyModalOpen, setMobileCopyModalOpen] = useState(false);
   const [, setMobileAccordionPosition] = useState<TornoWheelPosition | null>(null);
+  const [autocompleteConflicts, setAutocompleteConflicts] = useState<TornoAutocompleteConflict[]>([]);
 
   // Estados para la vista interactiva (Visual)
   const [entryMode, setEntryMode] = useState<"table" | "visual">(
@@ -649,6 +661,47 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
     setMobileAccordionPosition(null);
   }, [copyState, fieldDefs, positions, tornoMedicion.rows, updateTornoMedicion]);
 
+  const applyAutocompleteUpdates = React.useCallback((updates: readonly TornoAutocompleteUpdate[]) => {
+    const pastedIds: string[] = [];
+    updates.forEach((update) => {
+      updateTornoMedicion(update.position, update.field, "whole", update.value.whole);
+      updateTornoMedicion(update.position, update.field, "num", update.value.num);
+      updateTornoMedicion(update.position, update.field, "den", update.value.den);
+      pastedIds.push(getCopyCellId(update.position, update.field));
+    });
+    if (pastedIds.length) {
+      setPasteFeedback({ cells: pastedIds, token: Date.now() });
+    }
+  }, [updateTornoMedicion]);
+
+  const runAutocompletePlan = React.useCallback((plan: TornoAutocompletePlan) => {
+    if (countChangedCells(plan.updates, tornoMedicion.rows) > 0) {
+      applyAutocompleteUpdates(plan.updates);
+    }
+    setAutocompleteConflicts(plan.conflicts);
+  }, [applyAutocompleteUpdates, tornoMedicion.rows]);
+
+  const autocompleteByAxles = React.useCallback(() => {
+    runAutocompletePlan(buildTornoAutocompleteByAxle({ positions, fields: fieldDefs, rows: tornoMedicion.rows }));
+  }, [fieldDefs, positions, runAutocompletePlan, tornoMedicion.rows]);
+
+  const autocompleteByMeasure = React.useCallback((field: TornoMeasurementField) => {
+    const fieldDef = fieldDefs.find((item) => item.key === field);
+    if (!fieldDef) return;
+    runAutocompletePlan(buildTornoAutocompleteByMeasure({ positions, field: fieldDef, rows: tornoMedicion.rows }));
+  }, [fieldDefs, positions, runAutocompletePlan, tornoMedicion.rows]);
+
+  const applyAutocompleteConflictDecisions = React.useCallback((decisions: Record<string, string | null>) => {
+    const plan = mergeTornoAutocompletePlans(
+      ...autocompleteConflicts.map((conflict) => ({
+        updates: updatesForConflictDecision(conflict, decisions[conflict.id] ?? null),
+        conflicts: [],
+      }))
+    );
+    applyAutocompleteUpdates(plan.updates);
+    setAutocompleteConflicts([]);
+  }, [applyAutocompleteUpdates, autocompleteConflicts]);
+
   const desktopColumns = useMemo<DynamicTableColumn<TornoDesktopRow>[]>(() => {
     const baseColumns: DynamicTableColumn<TornoDesktopRow>[] = [
       {
@@ -705,6 +758,21 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
               <path d="M4 16h16" />
             </svg>
           </button>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              autocompleteByMeasure(field.key);
+            }}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-emerald-600 hover:border-emerald-300 hover:bg-emerald-50 dark:border-slate-700 dark:bg-slate-900 dark:text-emerald-300 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/20"
+            aria-label={`Autocompletar medida ${field.label}`}
+            title="Autocompletar medida"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m15 4 5 5" />
+              <path d="M13 6 4 15l-1 6 6-1 9-9" />
+            </svg>
+          </button>
         </div>
       ),
       width: 230,
@@ -739,6 +807,7 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
     fieldDefs,
     pastedCells,
     selectedTargetIds,
+    autocompleteByMeasure,
     startColumnCopySelection,
     startCopySelection,
     startRowCopySelection,
@@ -848,6 +917,17 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
               {errors.direccionEmpuje ? <div className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.direccionEmpuje}</div> : null}
             </div>
           ) : null}
+
+          <div className="min-w-0">
+            <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Autocompletar</div>
+            <button
+              type="button"
+              onClick={autocompleteByAxles}
+              className="cosaif-motion-button rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-300 dark:hover:bg-emerald-900/20"
+            >
+              Por ejes
+            </button>
+          </div>
         </div>
 
         {/* Switcher para cambiar entre tabla y mapa visual */}
@@ -924,6 +1004,13 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                               className="cosaif-motion-button shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                             >
                               Col.
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => autocompleteByMeasure(field.key)}
+                              className="cosaif-motion-button shrink-0 rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-300 dark:hover:bg-emerald-900/20"
+                            >
+                              Auto
                             </button>
                             <span className="shrink-0 text-[11px] text-slate-500 dark:text-slate-400">{formatTornoMeasure(measure) || "-"}</span>
                           </div>
@@ -1051,6 +1138,13 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                     >
                       Copiar fila {selectedVisualPosition}
                     </button>
+                    <button
+                      type="button"
+                      onClick={autocompleteByAxles}
+                      className="cosaif-motion-button rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-300 dark:hover:bg-emerald-900/20"
+                    >
+                      Auto ejes
+                    </button>
                   </div>
 
                   <div className="grid gap-3">
@@ -1070,6 +1164,13 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
                               {formatTornoMeasure(measure) || "Sin registrar"}
                             </span>
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => autocompleteByMeasure(field.key)}
+                            className="cosaif-motion-button rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-300 dark:hover:bg-emerald-900/20"
+                          >
+                            Auto
+                          </button>
                           <div className="shrink-0">
                             <MeasurePartsInput
                               position={selectedVisualPosition || "L1"}
@@ -1133,6 +1234,13 @@ export default function StepTwoTorno(props: StepTwoTornoProps) {
           onCancel={closeMeasurePicker}
           onSave={applyMeasurePicker}
           accent="emerald"
+        />
+
+        <TornoAutocompleteConflictDialog
+          open={autocompleteConflicts.length > 0}
+          conflicts={autocompleteConflicts}
+          onCancel={() => setAutocompleteConflicts([])}
+          onApply={applyAutocompleteConflictDecisions}
         />
 
         <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">

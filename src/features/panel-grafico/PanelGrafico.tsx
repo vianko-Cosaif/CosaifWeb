@@ -7,7 +7,7 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { useRealtimeBoardRefresh } from "@/features/rail-queue/useRealtimeBoardRefresh";
 import { useVisibleInterval } from "@/features/rail-queue/hooks";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { type PanelGraficoProps, type PanelData, type PanelLoadingState, type ChangeKind, type HeaderEvent, type PatioTrackCatalogItem, type PanelRow, type MovementRow, type IncidentRow } from "./types";
 import { EMPTY_DATA, RIGHT_PANEL_ROTATION_MS, panelMotion } from "./styles";
 import { clampNumber } from "./patio/geometry";
@@ -35,6 +35,7 @@ export default function PanelGrafico({
   const [rightPanelTimerKey, setRightPanelTimerKey] = useState(0);
   const [showIncidentsPanel, setShowIncidentsPanel] = useState(true);
   const [showKpiPanel, setShowKpiPanel] = useState(true);
+  const [showWorkArea, setShowWorkArea] = useState(true);
   const [rightPanelWidth, setRightPanelWidth] = useState(390);
   const [changedKeys, setChangedKeys] = useState<Map<string, ChangeKind>>(() => new Map());
   const [headerEvents, setHeaderEvents] = useState<HeaderEvent[]>([]);
@@ -302,6 +303,16 @@ export default function PanelGrafico({
           <div className="flex items-center gap-2 text-xs font-black text-[var(--app-text-muted)]">
             <button
               type="button"
+              onClick={() => setShowWorkArea((value) => !value)}
+              className={`hidden h-9 items-center gap-1.5 rounded-xl border px-3 transition sm:inline-flex ${showWorkArea ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/70 dark:bg-blue-950/35 dark:text-blue-200" : "border-[var(--app-border)] bg-[var(--app-surface-subtle)] text-[var(--app-text-muted)]"}`}
+              aria-pressed={showWorkArea}
+              title={showWorkArea ? "Ocultar area de trabajo" : "Mostrar area de trabajo"}
+            >
+              {showWorkArea ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              Area
+            </button>
+            <button
+              type="button"
               onClick={() => setShowIncidentsPanel((value) => !value)}
               className={`hidden h-9 items-center rounded-xl border px-3 transition sm:inline-flex ${showIncidentsPanel ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/35 dark:text-amber-200" : "border-[var(--app-border)] bg-[var(--app-surface-subtle)] text-[var(--app-text-muted)]"}`}
               aria-pressed={showIncidentsPanel}
@@ -340,7 +351,9 @@ export default function PanelGrafico({
         <section
           className="grid min-h-0 flex-1 gap-2"
           style={{
-            gridTemplateColumns: `${showIncidentsPanel ? "minmax(210px, min(16vw, 300px)) " : ""}minmax(0, 1fr) minmax(300px, ${rightPanelWidth}px)`,
+            gridTemplateColumns: showWorkArea
+              ? `${showIncidentsPanel ? "minmax(210px, min(16vw, 300px)) " : ""}minmax(0, 1fr) minmax(300px, ${rightPanelWidth}px)`
+              : `${showIncidentsPanel ? "minmax(210px, min(16vw, 300px)) " : ""}minmax(320px, 1fr)`,
           }}
         >
           <AnimatePresence initial={false}>
@@ -357,27 +370,40 @@ export default function PanelGrafico({
               </motion.div>
             ) : null}
           </AnimatePresence>
-          <motion.div className="min-h-0 h-full" {...panelMotion.center}>
-            <WorkArea
-              metrics={metrics}
-              movements={data.movements}
-              torneados={data.torneados}
-              trackCatalog={patioTrackCatalog}
-              showKpis={showKpiPanel}
-              loading={sectionLoading.movements || sectionLoading.torneados || sectionLoading.tracks}
-              changedKeys={changedKeys}
-            />
-          </motion.div>
+          <AnimatePresence initial={false}>
+            {showWorkArea ? (
+              <motion.div
+                key="work-area"
+                className="min-h-0 h-full"
+                initial={{ opacity: 0, scale: 0.985 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.985 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+              >
+                <WorkArea
+                  metrics={metrics}
+                  movements={data.movements}
+                  torneados={data.torneados}
+                  trackCatalog={patioTrackCatalog}
+                  showKpis={showKpiPanel}
+                  loading={sectionLoading.movements || sectionLoading.torneados || sectionLoading.tracks}
+                  changedKeys={changedKeys}
+                />
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
           <motion.div className="relative min-h-0 h-full" {...panelMotion.right}>
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Redimensionar panel derecho"
-              onPointerDown={startRightPanelResize}
-              className="absolute -left-1.5 top-0 z-20 hidden h-full w-3 cursor-col-resize items-center justify-center xl:flex"
-            >
-              <span className="h-20 w-1 rounded-full bg-[var(--app-border)] transition hover:bg-emerald-400" />
-            </div>
+            {showWorkArea ? (
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Redimensionar panel derecho"
+                onPointerDown={startRightPanelResize}
+                className="absolute -left-1.5 top-0 z-20 hidden h-full w-3 cursor-col-resize items-center justify-center xl:flex"
+              >
+                <span className="h-20 w-1 rounded-full bg-[var(--app-border)] transition hover:bg-emerald-400" />
+              </div>
+            ) : null}
             <RightOperationsPanel
               mode={rightPanelMode}
               movements={data.movements}

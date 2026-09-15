@@ -88,6 +88,7 @@ export type PatioTrackMode = "idle" | "entry" | "exit" | "blocked";
 export type PatioLocomotiveStatus = "operating" | "moving" | "stopped" | "waiting";
 
 export type PatioPlacement = "origin" | "destination" | "both";
+export type PatioStagingKind = "pre-entry" | "service-entry" | "service-exit" | "yard-transfer";
 
 export type PatioTrack = {
   id: string;
@@ -110,6 +111,13 @@ export type PatioTrack = {
   placement: PatioPlacement | null;
 };
 
+export type PatioStagingLocomotive = NonNullable<PatioTrack["locomotive"]> & {
+  originLabel: string;
+  destinationLabel: string;
+  stageLabel: string;
+  stageKind: PatioStagingKind;
+};
+
 export type PatioRemovedGhost = PatioTrack & {
   removedAt: number;
   locomotive: NonNullable<PatioTrack["locomotive"]>;
@@ -119,6 +127,11 @@ export type PatioServiceActivity = {
   number: string;
   status: PatioLocomotiveStatus;
   type: MovementType;
+  queue: Array<{
+    number: string;
+    status: PatioLocomotiveStatus;
+    type: MovementType;
+  }>;
 } | null;
 
 export type PatioTrackDefinition = {

@@ -1,4 +1,4 @@
-import { type PatioTrack, type PatioServiceActivity, type ChangeKind, type PatioRemovedGhost, type MovementType } from "../types";
+import { type PatioTrack, type PatioServiceActivity, type ChangeKind, type PatioRemovedGhost, type MovementType, type PatioStagingLocomotive, type PatioLocomotiveStatus } from "../types";
 import { patioLayout, cssColor, polarPoint, toRad, trackEndPoint, roundRect, clampNumber } from "./geometry";
 
 export function drawPatioCanvas(
@@ -10,6 +10,7 @@ export function drawPatioCanvas(
       torno: PatioServiceActivity;
       lavado: PatioServiceActivity;
     };
+    stagingLocomotives: PatioStagingLocomotive[];
     selectedTrackId: string;
     changedKeys: Map<string, ChangeKind>;
     removedGhosts: PatioRemovedGhost[];
@@ -45,6 +46,7 @@ export function drawPatioCanvas(
   drawBothRouteConnections(ctx, layout, options.tracks, colors, options.time, options.reducedMotion);
   drawMovingTrackArrows(ctx, layout, options.tracks, colors, options.time, options.reducedMotion);
   drawServices(ctx, layout, colors, options.serviceActivity, options.time, options.reducedMotion);
+  drawStagingLocomotives(ctx, layout, options.stagingLocomotives, colors, options.time, options.changedKeys, options.reducedMotion);
   drawLocomotives(ctx, layout, options.tracks, colors, options.time, options.changedKeys, options.reducedMotion, options.removedGhosts);
 }
 
@@ -659,8 +661,8 @@ export function drawServices(
     x: clampNumber(layout.center.x + layout.outerRadius + (layout.mobile ? 36 : 64), 58, layout.width - 58),
     y: layout.center.y - layout.outerRadius * 0.35,
   };
-  drawServiceBadge(ctx, lavado.x, lavado.y - 18, "drop", "LAVADO", colors, null, time, reducedMotion, {
-    muted: true,
+  drawServiceBadge(ctx, lavado.x, lavado.y - 18, "drop", "LAVADO", colors, activity.lavado, time, reducedMotion, {
+    muted: !activity.lavado,
     caption: "MOV. EN VIA",
   });
   drawServiceBadge(ctx, torno.x, torno.y - 18, "gear", "TORNO", colors, activity.torno, time, reducedMotion);
@@ -726,22 +728,224 @@ export function drawServiceBadge(
     ctx.fillText(options.caption, x, y + 61);
   }
   if (activity) {
-    const chipY = y + 66;
-    ctx.fillStyle = active ? tone : colors.surface;
-    ctx.strokeStyle = active ? tone : colors.border;
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.roundRect(x - 34, chipY - 13, 68, 25, 7);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = active ? "#ffffff" : colors.text;
-    ctx.font = "900 11px Inter, Arial, sans-serif";
-    ctx.fillText(activity.number, x, chipY - 2);
-    ctx.font = "800 7px Inter, Arial, sans-serif";
-    ctx.fillText(active ? "EN PROCESO" : "EN COLA", x, chipY + 8);
+    const queue = activity.queue?.length ? activity.queue : [activity];
+    queue.slice(0, 4).forEach((item, index) => {
+      drawServiceQueueChip(ctx, x, y + 66 + index * 25, item, tone, colors);
+    });
+    if (queue.length > 4) {
+      ctx.fillStyle = colors.muted;
+      ctx.font = "900 8px Inter, Arial, sans-serif";
+      ctx.fillText(`+${queue.length - 4}`, x, y + 66 + 4 * 25);
+    }
   }
   ctx.restore();
+}
+
+export function drawServiceQueueChip(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  item: { number: string; status: PatioLocomotiveStatus },
+  tone: string,
+  colors: Record<string, string>
+) {
+  const active = item.status === "moving";
+  const stopped = item.status === "stopped";
+  const borderColor = stopped ? colors.stopped : active ? tone : colors.border;
+  const fillColor = stopped ? "rgba(225,29,72,.10)" : active ? tone : colors.surface;
+  const textColor = active ? "#ffffff" : colors.text;
+
+  ctx.fillStyle = fillColor;
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = active ? 1.6 : 1.2;
+  ctx.beginPath();
+  ctx.roundRect(x - 38, y - 12, 76, 23, 7);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = textColor;
+  ctx.font = "900 10px Inter, Arial, sans-serif";
+  ctx.fillText(item.number, x, y - 3);
+  ctx.font = "800 6.5px Inter, Arial, sans-serif";
+  ctx.fillText(serviceQueueStatusLabel(item.status), x, y + 7);
+}
+
+export function serviceQueueStatusLabel(status: PatioLocomotiveStatus) {
+  if (status === "moving") return "EN PROCESO";
+  if (status === "stopped") return "DETENIDO";
+  if (status === "operating") return "OPERANDO";
+  return "EN COLA";
+}
+
+export function drawStagingLocomotives(
+  ctx: CanvasRenderingContext2D,
+  layout: ReturnType<typeof patioLayout>,
+  locomotives: PatioStagingLocomotive[],
+  colors: Record<string, string>,
+  time: number,
+  changedKeys: Map<string, ChangeKind>,
+  reducedMotion: boolean
+) {
+  if (!locomotives.length) return;
+
+  const visible = locomotives.slice(0, layout.mobile ? 4 : 8);
+  const columns = Math.min(visible.length, layout.mobile ? 2 : 5);
+  const rows = Math.max(1, Math.ceil(visible.length / columns));
+  const areaWidth = clampNumber(layout.width * (layout.mobile ? 0.86 : 0.72), 360, layout.width - 96);
+  const headerWidth = layout.mobile ? 110 : 156;
+  const areaHeight = clampNumber(54 + rows * 48, 96, layout.mobile ? 152 : 172);
+  const minY = layout.center.y + layout.turntableRadius + 24;
+  const maxY = Math.max(minY, layout.height - areaHeight - 16);
+  const areaX = (layout.width - areaWidth) / 2;
+  const areaY = Math.min(Math.max(layout.height - areaHeight - 18, minY), maxY);
+  const laneX = areaX + headerWidth + 16;
+  const laneY = areaY + 32;
+  const gridWidth = areaWidth - headerWidth - 28;
+  const slotWidth = gridWidth / columns;
+  const slotHeight = 48;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(248,250,252,.88)";
+  ctx.strokeStyle = "rgba(14,165,233,.32)";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  roundRect(ctx, areaX, areaY, areaWidth, areaHeight, 14);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(14,165,233,.10)";
+  ctx.beginPath();
+  roundRect(ctx, areaX + 10, areaY + 10, headerWidth - 20, areaHeight - 20, 10);
+  ctx.fill();
+
+  ctx.fillStyle = "#0369a1";
+  ctx.font = "950 11px Inter, Arial, sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Flujo externo", areaX + 20, areaY + 27);
+  ctx.fillStyle = colors.muted;
+  ctx.font = "800 8px Inter, Arial, sans-serif";
+  ctx.fillText("Servicios / para via", areaX + 20, areaY + 43);
+
+  ctx.fillStyle = "#0ea5e9";
+  ctx.beginPath();
+  ctx.arc(areaX + headerWidth - 28, areaY + 28, 13, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "950 11px Inter, Arial, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(String(locomotives.length), areaX + headerWidth - 28, areaY + 28);
+
+  ctx.strokeStyle = "rgba(14,165,233,.28)";
+  ctx.lineWidth = 3;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(laneX, laneY);
+  ctx.lineTo(areaX + areaWidth - 18, laneY);
+  ctx.stroke();
+
+  ctx.fillStyle = "#0ea5e9";
+  ctx.beginPath();
+  ctx.moveTo(areaX + areaWidth - 18, laneY);
+  ctx.lineTo(areaX + areaWidth - 30, laneY - 6);
+  ctx.lineTo(areaX + areaWidth - 30, laneY + 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  visible.forEach((locomotive, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const x = laneX + slotWidth * column + slotWidth / 2;
+    const y = areaY + 60 + slotHeight * row;
+    drawStagingCard(ctx, x, y, clampNumber(slotWidth - 12, 104, 150), 36, locomotive, colors, time, changedKeys, reducedMotion);
+  });
+
+  if (locomotives.length > visible.length) {
+    ctx.save();
+    ctx.fillStyle = colors.muted;
+    ctx.font = "900 11px Inter, Arial, sans-serif";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`+${locomotives.length - visible.length}`, areaX + areaWidth - 12, areaY + areaHeight - 14);
+    ctx.restore();
+  }
+}
+
+export function drawStagingCard(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  locomotive: PatioStagingLocomotive,
+  colors: Record<string, string>,
+  time: number,
+  changedKeys: Map<string, ChangeKind>,
+  reducedMotion: boolean
+) {
+  const statusColor = patioMovementColor(locomotive.type, colors);
+  const changeKind = changedKeys.get(locomotive.key);
+  const pulse = reducedMotion ? 0.22 : 0.12 + ((Math.sin(time / 520) + 1) / 2) * 0.16;
+  const changed = Boolean(changeKind);
+
+  ctx.save();
+  ctx.shadowColor = changed ? statusColor : "rgba(15,23,42,.16)";
+  ctx.shadowBlur = changed ? 18 + pulse * 12 : 8;
+  ctx.shadowOffsetY = 3;
+  ctx.fillStyle = "rgba(255,255,255,.95)";
+  ctx.strokeStyle = statusColor;
+  ctx.lineWidth = changed ? 2.4 : 1.6;
+  ctx.beginPath();
+  roundRect(ctx, x - width / 2, y - height / 2, width, height, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+
+  ctx.fillStyle = statusColor;
+  ctx.beginPath();
+  roundRect(ctx, x - width / 2 + 6, y - height / 2 + 7, 5, height - 14, 3);
+  ctx.fill();
+
+  ctx.fillStyle = colors.text;
+  ctx.font = "950 12px Inter, Arial, sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText(locomotive.number, x - width / 2 + 18, y - 6);
+
+  ctx.fillStyle = colors.muted;
+  ctx.font = "800 7px Inter, Arial, sans-serif";
+  ctx.fillText(`${locomotive.originLabel} -> ${locomotive.destinationLabel}`, x - width / 2 + 18, y + 7, width - 64);
+
+  const badgeColor =
+    locomotive.stageKind === "service-entry"
+      ? "#7c3aed"
+      : locomotive.stageKind === "service-exit"
+        ? "#db2777"
+        : locomotive.stageKind === "yard-transfer"
+          ? "#475569"
+          : "#0ea5e9";
+  ctx.fillStyle = `${badgeColor}1F`;
+  ctx.strokeStyle = `${badgeColor}55`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  roundRect(ctx, x + width / 2 - 48, y - 13, 40, 20, 6);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = badgeColor;
+  ctx.font = "950 7px Inter, Arial, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(shortStageLabel(locomotive.stageLabel), x + width / 2 - 28, y - 3, 34);
+  ctx.restore();
+}
+
+export function shortStageLabel(label: string) {
+  if (label === "Entrada servicio") return "A SERV.";
+  if (label === "Salida servicio") return "DE SERV.";
+  if (label === "Pre-ingreso") return "PRE";
+  if (label === "Salida patio") return "SALIDA";
+  return "PATIO";
 }
 
 export function drawLocomotives(

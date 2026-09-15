@@ -311,12 +311,15 @@ export function useCrearMovimientoController(
   /** Si el flujo deja de ser Torno+De via, invalida el paso PDF y su estado temporal. */
   useEffect(() => {
     if (hasTornoPdfStep) return;
+    if (form.service === "Torno" && form.agendado) {
+      setForm((p) => ({ ...p, agendado: false, fechaProgramada: "" }));
+    }
     if (step === 4) setStep(3);
     setTornoStep2Completed(false);
     setTornoMovimientoId(null);
     setTornoPdfSending(false);
     setTornoPdfStatus(null);
-  }, [hasTornoPdfStep, step]);
+  }, [form.agendado, form.service, hasTornoPdfStep, step]);
 
   /** Invalida seccion origen ante cambio de via origen. */
   useEffect(() => {

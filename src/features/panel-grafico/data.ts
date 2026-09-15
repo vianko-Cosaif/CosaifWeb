@@ -395,6 +395,11 @@ export function mapMovement(row: unknown): MovementRow | null {
   const stableId = movement.id ?? source.movimientoId ?? movement.movimientoId ?? source.id ?? source.rondaId ?? movement.rondaId;
   const origin = text(viaOrigen.nombre ?? movement.viaOrigenNombre ?? movement.origen ?? movement.viaOrigenId, "-");
   const destination = text(viaDestino.nombre ?? movement.viaDestinoNombre ?? movement.destino ?? movement.viaDestinoId, "-");
+  const type = normalizeMovementType(movement);
+  const originTrackId = routeToTrackId(origin);
+  const destinationTrackId = routeToTrackId(destination);
+  const resolvedOrigin = type === "Torno" && !originTrackId && destinationTrackId ? "Torno" : origin;
+  const resolvedDestination = type === "Torno" && originTrackId && !destinationTrackId ? "Torno" : destination;
   const sourceKind = String(source.source ?? "").toLowerCase().includes("torno") ? "torneado" : "movement";
   const rondaNumero = Number(source.rondaNumero ?? source.ronda ?? 1) || 1;
   const orden = Number(source.orden ?? source.order ?? 0) || 0;
@@ -404,10 +409,10 @@ export function mapMovement(row: unknown): MovementRow | null {
     key: `${sourceKind}:${stableId ?? `${movement.locomotiveNumber ?? movement.locomotora ?? "unknown"}:${rondaNumero}:${orden}`}`,
     equipment: formatLoco(movement.locomotiveNumber ?? movement.locomotora ?? movement.locomotoraNumero),
     company: text(empresa.nombre ?? movement.empresaNombre ?? source.empresaNombre ?? localidad.nombre, "Default"),
-    route: `${origin} -> ${destination}`,
-    origin,
-    destination,
-    type: normalizeMovementType(movement),
+    route: `${resolvedOrigin} -> ${resolvedDestination}`,
+    origin: resolvedOrigin,
+    destination: resolvedDestination,
+    type,
     status: normalizeStatus(movement.estado ?? source.estado),
     time: elapsedFrom(movement.fechaInicio ?? movement.fechaSolicitud ?? source.createdAt),
     requestedAtMs: timestampFrom(requestedAt),

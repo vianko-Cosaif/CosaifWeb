@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type MovementRow, type PatioTrackCatalogItem, type ChangeKind, type PatioTrack, type PatioRemovedGhost } from "../types";
-import { buildPatioTracks, buildServiceActivity } from "./model";
+import { buildPatioStagingLocomotives, buildPatioTracks, buildServiceActivity } from "./model";
 import { resizeCanvas, patioLayout, toRad, polarPoint, trackEndPoint, distanceToSegment } from "./geometry";
 import { drawPatioCanvas } from "./render";
 
@@ -24,12 +24,13 @@ export function PatioFerroviarioCanvas({
   const [selectedTrackId, setSelectedTrackId] = useState("VIA-4");
 
   const tracks = useMemo(() => buildPatioTracks(movements, trackCatalog), [movements, trackCatalog]);
+  const stagingLocomotives = useMemo(() => buildPatioStagingLocomotives(movements), [movements]);
   const serviceActivity = useMemo(
     () => ({
       torno: buildServiceActivity(torneados, "Torno"),
-      lavado: null,
+      lavado: buildServiceActivity(movements, "Lavado"),
     }),
-    [torneados]
+    [movements, torneados]
   );
 
   useEffect(() => {
@@ -79,6 +80,7 @@ export function PatioFerroviarioCanvas({
       drawPatioCanvas(context, canvas, {
         tracks,
         serviceActivity,
+        stagingLocomotives,
         selectedTrackId,
         changedKeys,
         removedGhosts: removedGhostsRef.current,
@@ -94,7 +96,7 @@ export function PatioFerroviarioCanvas({
       observer?.disconnect();
       if (frameId) window.cancelAnimationFrame(frameId);
     };
-  }, [changedKeys, selectedTrackId, serviceActivity, tracks]);
+  }, [changedKeys, selectedTrackId, serviceActivity, stagingLocomotives, tracks]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

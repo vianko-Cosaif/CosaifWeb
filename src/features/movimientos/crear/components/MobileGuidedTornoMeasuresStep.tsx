@@ -18,6 +18,16 @@ import {
   type TornoWheelCount,
   type TornoWheelPosition,
 } from "../tornoMedicion.types";
+import {
+  buildTornoAutocompleteByAxle,
+  buildTornoAutocompleteByMeasure,
+  countChangedCells,
+  mergeTornoAutocompletePlans,
+  updatesForConflictDecision,
+  type TornoAutocompleteConflict,
+  type TornoAutocompletePlan,
+  type TornoAutocompleteUpdate,
+} from "../tornoAutocomplete";
 import { resolveTornoProfile, TORNO_PROFILE_FIELDS, TORNO_PROFILE_META } from "../tornoProfiles";
 import { LocomotiveWheelMap } from "@/features/torno-measures/locomotive-wheel-selector/LocomotiveWheelMap";
 import type {
@@ -28,6 +38,7 @@ import type {
 } from "@/features/torno-measures/locomotive-wheel-selector/core/types";
 import TornoMeasureCopyPasteDialog from "./TornoMeasureCopyPasteDialog";
 import TornoMeasurePickerDialog from "../../torno/TornoMeasurePickerDialog";
+import TornoAutocompleteConflictDialog from "./TornoAutocompleteConflictDialog";
 
 type Props = {
   form: MovementFormData;
@@ -143,6 +154,7 @@ export default function MobileGuidedTornoMeasuresStep({
     sourceLabel: string;
     sourceValue: TornoMeasurementValue;
   }>({ open: false, sourcePosition: null, sourceField: null, sourceLabel: "", sourceValue: emptyValue });
+  const [autocompleteConflicts, setAutocompleteConflicts] = useState<TornoAutocompleteConflict[]>([]);
   const [screenOrientation, setScreenOrientation] = useState<"horizontal" | "vertical">("vertical");
 
   useEffect(() => {
@@ -239,6 +251,42 @@ export default function MobileGuidedTornoMeasuresStep({
     });
     setCopyModal((current) => ({ ...current, open: false }));
   };
+
+  const applyAutocompleteUpdates = useCallback((updates: readonly TornoAutocompleteUpdate[]) => {
+    updates.forEach((update) => {
+      updateTornoMedicion(update.position, update.field, "whole", update.value.whole);
+      updateTornoMedicion(update.position, update.field, "num", update.value.num);
+      updateTornoMedicion(update.position, update.field, "den", update.value.den);
+    });
+  }, [updateTornoMedicion]);
+
+  const runAutocompletePlan = useCallback((plan: TornoAutocompletePlan) => {
+    if (countChangedCells(plan.updates, tornoMedicion.rows) > 0) {
+      applyAutocompleteUpdates(plan.updates);
+    }
+    setAutocompleteConflicts(plan.conflicts);
+  }, [applyAutocompleteUpdates, tornoMedicion.rows]);
+
+  const autocompleteByAxles = useCallback(() => {
+    runAutocompletePlan(buildTornoAutocompleteByAxle({ positions: allPositions, fields: fieldDefs, rows: tornoMedicion.rows }));
+  }, [allPositions, fieldDefs, runAutocompletePlan, tornoMedicion.rows]);
+
+  const autocompleteByMeasure = useCallback((field: TornoMeasurementField) => {
+    const fieldDef = fieldDefs.find((item) => item.key === field);
+    if (!fieldDef) return;
+    runAutocompletePlan(buildTornoAutocompleteByMeasure({ positions: allPositions, field: fieldDef, rows: tornoMedicion.rows }));
+  }, [allPositions, fieldDefs, runAutocompletePlan, tornoMedicion.rows]);
+
+  const applyAutocompleteConflictDecisions = useCallback((decisions: Record<string, string | null>) => {
+    const plan = mergeTornoAutocompletePlans(
+      ...autocompleteConflicts.map((conflict) => ({
+        updates: updatesForConflictDecision(conflict, decisions[conflict.id] ?? null),
+        conflicts: [],
+      }))
+    );
+    applyAutocompleteUpdates(plan.updates);
+    setAutocompleteConflicts([]);
+  }, [applyAutocompleteUpdates, autocompleteConflicts]);
 
   if (visualPage <= 0) {
     return (
@@ -365,6 +413,13 @@ export default function MobileGuidedTornoMeasuresStep({
             {enabledPositions.filter(hasPositionMeasures).length}/{enabledPositions.length}
           </span>
         </div>
+        <button
+          type="button"
+          onClick={autocompleteByAxles}
+          className="mb-2 min-h-10 w-full rounded-xl border border-emerald-200 bg-white px-3 text-xs font-black text-emerald-800 shadow-sm dark:border-emerald-800 dark:bg-zinc-950 dark:text-emerald-200"
+        >
+          Autocompletar por ejes
+        </button>
 
         <div className="mb-2 grid grid-cols-3 gap-2">
           {views.map((view) => {
@@ -477,6 +532,13 @@ export default function MobileGuidedTornoMeasuresStep({
               </div>
               <button
                 type="button"
+                onClick={autocompleteByAxles}
+                className="min-h-11 rounded-2xl border border-emerald-200 bg-white px-3 text-xs font-black text-emerald-800 shadow-sm dark:border-emerald-800 dark:bg-zinc-950 dark:text-emerald-200"
+              >
+                Auto ejes
+              </button>
+              <button
+                type="button"
                 onClick={() => setWheelModalOpen(false)}
                 className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-emerald-800 shadow-sm dark:bg-zinc-950 dark:text-emerald-200"
                 aria-label="Cerrar"
@@ -543,6 +605,28 @@ export default function MobileGuidedTornoMeasuresStep({
                           <Copy className="h-5 w-5" aria-hidden="true" strokeWidth={2.5} />
                         </span>
                       ) : null}
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Autocompletar ${field.label}`}
+                        title="Autocompletar medida"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          autocompleteByMeasure(field.key);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          autocompleteByMeasure(field.key);
+                        }}
+                        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-white text-emerald-800 transition hover:border-emerald-300 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 dark:border-emerald-800 dark:bg-zinc-950 dark:text-emerald-200 dark:hover:bg-emerald-950/40"
+                      >
+                        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="m15 4 5 5" />
+                          <path d="M13 6 4 15l-1 6 6-1 9-9" />
+                        </svg>
+                      </span>
                       <span className="text-xl font-black text-emerald-700">{hasValue ? "✓" : "+"}</span>
                     </button>
                   );
@@ -588,6 +672,13 @@ export default function MobileGuidedTornoMeasuresStep({
         formatValue={formatTornoMeasure}
         onCancel={() => setCopyModal((current) => ({ ...current, open: false }))}
         onApply={applyCopyTargets}
+      />
+
+      <TornoAutocompleteConflictDialog
+        open={autocompleteConflicts.length > 0}
+        conflicts={autocompleteConflicts}
+        onCancel={() => setAutocompleteConflicts([])}
+        onApply={applyAutocompleteConflictDecisions}
       />
     </div>
   );

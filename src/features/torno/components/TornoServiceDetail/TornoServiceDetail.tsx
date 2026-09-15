@@ -4,7 +4,6 @@ import { ArrowLeft, Ban, CalendarClock, Grid2X2, Loader2, Map as MapIcon, Play, 
 import { useMemo, useState, type ReactNode } from "react";
 import { GuidedTarget } from "@/features/capacitacion";
 import dynamic from "next/dynamic";
-import MeasuresSection from "../MeasuresSection";
 import TornoFinalMeasuresForm from "../TornoFinalMeasuresForm/TornoFinalMeasuresForm";
 import TornoStatusBadge from "../TornoStatusBadge/TornoStatusBadge";
 import TornoWheelBoard from "../TornoWheelBoard/TornoWheelBoard";
@@ -362,8 +361,7 @@ export default function TornoServiceDetail({
       </GuidedTarget>
 
       {axisDisplayMode !== "graphic" && (
-        <GuidedTarget id="torno-measures-panel" className="grid items-start gap-4 xl:grid-cols-2">
-          <MeasuresSection title="Medidas de inicio" measures={item.measuresRequested} />
+        <GuidedTarget id="torno-measures-panel">
           <TornoFinalMeasuresForm
             requested={item.measuresRequested}
             final={item.measuresFinal}

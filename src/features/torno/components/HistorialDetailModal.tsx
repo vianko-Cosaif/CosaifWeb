@@ -2,7 +2,7 @@
 
 import { ArrowLeft, CalendarClock, CircleGauge, FileDown, Loader2, TrainFront, UserRound } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
-import MeasuresSection from "./MeasuresSection";
+import MeasuresComparisonSection from "./MeasuresComparisonSection";
 import IncidentTree from "./IncidentTree";
 import { downloadTornoHistoryPdf } from "../../movimientos/crear/tornoPdf";
 import {
@@ -322,10 +322,7 @@ export default function HistorialDetailModal({
         }}
       />
 
-      <div className="grid items-start gap-4 xl:grid-cols-2">
-        <MeasuresSection title="Medidas de inicio" measures={item.measuresRequested} />
-        <MeasuresSection title="Medidas de fin" measures={item.measuresFinal} />
-      </div>
+      <MeasuresComparisonSection requested={item.measuresRequested} final={item.measuresFinal} />
 
       {permissions.canViewIncidents && (
         <IncidentTree
