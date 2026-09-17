@@ -18,9 +18,17 @@ export type OperationalVia = {
 };
 
 export type ActionPayload = {
-  action: "CANCELAR" | "PRIORIZAR_SOLICITUD" | "REORDENAR_VAGONES" | "REORDENAR_SOLICITUDES" | "RESOLVER_INCIDENTE" | "INICIAR_VAGON" | "FINALIZAR_VAGON";
+  action:
+    | "CANCELAR"
+    | "PRIORIZAR_SOLICITUD"
+    | "REORDENAR_VAGONES"
+    | "REORDENAR_SOLICITUDES"
+    | "RESOLVER_INCIDENTE"
+    | "INICIAR_VAGON"
+    | "FINALIZAR_VAGON";
   arrastreId: number;
   arrastreIds?: number[];
+  direction?: "up" | "down";
   vagonId?: number;
   vagonIds?: number[];
   incidenteId?: number;

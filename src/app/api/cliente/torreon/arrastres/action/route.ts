@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { TorreonMsError, fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
-import { ARRASTRE_MAX_CAPACITY, ARRASTRE_MIN_VAGONES, arrastreVagonCapacity } from "@/features/torreon/arrastres/constants";
+import {
+  ARRASTRE_MAX_CAPACITY,
+  ARRASTRE_MIN_VAGONES,
+  arrastreVagonCapacity,
+} from "@/features/torreon/arrastres/constants";
 import { PERMISSIONS, hasAnyPermission, hasPermission } from "@/lib/accessControl";
 import { getVerifiedSession } from "@/lib/server/session";
 
@@ -26,7 +30,7 @@ function jsonError(message: string, status = 400) {
 }
 
 function asRecord(input: unknown): JsonRecord {
-  return input && typeof input === "object" ? input as JsonRecord : {};
+  return input && typeof input === "object" ? (input as JsonRecord) : {};
 }
 
 function asPositiveInt(input: unknown) {
@@ -41,13 +45,13 @@ function asText(input: unknown) {
 
 function asPositiveIntArray(input: unknown) {
   if (!Array.isArray(input)) return [];
-  return input
-    .map((item) => asPositiveInt(item))
-    .filter((item): item is number => Boolean(item));
+  return input.map((item) => asPositiveInt(item)).filter((item): item is number => Boolean(item));
 }
 
 function statusText(input: unknown) {
-  return String(input || "").trim().toUpperCase();
+  return String(input || "")
+    .trim()
+    .toUpperCase();
 }
 
 function extractArray(input: unknown): JsonRecord[] {
@@ -69,10 +73,6 @@ function hasPendingVagon(arrastre: JsonRecord) {
   return extractArray(arrastre.vagones).some((vagon) => statusText(vagon.estado) === "PENDIENTE");
 }
 
-function hasOpenIncident(arrastre: JsonRecord) {
-  return extractArray(arrastre.incidentes).some((incidente) => statusText(incidente.estado) === "ABIERTO");
-}
-
 function assertArrastreEditable(arrastre: JsonRecord) {
   const estado = statusText(arrastre.estado);
   if (!["SOLICITADO", "DETENIDO"].includes(estado)) {
@@ -90,15 +90,6 @@ function canPrioritizeArrastre(arrastre: JsonRecord) {
   return canReorderArrastre(arrastre) && hasPendingVagon(arrastre);
 }
 
-function orderValue(arrastre: JsonRecord) {
-  const value = Number(arrastre.ordenSolicitud);
-  return Number.isFinite(value) && value > 0 ? value : Number.MAX_SAFE_INTEGER;
-}
-
-function solicitudTime(arrastre: JsonRecord) {
-  return Date.parse(String(arrastre.fechaSolicitud || arrastre.fechaInicio || "")) || 0;
-}
-
 function normalizeFotos(input: unknown, userId: number): FotoInput[] {
   if (!Array.isArray(input)) return [];
 
@@ -112,7 +103,8 @@ function normalizeFotos(input: unknown, userId: number): FotoInput[] {
       const foto: FotoInput = {
         dataUrl: typeof record.dataUrl === "string" ? record.dataUrl : undefined,
         base64: typeof record.base64 === "string" ? record.base64 : undefined,
-        contenidoBase64: typeof record.contenidoBase64 === "string" ? record.contenidoBase64 : undefined,
+        contenidoBase64:
+          typeof record.contenidoBase64 === "string" ? record.contenidoBase64 : undefined,
         url: typeof record.url === "string" ? record.url : undefined,
         mimeType: typeof record.mimeType === "string" ? record.mimeType : undefined,
         comentario: typeof record.comentario === "string" ? record.comentario : undefined,
@@ -124,7 +116,11 @@ function normalizeFotos(input: unknown, userId: number): FotoInput[] {
     .filter((foto): foto is FotoInput => Boolean(foto));
 }
 
-async function getArrastreForAccess(arrastreId: number, companyScoped: boolean, empresaId: number | null) {
+async function getArrastreForAccess(
+  arrastreId: number,
+  companyScoped: boolean,
+  empresaId: number | null,
+) {
   const arrastre = asRecord(await fetchTorreonMsJson(`/arrastres/${arrastreId}`));
   const localidadId = Number(arrastre.localidadId);
   const arrastreEmpresaId = Number(arrastre.empresaId);
@@ -142,17 +138,6 @@ async function getArrastreForAccess(arrastreId: number, companyScoped: boolean, 
   return arrastre;
 }
 
-async function loadPriorityScope(arrastre: JsonRecord, companyScoped: boolean, empresaId: number | null) {
-  const localidadId = Number(arrastre.localidadId);
-  const qs = new URLSearchParams({ localidadId: String(localidadId) });
-  if (companyScoped && empresaId) qs.set("empresaId", String(empresaId));
-
-  const rows = extractArray(await fetchTorreonMsJson(`/arrastres?${qs.toString()}`))
-    .sort((left, right) => orderValue(left) - orderValue(right) || solicitudTime(left) - solicitudTime(right) || Number(left.id) - Number(right.id));
-
-  return rows;
-}
-
 export async function POST(req: NextRequest) {
   try {
     const session = await getVerifiedSession();
@@ -162,9 +147,9 @@ export async function POST(req: NextRequest) {
     const role = authorization.role;
     const empresaId = session.empresaId;
     const userId = session.userId;
-    const companyScoped = authorization.scope.mode === "COMPANY"
-      || authorization.scope.mode === "COMPANY_LOCALITY";
-    const body = await req.json().catch(() => ({})) as JsonRecord;
+    const companyScoped =
+      authorization.scope.mode === "COMPANY" || authorization.scope.mode === "COMPANY_LOCALITY";
+    const body = (await req.json().catch(() => ({}))) as JsonRecord;
     const action = String(body.action || "").toUpperCase();
 
     if (action === "RESOLVER_INCIDENTE") {
@@ -175,7 +160,9 @@ export async function POST(req: NextRequest) {
       if (!hasPermission(authorization, PERMISSIONS.INCIDENTS_CREATE)) {
         return jsonError("No autorizado para crear incidentes", 403);
       }
-    } else if (!hasAnyPermission(authorization, [PERMISSIONS.TORREON_CREATE, PERMISSIONS.TORREON_OPERATE])) {
+    } else if (
+      !hasAnyPermission(authorization, [PERMISSIONS.TORREON_CREATE, PERMISSIONS.TORREON_OPERATE])
+    ) {
       return jsonError("No autorizado para operar arrastres", 403);
     }
 
@@ -189,7 +176,10 @@ export async function POST(req: NextRequest) {
 
     if (action === "EDITAR_ARRASTRE") {
       if (statusText(arrastre.estado) !== "SOLICITADO") {
-        return jsonError(`Solo se puede editar una solicitud antes de iniciar. Estado actual: ${statusText(arrastre.estado)}`, 409);
+        return jsonError(
+          `Solo se puede editar una solicitud antes de iniciar. Estado actual: ${statusText(arrastre.estado)}`,
+          409,
+        );
       }
       const existingVagones = extractArray(arrastre.vagones);
       if (existingVagones.some((vagon) => statusText(vagon.estado) !== "PENDIENTE")) {
@@ -227,21 +217,44 @@ export async function POST(req: NextRequest) {
         };
       });
 
-      if (vagones.some((vagon) => !vagon.id || !vagon.numeroVagon || !vagon.viaOrigenId || !vagon.seccionOrigenId || !vagon.viaId || !vagon.seccionId)) {
+      if (
+        vagones.some(
+          (vagon) =>
+            !vagon.id ||
+            !vagon.numeroVagon ||
+            !vagon.viaOrigenId ||
+            !vagon.seccionOrigenId ||
+            !vagon.viaId ||
+            !vagon.seccionId,
+        )
+      ) {
         return jsonError("Cada vagón necesita número, origen y destino completos", 400);
       }
       if (vagones.some((vagon) => !["VACIO", "LLENO"].includes(vagon.carga))) {
         return jsonError("La carga de cada vagón debe ser VACIO o LLENO", 400);
       }
       const inputIds = vagones.map((vagon) => vagon.id as number);
-      const existingIds = new Set(existingVagones.map((vagon) => asPositiveInt(vagon.id)).filter((id): id is number => Boolean(id)));
-      if (inputIds.length !== existingIds.size || new Set(inputIds).size !== inputIds.length || inputIds.some((id) => !existingIds.has(id))) {
+      const existingIds = new Set(
+        existingVagones
+          .map((vagon) => asPositiveInt(vagon.id))
+          .filter((id): id is number => Boolean(id)),
+      );
+      if (
+        inputIds.length !== existingIds.size ||
+        new Set(inputIds).size !== inputIds.length ||
+        inputIds.some((id) => !existingIds.has(id))
+      ) {
         return jsonError("La edición debe incluir todos los vagones existentes", 400);
       }
       const numbers = vagones.map((vagon) => vagon.numeroVagon.toLocaleUpperCase("es-MX"));
-      if (new Set(numbers).size !== numbers.length) return jsonError("No repitas el mismo número de vagón", 400);
-      const capacidad = vagones.reduce((total, vagon) => total + arrastreVagonCapacity(vagon.carga), 0);
-      if (capacidad > ARRASTRE_MAX_CAPACITY) return jsonError("Capacidad excedida: vacío=1, lleno=2, máximo=8", 400);
+      if (new Set(numbers).size !== numbers.length)
+        return jsonError("No repitas el mismo número de vagón", 400);
+      const capacidad = vagones.reduce(
+        (total, vagon) => total + arrastreVagonCapacity(vagon.carga),
+        0,
+      );
+      if (capacidad > ARRASTRE_MAX_CAPACITY)
+        return jsonError("Capacidad excedida: vacío=1, lleno=2, máximo=8", 400);
 
       const data = await fetchTorreonMsJson(`/arrastres/${arrastreId}`, {
         method: "PATCH",
@@ -264,9 +277,10 @@ export async function POST(req: NextRequest) {
 
       const vagonId = asPositiveInt(body.vagonId);
       if (!vagonId) return jsonError("Vagón inválido", 400);
-      const path = action === "INICIAR_VAGON"
-        ? `/arrastres/${arrastreId}/vagones/${vagonId}/iniciar`
-        : `/arrastres/${arrastreId}/vagones/${vagonId}/finalizar`;
+      const path =
+        action === "INICIAR_VAGON"
+          ? `/arrastres/${arrastreId}/vagones/${vagonId}/iniciar`
+          : `/arrastres/${arrastreId}/vagones/${vagonId}/finalizar`;
       const data = await fetchTorreonMsJson(path, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -322,7 +336,8 @@ export async function POST(req: NextRequest) {
         if (!value) return jsonError("Seccion destino invalida", 400);
         payload.seccionDestino = value;
       }
-      if (!Object.keys(payload).length) return jsonError("Envia al menos un campo para editar", 400);
+      if (!Object.keys(payload).length)
+        return jsonError("Envia al menos un campo para editar", 400);
 
       const data = await fetchTorreonMsJson(`/arrastres/${arrastreId}/vagones/${vagonId}`, {
         method: "PATCH",
@@ -352,15 +367,20 @@ export async function POST(req: NextRequest) {
       const editError = assertArrastreEditable(arrastre);
       if (editError) return jsonError(editError, 409);
 
-      const arrastreIds = asPositiveIntArray(body.arrastreIds);
+      const direction = body.direction;
+      if (direction !== undefined && direction !== "up" && direction !== "down")
+        return jsonError("Dirección inválida", 400);
+      const arrastreIds = direction ? [arrastreId] : asPositiveIntArray(body.arrastreIds);
       if (!arrastreIds.length) return jsonError("Orden de solicitudes invalido", 400);
-      if (new Set(arrastreIds).size !== arrastreIds.length) return jsonError("No repitas solicitudes", 400);
+      if (new Set(arrastreIds).size !== arrastreIds.length)
+        return jsonError("No repitas solicitudes", 400);
 
       const data = await fetchTorreonMsJson("/arrastres/orden-solicitudes", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           arrastreIds,
+          ...(direction ? { direction } : {}),
           ...(companyScoped && empresaId ? { empresaId } : {}),
         }),
       });
@@ -369,33 +389,18 @@ export async function POST(req: NextRequest) {
 
     if (action === "PRIORIZAR_SOLICITUD") {
       if (!canPrioritizeArrastre(arrastre)) {
-        return jsonError("Solo puedes subir solicitudes solicitadas o detenidas sin vagon en proceso", 409);
+        return jsonError(
+          "Solo puedes subir solicitudes solicitadas o detenidas sin vagon en proceso",
+          409,
+        );
       }
-
-      const scopeRows = await loadPriorityScope(arrastre, companyScoped, empresaId);
-      if (!scopeRows.some(hasOpenIncident)) {
-        return jsonError("Solo se puede priorizar cuando existe un incidente abierto en la cola", 409);
-      }
-
-      const editableRows = scopeRows.filter(canReorderArrastre);
-      const target = editableRows.find((item) => Number(item.id) === arrastreId);
-      if (!target) {
-        return jsonError("Solicitud no disponible para subir al frente", 409);
-      }
-      if (!canPrioritizeArrastre(target)) {
-        return jsonError("La solicitud no tiene vagones pendientes disponibles para subir al frente", 409);
-      }
-
-      const arrastreIds = [
-        target.id,
-        ...editableRows.filter((item) => Number(item.id) !== arrastreId).map((item) => item.id),
-      ].map((item) => Number(item));
 
       const data = await fetchTorreonMsJson("/arrastres/orden-solicitudes", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          arrastreIds,
+          arrastreIds: [arrastreId],
+          direction: "front",
           ...(companyScoped && empresaId ? { empresaId } : {}),
         }),
       });
@@ -410,7 +415,8 @@ export async function POST(req: NextRequest) {
       const seccionBloqueadaId = asPositiveInt(body.seccionBloqueadaId);
 
       if (motivo.length < 3) return jsonError("Describe el incidente", 400);
-      if (fotos.length < 1 || fotos.length > 4) return jsonError("El incidente requiere entre 1 y 4 fotos", 400);
+      if (fotos.length < 1 || fotos.length > 4)
+        return jsonError("El incidente requiere entre 1 y 4 fotos", 400);
 
       const data = await fetchTorreonMsJson(`/arrastres/${arrastreId}/incidentes`, {
         method: "POST",
@@ -433,11 +439,13 @@ export async function POST(req: NextRequest) {
       if (!incidenteId) return jsonError("Incidente invalido", 400);
       if (solucion.length < 3) return jsonError("Describe la solucion", 400);
 
-      const resolved = asRecord(await fetchTorreonMsJson(`/arrastres/${arrastreId}/incidentes/${incidenteId}/resolver`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resueltoPorId: userId, solucion }),
-      }));
+      const resolved = asRecord(
+        await fetchTorreonMsJson(`/arrastres/${arrastreId}/incidentes/${incidenteId}/resolver`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ resueltoPorId: userId, solucion }),
+        }),
+      );
 
       const estado = String(resolved.estado || arrastre.estado || "").toUpperCase();
       if (estado === "DETENIDO") {

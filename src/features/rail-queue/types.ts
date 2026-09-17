@@ -1,5 +1,3 @@
-import type { TornoMedicionState } from "@/features/movimientos/crear/tornoMedicion.types";
-
 export type RondaMovement = {
   id?: number;
   idTecnico?: number | string | null;
@@ -16,6 +14,9 @@ export type RondaMovement = {
   fechaSolicitud?: string | null;
   fechaInicio?: string | null;
   fechaFin?: string | null;
+  createdAt?: string | null;
+  tipoMovimiento?: string | null;
+  accion?: string | null;
   instrucciones?: string | null;
 };
 
@@ -30,6 +31,7 @@ export type Ronda = {
   movimiento?: RondaMovement | null;
   movimientoId?: number | null;
   createdAt?: string | null;
+  source?: string;
 };
 
 export type RondaInfo = {
@@ -56,15 +58,6 @@ export type Toast = {
   id: number;
   text: string;
   kind: ToastKind;
-};
-
-export type MeasuresModalState = {
-  open: boolean;
-  loading: boolean;
-  error: string | null;
-  tornoMedicion: TornoMedicionState;
-  locomotiveLabel?: string;
-  companyName?: string;
 };
 
 export type QueueEntityKind = "movimientos" | "torneados";

@@ -1,5 +1,9 @@
-let toneModulePromise: Promise<typeof import("tone")> | undefined;
-let toneModule: typeof import("tone") | undefined;
+import { hasRealtimeNotificationConnection } from "./notificationDelivery";
+let toneModulePromise: Promise<typeof import("./notificationAudio")> | undefined;
+let toneModule: typeof import("./notificationAudio") | undefined;
+let latestSoundRequest = 0;
+let lastSoundStartedAt = -Infinity;
+let lastSoundWasIncident = false;
 let activeSoundCleanup: (() => void) | undefined;
 
 type NotificationSoundKind =
@@ -120,7 +124,7 @@ function soundKind(value: string): NotificationSoundKind {
 }
 
 function loadTone() {
-  toneModulePromise ??= import("tone").then((module) => {
+  toneModulePromise ??= import("./notificationAudio").then((module) => {
     toneModule = module;
     return module;
   });
@@ -146,12 +150,25 @@ export function primeNotificationSound(): Promise<boolean> {
   }
 
   if (toneModule.getContext().state === "running") return Promise.resolve(true);
-  return toneModule.start()
+  return toneModule
+    .start()
     .then(() => toneModule?.getContext().state === "running")
     .catch(() => false);
 }
 
 export async function playNotificationSound(notificationType = "generic") {
+  const request = ++latestSoundRequest;
+  // Los controles de Silencio del tablero también gobiernan los avisos globales.
+  try {
+    if (
+      typeof window !== "undefined" &&
+      notificationType !== "sonido_actualizado" &&
+      window.localStorage.getItem("rail-queue:soundOn") === "0"
+    )
+      return;
+  } catch {
+    /* El audio sigue disponible si el navegador restringe storage. */
+  }
   try {
     const Tone = await loadTone();
     if (Tone.getContext().state !== "running") {
@@ -164,10 +181,16 @@ export async function playNotificationSound(notificationType = "generic") {
       }
     }
 
-    activeSoundCleanup?.();
-
+    if (request !== latestSoundRequest) return;
     const kind = soundKind(notificationType);
     const isIncidentAlert = kind === "incidentAlert";
+    // Una ráfaga produce una sola señal; nunca se encolan sonidos para después.
+    // Un incidente sí puede interrumpir una confirmación de menor prioridad.
+    if (Date.now() - lastSoundStartedAt < 2_000 && !(isIncidentAlert && !lastSoundWasIncident))
+      return;
+    lastSoundStartedAt = Date.now();
+    lastSoundWasIncident = isIncidentAlert;
+    activeSoundCleanup?.();
     const synth = new Tone.PolySynth(Tone.Synth, {
       oscillator: { type: "triangle" },
       envelope: isIncidentAlert
@@ -200,4 +223,10 @@ export async function playNotificationSound(notificationType = "generic") {
   } catch (error) {
     console.warn("No se pudo reproducir el sonido de notificacion.", error);
   }
+}
+
+/** Con realtime conectado, su evento confirma la acción una sola vez. */
+export function playOperationConfirmation(notificationType: string) {
+  if (hasRealtimeNotificationConnection()) return Promise.resolve();
+  return playNotificationSound(notificationType);
 }

@@ -7,7 +7,7 @@ import { initThemeSSRScript } from "@/lib/theme";
 import AdaptiveMode from "@/components/layout/AdaptiveMode";
 import PwaInstallPrompt from "@/components/layout/PwaInstallPrompt";
 import FirebaseNotificationPrompt from "@/components/layout/FirebaseNotificationPrompt";
-import { ClientMovementGuideProvider } from "@/features/capacitacion/ClientMovementGuide";
+import TrainingBoundary from "@/components/layout/TrainingBoundary";
 import WebVitalsReporter from "@/components/performance/WebVitalsReporter";
 
 export const metadata: Metadata = {
@@ -48,10 +48,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   colorScheme: "light dark",
-  themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0B1220" },
-    { color: "#f8fafc" },
-  ],
+  themeColor: [{ media: "(prefers-color-scheme: dark)", color: "#0B1220" }, { color: "#f8fafc" }],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -61,7 +58,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: initThemeSSRScript() }} />
       </head>
       <body className="min-h-svh antialiased">
-        <ClientMovementGuideProvider>
+        <TrainingBoundary>
           <AdaptiveMode />
           <WebVitalsReporter />
           <a
@@ -74,7 +71,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
           <FirebaseNotificationPrompt />
           <PwaInstallPrompt />
-        </ClientMovementGuideProvider>
+        </TrainingBoundary>
       </body>
     </html>
   );

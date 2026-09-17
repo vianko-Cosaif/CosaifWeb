@@ -12,11 +12,15 @@
 
 # testing
 /coverage
+/playwright-report
+/test-results
 
 # next.js
 /.next/
 /.next-dev/
+/.next-quality/
 /out/
+/analyze/
 
 # production
 /build

@@ -1,9 +1,17 @@
 import { useMemo, type ReactNode } from "react";
-import { TrainFront } from "lucide-react";
-import type { Arrastre, DailyInfo, IncidenteArrastre, VagonArrastre } from "@/features/torreon/arrastres";
-import { ArrastreTerminalTable, EmptyState, ModuleHeader, MovimientoToolbar } from "../components";
+import { TrainFront, Plus } from "lucide-react";
+import type {
+  Arrastre,
+  DailyInfo,
+  IncidenteArrastre,
+  VagonArrastre,
+} from "@/features/torreon/arrastres";
+import { ArrastreTerminalTable, EmptyState, MovimientoToolbar } from "../components";
 import type { Ambito } from "../types";
 import { isArrastreEditable, statusText } from "../utils";
+import type { TorreonPageMeta } from "../../useTorreonCollection";
+import s from "../../presentation/rail.module.scss";
+import PaginationBar from "@/components/ui/PaginationBar";
 
 type Props = {
   feedback: ReactNode;
@@ -13,8 +21,9 @@ type Props = {
   refreshing: boolean;
   loading: boolean;
   visibleArrastres: Arrastre[];
-  activeCount: number;
-  pastCount: number;
+  activeCount?: number;
+  pastCount?: number;
+  pagination?: TorreonPageMeta & { onPage: (page: number) => void };
   busyAction: string | null;
   dailyCounters: Map<number, DailyInfo>;
   manageableRowIds: number[];
@@ -51,6 +60,7 @@ export function MovimientosView({
   visibleArrastres,
   activeCount,
   pastCount,
+  pagination,
   busyAction,
   dailyCounters,
   manageableRowIds,
@@ -70,59 +80,94 @@ export function MovimientosView({
 }: Props) {
   const manageableIds = useMemo(() => new Set(manageableRowIds), [manageableRowIds]);
   const editableSolicitudIds = useMemo(
-    () => visibleArrastres
-      .filter((arrastre) => manageableIds.has(arrastre.id) && canReorderSolicitud(arrastre))
-      .map((arrastre) => arrastre.id),
+    () =>
+      visibleArrastres
+        .filter((arrastre) => manageableIds.has(arrastre.id) && canReorderSolicitud(arrastre))
+        .map((arrastre) => arrastre.id),
     [manageableIds, visibleArrastres],
   );
   return (
-    <section className="min-w-0 w-full overflow-x-hidden overflow-y-visible rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text)] shadow-[var(--app-shadow-sm)]">
-      <div className="flex min-h-[calc(100svh-7rem)] flex-col gap-5 px-3 py-4 sm:px-5 sm:py-6 lg:px-7">
-        <ModuleHeader title="Seguimiento de arrastres" subtitle="Solicitudes, turnos y avance" chip={ambito === "actuales" ? "Activos" : "Historial"} total={visibleArrastres.length} icon={TrainFront} />
-        <div className="h-px bg-gradient-to-r from-transparent via-emerald-300/40 to-transparent" />
-        {feedback}
-        <MovimientoToolbar
-          ambito={ambito}
-          search={search}
-          dateFilter={dateFilter}
-          refreshing={refreshing}
-          actuales={activeCount}
-          pasados={pastCount}
-          onAmbito={onAmbito}
-          onSearch={onSearch}
-          onDateFilter={onDateFilter}
-          onRefresh={onRefresh}
-          onNuevo={onNuevo}
-        />
+    <section className={s.workspace}>
+      <header className={s.pageHeader}>
+        <div>
+          <p className={s.eyebrow}>
+            <TrainFront size={15} aria-hidden />
+            Torreón · Arrastres
+          </p>
+          <h1 className={s.title}>Seguimiento de arrastres</h1>
+          <p className={s.subtitle}>Cada turno, recorrido y vagón en un solo lugar.</p>
+        </div>
+        <button type="button" className={s.primaryButton} onClick={onNuevo}>
+          <Plus size={16} aria-hidden />
+          Solicitar arrastre
+        </button>
+      </header>
+      {feedback}
+      <MovimientoToolbar
+        ambito={ambito}
+        search={search}
+        dateFilter={dateFilter}
+        refreshing={refreshing}
+        actuales={activeCount}
+        pasados={pastCount}
+        onAmbito={onAmbito}
+        onSearch={onSearch}
+        onDateFilter={onDateFilter}
+        onRefresh={onRefresh}
+        onNuevo={onNuevo}
+      />
 
-        {loading ? (
-          <div className="h-72 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
-        ) : visibleArrastres.length ? (
-          <ArrastreTerminalTable
-            rows={visibleArrastres}
-            dailyCounters={dailyCounters}
-            busyAction={busyAction}
-            title={ambito === "actuales" ? "Solicitudes activas" : "Historial de arrastres"}
-            subtitle={ambito === "actuales" ? "Seguimiento" : "Operaciones anteriores"}
-            pageSize={6}
-            editableSolicitudIds={editableSolicitudIds}
-            manageableRowIds={manageableRowIds}
-            canPrioritizeByIncident={canPrioritizeByIncident}
-            onEditArrastre={onEditArrastre}
-            onEditVagon={onEditVagon}
-            onPrioritizeSolicitud={onPrioritizeSolicitud}
-            onReorderVagon={onReorderVagon}
-            onReorderSolicitud={onReorderSolicitud}
-            onCancel={onCancel}
-            onIncidentSelect={onIncidentSelect}
-          />
-        ) : (
-          <EmptyState
-            text={search || dateFilter ? "Sin resultados con estos filtros" : ambito === "actuales" ? "No hay arrastres activos" : "No hay arrastres en el historial"}
-            hint={search || dateFilter ? "Ajusta la búsqueda o limpia los filtros para ver los registros disponibles." : ambito === "actuales" ? "Las solicitudes pendientes aparecerán aquí para darles seguimiento." : "Los arrastres concluidos o cancelados aparecerán aquí."}
-          />
-        )}
-      </div>
+      {loading ? (
+        <div className={s.loading} role="status">
+          Cargando solicitudes…
+        </div>
+      ) : visibleArrastres.length ? (
+        <ArrastreTerminalTable
+          rows={visibleArrastres}
+          dailyCounters={dailyCounters}
+          busyAction={busyAction}
+          title={ambito === "actuales" ? "Solicitudes activas" : "Historial de arrastres"}
+          subtitle={ambito === "actuales" ? "Seguimiento" : "Operaciones anteriores"}
+          pageSize={pagination?.pageSize ?? 8}
+          hidePagination={Boolean(pagination)}
+          editableSolicitudIds={editableSolicitudIds}
+          manageableRowIds={manageableRowIds}
+          canPrioritizeByIncident={canPrioritizeByIncident}
+          onEditArrastre={ambito === "actuales" ? onEditArrastre : undefined}
+          onEditVagon={ambito === "actuales" ? onEditVagon : undefined}
+          onPrioritizeSolicitud={ambito === "actuales" ? onPrioritizeSolicitud : undefined}
+          onReorderVagon={ambito === "actuales" ? onReorderVagon : undefined}
+          onReorderSolicitud={ambito === "actuales" ? onReorderSolicitud : undefined}
+          onCancel={ambito === "actuales" ? onCancel : undefined}
+          onIncidentSelect={onIncidentSelect}
+        />
+      ) : (
+        <EmptyState
+          text={
+            search || dateFilter
+              ? "Sin resultados con estos filtros"
+              : ambito === "actuales"
+                ? "No hay arrastres activos"
+                : "No hay arrastres en el historial"
+          }
+          hint={
+            search || dateFilter
+              ? "Ajusta la búsqueda o limpia los filtros para ver los registros disponibles."
+              : ambito === "actuales"
+                ? "Las solicitudes pendientes aparecerán aquí para darles seguimiento."
+                : "Los arrastres concluidos o cancelados aparecerán aquí."
+          }
+        />
+      )}
+      {pagination && !loading ? (
+        <PaginationBar
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          totalItems={pagination.total}
+          pageSize={pagination.pageSize}
+          onPageChange={pagination.onPage}
+        />
+      ) : null}
     </section>
   );
 }

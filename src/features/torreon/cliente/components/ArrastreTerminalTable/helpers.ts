@@ -4,7 +4,9 @@ import { statusText } from "../../utils";
 export type Direction = "up" | "down";
 
 export function orderedVagones(arrastre: Arrastre) {
-  return [...(arrastre.vagones || [])].sort((left, right) => (left.orden ?? 0) - (right.orden ?? 0) || left.id - right.id);
+  return [...(arrastre.vagones || [])].sort(
+    (left, right) => (left.orden ?? 0) - (right.orden ?? 0) || left.id - right.id,
+  );
 }
 
 export function vagonLabel(vagon?: VagonArrastre | null) {
@@ -30,19 +32,20 @@ export function getStats(arrastre: Arrastre) {
 
 export function getCurrentVagon(arrastre: Arrastre) {
   const vagones = orderedVagones(arrastre);
-  return vagones.find((vagon) => statusText(vagon.estado) === "EN_PROCESO")
-    || vagones.find((vagon) => statusText(vagon.estado) === "PENDIENTE")
-    || vagones.find((vagon) => statusText(vagon.estado) === "BLOQUEADO")
-    || null;
-}
-
-export function getNextVagones(arrastre: Arrastre) {
-  return orderedVagones(arrastre).filter((vagon) => statusText(vagon.estado) !== "CONCLUIDO").slice(0, 2);
+  return (
+    vagones.find((vagon) => statusText(vagon.estado) === "EN_PROCESO") ||
+    vagones.find((vagon) => statusText(vagon.estado) === "PENDIENTE") ||
+    vagones.find((vagon) => statusText(vagon.estado) === "BLOQUEADO") ||
+    null
+  );
 }
 
 export function canMoveWithNeighbor(vagones: VagonArrastre[], index: number, direction: Direction) {
   const nextIndex = direction === "up" ? index - 1 : index + 1;
   if (nextIndex < 0 || nextIndex >= vagones.length) return false;
   const blockedForMove = new Set(["EN_PROCESO", "CONCLUIDO"]);
-  return !blockedForMove.has(statusText(vagones[index]?.estado)) && !blockedForMove.has(statusText(vagones[nextIndex]?.estado));
+  return (
+    !blockedForMove.has(statusText(vagones[index]?.estado)) &&
+    !blockedForMove.has(statusText(vagones[nextIndex]?.estado))
+  );
 }

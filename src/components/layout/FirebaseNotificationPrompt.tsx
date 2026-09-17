@@ -3,16 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Bell, Loader2 } from "lucide-react";
+import { claimNotification, shouldDeferPushToRealtime } from "@/lib/notificationDelivery";
 import { assertSameOriginUrl, getNotificationRuntimePolicy } from "@/lib/notificationRuntime";
 
 type PromptState =
-  | "checking"
-  | "idle"
-  | "requesting"
-  | "granted"
-  | "denied"
-  | "unsupported"
-  | "error";
+  "checking" | "idle" | "requesting" | "granted" | "denied" | "unsupported" | "error";
 
 function safeSet(key: string, value: string) {
   try {
@@ -55,9 +50,10 @@ export default function FirebaseNotificationPrompt() {
 
     try {
       // Pedir permiso dentro del gesto de usuario, antes de descargar Firebase.
-      const currentPermission = browserPermission() === "default"
-        ? await Notification.requestPermission()
-        : browserPermission();
+      const currentPermission =
+        browserPermission() === "default"
+          ? await Notification.requestPermission()
+          : browserPermission();
       if (!isCurrent()) return;
       setPermission(currentPermission);
       if (currentPermission !== "granted") {
@@ -65,7 +61,8 @@ export default function FirebaseNotificationPrompt() {
         setState(currentPermission === "denied" ? "denied" : "idle");
         return;
       }
-      const { registerFirebaseNotificationToken, requestFirebaseNotificationToken } = await import("@/lib/firebase");
+      const { registerFirebaseNotificationToken, requestFirebaseNotificationToken } =
+        await import("@/lib/firebase");
       if (!isCurrent()) return;
       const token = await requestFirebaseNotificationToken({ requestPermission: false });
       if (!isCurrent()) return;
@@ -87,7 +84,12 @@ export default function FirebaseNotificationPrompt() {
   }, [policy.statusKey, shouldRegisterToken]);
 
   useEffect(() => {
-    if (!shouldRegisterToken || !("Notification" in window) || !("serviceWorker" in navigator) || !window.isSecureContext) {
+    if (
+      !shouldRegisterToken ||
+      !("Notification" in window) ||
+      !("serviceWorker" in navigator) ||
+      !window.isSecureContext
+    ) {
       setState("unsupported");
       setPermission(null);
       return;
@@ -131,12 +133,20 @@ export default function FirebaseNotificationPrompt() {
       window.removeEventListener("keydown", primeAudio, true);
     };
     const primeAudio = () => {
-      if (!sound) { void prepareSound(); return; }
+      if (!sound) {
+        void prepareSound();
+        return;
+      }
       if (priming) return;
       priming = true;
-      void sound.primeNotificationSound().then((ready) => {
-        if (ready) removeListeners();
-      }).finally(() => { priming = false; });
+      void sound
+        .primeNotificationSound()
+        .then((ready) => {
+          if (ready) removeListeners();
+        })
+        .finally(() => {
+          priming = false;
+        });
     };
     const timerId = window.setTimeout(() => void prepareSound(), 1200);
     window.addEventListener("pointerdown", primeAudio, true);
@@ -156,27 +166,45 @@ export default function FirebaseNotificationPrompt() {
       void (async () => {
         const { listenFirebaseForegroundMessages } = await import("@/lib/firebase");
         if (!mounted) return;
-        const nextUnsubscribe = await listenFirebaseForegroundMessages((payload) => {
+        const nextUnsubscribe = await listenFirebaseForegroundMessages(async (payload) => {
           if (!mounted || browserPermission() !== "granted") return;
+          if (document.visibilityState === "visible" && shouldDeferPushToRealtime(payload.data))
+            return;
+          const eventId = payload.data?.eventId || payload.messageId;
+          if (eventId && !(await claimNotification(eventId))) return;
+          if (!mounted) return;
           const title = payload.notification?.title || payload.data?.title || "Nueva notificación";
           const body = payload.notification?.body || payload.data?.body || "";
           const url = assertSameOriginUrl(payload.data?.url || "/", "/");
-          const tag = payload.data?.tag || payload.data?.eventId || payload.data?.movimientoId || payload.data?.incidenteId || payload.data?.tipo || title;
+          const tag =
+            payload.data?.eventId ||
+            payload.data?.tag ||
+            payload.data?.movimientoId ||
+            payload.data?.incidenteId ||
+            payload.data?.tipo ||
+            title;
           const options: NotificationOptions & Record<string, unknown> = {
             body,
             icon: payload.notification?.icon || "/icons/cosaif-192.png",
             badge: "/icons/cosaif-192.png",
             tag,
-            renotify: true,
-            requireInteraction: true,
-            silent: false,
+            renotify: false,
+            requireInteraction: false,
+            silent: true,
             data: { ...payload.data, url },
           };
           void import("@/lib/notificationSound")
             .then(({ playNotificationSound }) => {
-              if (mounted) return playNotificationSound([payload.data?.tipo, payload.data?.eventType, payload.data?.source].filter(Boolean).join(":"));
+              if (mounted)
+                return playNotificationSound(
+                  [payload.data?.tipo, payload.data?.eventType, payload.data?.source]
+                    .filter(Boolean)
+                    .join(":"),
+                );
             })
-            .catch((error) => console.warn("No se pudo reproducir el aviso de notificación.", error));
+            .catch((error) =>
+              console.warn("No se pudo reproducir el aviso de notificación.", error),
+            );
           const notification = new Notification(title, options);
           notification.onclick = (event) => {
             event.preventDefault();
@@ -224,7 +252,8 @@ export default function FirebaseNotificationPrompt() {
     };
   }, [state]);
 
-  const shouldShow = state === "idle" || state === "requesting" || state === "error" || state === "denied";
+  const shouldShow =
+    state === "idle" || state === "requesting" || state === "error" || state === "denied";
   if (!shouldRegisterToken || !shouldShow) return null;
 
   return (

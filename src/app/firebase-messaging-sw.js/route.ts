@@ -15,7 +15,8 @@ function serviceWorkerSource() {
     measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID ?? "",
   };
   const runtimeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
-  const appEnv = process.env.NEXT_PUBLIC_APP_ENV || process.env.NEXT_PUBLIC_VERCEL_ENV || runtimeEnv;
+  const appEnv =
+    process.env.NEXT_PUBLIC_APP_ENV || process.env.NEXT_PUBLIC_VERCEL_ENV || runtimeEnv;
 
   return `
 const firebaseConfig = ${JSON.stringify(firebaseConfig)};
@@ -49,6 +50,8 @@ if (requiredConfig.every(hasValue)) {
   const messaging = firebase.messaging();
 
   messaging.onBackgroundMessage((payload) => {
+    // Firebase ya muestra automáticamente los mensajes con notification.
+    if (payload.notification) return;
     const notification = payload.notification || {};
     const data = payload.data || {};
     const title = notification.title || data.title || "Nueva notificacion";
@@ -63,8 +66,8 @@ if (requiredConfig.every(hasValue)) {
       badge: data.badge || "/icons/cosaif-192.png",
       data: { ...data, url, runtimeEnv: notificationRuntime.runtimeEnv, appEnv: notificationRuntime.appEnv },
       tag: notificationRuntime.runtimeEnv + ":" + tag,
-      renotify: true,
-      requireInteraction: true,
+      renotify: false,
+      requireInteraction: false,
       silent: false,
     });
   });

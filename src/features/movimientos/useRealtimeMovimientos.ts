@@ -1,5 +1,7 @@
 "use client";
 
+import { createRealtimeEventDeduplicator } from "@/lib/notificationIdentity";
+import { setRealtimeNotificationConnection } from "@/lib/notificationDelivery";
 import { useEffect, useRef, useState } from "react";
 import { handleAuthError } from "@/lib/auth/auth";
 
@@ -77,8 +79,7 @@ const DEFAULT_REALTIME_WS_CONFIG_URL =
 const subscribers = new Set<Subscriber>();
 const statusSubscribers = new Set<StatusSubscriber>();
 let realtimeStatus: RealtimeConnectionStatus = "disconnected";
-const recentEvents = new Map<string, number>();
-const RECENT_EVENT_TTL_MS = 1_200;
+const shouldSuppressEvent = createRealtimeEventDeduplicator();
 
 const streamState: StreamState = {
   abortController: null,
@@ -115,6 +116,7 @@ function markActivity() {
 function setRealtimeStatus(status: RealtimeConnectionStatus) {
   if (realtimeStatus === status) return;
   realtimeStatus = status;
+  setRealtimeNotificationConnection(status === "connected");
   for (const subscriber of statusSubscribers) subscriber(status);
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("cosaif:realtime-status", { detail: { status } }));
@@ -146,47 +148,6 @@ function notifySubscribers(event: RealtimeMovementEvent) {
   for (const subscriber of subscribers) {
     subscriber(event);
   }
-}
-
-function eventKey(event: RealtimeMovementEvent) {
-  if (event.eventId) return `id:${event.eventId}`;
-  return [
-    event.type,
-    event.source,
-    event.entity,
-    event.entityId,
-    event.empresaId,
-    event.localidadId,
-    event.clienteId,
-    event.movimientoId,
-    event.arrastreId,
-    event.vagonId,
-    event.incidenteId,
-    event.accion,
-    event.estado,
-    event.estadoAnterior,
-  ].map((part) => String(part ?? "-")).join("|");
-}
-
-function shouldSuppressEvent(event: RealtimeMovementEvent) {
-  const type = String(event.type ?? "");
-  if (type === "realtime.ready" || type === "realtime.resume" || type === "realtime.pong") {
-    return false;
-  }
-
-  const now = Date.now();
-  if (recentEvents.size > 400) {
-    for (const [key, expiresAt] of recentEvents) {
-      if (expiresAt <= now) recentEvents.delete(key);
-    }
-  }
-
-  const key = eventKey(event);
-  const expiresAt = recentEvents.get(key);
-  if (expiresAt && expiresAt > now) return true;
-
-  recentEvents.set(key, now + RECENT_EVENT_TTL_MS);
-  return false;
 }
 
 function notifyRealtimeResume(reason: string) {
@@ -357,7 +318,11 @@ async function resolveWebSocketUrl(configUrl: string): Promise<string> {
       throw new RealtimeAuthError(`Realtime WS config HTTP ${response.status}`);
     }
     if (!response.ok) throw new Error(`Realtime WS config HTTP ${response.status}`);
-    const payload = (await response.json()) as { url?: string | null; transport?: string; reason?: string };
+    const payload = (await response.json()) as {
+      url?: string | null;
+      transport?: string;
+      reason?: string;
+    };
     if (payload.transport && payload.transport !== "websocket") {
       throw new Error(payload.reason || "Realtime WS no disponible para esta conexion");
     }
@@ -656,7 +621,9 @@ export function useRealtimeMovimientos({
     return () => {
       subscribers.delete(subscriber);
       // Strict Mode and sibling-route swaps can reattach immediately; keep one handshake.
-      queueMicrotask(() => { if (subscribers.size === 0) stopRealtime(); });
+      queueMicrotask(() => {
+        if (subscribers.size === 0) stopRealtime();
+      });
     };
   }, [enabled, url, wsConfigUrl]);
 

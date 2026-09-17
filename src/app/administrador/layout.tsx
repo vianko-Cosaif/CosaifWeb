@@ -1,6 +1,4 @@
 // src/app/admin/layout.tsx
-"use client";
-
 import AdaptiveAppShell from "@/components/layout/AdaptiveAppShell";
 import ScopedIncidentMonitor from "@/features/incidentes/monitor/ScopedIncidentMonitor";
 

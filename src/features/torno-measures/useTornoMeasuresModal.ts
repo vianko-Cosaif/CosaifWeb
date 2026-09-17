@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { parseTornoMedicionFromApi } from "@/features/movimientos/torno/tornoMeasureParser";
 import {
   DEFAULT_TORNO_MEDICION_STATE,
@@ -23,6 +23,8 @@ export type OpenMeasuresModalArgs = {
 };
 
 export function useTornoMeasuresModal(apiBase: string) {
+  const request = useRef<AbortController | null>(null);
+  useEffect(() => () => request.current?.abort(), []);
   const [measuresModal, setMeasuresModal] = useState<MeasuresModalState>({
     open: false,
     loading: false,
@@ -31,6 +33,7 @@ export function useTornoMeasuresModal(apiBase: string) {
   });
 
   const closeMeasuresModal = useCallback(() => {
+    request.current?.abort();
     setMeasuresModal((prev) => ({ ...prev, open: false, error: null }));
   }, []);
 
@@ -38,6 +41,10 @@ export function useTornoMeasuresModal(apiBase: string) {
     async (args: OpenMeasuresModalArgs) => {
       const movementId = Number(args.movementId);
       if (!Number.isFinite(movementId) || movementId <= 0) return;
+
+      request.current?.abort();
+      const controller = new AbortController();
+      request.current = controller;
 
       setMeasuresModal({
         open: true,
@@ -53,26 +60,31 @@ export function useTornoMeasuresModal(apiBase: string) {
           method: "GET",
           credentials: "include",
           cache: "no-store",
+          signal: controller.signal,
         });
         if (!response.ok) {
           throw new Error(`No se pudo cargar medidas (${response.status}).`);
         }
 
         const payload = await response.json();
+        if (controller.signal.aborted) return;
         setMeasuresModal((prev) => ({
           ...prev,
           loading: false,
           tornoMedicion: parseTornoMedicionFromApi(payload),
-          locomotiveLabel: String(payload?.movimiento?.locomotiveNumber ?? args.locomotiveLabel ?? ""),
+          locomotiveLabel: String(
+            payload?.movimiento?.locomotiveNumber ?? args.locomotiveLabel ?? "",
+          ),
           companyName: payload?.movimiento?.empresa?.nombre ?? args.companyName,
         }));
       } catch (error) {
+        if (controller.signal.aborted) return;
         const message =
           error instanceof Error ? error.message : "No se pudieron cargar las medidas.";
         setMeasuresModal((prev) => ({ ...prev, loading: false, error: message }));
       }
     },
-    [apiBase]
+    [apiBase],
   );
 
   return { measuresModal, openMeasuresModal, closeMeasuresModal };

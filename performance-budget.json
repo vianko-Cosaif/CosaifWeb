@@ -1,0 +1,17 @@
+{
+  "routes": {
+    "login": {
+      "maximumJavaScriptBytes": 570000,
+      "maximumJavaScriptRequests": 14,
+      "maximumDocumentBytes": 65000
+    }
+  },
+  "clientJavaScript": {
+    "maximumTotalBytes": 5100000,
+    "maximumSingleFileBytes": 590000
+  },
+  "clientCss": {
+    "maximumTotalBytes": 300000,
+    "maximumSingleFileBytes": 205000
+  }
+}

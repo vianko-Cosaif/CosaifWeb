@@ -2,7 +2,6 @@ import type {
   RealtimeConnectionStatus,
   RealtimeMovementEvent,
 } from "@/features/movimientos/useRealtimeMovimientos";
-import type { Arrastre } from "@/features/torreon/arrastres/types";
 
 export function isTorreonNaturalEvent(event: RealtimeMovementEvent) {
   const type = String(event.type ?? "");
@@ -22,12 +21,4 @@ export function realtimeStatusLabel(status: RealtimeConnectionStatus) {
   if (status === "connected") return "Conectado";
   if (status === "connecting") return "Conectando";
   return "Sin conexión";
-}
-
-export function realtimeArrastreSnapshot(event: RealtimeMovementEvent): Arrastre | null {
-  const snapshot = event.snapshot;
-  const id = Number(snapshot?.id ?? event.arrastreId);
-  if (!snapshot || !Number.isFinite(id) || id <= 0) return null;
-  if (!Array.isArray(snapshot.vagones) && !Array.isArray(snapshot.incidentes)) return null;
-  return { ...snapshot, id } as Arrastre;
 }

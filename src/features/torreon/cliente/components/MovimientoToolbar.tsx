@@ -1,18 +1,14 @@
 "use client";
-
-import { CalendarDays, Plus, RefreshCw, X } from "lucide-react";
-import Button from "@/components/ui/Button";
-import SearchInput from "@/components/ui/SearchInput";
-import SegmentedControl from "@/components/ui/SegmentedControl";
+import { RefreshCw, X, Info } from "lucide-react";
 import type { Ambito } from "../types";
-
+import s from "../../presentation/rail.module.scss";
 type Props = {
   ambito: Ambito;
   search: string;
   dateFilter: string;
   refreshing: boolean;
-  actuales: number;
-  pasados: number;
+  actuales?: number;
+  pasados?: number;
   onAmbito: (ambito: Ambito) => void;
   onSearch: (value: string) => void;
   onDateFilter: (value: string) => void;
@@ -21,45 +17,80 @@ type Props = {
 };
 
 export function MovimientoToolbar({
-  ambito, search, dateFilter, refreshing, actuales, pasados,
-  onAmbito, onSearch, onDateFilter, onRefresh, onNuevo,
+  ambito,
+  search,
+  dateFilter,
+  refreshing,
+  actuales,
+  pasados,
+  onAmbito,
+  onSearch,
+  onDateFilter,
+  onRefresh,
 }: Props) {
   return (
-    <section aria-label="Filtros de arrastres" className="min-w-0 space-y-4 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-subtle)] p-4 sm:p-5">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <SegmentedControl
-          ariaLabel="Periodo de arrastres"
-          value={ambito}
-          onChange={onAmbito}
-          className="w-full [&>button]:flex-1 xl:w-auto"
-          options={[
-            { value: "actuales", label: "Actuales", count: actuales },
-            { value: "pasados", label: "Pasados", count: pasados },
-          ]}
-        />
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="lg" onClick={onRefresh} loading={refreshing} leftIcon={<RefreshCw className="h-4 w-4" aria-hidden />}>
-            {refreshing ? "Actualizando…" : "Actualizar"}
-          </Button>
-          <Button variant="primary" size="lg" onClick={onNuevo} leftIcon={<Plus className="h-4 w-4" aria-hidden />}>
-            Solicitar arrastre
-          </Button>
+    <section aria-label="Filtros de arrastres" className={s.filterBar}>
+      <div className={s.filterTop}>
+        <div className={s.tabs} role="group" aria-label="Periodo de arrastres">
+          <button
+            type="button"
+            aria-pressed={ambito === "actuales"}
+            onClick={() => onAmbito("actuales")}
+          >
+            Actuales{actuales !== undefined ? <span>{actuales}</span> : null}
+          </button>
+          <button
+            type="button"
+            aria-pressed={ambito === "pasados"}
+            onClick={() => onAmbito("pasados")}
+          >
+            Pasados{pasados !== undefined ? <span>{pasados}</span> : null}
+          </button>
         </div>
+        <button type="button" className={s.button} onClick={onRefresh} disabled={refreshing}>
+          <RefreshCw size={15} aria-hidden />
+          {refreshing ? "Actualizando…" : "Actualizar"}
+        </button>
       </div>
-      <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_220px] md:items-end">
-        <div className="grid min-w-0 gap-1.5">
-          <span className="text-xs font-semibold text-[var(--app-text-muted)]">Buscar arrastres</span>
-          <SearchInput value={search} onChange={onSearch} onClear={() => onSearch("")} label="Buscar por folio, vagón, estado o vía" placeholder="Folio, vagón, estado o vía…" inputClassName="text-base sm:text-sm" />
-        </div>
-        <label className="grid min-w-0 gap-1.5">
-          <span className="text-xs font-semibold text-[var(--app-text-muted)]">Fecha de solicitud</span>
-          <span className="relative min-w-0">
-            <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-text-soft)]" aria-hidden />
-            <input type="date" value={dateFilter} onChange={(event) => onDateFilter(event.target.value)} className="h-11 w-full min-w-0 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] py-2 pl-10 pr-3 text-base text-[var(--app-text)] outline-none focus:border-[var(--app-accent)] focus:ring-2 focus:ring-[var(--app-focus)] sm:text-sm" />
-          </span>
+      <div className={s.filterFields}>
+        <label className={s.field}>
+          Buscar arrastres
+          <input
+            type="search"
+            aria-label="Buscar por folio, vagón, estado o vía"
+            placeholder="Folio, vagón, estado o vía…"
+            value={search}
+            onChange={(event) => onSearch(event.target.value)}
+          />
         </label>
+        <label className={s.field}>
+          Fecha de solicitud
+          <input
+            type="date"
+            value={dateFilter}
+            onChange={(event) => onDateFilter(event.target.value)}
+          />
+        </label>
+        {search || dateFilter ? (
+          <button
+            type="button"
+            className={s.button}
+            onClick={() => {
+              onSearch("");
+              onDateFilter("");
+            }}
+          >
+            <X size={15} aria-hidden />
+            Limpiar filtros
+          </button>
+        ) : null}
       </div>
-      {(search || dateFilter) && <Button variant="ghost" onClick={() => { onSearch(""); onDateFilter(""); }} leftIcon={<X className="h-4 w-4" aria-hidden />}>Limpiar filtros</Button>}
+      <p className={s.scopeNote}>
+        <Info size={14} aria-hidden />
+        {ambito === "actuales"
+          ? "Todas las empresas de tu localidad. Puedes gestionar únicamente las solicitudes de tu empresa."
+          : "Historial de tu empresa en esta localidad. Incluye solicitudes concluidas y canceladas."}
+      </p>
     </section>
   );
 }

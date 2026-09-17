@@ -1,12 +1,7 @@
 "use client";
+import TornoMeasuresDialog from "@/features/torno-measures/TornoMeasuresDialog";
 
-import React,
-{
-  useState,
-  useMemo,
-  useCallback,
-  memo,
-} from "react";
+import React, { useState, useMemo, useCallback, memo } from "react";
 import {
   ChevronDown,
   Loader2,
@@ -27,7 +22,11 @@ import dynamic from "next/dynamic";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import type { Movement } from "./useMovimientos";
 import type { TablaProps } from "./table.types";
-import { getMovementFolio, getMovementRowKey, getMovementTechnicalId } from "./movementPresentation";
+import {
+  getMovementFolio,
+  getMovementRowKey,
+  getMovementTechnicalId,
+} from "./movementPresentation";
 import { useTornoMeasuresModal } from "@/features/torno-measures";
 import {
   BadgeEstado,
@@ -45,9 +44,16 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/xapi";
 
 const DesktopMovementTable = dynamic(() => import("./DesktopMovementTable"), {
   ssr: false,
-  loading: () => <div role="status" className="flex min-h-64 items-center justify-center gap-2 p-5 text-sm text-[var(--app-text-muted)]"><Loader2 size={18} className="motion-safe:animate-spin" />Preparando tabla de movimientos...</div>,
+  loading: () => (
+    <div
+      role="status"
+      className="flex min-h-64 items-center justify-center gap-2 p-5 text-sm text-[var(--app-text-muted)]"
+    >
+      <Loader2 size={18} className="motion-safe:animate-spin" />
+      Preparando tabla de movimientos...
+    </div>
+  ),
 });
-const TornoMeasuresViewerModal = dynamic(() => import("../torno/TornoMeasuresViewerModal"), { ssr: false });
 /* ================== COMPONENTE PRINCIPAL ================== */
 
 function TablaInner({
@@ -70,37 +76,34 @@ function TablaInner({
   const isDesktop = useMediaQuery("(min-width: 1152px)");
   const clienteSoloIds = isClientLikeRole(rol);
   const puedeVerDuracion = mostrarDuracion && canViewMovementDuration(rol);
-  const NO_EDIT_STATES = useMemo(
-    () => new Set(["DETENIDO", "EN_PROCESO", "CONCLUIDO"]),
-    []
-  );
+  const NO_EDIT_STATES = useMemo(() => new Set(["DETENIDO", "EN_PROCESO", "CONCLUIDO"]), []);
   const puedeEditarMovimiento = useCallback(
     (estado?: string) => {
-      const key = String(estado || "").trim().toUpperCase();
+      const key = String(estado || "")
+        .trim()
+        .toUpperCase();
       return key ? !NO_EDIT_STATES.has(key) : true;
     },
-    [NO_EDIT_STATES]
+    [NO_EDIT_STATES],
   );
-  const showEditColumn = Boolean(onEditar) && filas.some((m) => puedeEditarMovimiento(m.estado) && (!puedeEditarFila || puedeEditarFila(m)));
+  const showEditColumn =
+    Boolean(onEditar) &&
+    filas.some((m) => puedeEditarMovimiento(m.estado) && (!puedeEditarFila || puedeEditarFila(m)));
   const showMeasuresColumn = false;
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const { measuresModal, openMeasuresModal, closeMeasuresModal } =
-    useTornoMeasuresModal(API_BASE);
+  const { measuresModal, openMeasuresModal, closeMeasuresModal } = useTornoMeasuresModal(API_BASE);
 
-  const totalPaginas = useMemo(
-    () => Math.max(1, Math.ceil(total / tamPagina)),
-    [total, tamPagina]
-  );
+  const totalPaginas = useMemo(() => Math.max(1, Math.ceil(total / tamPagina)), [total, tamPagina]);
 
   const tieneFilas = filas.length > 0;
 
   const startIndex = useMemo(
     () => (total === 0 ? 0 : (pagina - 1) * tamPagina + 1),
-    [pagina, tamPagina, total]
+    [pagina, tamPagina, total],
   );
   const endIndex = useMemo(
     () => (total === 0 ? 0 : startIndex + filas.length - 1),
-    [startIndex, filas.length, total]
+    [startIndex, filas.length, total],
   );
 
   const toggle = useCallback((rowKey: string) => {
@@ -110,10 +113,13 @@ function TablaInner({
     }));
   }, []);
 
-  const handlePageChange = useCallback((nextPage: number) => {
-    setExpanded({});
-    onPagina(nextPage);
-  }, [onPagina]);
+  const handlePageChange = useCallback(
+    (nextPage: number) => {
+      setExpanded({});
+      onPagina(nextPage);
+    },
+    [onPagina],
+  );
 
   const handlePrevPage = useCallback(() => {
     if (pagina > 1) handlePageChange(pagina - 1);
@@ -130,7 +136,7 @@ function TablaInner({
         locomotiveLabel: String(movement.locomotora ?? ""),
         companyName: movement.empresaNombre,
       }),
-    [openMeasuresModal]
+    [openMeasuresModal],
   );
 
   /* Page pills */
@@ -151,7 +157,10 @@ function TablaInner({
   }, [pagina, totalPaginas]);
 
   return (
-    <GuidedTarget id="movements-table" className="flex h-full w-full flex-col space-y-3 font-sans sm:space-y-4">
+    <GuidedTarget
+      id="movements-table"
+      className="flex h-full w-full flex-col space-y-3 font-sans sm:space-y-4"
+    >
       <div className="relative w-full overflow-x-hidden overflow-y-visible rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-sm">
         {isDesktop ? (
           <DesktopMovementTable
@@ -188,153 +197,139 @@ function TablaInner({
           />
         ) : (
           <>
-        {cargando && (
-          <div role="status" className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-[2px] dark:bg-slate-950/60">
-            <div className="flex items-center gap-2 sm:gap-3 rounded-xl sm:rounded-2xl border border-slate-200 bg-white px-4 sm:px-6 py-2.5 sm:py-3.5 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
-              <Loader2 className="animate-spin text-emerald-600" size={20} />
-              <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                Sincronizando...
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Mobile/Tablet cards */}
-        <div className="grid touch-pan-y grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] items-start gap-3 p-2 sm:p-4">
-          {!tieneFilas ? (
-            <div className="py-10 text-center">
-              <div className="mx-auto w-fit rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 p-5">
-                <TrainFront size={34} strokeWidth={1.2} className="text-slate-300 dark:text-slate-600" />
+            {cargando && (
+              <div
+                role="status"
+                className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-[2px] dark:bg-slate-950/60"
+              >
+                <div className="flex items-center gap-2 sm:gap-3 rounded-xl sm:rounded-2xl border border-slate-200 bg-white px-4 sm:px-6 py-2.5 sm:py-3.5 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+                  <Loader2 className="animate-spin text-emerald-600" size={20} />
+                  <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                    Sincronizando...
+                  </span>
+                </div>
               </div>
-              <p className="mt-3 text-sm font-medium text-slate-500 dark:text-slate-400">
-                No hay movimientos registrados
-              </p>
-              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                Ajusta filtros o cambia de pestaña
-              </p>
-            </div>
-          ) : (
-            filas.map((movement, index) => (
-              <MobileCard
-                key={getMovementRowKey(movement)}
-                rowKey={getMovementRowKey(movement)}
-                movement={movement}
-                isOpen={Boolean(expanded[getMovementRowKey(movement)])}
-                onToggle={toggle}
-                onEditar={onEditar}
-                showEdit={showEditColumn}
-                canEdit={puedeEditarMovimiento(movement.estado) && (!puedeEditarFila || puedeEditarFila(movement))}
-                showMeasures={showMeasuresColumn}
-                onViewMeasures={handleViewMeasures}
-                clienteSoloIds={clienteSoloIds}
-                canViewDuration={puedeVerDuracion}
-                guideId={index === 0 ? "training-movement-row-mobile" : undefined}
-                isTraining={trainingTour.isTrainingMovement(movement.id)}
-              />
-            ))
-          )}
-        </div>
-
-        {/* Footer con page pills */}
-        <div className="flex flex-col items-center justify-between gap-3 sm:gap-4 rounded-b-xl sm:rounded-b-2xl border-t border-slate-200 bg-gradient-to-b from-slate-50 to-white p-2.5 text-[10px] dark:border-slate-800/60 dark:from-slate-900/80 dark:to-slate-900/60 sm:flex-row sm:p-4 sm:text-xs">
-          <p className="order-2 font-medium text-slate-500 dark:text-slate-400 sm:order-1">
-            {total === 0 ? (
-              "Sin registros"
-            ) : (
-              <>
-                Mostrando{" "}
-                <span className="font-bold text-slate-900 dark:text-slate-200">
-                  {startIndex}
-                </span>{" "}
-                –{" "}
-                <span className="font-bold text-slate-900 dark:text-slate-200">
-                  {endIndex}
-                </span>{" "}
-                de{" "}
-                <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                  {total}
-                  {totalEstimado ? "+" : ""}
-                </span>
-              </>
             )}
-          </p>
 
-          <div className="order-1 flex max-w-full flex-wrap items-center justify-center gap-1 sm:order-2">
-            <button
-              type="button"
-              onClick={handlePrevPage}
-              aria-label="Página anterior"
-              disabled={pagina <= 1}
-              className="grid min-h-11 min-w-11 place-items-center rounded-lg border border-slate-200 bg-white dark:border-slate-700/60 dark:bg-slate-800/80 p-2 text-slate-500 dark:text-slate-400 shadow-sm transition-all hover:border-emerald-400 hover:text-emerald-600 dark:hover:border-emerald-500 dark:hover:text-emerald-400 disabled:cursor-not-allowed disabled:opacity-40 active:scale-95"
-            >
-              <ChevronLeft size={16} />
-            </button>
-
-            {/* Page pills */}
-            {pageNumbers.map((p, idx) =>
-              p === "..." ? (
-                <span key={`ellipsis-${idx}`} className="px-1.5 text-slate-400 dark:text-slate-500 select-none">
-                  ···
-                </span>
+            {/* Mobile/Tablet cards */}
+            <div className="grid touch-pan-y grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] items-start gap-3 p-2 sm:p-4">
+              {!tieneFilas ? (
+                <div className="py-10 text-center">
+                  <div className="mx-auto w-fit rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 p-5">
+                    <TrainFront
+                      size={34}
+                      strokeWidth={1.2}
+                      className="text-slate-300 dark:text-slate-600"
+                    />
+                  </div>
+                  <p className="mt-3 text-sm font-medium text-slate-500 dark:text-slate-400">
+                    No hay movimientos registrados
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                    Ajusta filtros o cambia de pestaña
+                  </p>
+                </div>
               ) : (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => handlePageChange(p)}
-                  aria-label={`Página ${p}`}
-                  aria-current={p === pagina ? "page" : undefined}
-                  className={`min-h-11 min-w-11 rounded-lg text-sm font-semibold transition-all duration-200 active:scale-95 ${p === pagina
-                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/30"
-                    : "bg-white border border-slate-200 text-slate-600 hover:border-emerald-300 hover:text-emerald-600 dark:bg-slate-800/80 dark:border-slate-700/60 dark:text-slate-400 dark:hover:border-emerald-500 dark:hover:text-emerald-400"
-                    }`}
-                >
-                  {p}
-                </button>
-              )
-            )}
+                filas.map((movement, index) => (
+                  <MobileCard
+                    key={getMovementRowKey(movement)}
+                    rowKey={getMovementRowKey(movement)}
+                    movement={movement}
+                    isOpen={Boolean(expanded[getMovementRowKey(movement)])}
+                    onToggle={toggle}
+                    onEditar={onEditar}
+                    showEdit={showEditColumn}
+                    canEdit={
+                      puedeEditarMovimiento(movement.estado) &&
+                      (!puedeEditarFila || puedeEditarFila(movement))
+                    }
+                    showMeasures={showMeasuresColumn}
+                    onViewMeasures={handleViewMeasures}
+                    clienteSoloIds={clienteSoloIds}
+                    canViewDuration={puedeVerDuracion}
+                    guideId={index === 0 ? "training-movement-row-mobile" : undefined}
+                    isTraining={trainingTour.isTrainingMovement(movement.id)}
+                  />
+                ))
+              )}
+            </div>
 
-            <button
-              type="button"
-              onClick={handleNextPage}
-              aria-label="Página siguiente"
-              disabled={pagina >= totalPaginas}
-              className="grid min-h-11 min-w-11 place-items-center rounded-lg border border-slate-200 bg-white dark:border-slate-700/60 dark:bg-slate-800/80 p-2 text-slate-500 dark:text-slate-400 shadow-sm transition-all hover:border-emerald-400 hover:text-emerald-600 dark:hover:border-emerald-500 dark:hover:text-emerald-400 disabled:cursor-not-allowed disabled:opacity-40 active:scale-95"
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        </div>
+            {/* Footer con page pills */}
+            <div className="flex flex-col items-center justify-between gap-3 sm:gap-4 rounded-b-xl sm:rounded-b-2xl border-t border-slate-200 bg-gradient-to-b from-slate-50 to-white p-2.5 text-[10px] dark:border-slate-800/60 dark:from-slate-900/80 dark:to-slate-900/60 sm:flex-row sm:p-4 sm:text-xs">
+              <p className="order-2 font-medium text-slate-500 dark:text-slate-400 sm:order-1">
+                {total === 0 ? (
+                  "Sin registros"
+                ) : (
+                  <>
+                    Mostrando{" "}
+                    <span className="font-bold text-slate-900 dark:text-slate-200">
+                      {startIndex}
+                    </span>{" "}
+                    –{" "}
+                    <span className="font-bold text-slate-900 dark:text-slate-200">{endIndex}</span>{" "}
+                    de{" "}
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                      {total}
+                      {totalEstimado ? "+" : ""}
+                    </span>
+                  </>
+                )}
+              </p>
+
+              <div className="order-1 flex max-w-full flex-wrap items-center justify-center gap-1 sm:order-2">
+                <button
+                  type="button"
+                  onClick={handlePrevPage}
+                  aria-label="Página anterior"
+                  disabled={pagina <= 1}
+                  className="grid min-h-11 min-w-11 place-items-center rounded-lg border border-slate-200 bg-white dark:border-slate-700/60 dark:bg-slate-800/80 p-2 text-slate-500 dark:text-slate-400 shadow-sm transition-all hover:border-emerald-400 hover:text-emerald-600 dark:hover:border-emerald-500 dark:hover:text-emerald-400 disabled:cursor-not-allowed disabled:opacity-40 active:scale-95"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+
+                {/* Page pills */}
+                {pageNumbers.map((p, idx) =>
+                  p === "..." ? (
+                    <span
+                      key={`ellipsis-${idx}`}
+                      className="px-1.5 text-slate-400 dark:text-slate-500 select-none"
+                    >
+                      ···
+                    </span>
+                  ) : (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => handlePageChange(p)}
+                      aria-label={`Página ${p}`}
+                      aria-current={p === pagina ? "page" : undefined}
+                      className={`min-h-11 min-w-11 rounded-lg text-sm font-semibold transition-all duration-200 active:scale-95 ${
+                        p === pagina
+                          ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/30"
+                          : "bg-white border border-slate-200 text-slate-600 hover:border-emerald-300 hover:text-emerald-600 dark:bg-slate-800/80 dark:border-slate-700/60 dark:text-slate-400 dark:hover:border-emerald-500 dark:hover:text-emerald-400"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ),
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleNextPage}
+                  aria-label="Página siguiente"
+                  disabled={pagina >= totalPaginas}
+                  className="grid min-h-11 min-w-11 place-items-center rounded-lg border border-slate-200 bg-white dark:border-slate-700/60 dark:bg-slate-800/80 p-2 text-slate-500 dark:text-slate-400 shadow-sm transition-all hover:border-emerald-400 hover:text-emerald-600 dark:hover:border-emerald-500 dark:hover:text-emerald-400 disabled:cursor-not-allowed disabled:opacity-40 active:scale-95"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
           </>
         )}
       </div>
 
-      {measuresModal.open && !measuresModal.loading && !measuresModal.error ? <TornoMeasuresViewerModal
-        open
-        onClose={closeMeasuresModal}
-        tornoMedicion={measuresModal.tornoMedicion}
-        locomotiveLabel={measuresModal.locomotiveLabel}
-        companyName={measuresModal.companyName}
-      /> : null}
-      {measuresModal.open && (measuresModal.loading || measuresModal.error) ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 p-4">
-          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
-            {measuresModal.loading ? (
-              <p className="text-sm text-slate-600 dark:text-slate-300">Cargando medidas de torno...</p>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-sm text-rose-600 dark:text-rose-300">{measuresModal.error}</p>
-                <button
-                  type="button"
-                  onClick={closeMeasuresModal}
-                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200"
-                >
-                  Cerrar
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : null}
+      <TornoMeasuresDialog state={measuresModal} onClose={closeMeasuresModal} />
     </GuidedTarget>
   );
 }
@@ -376,16 +371,10 @@ const MobileCard = memo(function MobileCard({
 }: MovimientoRowProps) {
   const fechaSolicitudFmt = useMemo(
     () => formatoFecha(movement.fechaSolicitud),
-    [movement.fechaSolicitud]
+    [movement.fechaSolicitud],
   );
-  const fechaInicioFmt = useMemo(
-    () => formatoFecha(movement.fechaInicio),
-    [movement.fechaInicio]
-  );
-  const fechaFinFmt = useMemo(
-    () => formatoFecha(movement.fechaFin),
-    [movement.fechaFin]
-  );
+  const fechaInicioFmt = useMemo(() => formatoFecha(movement.fechaInicio), [movement.fechaInicio]);
+  const fechaFinFmt = useMemo(() => formatoFecha(movement.fechaFin), [movement.fechaFin]);
   const isPriorityHigh = movement.prioridad === "ALTA";
 
   const toggle = useCallback(() => {
@@ -397,7 +386,7 @@ const MobileCard = memo(function MobileCard({
       event.stopPropagation();
       if (onEditar && canEdit) onEditar(getMovementTechnicalId(movement));
     },
-    [onEditar, movement, canEdit]
+    [onEditar, movement, canEdit],
   );
 
   const handleMeasuresClick = useCallback(
@@ -405,15 +394,16 @@ const MobileCard = memo(function MobileCard({
       event.stopPropagation();
       if (onViewMeasures) onViewMeasures(movement);
     },
-    [onViewMeasures, movement]
+    [onViewMeasures, movement],
   );
 
   return (
     <div
       data-guide-id={guideId}
       data-training-movement-id={isTraining ? String(movement.id) : undefined}
-      className={`rounded-2xl border border-slate-200 dark:border-slate-800/70 bg-white dark:bg-slate-900/80 shadow-sm transition-all ${isOpen ? "ring-1 ring-emerald-400/40" : ""
-        }`}
+      className={`rounded-2xl border border-slate-200 dark:border-slate-800/70 bg-white dark:bg-slate-900/80 shadow-sm transition-all ${
+        isOpen ? "ring-1 ring-emerald-400/40" : ""
+      }`}
     >
       <div className="p-3 sm:p-4">
         <button
@@ -425,10 +415,11 @@ const MobileCard = memo(function MobileCard({
         >
           <div className="flex min-w-0 items-center gap-2">
             <div
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all ${isOpen
-                ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300"
-                : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
-                }`}
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all ${
+                isOpen
+                  ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300"
+                  : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+              }`}
             >
               <TrainFront size={18} strokeWidth={2} />
             </div>
@@ -438,7 +429,11 @@ const MobileCard = memo(function MobileCard({
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--app-text-muted)]">
                 <span className="font-mono">{getMovementFolio(movement)}</span>
-                {movement.rondaNumero != null ? <span>Ronda {movement.rondaNumero} · orden {movement.ordenEnRonda ?? "—"}</span> : null}
+                {movement.rondaNumero != null ? (
+                  <span>
+                    Ronda {movement.rondaNumero} · orden {movement.ordenEnRonda ?? "—"}
+                  </span>
+                ) : null}
                 <BadgeTipoMovimiento tipo={movement.tipoMovimiento} compact />
                 {isPriorityHigh && (
                   <span className="text-[10px] font-bold uppercase tracking-wider text-rose-500 dark:text-rose-400">
@@ -514,9 +509,21 @@ const MobileCard = memo(function MobileCard({
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex gap-1">
-            {movement.lavado && <span className="rounded-md bg-cyan-50 border border-cyan-200 px-2 py-0.5 text-[9px] font-bold text-cyan-700 dark:bg-cyan-900/20 dark:border-cyan-800 dark:text-cyan-300">LAV</span>}
-            {movement.torno && <span className="rounded-md bg-sky-50 border border-sky-200 px-2 py-0.5 text-[9px] font-bold text-sky-700 dark:bg-sky-900/20 dark:border-sky-800 dark:text-sky-300">TOR</span>}
-            {movement.incidenteGlobal && <span className="rounded-md bg-rose-50 border border-rose-200 px-2 py-0.5 text-[9px] font-bold text-rose-700 dark:bg-rose-900/20 dark:border-rose-800 dark:text-rose-300">INC</span>}
+            {movement.lavado && (
+              <span className="rounded-md bg-cyan-50 border border-cyan-200 px-2 py-0.5 text-[9px] font-bold text-cyan-700 dark:bg-cyan-900/20 dark:border-cyan-800 dark:text-cyan-300">
+                LAV
+              </span>
+            )}
+            {movement.torno && (
+              <span className="rounded-md bg-sky-50 border border-sky-200 px-2 py-0.5 text-[9px] font-bold text-sky-700 dark:bg-sky-900/20 dark:border-sky-800 dark:text-sky-300">
+                TOR
+              </span>
+            )}
+            {movement.incidenteGlobal && (
+              <span className="rounded-md bg-rose-50 border border-rose-200 px-2 py-0.5 text-[9px] font-bold text-rose-700 dark:bg-rose-900/20 dark:border-rose-800 dark:text-rose-300">
+                INC
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -537,8 +544,8 @@ const MobileCard = memo(function MobileCard({
               )
             ) : null}
 
-            {showEdit && (
-              canEdit ? (
+            {showEdit &&
+              (canEdit ? (
                 <button
                   type="button"
                   data-training-edit-movement={isTraining ? String(movement.id) : undefined}
@@ -552,8 +559,7 @@ const MobileCard = memo(function MobileCard({
                 <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500">
                   No editable
                 </span>
-              )
-            )}
+              ))}
           </div>
         </div>
       </div>
@@ -562,15 +568,17 @@ const MobileCard = memo(function MobileCard({
         data-training-movement-details={isTraining && isOpen ? String(movement.id) : undefined}
         className={`${styles.expandedContentContainer} ${isOpen ? styles.show : ""}`}
       >
-        {isOpen ? <ExpandedDetailsContent
-          movement={movement}
-          fechaSolicitudFmt={fechaSolicitudFmt}
-          fechaInicioFmt={fechaInicioFmt}
-          fechaFinFmt={fechaFinFmt}
-          isPriorityHigh={isPriorityHigh}
-          clienteSoloIds={clienteSoloIds}
-          canViewDuration={canViewDuration}
-        /> : null}
+        {isOpen ? (
+          <ExpandedDetailsContent
+            movement={movement}
+            fechaSolicitudFmt={fechaSolicitudFmt}
+            fechaInicioFmt={fechaInicioFmt}
+            fechaFinFmt={fechaFinFmt}
+            isPriorityHigh={isPriorityHigh}
+            clienteSoloIds={clienteSoloIds}
+            canViewDuration={canViewDuration}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -602,35 +610,12 @@ function ExpandedDetailsContent({
         <div className="col-span-1 md:col-span-2 xl:hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <SectionTitle title="Resumen General" icon={Info} color="slate" />
           <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <InfoBlock
-              label="Localidad"
-              value={movement.localidadNombre}
-              className="md:hidden"
-            />
-            <InfoBlock
-              label="Empresa"
-              value={movement.empresaNombre}
-              className="md:hidden"
-            />
-            <InfoBlock
-              label="Tipo"
-              value={formatTipoMovimientoLabel(movement.tipoMovimiento)}
-            />
-            <InfoBlock
-              label="Solicitud"
-              value={fechaSolicitudFmt}
-              className="lg:hidden"
-            />
-            <InfoBlock
-              label="Inicio"
-              value={fechaInicioFmt}
-              className="xl:hidden"
-            />
-            <InfoBlock
-              label="Fin"
-              value={fechaFinFmt}
-              className="xl:hidden"
-            />
+            <InfoBlock label="Localidad" value={movement.localidadNombre} className="md:hidden" />
+            <InfoBlock label="Empresa" value={movement.empresaNombre} className="md:hidden" />
+            <InfoBlock label="Tipo" value={formatTipoMovimientoLabel(movement.tipoMovimiento)} />
+            <InfoBlock label="Solicitud" value={fechaSolicitudFmt} className="lg:hidden" />
+            <InfoBlock label="Inicio" value={fechaInicioFmt} className="xl:hidden" />
+            <InfoBlock label="Fin" value={fechaFinFmt} className="xl:hidden" />
             {canViewDuration ? (
               <InfoBlock
                 label="Resolución"
@@ -661,14 +646,8 @@ function ExpandedDetailsContent({
               </span>
             </div>
             <div className="flex flex-wrap gap-2 pt-2">
-              <MiniBadge
-                label={`Cab: ${movement.posicionCabina}`}
-                icon={Flag}
-              />
-              <MiniBadge
-                label={`Chim: ${movement.posicionChimenea}`}
-                icon={Flag}
-              />
+              <MiniBadge label={`Cab: ${movement.posicionCabina}`} icon={Flag} />
+              <MiniBadge label={`Chim: ${movement.posicionChimenea}`} icon={Flag} />
             </div>
           </div>
         </div>
@@ -685,8 +664,14 @@ function ExpandedDetailsContent({
               label="Maquinista"
               value={clienteSoloIds ? movement.maquinistaId : movement.maquinistaNombre}
             />
-            <InfoRow label="Operador" value={clienteSoloIds ? movement.operadorId : movement.operadorNombre} />
-            <InfoRow label="Cliente" value={clienteSoloIds ? movement.clienteId || null : movement.clienteNombre} />
+            <InfoRow
+              label="Operador"
+              value={clienteSoloIds ? movement.operadorId : movement.operadorNombre}
+            />
+            <InfoRow
+              label="Cliente"
+              value={clienteSoloIds ? movement.clienteId || null : movement.clienteNombre}
+            />
           </div>
         </div>
 
@@ -695,27 +680,14 @@ function ExpandedDetailsContent({
           <SectionTitle title="Servicios y Alertas" icon={Settings} color="amber" />
           <div className="mt-3 flex-1">
             <div className="flex flex-wrap gap-2">
-              {movement.lavado && (
-                <BooleanChip label="Lavado" type="success" />
+              {movement.lavado && <BooleanChip label="Lavado" type="success" />}
+              {movement.torno && <BooleanChip label="Torno" type="success" />}
+              {movement.incidenteGlobal && <BooleanChip label="Incidente Global" type="danger" />}
+              {!movement.lavado && !movement.torno && !movement.incidenteGlobal && (
+                <div className="flex w-full items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 py-3 text-slate-400 dark:border-slate-800 dark:bg-slate-900/50">
+                  <span className="text-xs italic">Sin servicios activos</span>
+                </div>
               )}
-              {movement.torno && (
-                <BooleanChip label="Torno" type="success" />
-              )}
-              {movement.incidenteGlobal && (
-                <BooleanChip
-                  label="Incidente Global"
-                  type="danger"
-                />
-              )}
-              {!movement.lavado &&
-                !movement.torno &&
-                !movement.incidenteGlobal && (
-                  <div className="flex w-full items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 py-3 text-slate-400 dark:border-slate-800 dark:bg-slate-900/50">
-                    <span className="text-xs italic">
-                      Sin servicios activos
-                    </span>
-                  </div>
-                )}
             </div>
           </div>
           {isPriorityHigh && (
@@ -762,7 +734,9 @@ interface SectionTitleProps {
 }
 function SectionTitle({ title, icon: Icon, color = "emerald" }: SectionTitleProps) {
   return (
-    <h4 className={`mb-3 flex items-center gap-2 border-b border-l-2 border-slate-100 pb-2 pl-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:border-slate-800 ${SECTION_COLORS[color] ?? SECTION_COLORS.emerald}`}>
+    <h4
+      className={`mb-3 flex items-center gap-2 border-b border-l-2 border-slate-100 pb-2 pl-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:border-slate-800 ${SECTION_COLORS[color] ?? SECTION_COLORS.emerald}`}
+    >
       <Icon size={12} className="text-current opacity-70" /> {title}
     </h4>
   );
@@ -791,9 +765,7 @@ interface InfoBlockProps {
 function InfoBlock({ label, value, className }: InfoBlockProps) {
   return (
     <div className={`flex flex-col gap-1 ${className ?? ""}`}>
-      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-        {label}
-      </span>
+      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</span>
       <span className="break-words text-[11px] font-semibold text-slate-700 dark:text-slate-200 sm:text-xs">
         {value ?? "—"}
       </span>

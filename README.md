@@ -21,6 +21,22 @@ npm run start:local  # versión optimizada en localhost:3012 usando API local 12
 npm run start        # versión optimizada usando API_ORIGIN del entorno configurado
 ```
 
+Los cambios nuevos también se pueden revisar por separado:
+
+```sh
+npm run format              # aplica Prettier sólo a archivos nuevos o modificados
+npm run dead-code           # informa archivos, exportaciones y dependencias sin uso
+npm run dead-code:files     # falla si hay archivos de código sin consumidores
+npm run build:quality       # compila las pruebas en .next-quality sin reemplazar .next
+npm run test:e2e            # login, navegación por rol y accesibilidad en Chromium
+npm run analyze             # genera el reporte estático de paquetes de Next/Webpack
+npm run performance:budget  # impide que JS o CSS excedan el presupuesto acordado
+```
+
+Las pruebas de navegador usan un API local aislado con datos sintéticos en los puertos 3911 y 3912. Primero ejecutar `npm run build:quality`: genera `.next-quality`, fija las rutas públicas de prueba y desactiva push para esa compilación. No reemplaza `.next`, que utiliza el servidor habitual. Para producción seguir usando `npm run build`.
+
+El control `npm run check` incluye formato de los cambios, archivos y dependencias sin uso, tipos, pruebas, compilación aislada y presupuesto total de recursos. `npm run test:e2e` comprueba además el acceso por rol, el alcance de movimientos del cliente, la sesión, accesibilidad y presupuesto de JavaScript del login. Guarda resultados y mediciones en `test-results/results.json`; CI conserva los artefactos durante siete días. Ver [mediciones y alcance de la verificación](docs/calidad-y-rendimiento-2026-09-17.md).
+
 Para revisar la web con el API y los microservicios locales, usa `npm run start:local` después de compilar y de detener el servidor anterior de 3012. Este comando conserva las variables y claves existentes, y fija el destino del API a `http://127.0.0.1:3001` para ese proceso. No modifica `.env.local` ni inicia el API. `npm start` sigue usando la configuración del entorno: si allí hay una dirección remota, comprobará el acceso contra ese otro servidor. Al cambiar archivos de la aplicación, genera una nueva compilación antes de reiniciar la versión optimizada.
 
 `npm run dev:https` y `npm run dev:https:lan` permiten probar PWA/notificaciones en HTTPS. `npm run pwa:urls` muestra las direcciones locales. No se requiere habilitar push para entrar.

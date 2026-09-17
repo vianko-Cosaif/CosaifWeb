@@ -2,10 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
 import { canResolveTorreonIncidentRole, canViewTorreonArrastreRole } from "@/lib/torreonLocalidad";
 import { toTorreonImageProxyUrl } from "@/lib/torreonImageProxy";
-import { ARRASTRE_MAX_CAPACITY, ARRASTRE_MIN_VAGONES, arrastreVagonCapacity } from "@/features/torreon/arrastres/constants";
+import {
+  ARRASTRE_MAX_CAPACITY,
+  ARRASTRE_MIN_VAGONES,
+  arrastreVagonCapacity,
+} from "@/features/torreon/arrastres/constants";
 import { PERMISSIONS, hasAnyPermission, hasPermission } from "@/lib/accessControl";
 import { getVerifiedSession } from "@/lib/server/session";
-import { MovementScopeError, recordMatchesMovementScope, resolveMovementReadScope } from "@/lib/auth/movementScope";
+import {
+  MovementScopeError,
+  recordMatchesMovementScope,
+  resolveMovementReadScope,
+} from "@/lib/auth/movementScope";
 import { getErrorStatus } from "@/lib/server/upstream";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +36,7 @@ function extractArray(input: unknown): ArrastreRecord[] {
 }
 
 function asRecord(input: unknown): ArrastreRecord {
-  return input && typeof input === "object" ? input as ArrastreRecord : {};
+  return input && typeof input === "object" ? (input as ArrastreRecord) : {};
 }
 
 function asNumber(input: unknown) {
@@ -90,8 +98,10 @@ function mapArrastre(input: ArrastreRecord) {
 function unwrapDetail(input: unknown): ArrastreRecord {
   if (Array.isArray(input)) return asRecord(input[0]);
   const record = asRecord(input);
-  if (record.data && typeof record.data === "object" && !Array.isArray(record.data)) return asRecord(record.data);
-  if (record.item && typeof record.item === "object" && !Array.isArray(record.item)) return asRecord(record.item);
+  if (record.data && typeof record.data === "object" && !Array.isArray(record.data))
+    return asRecord(record.data);
+  if (record.item && typeof record.item === "object" && !Array.isArray(record.item))
+    return asRecord(record.item);
   return record;
 }
 
@@ -122,35 +132,42 @@ function normalizeVagones(input: unknown) {
     return "";
   };
 
-  return input
-    .map((item) => {
-      const record = item && typeof item === "object" ? item as Record<string, unknown> : {};
-      const carga = String(record.carga || "VACIO").toUpperCase();
-      const viaOrigenId = asText(record.viaOrigenId);
-      const seccionOrigenId = asText(record.seccionOrigenId);
-      const viaDestinoId = asText(record.viaId, record.viaDestinoId);
-      const seccionDestinoId = asText(record.seccionId, record.seccionDestinoId);
-      const viaOrigenNombre = asText(record.viaOrigenNombre, record.viaOrigen, viaOrigenId);
-      const seccionOrigenNombre = asText(record.seccionOrigenNombre, record.seccionOrigen, seccionOrigenId);
-      const viaDestinoNombre = asText(record.viaDestinoNombre, record.viaDestino, viaDestinoId);
-      const seccionDestinoNombre = asText(record.seccionDestinoNombre, record.seccionDestino, seccionDestinoId);
-      return {
-        numeroVagon: typeof record.numeroVagon === "string" ? record.numeroVagon.trim() : "",
-        carga: carga === "LLENO" ? "LLENO" : "VACIO",
-        viaOrigenId,
-        seccionOrigenId,
-        viaId: viaDestinoId,
-        seccionId: seccionDestinoId,
-        viaOrigenNombre,
-        seccionOrigenNombre,
-        viaDestinoNombre,
-        seccionDestinoNombre,
-        viaOrigen: viaOrigenNombre,
-        seccionOrigen: seccionOrigenNombre,
-        viaDestino: viaDestinoNombre,
-        seccionDestino: seccionDestinoNombre,
-      };
-    });
+  return input.map((item) => {
+    const record = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+    const carga = String(record.carga || "VACIO").toUpperCase();
+    const viaOrigenId = asText(record.viaOrigenId);
+    const seccionOrigenId = asText(record.seccionOrigenId);
+    const viaDestinoId = asText(record.viaId, record.viaDestinoId);
+    const seccionDestinoId = asText(record.seccionId, record.seccionDestinoId);
+    const viaOrigenNombre = asText(record.viaOrigenNombre, record.viaOrigen, viaOrigenId);
+    const seccionOrigenNombre = asText(
+      record.seccionOrigenNombre,
+      record.seccionOrigen,
+      seccionOrigenId,
+    );
+    const viaDestinoNombre = asText(record.viaDestinoNombre, record.viaDestino, viaDestinoId);
+    const seccionDestinoNombre = asText(
+      record.seccionDestinoNombre,
+      record.seccionDestino,
+      seccionDestinoId,
+    );
+    return {
+      numeroVagon: typeof record.numeroVagon === "string" ? record.numeroVagon.trim() : "",
+      carga: carga === "LLENO" ? "LLENO" : "VACIO",
+      viaOrigenId,
+      seccionOrigenId,
+      viaId: viaDestinoId,
+      seccionId: seccionDestinoId,
+      viaOrigenNombre,
+      seccionOrigenNombre,
+      viaDestinoNombre,
+      seccionDestinoNombre,
+      viaOrigen: viaOrigenNombre,
+      seccionOrigen: seccionOrigenNombre,
+      viaDestino: viaDestinoNombre,
+      seccionDestino: seccionDestinoNombre,
+    };
+  });
 }
 
 export async function GET(req: NextRequest) {
@@ -166,40 +183,64 @@ export async function GET(req: NextRequest) {
     const pageSize = searchParams.get("pageSize");
     const includeFotos = searchParams.get("includeFotos");
     const session = await getVerifiedSession();
-    if (!session || !hasAnyPermission(session.authorization, [PERMISSIONS.TORREON_READ, PERMISSIONS.INCIDENTS_READ])) {
+    if (
+      !session ||
+      !hasAnyPermission(session.authorization, [
+        PERMISSIONS.TORREON_READ,
+        PERMISSIONS.INCIDENTS_READ,
+      ])
+    ) {
       return jsonError("No autorizado", 401);
     }
     const role = session.role;
-    const historyRequested = ["HISTORIAL", "COMPLETADOS", "CERRADOS"].includes(String(vista || "").toUpperCase())
-      || String(estado || "").toUpperCase().split(",").some((value) => ["CONCLUIDO", "CANCELADO"].includes(value.trim()));
-    const clientScope = role === "CLIENTE"
-      ? resolveMovementReadScope(session, id || auditId ? "detail" : historyRequested ? "history-list" : "current-list", searchParams)
-      : null;
+    const historyRequested =
+      ["HISTORIAL", "COMPLETADOS", "CONCLUIDOS", "CERRADOS", "PASADOS"].includes(
+        String(vista || "").toUpperCase(),
+      ) ||
+      String(estado || "")
+        .toUpperCase()
+        .split(",")
+        .some((value) => ["CONCLUIDO", "CANCELADO"].includes(value.trim()));
+    const clientScope =
+      role === "CLIENTE"
+        ? resolveMovementReadScope(
+            session,
+            id || auditId ? "detail" : historyRequested ? "history-list" : "current-list",
+            searchParams,
+          )
+        : null;
     if (clientScope) localidadId = String(clientScope.localidadId);
-    if (!localidadId || !isTorreonLocalidad(localidadId)) return NextResponse.json([], { status: 200 });
-    const effectiveVista = clientScope && !id && !auditId ? historyRequested ? "HISTORIAL" : "ACTIVOS" : vista;
+    if (!localidadId || !isTorreonLocalidad(localidadId))
+      return NextResponse.json([], { status: 200 });
+    const effectiveVista =
+      clientScope && !id && !auditId ? (historyRequested ? "HISTORIAL" : "ACTIVOS") : vista;
     const empresaId = session.empresaId;
     const sessionLocalidadId = session.localidadId;
-    const localityScoped = session.authorization.scope.mode === "LOCALITY" || session.authorization.scope.mode === "COMPANY_LOCALITY";
-    const companyScoped = session.authorization.scope.mode === "COMPANY" || session.authorization.scope.mode === "COMPANY_LOCALITY";
-    const generalLocalityView = clientScope ? clientScope.sharedCurrentLocality : searchParams.get("alcance") === "localidad" && !id && !auditId;
+    const localityScoped =
+      session.authorization.scope.mode === "LOCALITY" ||
+      session.authorization.scope.mode === "COMPANY_LOCALITY";
+    const companyScoped =
+      session.authorization.scope.mode === "COMPANY" ||
+      session.authorization.scope.mode === "COMPANY_LOCALITY";
+    const generalLocalityView = clientScope
+      ? clientScope.sharedCurrentLocality
+      : !historyRequested && searchParams.get("alcance") === "localidad" && !id && !auditId;
     if (!canViewTorreonArrastreRole(role) && !canResolveTorreonIncidentRole(role)) {
       return NextResponse.json([], { status: 200 });
     }
 
-    if (
-      generalLocalityView &&
-      localityScoped &&
-      sessionLocalidadId &&
-      sessionLocalidadId !== Number(localidadId)
-    ) {
+    if (localityScoped && sessionLocalidadId && sessionLocalidadId !== Number(localidadId)) {
       return jsonError("No autorizado para consultar otra localidad", 403);
     }
 
     if (auditId) {
-      if (role !== "ADMINISTRADOR") return jsonError("Solo administración puede consultar la bitácora de ediciones", 403);
-      const detail = mapArrastre(unwrapDetail(await fetchTorreonMsJson(`/arrastres/${auditId}?includeFotos=false`))) as ArrastreRecord;
-      if (asNumber(detail.localidadId) !== Number(localidadId)) return jsonError("Bitácora fuera de la localidad seleccionada", 403);
+      if (role !== "ADMINISTRADOR")
+        return jsonError("Solo administración puede consultar la bitácora de ediciones", 403);
+      const detail = mapArrastre(
+        unwrapDetail(await fetchTorreonMsJson(`/arrastres/${auditId}?includeFotos=false`)),
+      ) as ArrastreRecord;
+      if (asNumber(detail.localidadId) !== Number(localidadId))
+        return jsonError("Bitácora fuera de la localidad seleccionada", 403);
       const data = await fetchTorreonMsJson(`/arrastres/${auditId}/ediciones`);
       return NextResponse.json(extractArray(data), { status: 200 });
     }
@@ -207,7 +248,13 @@ export async function GET(req: NextRequest) {
     // Las consultas de lista con alcance de localidad muestran la ronda
     // compartida completa. El alcance por empresa se conserva para detalles y
     // escrituras, donde el cliente solo puede operar sus propios arrastres.
-    const scopedEmpresaId = clientScope ? clientScope.empresaId : generalLocalityView ? null : companyScoped ? empresaId : null;
+    const scopedEmpresaId = clientScope
+      ? clientScope.empresaId
+      : generalLocalityView
+        ? null
+        : companyScoped
+          ? empresaId
+          : null;
 
     if (companyScoped && !empresaId) {
       return NextResponse.json([], { status: 200 });
@@ -216,12 +263,20 @@ export async function GET(req: NextRequest) {
     if (id) {
       const detailQs = new URLSearchParams();
       if (includeFotos) detailQs.set("includeFotos", includeFotos);
-      const data = await fetchTorreonMsJson(`/arrastres/${id}${detailQs.size ? `?${detailQs.toString()}` : ""}`);
+      const data = await fetchTorreonMsJson(
+        `/arrastres/${id}${detailQs.size ? `?${detailQs.toString()}` : ""}`,
+      );
       const mapped = mapArrastre(unwrapDetail(data)) as ArrastreRecord;
       const recordLocalidadId = asNumber(mapped.localidadId);
       const recordEmpresaId = asNumber(mapped.empresaId);
 
-      if (clientScope && !recordMatchesMovementScope({ empresaId: recordEmpresaId, localidadId: recordLocalidadId }, clientScope)) {
+      if (
+        clientScope &&
+        !recordMatchesMovementScope(
+          { empresaId: recordEmpresaId, localidadId: recordLocalidadId },
+          clientScope,
+        )
+      ) {
         return jsonError("No autorizado para este arrastre", 403);
       }
       if (recordLocalidadId && recordLocalidadId !== Number(localidadId)) {
@@ -240,14 +295,51 @@ export async function GET(req: NextRequest) {
     if (page) qs.set("page", page);
     if (pageSize) qs.set("pageSize", pageSize);
     if (includeFotos) qs.set("includeFotos", includeFotos);
+    const paginated = searchParams.get("pagination") === "1";
+    if (paginated) {
+      qs.set("pagination", "1");
+      if (companyScoped && empresaId) qs.set("priorityEmpresaId", String(empresaId));
+      qs.set("vista", historyRequested ? "historial" : "activos");
+      for (const field of ["q", "vagonEstado", "fechaCampo", "desde", "hasta", "conIncidentes"]) {
+        const value = searchParams.get(field);
+        if (value) qs.set(field, value);
+      }
+    }
     if (generalLocalityView) qs.set("alcance", "localidad");
     if (scopedEmpresaId) qs.set("empresaId", String(scopedEmpresaId));
 
     const data = await fetchTorreonMsJson(`/arrastres?${qs.toString()}`, { signal: req.signal });
-    const rows = extractArray(data).map(mapArrastre).filter((row) => !clientScope || recordMatchesMovementScope({
-      empresaId: asRecord(row).empresaId,
-      localidadId: asRecord(row).localidadId,
-    }, clientScope));
+    const rows = extractArray(data)
+      .map(mapArrastre)
+      .filter(
+        (row) =>
+          !clientScope ||
+          recordMatchesMovementScope(
+            {
+              empresaId: asRecord(row).empresaId,
+              localidadId: asRecord(row).localidadId,
+            },
+            clientScope,
+          ),
+      );
+    if (paginated) {
+      const meta = asRecord(asRecord(data).meta);
+      if (!Number.isSafeInteger(meta.total) || !Number.isSafeInteger(meta.totalPages))
+        return jsonError(
+          "El servicio de Torreón requiere actualizar su contrato de paginación.",
+          502,
+        );
+      const authorizedRows = filterByVista(rows, effectiveVista).filter((row) => {
+        const record = asRecord(row);
+        return (
+          asNumber(record.localidadId) === Number(localidadId) &&
+          (!scopedEmpresaId || asNumber(record.empresaId) === scopedEmpresaId)
+        );
+      });
+      if (authorizedRows.length !== extractArray(data).length)
+        return jsonError("El servicio devolvió registros fuera del alcance autorizado.", 502);
+      return NextResponse.json({ data: authorizedRows, meta }, { status: 200 });
+    }
     return NextResponse.json(filterByVista(rows, effectiveVista), { status: 200 });
   } catch (error) {
     if (error instanceof MovementScopeError) return jsonError(error.message, error.status);
@@ -264,7 +356,10 @@ export async function POST(req: NextRequest) {
     const empresaId = session.empresaId;
     const userId = session.userId;
 
-    if (!canViewTorreonArrastreRole(role) || !hasPermission(session.authorization, PERMISSIONS.TORREON_CREATE)) {
+    if (
+      !canViewTorreonArrastreRole(role) ||
+      !hasPermission(session.authorization, PERMISSIONS.TORREON_CREATE)
+    ) {
       return jsonError("No autorizado para crear arrastres", 403);
     }
     if (!empresaId) {
@@ -274,13 +369,14 @@ export async function POST(req: NextRequest) {
       return jsonError("No se encontro usuario en sesion", 403);
     }
 
-    const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const localidadId = Number(body.localidadId);
     if (!Number.isFinite(localidadId) || !isTorreonLocalidad(localidadId)) {
       return jsonError("Localidad Torreon invalida", 400);
     }
     if (
-      (session.authorization.scope.mode === "LOCALITY" || session.authorization.scope.mode === "COMPANY_LOCALITY") &&
+      (session.authorization.scope.mode === "LOCALITY" ||
+        session.authorization.scope.mode === "COMPANY_LOCALITY") &&
       session.localidadId !== localidadId
     ) {
       return jsonError("Solo puedes crear arrastres en tu localidad.", 403);
@@ -292,7 +388,8 @@ export async function POST(req: NextRequest) {
 
     const vagones = normalizeVagones(body.vagones);
     if (vagones.length < ARRASTRE_MIN_VAGONES) return jsonError("Agrega al menos un vagón", 400);
-    if (vagones.length > ARRASTRE_MAX_CAPACITY) return jsonError("Máximo 8 vagones por arrastre", 400);
+    if (vagones.length > ARRASTRE_MAX_CAPACITY)
+      return jsonError("Máximo 8 vagones por arrastre", 400);
     if (vagones.some((item) => !item.numeroVagon)) {
       return jsonError("Cada vagón necesita un número", 400);
     }
@@ -303,12 +400,12 @@ export async function POST(req: NextRequest) {
     if (new Set(normalizedNumbers).size !== normalizedNumbers.length) {
       return jsonError("No repitas el mismo número de vagón", 400);
     }
-    if (vagones.some((item) => (
-      !item.viaOrigen ||
-      !item.seccionOrigen ||
-      !item.viaDestino ||
-      !item.seccionDestino
-    ))) {
+    if (
+      vagones.some(
+        (item) =>
+          !item.viaOrigen || !item.seccionOrigen || !item.viaDestino || !item.seccionDestino,
+      )
+    ) {
       return jsonError("Cada vagon necesita origen y destino con via/seccion", 400);
     }
 

@@ -6,6 +6,8 @@ import {
   useRealtimeMovimientos,
   type RealtimeMovementEvent,
 } from "@/features/movimientos/useRealtimeMovimientos";
+import { claimNotification } from "@/lib/notificationDelivery";
+import { notificationIdentity } from "@/lib/notificationIdentity";
 import { playNotificationSound } from "@/lib/notificationSound";
 import { getEmpresaIdClient, getLocIdClient } from "@/lib/cookies";
 
@@ -28,7 +30,9 @@ type ActivityItem = {
 
 function eventTitle(event: RealtimeMovementEvent) {
   const type = String(event.type ?? "");
-  const action = String(event.accion ?? "").replaceAll("_", " ").trim();
+  const action = String(event.accion ?? "")
+    .replaceAll("_", " ")
+    .trim();
   const entity = event.arrastreId
     ? `Arrastre #${event.arrastreId}`
     : event.movimientoId
@@ -41,9 +45,7 @@ function eventTitle(event: RealtimeMovementEvent) {
     const estado = String(event.estado ?? "").toUpperCase();
     const estadoAnterior = String(event.estadoAnterior ?? "").toUpperCase();
     if (estado === "EN_PROCESO") {
-      return estadoAnterior === "DETENIDO"
-        ? `${entity} reanudado`
-        : `${entity} iniciado`;
+      return estadoAnterior === "DETENIDO" ? `${entity} reanudado` : `${entity} iniciado`;
     }
     if (estado === "DETENIDO") return `${entity} detenido`;
     if (estado === "CONCLUIDO") return `${entity} finalizado`;
@@ -56,9 +58,10 @@ function eventTitle(event: RealtimeMovementEvent) {
 }
 
 function eventDescription(event: RealtimeMovementEvent) {
-  const transition = event.estadoAnterior && event.estado
-    ? `${String(event.estadoAnterior).replaceAll("_", " ")} → ${String(event.estado).replaceAll("_", " ")}`
-    : null;
+  const transition =
+    event.estadoAnterior && event.estado
+      ? `${String(event.estadoAnterior).replaceAll("_", " ")} → ${String(event.estado).replaceAll("_", " ")}`
+      : null;
   const details = [
     event.descripcion ? String(event.descripcion) : null,
     event.locomotiveNumber ? `Locomotora ${event.locomotiveNumber}` : null,
@@ -69,10 +72,7 @@ function eventDescription(event: RealtimeMovementEvent) {
 
 function realtimeSoundType(event: RealtimeMovementEvent) {
   const type = String(event.type ?? "");
-  return [type, event.accion, event.estado]
-    .filter(Boolean)
-    .map(String)
-    .join("_") || "generic";
+  return [type, event.accion, event.estado].filter(Boolean).map(String).join("_") || "generic";
 }
 
 function currentViewerScope() {
@@ -94,10 +94,21 @@ function eventMatchesViewerScope(event: RealtimeMovementEvent) {
 
   const eventEmpresaId = Number(event.empresaId ?? NaN);
   const eventLocalidadId = Number(event.localidadId ?? NaN);
-  const isCompanyClient = ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON"].includes(role);
-  const isLocalityOperator = ["COORDINADOR", "SUPERVISOR", "MAQUINISTA", "MAQUINISTA_ARRASTRE"].includes(role);
+  const isCompanyClient = ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON"].includes(
+    role,
+  );
+  const isLocalityOperator = [
+    "COORDINADOR",
+    "SUPERVISOR",
+    "MAQUINISTA",
+    "MAQUINISTA_ARRASTRE",
+  ].includes(role);
 
-  if (isCompanyClient && empresaId && (!Number.isFinite(eventEmpresaId) || eventEmpresaId !== empresaId)) {
+  if (
+    isCompanyClient &&
+    empresaId &&
+    (!Number.isFinite(eventEmpresaId) || eventEmpresaId !== empresaId)
+  ) {
     return false;
   }
   if (
@@ -122,28 +133,34 @@ export default function RealtimeActivityCenter() {
   useRealtimeMovimientos({ onEvent: () => undefined });
 
   const pushItem = useCallback((item: ActivityItem, showToast = false) => {
-    setItems((current) => [item, ...current.filter((entry) => entry.eventId !== item.eventId)].slice(0, 40));
+    setItems((current) =>
+      [item, ...current.filter((entry) => entry.eventId !== item.eventId)].slice(0, 40),
+    );
     if (showToast) setToast(item);
   }, []);
 
   useEffect(() => {
+    let mounted = true;
     const onRealtimeEvent = (raw: Event) => {
       const event = (raw as CustomEvent<RealtimeMovementEvent>).detail;
       const type = String(event?.type ?? "");
       if (!event || type.startsWith("realtime.")) return;
       if (!eventMatchesViewerScope(event)) return;
+      const identity = notificationIdentity(event);
       const item: ActivityItem = {
-        eventId: event.eventId ?? `${type}-${event.entityId ?? event.movimientoId ?? event.arrastreId ?? Date.now()}`,
+        eventId: identity.key,
         title: eventTitle(event),
         description: eventDescription(event),
         source: event.source ? String(event.source).toUpperCase() : "Realtime",
         kind: "realtime",
         receivedAt: Date.now(),
       };
-      // Todo evento operativo recibido por socket debe dejar una señal visible
-      // dentro de la PWA, incluidos los incidentes.
-      pushItem(item, true);
-      void playNotificationSound(realtimeSoundType(event));
+      void claimNotification(identity.key, identity.ttlMs).then((accepted) => {
+        if (!accepted || !mounted) return;
+        pushItem(item, document.visibilityState === "visible");
+        if (document.visibilityState === "visible")
+          void playNotificationSound(realtimeSoundType(event));
+      });
     };
 
     const onAppActivity = (raw: Event) => {
@@ -167,8 +184,13 @@ export default function RealtimeActivityCenter() {
       if (!status) return;
       pushItem(
         {
-          eventId: `realtime-status-${status}-${Date.now()}`,
-          title: status === "connected" ? "Monitor conectado" : status === "connecting" ? "Monitor conectando" : "Monitor desconectado",
+          eventId: "realtime-connection-status",
+          title:
+            status === "connected"
+              ? "Monitor conectado"
+              : status === "connecting"
+                ? "Monitor conectando"
+                : "Monitor desconectado",
           description: "Estado del canal en tiempo real",
           source: "Sistema",
           kind: "status",
@@ -191,6 +213,7 @@ export default function RealtimeActivityCenter() {
     window.addEventListener("cosaif:realtime-status", onRealtimeStatus);
     window.addEventListener("cosaif:incident-monitor-status", onIncidentStatus);
     return () => {
+      mounted = false;
       window.removeEventListener("cosaif:realtime-event", onRealtimeEvent);
       window.removeEventListener("cosaif:activity-event", onAppActivity);
       window.removeEventListener("cosaif:realtime-status", onRealtimeStatus);
@@ -217,7 +240,14 @@ export default function RealtimeActivityCenter() {
   }, [open]);
 
   const unread = useMemo(
-    () => Math.min(items.filter((item) => (item.kind === "realtime" || item.kind === "app") && item.receivedAt > lastReadAt).length, 99),
+    () =>
+      Math.min(
+        items.filter(
+          (item) =>
+            (item.kind === "realtime" || item.kind === "app") && item.receivedAt > lastReadAt,
+        ).length,
+        99,
+      ),
     [items, lastReadAt],
   );
 
@@ -236,62 +266,122 @@ export default function RealtimeActivityCenter() {
       {toast ? (
         <button
           type="button"
-          onClick={() => { openActivity(); setToast(null); }}
+          onClick={() => {
+            openActivity();
+            setToast(null);
+          }}
           className="fixed right-4 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[1070] w-[min(calc(100vw-2rem),390px)] rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-4 py-3 text-left text-sm text-[var(--app-text)] shadow-[var(--app-shadow-md)]"
           aria-label={`Abrir actividad: ${toast.title}`}
           role={toast.title.toLowerCase().includes("incidente") ? "alert" : "status"}
           aria-live={toast.title.toLowerCase().includes("incidente") ? "assertive" : "polite"}
         >
-          <span className="block text-xs font-bold text-[var(--app-accent)]">Notificación en tiempo real</span>
+          <span className="block text-xs font-bold text-[var(--app-accent)]">
+            Notificación en tiempo real
+          </span>
           <span className="mt-1 block font-semibold">{toast.title}</span>
-          {toast.description ? <span className="mt-1 block text-xs text-[var(--app-text-muted)]">{toast.description}</span> : null}
+          {toast.description ? (
+            <span className="mt-1 block text-xs text-[var(--app-text-muted)]">
+              {toast.description}
+            </span>
+          ) : null}
         </button>
       ) : null}
 
       <button
         type="button"
-        onClick={() => open ? closeActivity() : openActivity()}
+        onClick={() => (open ? closeActivity() : openActivity())}
         className="fixed right-4 top-[calc(env(safe-area-inset-top)+1rem)] z-[55] inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text-muted)] shadow-[var(--app-shadow-sm)] transition hover:bg-[var(--app-surface-muted)]"
-        aria-label={unread ? `Abrir actividad en tiempo real, ${unread} sin leer` : "Abrir actividad en tiempo real"}
+        aria-label={
+          unread
+            ? `Abrir actividad en tiempo real, ${unread} sin leer`
+            : "Abrir actividad en tiempo real"
+        }
         aria-expanded={open}
         aria-controls="realtime-activity-panel"
       >
         <Bell className="h-5 w-5 text-[var(--app-accent)]" />
-        {(unread || incidentStatus.activeCount) ? <span className="absolute -right-1.5 -top-1.5 grid min-h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white ring-2 ring-[var(--app-bg)]">{Math.min(99, unread + incidentStatus.activeCount)}</span> : null}
+        {unread || incidentStatus.activeCount ? (
+          <span className="absolute -right-1.5 -top-1.5 grid min-h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white ring-2 ring-[var(--app-bg)]">
+            {Math.min(99, unread + incidentStatus.activeCount)}
+          </span>
+        ) : null}
       </button>
 
       {open ? (
-        <aside id="realtime-activity-panel" aria-label="Actividad reciente" className="fixed right-4 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[60] max-h-[min(72vh,560px)] w-[min(calc(100vw-2rem),390px)] overflow-hidden rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-[var(--app-shadow-md)]">
+        <aside
+          id="realtime-activity-panel"
+          aria-label="Actividad reciente"
+          className="fixed right-4 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[60] max-h-[min(72vh,560px)] w-[min(calc(100vw-2rem),390px)] overflow-hidden rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-[var(--app-shadow-md)]"
+        >
           <header className="flex items-center justify-between border-b border-[var(--app-border)] px-4 py-3">
             <div>
               <p className="text-sm font-bold text-[var(--app-text)]">Alertas y actividad</p>
               <p className="text-xs text-[var(--app-text-muted)]">Todo en un solo lugar</p>
             </div>
-            <button type="button" onClick={closeActivity} className="rounded-md p-2 hover:bg-[var(--app-surface-muted)]" aria-label="Cerrar actividad">
+            <button
+              type="button"
+              onClick={closeActivity}
+              className="rounded-md p-2 hover:bg-[var(--app-surface-muted)]"
+              aria-label="Cerrar actividad"
+            >
               <X className="h-4 w-4" />
             </button>
           </header>
           <div className="grid grid-cols-2 gap-2 border-b border-[var(--app-border)] p-3">
-            <div className={`rounded-xl border p-3 ${incidentStatus.activeCount ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200" : "border-[var(--app-border)] bg-[var(--app-surface-subtle)] text-[var(--app-text-muted)]"}`}>
-              <div className="flex items-center gap-2 text-xs font-bold"><AlertTriangle className="h-4 w-4" /> Incidentes</div>
+            <div
+              className={`rounded-xl border p-3 ${incidentStatus.activeCount ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200" : "border-[var(--app-border)] bg-[var(--app-surface-subtle)] text-[var(--app-text-muted)]"}`}
+            >
+              <div className="flex items-center gap-2 text-xs font-bold">
+                <AlertTriangle className="h-4 w-4" /> Incidentes
+              </div>
               <p className="mt-1 text-xl font-black tabular-nums">{incidentStatus.activeCount}</p>
             </div>
             <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-subtle)] p-3 text-[var(--app-text-muted)]">
-              <div className="flex items-center gap-2 text-xs font-bold">{incidentStatus.connected ? <Wifi className="h-4 w-4 text-emerald-600" /> : <WifiOff className="h-4 w-4 text-rose-600" />} Sistema</div>
-              <p className="mt-1 text-sm font-black text-[var(--app-text)]">{incidentStatus.connected ? "Conectado" : "Sin conexión"}</p>
+              <div className="flex items-center gap-2 text-xs font-bold">
+                {incidentStatus.connected ? (
+                  <Wifi className="h-4 w-4 text-emerald-600" />
+                ) : (
+                  <WifiOff className="h-4 w-4 text-rose-600" />
+                )}{" "}
+                Sistema
+              </div>
+              <p className="mt-1 text-sm font-black text-[var(--app-text)]">
+                {incidentStatus.connected ? "Conectado" : "Sin conexión"}
+              </p>
             </div>
           </div>
           <div className="max-h-[430px] overflow-y-auto p-2">
-            {items.length ? items.map((item, index) => (
-              <div key={item.eventId || `${item.kind}-${index}`} className="border-b border-[var(--app-border)] px-2 py-3 last:border-0">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-semibold text-[var(--app-text)]">{item.title}</p>
-                  {item.source ? <span className="shrink-0 rounded-full bg-[var(--app-surface-muted)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--app-text-muted)]">{item.source}</span> : null}
+            {items.length ? (
+              items.map((item, index) => (
+                <div
+                  key={item.eventId || `${item.kind}-${index}`}
+                  className="border-b border-[var(--app-border)] px-2 py-3 last:border-0"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-semibold text-[var(--app-text)]">{item.title}</p>
+                    {item.source ? (
+                      <span className="shrink-0 rounded-full bg-[var(--app-surface-muted)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--app-text-muted)]">
+                        {item.source}
+                      </span>
+                    ) : null}
+                  </div>
+                  {item.description ? (
+                    <p className="mt-1 text-xs text-[var(--app-text-muted)]">{item.description}</p>
+                  ) : null}
+                  <p className="mt-1 text-xs text-[var(--app-text-muted)]">
+                    {new Date(item.receivedAt).toLocaleTimeString("es-MX", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    })}
+                  </p>
                 </div>
-                {item.description ? <p className="mt-1 text-xs text-[var(--app-text-muted)]">{item.description}</p> : null}
-                <p className="mt-1 text-xs text-[var(--app-text-muted)]">{new Date(item.receivedAt).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</p>
-              </div>
-            )) : <p className="p-6 text-center text-sm text-[var(--app-text-muted)]">Aún no hay actividad.</p>}
+              ))
+            ) : (
+              <p className="p-6 text-center text-sm text-[var(--app-text-muted)]">
+                Aún no hay actividad.
+              </p>
+            )}
           </div>
         </aside>
       ) : null}

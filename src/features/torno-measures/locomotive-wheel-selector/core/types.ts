@@ -1,18 +1,13 @@
 export type WheelCount = 4 | 6 | 8 | 12;
 
-export type LocomotiveViewMode = 'top' | 'left' | 'right';
+export type LocomotiveViewMode = "top" | "left" | "right";
 
-export type WheelSide = 'left' | 'right';
+export type WheelSide = "left" | "right";
 
 export type WheelStatus =
-  | 'available'
-  | 'inProcess'
-  | 'warning'
-  | 'outOfRange'
-  | 'completed'
-  | 'disabled';
+  "available" | "inProcess" | "warning" | "outOfRange" | "completed" | "disabled";
 
-export type WheelVisualStatus = WheelStatus | 'selected';
+export type WheelVisualStatus = WheelStatus | "selected";
 
 export interface WheelData {
   id: string;
@@ -37,7 +32,9 @@ export interface WheelPoint extends WheelData {
   visualStatus: WheelVisualStatus;
 }
 
-export interface WheelOverride extends Partial<Omit<WheelData, 'id' | 'axleIndex' | 'side' | 'label' | 'status'>> {
+export interface WheelOverride extends Partial<
+  Omit<WheelData, "id" | "axleIndex" | "side" | "label" | "status">
+> {
   id: string;
   status?: WheelStatus;
   label?: string;
@@ -98,31 +95,6 @@ export interface SelectorLabels {
   wheelCountLabel: string;
 }
 
-export interface LocomotiveWheelSelectorBaseProps {
-  wheelCount?: WheelCount;
-  defaultWheelCount?: WheelCount;
-  viewMode?: LocomotiveViewMode;
-  defaultViewMode?: LocomotiveViewMode;
-  selectedWheelId?: string;
-  defaultSelectedWheelId?: string;
-  wheels?: WheelOverride[];
-  disabled?: boolean;
-  showWheelCountSwitcher?: boolean;
-  showViewSwitcher?: boolean;
-  showLegend?: boolean;
-  showInstructions?: boolean;
-  title?: string;
-  orderCode?: string;
-  operatorName?: string;
-  locomotiveNumber?: string | number | null;
-  theme?: Partial<LocomotiveWheelTheme>;
-  labels?: Partial<SelectorLabels>;
-  orientation?: 'vertical' | 'horizontal';
-  onWheelSelect?: (wheel: WheelData) => void;
-  onViewModeChange?: (viewMode: LocomotiveViewMode) => void;
-  onWheelCountChange?: (wheelCount: WheelCount) => void;
-}
-
 export interface LocomotiveMapProps {
   wheelCount: WheelCount;
   viewMode: LocomotiveViewMode;
@@ -132,7 +104,7 @@ export interface LocomotiveMapProps {
   theme?: Partial<LocomotiveWheelTheme>;
   labels?: Partial<SelectorLabels>;
   showLabels?: boolean;
-  orientation?: 'vertical' | 'horizontal';
+  orientation?: "vertical" | "horizontal";
   locomotiveNumber?: string | number | null;
   onWheelSelect?: (wheel: WheelData) => void;
 }

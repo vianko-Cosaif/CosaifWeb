@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { readTorreonJson, useTorreonCollection } from "../useTorreonCollection";
+import { arrastreListUrl, parseArrastrePage } from "../arrastres/listQuery";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { movementDateBoundary } from "@/lib/dateBoundary";
 import {
   ARRASTRE_MAX_CAPACITY,
   ARRASTRE_MIN_VAGONES,
@@ -21,10 +24,8 @@ import {
   EditVagonModal,
   IncidentesView,
   MovimientosView,
-  arrastreMatchesSearch,
   canCancelArrastreRequest,
   canEditArrastreRequest,
-  dateKey,
   isClosed,
   makeVagonDraft,
   normalizeArray,
@@ -43,10 +44,12 @@ import {
   type VagonDraft,
 } from "@/features/torreon/cliente";
 import { useRealtimeBoardRefresh } from "@/features/rail-queue/useRealtimeBoardRefresh";
-import { isTorreonArrastreEvent, realtimeArrastreSnapshot } from "@/features/torreon/realtime";
+import { isTorreonArrastreEvent } from "@/features/torreon/realtime";
 import { canViewTorreonArrastreRole, normalizeRoleName } from "@/lib/torreonLocalidad";
-import { playNotificationSound } from "@/lib/notificationSound";
-import TorreonIncidentDetailModal, { type TorreonIncidentDetail } from "@/features/torreon/coordinador/TorreonIncidentDetailModal";
+import { playOperationConfirmation } from "@/lib/notificationSound";
+import TorreonIncidentDetailModal, {
+  type TorreonIncidentDetail,
+} from "@/features/torreon/coordinador/TorreonIncidentDetailModal";
 
 export type { TorreonPanelView } from "@/features/torreon/cliente";
 
@@ -56,15 +59,6 @@ type TorreonClientePanelProps = {
   role: string;
   view?: TorreonPanelView;
 };
-
-function arrastreOrderValue(arrastre: Arrastre) {
-  const value = Number(arrastre.ordenSolicitud);
-  return Number.isFinite(value) && value > 0 ? value : Number.MAX_SAFE_INTEGER;
-}
-
-function arrastreSolicitudTime(arrastre: Arrastre) {
-  return Date.parse(String(arrastre.fechaSolicitud || arrastre.fechaInicio || "")) || 0;
-}
 
 function hasVagonEnProceso(arrastre: Arrastre) {
   return (arrastre.vagones || []).some((vagon) => statusText(vagon.estado) === "EN_PROCESO");
@@ -82,7 +76,12 @@ function hasPendingVagon(arrastre: Arrastre) {
   return (arrastre.vagones || []).some((vagon) => statusText(vagon.estado) === "PENDIENTE");
 }
 
-export default function TorreonClientePanel({ localidadId, empresaId, role, view = "dashboard" }: TorreonClientePanelProps) {
+export default function TorreonClientePanel({
+  localidadId,
+  empresaId,
+  role,
+  view = "dashboard",
+}: TorreonClientePanelProps) {
   const router = useRouter();
   const normalizedRole = normalizeRoleName(role);
   const arrastreOnly = normalizedRole === "ARRASTRE_TORREON";
@@ -111,38 +110,75 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
     subtitle?: string;
   } | null>(null);
 
-  const fetchArrastres = useCallback(async (signal: AbortSignal, force: boolean) => {
-    const buildUrl = (vista: "activos" | "historial", pageSize: number) => {
-      const params = new URLSearchParams({
-        localidadId: String(localidadId), vista, page: "1", pageSize: String(pageSize), includeFotos: "0",
-      });
-      if (vista === "activos" && (view === "dashboard" || view === "movimientos")) {
-        params.set("alcance", "localidad");
+  const [listPage, setListPage] = useState(1);
+  const deferredSearch = useDebouncedValue(search, 300);
+  const filterKey = JSON.stringify([
+    ambito,
+    deferredSearch,
+    dateFilter,
+    localidadId,
+    empresaId,
+    view,
+  ]);
+  const [pageFilterKey, setPageFilterKey] = useState(filterKey);
+  const requestedPage = pageFilterKey === filterKey ? listPage : 1;
+  useEffect(() => {
+    setListPage(1);
+    setPageFilterKey(filterKey);
+  }, [filterKey]);
+  const listUrl = arrastreListUrl({
+    localidadId,
+    page: requestedPage,
+    pageSize: 8,
+    history: view === "movimientos" && ambito === "pasados",
+    shared: view === "dashboard" || view === "movimientos",
+    q: deferredSearch,
+    desde: dateFilter ? (movementDateBoundary(dateFilter) ?? undefined) : undefined,
+    hasta: dateFilter ? (movementDateBoundary(dateFilter, true) ?? undefined) : undefined,
+  });
+  const fetchArrastres = useCallback(
+    async (signal: AbortSignal, force: boolean) => {
+      // The separate incident view still uses its own full incident projection.
+      if (view === "incidentes") {
+        const rows: Arrastre[] = [];
+        for (const history of [false, true]) {
+          let page = 1,
+            totalPages = 1;
+          do {
+            const result = parseArrastrePage(
+              await readTorreonJson<unknown>(
+                arrastreListUrl({ localidadId, page, pageSize: 100, history, conIncidentes: true }),
+                signal,
+                force,
+              ),
+            );
+            rows.push(...result.data);
+            totalPages = result.meta.totalPages;
+            page++;
+          } while (page <= totalPages && !signal.aborted);
+        }
+        return rows;
       }
-      return `/api/cliente/torreon/arrastres?${params.toString()}`;
-    };
-    const [activeData, historyData] = await Promise.all([
-      readTorreonJson<unknown>(buildUrl("activos", 80), signal, force),
-      view === "dashboard" ? Promise.resolve([]) : readTorreonJson<unknown>(buildUrl("historial", 40), signal, force),
-    ]);
-    return [...normalizeArray<Arrastre>(activeData), ...normalizeArray<Arrastre>(historyData)];
-  }, [localidadId, view]);
-
-  const { rows: arrastres, setRows: setArrastres, loading, refreshing, error: loadError, load, refreshItem } = useTorreonCollection({
-    queryKey: `${normalizedRole}:${empresaId}:${localidadId}:${view}`,
-    enabled: canViewArrastres,
+      return parseArrastrePage(await readTorreonJson<unknown>(listUrl, signal, force));
+    },
+    [listUrl, localidadId, view],
+  );
+  const {
+    rows: arrastres,
+    meta,
+    setRows: setArrastres,
+    loading,
+    refreshing,
+    error: loadError,
+    load,
+  } = useTorreonCollection<Arrastre>({
+    queryKey: `${normalizedRole}:${empresaId}:${listUrl}`,
+    enabled: canViewArrastres && view !== "crear",
     fetchRows: fetchArrastres,
   });
-
-  const refreshArrastreById = useCallback(async (arrastreId: number) => {
-    if (view === "dashboard" || !Number.isFinite(arrastreId) || arrastreId <= 0) return load(true);
-    return refreshItem(arrastreId, async (signal) => {
-      const params = new URLSearchParams({ localidadId: String(localidadId), id: String(arrastreId), includeFotos: "0" });
-      const data = await readTorreonJson<Arrastre | Arrastre[]>(`/api/cliente/torreon/arrastres?${params}`, signal, true);
-      const next = Array.isArray(data) ? data[0] : data;
-      return next?.id ? next : null;
-    }, (current, next) => [...current.filter((item) => item.id !== next.id), next]);
-  }, [load, localidadId, refreshItem, view]);
+  useEffect(() => {
+    if (meta && requestedPage > meta.totalPages) setListPage(meta.totalPages);
+  }, [meta, requestedPage]);
 
   useEffect(() => {
     if (view !== "crear" && !editingArrastreId) return;
@@ -156,13 +192,25 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
     })
       .then(async (response) => {
         const payload = await response.json().catch(() => null);
-        if (!response.ok) throw new Error(String(payload?.message || payload?.error || "No se pudo cargar el catálogo de vías de Arrastre"));
+        if (!response.ok)
+          throw new Error(
+            String(
+              payload?.message ||
+                payload?.error ||
+                "No se pudo cargar el catálogo de vías de Arrastre",
+            ),
+          );
         return normalizeArray<{
           id?: number;
           numero?: number;
           nombre?: string;
           ocupada?: boolean;
-          secciones?: Array<{ id?: number; numero?: number; nombre?: string | null; ocupada?: boolean }>;
+          secciones?: Array<{
+            id?: number;
+            numero?: number;
+            nombre?: string | null;
+            ocupada?: boolean;
+          }>;
         }>(payload);
       })
       .then((rows) => {
@@ -183,14 +231,24 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
               .filter((section) => Number.isFinite(section.id) && section.id > 0),
           }))
           .filter((via) => Number.isFinite(via.id) && via.id > 0 && via.nombre)
-          .sort((left, right) => left.numero - right.numero || left.nombre.localeCompare(right.nombre, "es-MX"));
+          .sort(
+            (left, right) =>
+              left.numero - right.numero || left.nombre.localeCompare(right.nombre, "es-MX"),
+          );
         setOperationalVias(vias);
-        if (!vias.length) setCatalogError("El administrador aún no ha configurado las vías del patio de Arrastre de Torreón.");
+        if (!vias.length)
+          setCatalogError(
+            "El administrador aún no ha configurado las vías del patio de Arrastre de Torreón.",
+          );
       })
       .catch((error) => {
         if (!alive) return;
         setOperationalVias([]);
-        setCatalogError(error instanceof Error ? error.message : "No se pudo cargar el catálogo de vías de Arrastre");
+        setCatalogError(
+          error instanceof Error
+            ? error.message
+            : "No se pudo cargar el catálogo de vías de Arrastre",
+        );
       })
       .finally(() => {
         if (alive) setCatalogLoading(false);
@@ -206,85 +264,80 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
     realtimeLocalidadId: localidadId,
     scopeLocalidadId: localidadId,
     matchesEvent: isTorreonArrastreEvent,
-    onRefresh: ({ event }) => {
-      if (["realtime.ready", "realtime.resume"].includes(String(event.type))) return load();
-      if (view === "dashboard") return load(true);
-      const snapshot = realtimeArrastreSnapshot(event);
-      if (snapshot) {
-        if (normalizedRole === "CLIENTE" && Number(snapshot.empresaId) !== empresaId && (isClosed(snapshot.estado) || view !== "movimientos")) {
-          setArrastres((current) => current.filter((item) => item.id !== snapshot.id));
-          return;
-        }
-        setArrastres((current) => [snapshot, ...current.filter((item) => item.id !== snapshot.id)]);
-        return;
-      }
-      const arrastreId = Number(event.arrastreId || 0);
-      if (String(event.type || "").startsWith("torreon.arrastre") && arrastreId > 0) {
-        return refreshArrastreById(arrastreId);
-      }
-      return load(true);
-    },
+    onRefresh: ({ event }) =>
+      load(!["realtime.ready", "realtime.resume"].includes(String(event.type))),
   });
 
-  const activeArrastres = useMemo(() => (
-    arrastres
-      .filter((arrastre) => !isClosed(arrastre.estado))
-      .sort((a, b) => arrastreOrderValue(a) - arrastreOrderValue(b) || arrastreSolicitudTime(a) - arrastreSolicitudTime(b) || a.id - b.id)
-  ), [arrastres]);
-  const pastArrastres = useMemo(() => (
-    arrastres
-      .filter((arrastre) => isClosed(arrastre.estado))
-      .sort((a, b) => arrastreSolicitudTime(b) - arrastreSolicitudTime(a) || b.id - a.id)
-  ), [arrastres]);
-  const orderedArrastres = useMemo(() => [...activeArrastres, ...pastArrastres], [activeArrastres, pastArrastres]);
+  const activeArrastres = useMemo(
+    () => arrastres.filter((row) => !isClosed(row.estado)),
+    [arrastres],
+  );
+  const pastArrastres = useMemo(() => arrastres.filter((row) => isClosed(row.estado)), [arrastres]);
+  const orderedArrastres = useMemo(
+    () => [...activeArrastres, ...pastArrastres],
+    [activeArrastres, pastArrastres],
+  );
   const dailyCounters = useMemo(() => buildDailyCounters(orderedArrastres), [orderedArrastres]);
 
-  const visibleArrastres = useMemo(() => (
-    (ambito === "actuales" ? activeArrastres : pastArrastres)
-      .filter((arrastre) => !dateFilter || dateKey(arrastre.fechaSolicitud || arrastre.fechaInicio) === dateFilter)
-      .filter((arrastre) => arrastreMatchesSearch(arrastre, search))
-  ), [activeArrastres, ambito, dateFilter, pastArrastres, search]);
+  const visibleArrastres = ambito === "actuales" ? activeArrastres : pastArrastres;
   const manageableActiveArrastres = useMemo(
-    () => activeArrastres.filter((arrastre) => Boolean(empresaId) && Number(arrastre.empresaId) === empresaId),
+    () =>
+      activeArrastres.filter(
+        (arrastre) => Boolean(empresaId) && Number(arrastre.empresaId) === empresaId,
+      ),
     [activeArrastres, empresaId],
   );
   const manageableVisibleRowIds = useMemo(
-    () => visibleArrastres
-      .filter((arrastre) => Boolean(empresaId) && Number(arrastre.empresaId) === empresaId)
-      .map((arrastre) => arrastre.id),
+    () =>
+      visibleArrastres
+        .filter((arrastre) => Boolean(empresaId) && Number(arrastre.empresaId) === empresaId)
+        .map((arrastre) => arrastre.id),
     [empresaId, visibleArrastres],
   );
   const hasOpenIncidentInQueue = useMemo(
-    () => manageableActiveArrastres.some(hasOpenIncident),
-    [manageableActiveArrastres],
+    () => meta?.canPrioritize ?? manageableActiveArrastres.some(hasOpenIncident),
+    [manageableActiveArrastres, meta],
   );
-  const incidentRows = useMemo<ClienteArrastreIncidentRow[]>(() => (
-    arrastres.flatMap((arrastre) => (
-      (arrastre.incidentes || []).map((incident) => ({
-        arrastre,
-        incident,
-        dailyInfo: dailyCounters.get(arrastre.id),
-      }))
-    ))
-  ), [arrastres, dailyCounters]);
+  const incidentRows = useMemo<ClienteArrastreIncidentRow[]>(
+    () =>
+      arrastres.flatMap((arrastre) =>
+        (arrastre.incidentes || []).map((incident) => ({
+          arrastre,
+          incident,
+          dailyInfo: dailyCounters.get(arrastre.id),
+        })),
+      ),
+    [arrastres, dailyCounters],
+  );
 
   const stats = useMemo(() => {
     // El tablero representa la operación actual. No contar vagones históricos
     // que conservaron PENDIENTE/BLOQUEADO dentro de arrastres ya cerrados.
     const vagones = activeArrastres.flatMap((arrastre) => arrastre.vagones || []);
     return {
-      total: activeArrastres.length,
-      solicitados: activeArrastres.filter((item) => statusText(item.estado) === "SOLICITADO").length,
-      proceso: activeArrastres.filter((item) => statusText(item.estado) === "EN_PROCESO").length,
-      detenidos: activeArrastres.filter((item) => statusText(item.estado) === "DETENIDO").length,
+      total: meta?.total ?? activeArrastres.length,
+      solicitados:
+        meta?.statusCounts?.SOLICITADO ??
+        activeArrastres.filter((item) => statusText(item.estado) === "SOLICITADO").length,
+      proceso:
+        meta?.statusCounts?.EN_PROCESO ??
+        activeArrastres.filter((item) => statusText(item.estado) === "EN_PROCESO").length,
+      detenidos:
+        meta?.statusCounts?.DETENIDO ??
+        activeArrastres.filter((item) => statusText(item.estado) === "DETENIDO").length,
       concluidos: 0,
-      pendientesVagon: vagones.filter((item) => ["PENDIENTE", "EN_PROCESO", "BLOQUEADO"].includes(statusText(item.estado))).length,
+      pendientesVagon:
+        meta?.pendingWagons ??
+        vagones.filter((item) =>
+          ["PENDIENTE", "EN_PROCESO", "BLOQUEADO"].includes(statusText(item.estado)),
+        ).length,
     };
-  }, [activeArrastres]);
+  }, [activeArrastres, meta]);
 
-  const draftCapacity = useMemo(() => (
-    draftVagones.reduce((total, vagon) => total + arrastreVagonCapacity(vagon.carga), 0)
-  ), [draftVagones]);
+  const draftCapacity = useMemo(
+    () => draftVagones.reduce((total, vagon) => total + arrastreVagonCapacity(vagon.carga), 0),
+    [draftVagones],
+  );
 
   function canManageArrastre(arrastre: Arrastre) {
     return Boolean(empresaId) && Number(arrastre.empresaId) === empresaId;
@@ -292,23 +345,32 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
 
   function updateDraftVagon(tempId: number, patch: Partial<VagonDraft>) {
     setDraftVagones((prev) => {
-      const next = prev.map((vagon) => vagon.tempId === tempId ? { ...vagon, ...patch } : vagon);
-      const nextCapacity = next.reduce((total, vagon) => total + arrastreVagonCapacity(vagon.carga), 0);
+      const next = prev.map((vagon) => (vagon.tempId === tempId ? { ...vagon, ...patch } : vagon));
+      const nextCapacity = next.reduce(
+        (total, vagon) => total + arrastreVagonCapacity(vagon.carga),
+        0,
+      );
       return nextCapacity <= ARRASTRE_MAX_CAPACITY ? next : prev;
     });
   }
 
   function addDraftVagon() {
     setDraftVagones((prev) => {
-      const currentCapacity = prev.reduce((total, vagon) => total + arrastreVagonCapacity(vagon.carga), 0);
-      if (prev.length >= ARRASTRE_MAX_CAPACITY || currentCapacity >= ARRASTRE_MAX_CAPACITY) return prev;
+      const currentCapacity = prev.reduce(
+        (total, vagon) => total + arrastreVagonCapacity(vagon.carga),
+        0,
+      );
+      if (prev.length >= ARRASTRE_MAX_CAPACITY || currentCapacity >= ARRASTRE_MAX_CAPACITY)
+        return prev;
       const nextId = Math.max(0, ...prev.map((vagon) => vagon.tempId)) + 1;
       return [...prev, makeVagonDraft(nextId)];
     });
   }
 
   function removeDraftVagon(tempId: number) {
-    setDraftVagones((prev) => prev.length === 1 ? prev : prev.filter((vagon) => vagon.tempId !== tempId));
+    setDraftVagones((prev) =>
+      prev.length === 1 ? prev : prev.filter((vagon) => vagon.tempId !== tempId),
+    );
   }
 
   function moveDraftVagon(tempId: number, direction: "up" | "down") {
@@ -337,7 +399,7 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
       const index = prev.findIndex((vagon) => vagon.tempId === tempId);
       if (index <= 0) return prev;
       const patch = routePatchFrom(prev[index - 1]);
-      return prev.map((vagon) => vagon.tempId === tempId ? { ...vagon, ...patch } : vagon);
+      return prev.map((vagon) => (vagon.tempId === tempId ? { ...vagon, ...patch } : vagon));
     });
   }
 
@@ -346,13 +408,16 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
       const source = prev.find((vagon) => vagon.tempId === tempId);
       if (!source) return prev;
       const patch = routePatchFrom(source);
-      return prev.map((vagon) => vagon.tempId === tempId ? vagon : { ...vagon, ...patch });
+      return prev.map((vagon) => (vagon.tempId === tempId ? vagon : { ...vagon, ...patch }));
     });
   }
 
   function openEditArrastre(arrastre: Arrastre) {
     if (!canManageArrastre(arrastre)) {
-      setMessage({ type: "error", text: "Esta ronda pertenece a otra empresa. Puedes consultarla, pero no modificarla." });
+      setMessage({
+        type: "error",
+        text: "Esta ronda pertenece a otra empresa. Puedes consultarla, pero no modificarla.",
+      });
       return;
     }
     if (!canEditArrastreRequest(arrastre)) {
@@ -387,10 +452,16 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
   }
 
   function updateEditingArrastreVagon(vagonId: number, patch: Partial<EditArrastreVagonDraft>) {
-    setEditingArrastre((current) => current ? {
-      ...current,
-      vagones: current.vagones.map((vagon) => vagon.vagonId === vagonId ? { ...vagon, ...patch } : vagon),
-    } : current);
+    setEditingArrastre((current) =>
+      current
+        ? {
+            ...current,
+            vagones: current.vagones.map((vagon) =>
+              vagon.vagonId === vagonId ? { ...vagon, ...patch } : vagon,
+            ),
+          }
+        : current,
+    );
     setEditArrastreError(null);
   }
 
@@ -400,7 +471,9 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
 
     const current = arrastres.find((arrastre) => arrastre.id === editingArrastre.arrastreId);
     if (!current || !canEditArrastreRequest(current)) {
-      setEditArrastreError("El movimiento cambió de estado y ya no puede editarse. Actualiza la lista para consultar su situación actual.");
+      setEditArrastreError(
+        "El movimiento cambió de estado y ya no puede editarse. Actualiza la lista para consultar su situación actual.",
+      );
       return;
     }
 
@@ -412,9 +485,13 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
 
     const vagones = editingArrastre.vagones.map((vagon) => {
       const viaOrigen = operationalVias.find((via) => via.id === Number(vagon.viaOrigenId));
-      const seccionOrigen = viaOrigen?.secciones.find((section) => section.id === Number(vagon.seccionOrigenId));
+      const seccionOrigen = viaOrigen?.secciones.find(
+        (section) => section.id === Number(vagon.seccionOrigenId),
+      );
       const viaDestino = operationalVias.find((via) => via.id === Number(vagon.viaId));
-      const seccionDestino = viaDestino?.secciones.find((section) => section.id === Number(vagon.seccionId));
+      const seccionDestino = viaDestino?.secciones.find(
+        (section) => section.id === Number(vagon.seccionId),
+      );
       return {
         id: vagon.vagonId,
         numeroVagon: vagon.numeroVagon.trim(),
@@ -441,12 +518,19 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
       return;
     }
 
-    if (vagones.some((vagon) => !vagon.viaOrigenId || !vagon.seccionOrigenId || !vagon.viaId || !vagon.seccionId)) {
+    if (
+      vagones.some(
+        (vagon) => !vagon.viaOrigenId || !vagon.seccionOrigenId || !vagon.viaId || !vagon.seccionId,
+      )
+    ) {
       setEditArrastreError("Selecciona vía y sección de origen y destino para cada vagón.");
       return;
     }
 
-    const capacity = vagones.reduce((total, vagon) => total + arrastreVagonCapacity(vagon.carga), 0);
+    const capacity = vagones.reduce(
+      (total, vagon) => total + arrastreVagonCapacity(vagon.carga),
+      0,
+    );
     if (capacity > ARRASTRE_MAX_CAPACITY) {
       setEditArrastreError("Capacidad excedida: vacío usa 1 punto, lleno usa 2 y el máximo es 8.");
       return;
@@ -472,10 +556,12 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
 
       setEditingArrastre(null);
       setMessage({ type: "ok", text: "Movimiento actualizado correctamente." });
-      void playNotificationSound("arrastre_editado");
-      await refreshArrastreById(current.id);
+      void playOperationConfirmation("arrastre_editado");
+      await load(true);
     } catch (error) {
-      setEditArrastreError(error instanceof Error ? error.message : "No se pudo editar el movimiento");
+      setEditArrastreError(
+        error instanceof Error ? error.message : "No se pudo editar el movimiento",
+      );
     } finally {
       setBusyAction(null);
     }
@@ -483,11 +569,17 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
 
   function openEditVagon(arrastre: Arrastre, vagon: VagonArrastre) {
     if (!canManageArrastre(arrastre)) {
-      setMessage({ type: "error", text: "Esta ronda pertenece a otra empresa. Puedes consultarla, pero no modificar sus vagones." });
+      setMessage({
+        type: "error",
+        text: "Esta ronda pertenece a otra empresa. Puedes consultarla, pero no modificar sus vagones.",
+      });
       return;
     }
     if (!isArrastreEditable(arrastre.estado)) {
-      setMessage({ type: "error", text: `Solo puedes editar arrastres solicitados o detenidos sin vagon en proceso. Estado actual: ${statusText(arrastre.estado)}` });
+      setMessage({
+        type: "error",
+        text: `Solo puedes editar arrastres solicitados o detenidos sin vagon en proceso. Estado actual: ${statusText(arrastre.estado)}`,
+      });
       return;
     }
     if (statusText(vagon.estado) === "EN_PROCESO") {
@@ -501,14 +593,15 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
       numeroVagon: vagon.numeroVagon || "",
       carga: statusText(vagon.carga) === "LLENO" ? "LLENO" : "VACIO",
       viaOrigenId: vagon.viaOrigenNombre || (vagon.viaOrigenId ? String(vagon.viaOrigenId) : ""),
-      seccionOrigenId: vagon.seccionOrigenNombre || (vagon.seccionOrigenId ? String(vagon.seccionOrigenId) : ""),
+      seccionOrigenId:
+        vagon.seccionOrigenNombre || (vagon.seccionOrigenId ? String(vagon.seccionOrigenId) : ""),
       viaId: vagon.viaDestinoNombre || (vagon.viaId ? String(vagon.viaId) : ""),
       seccionId: vagon.seccionDestinoNombre || (vagon.seccionId ? String(vagon.seccionId) : ""),
     });
   }
 
   function updateEditingVagon(patch: Partial<EditVagonDraft>) {
-    setEditingVagon((current) => current ? { ...current, ...patch } : current);
+    setEditingVagon((current) => (current ? { ...current, ...patch } : current));
   }
 
   async function submitVagonEdit() {
@@ -532,16 +625,24 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
 
     const arrastre = arrastres.find((item) => item.id === editingVagon.arrastreId);
     if (arrastre && !isArrastreEditable(arrastre.estado)) {
-      setMessage({ type: "error", text: `Solo puedes editar arrastres solicitados o detenidos sin vagon en proceso. Estado actual: ${statusText(arrastre.estado)}` });
+      setMessage({
+        type: "error",
+        text: `Solo puedes editar arrastres solicitados o detenidos sin vagon en proceso. Estado actual: ${statusText(arrastre.estado)}`,
+      });
       return;
     }
 
-    const capacidad = arrastre?.vagones?.reduce((total, vagon) => {
-      const carga = vagon.id === editingVagon.vagonId ? editingVagon.carga : statusText(vagon.carga);
-      return total + (carga === "LLENO" ? 2 : 1);
-    }, 0) ?? 0;
+    const capacidad =
+      arrastre?.vagones?.reduce((total, vagon) => {
+        const carga =
+          vagon.id === editingVagon.vagonId ? editingVagon.carga : statusText(vagon.carga);
+        return total + (carga === "LLENO" ? 2 : 1);
+      }, 0) ?? 0;
     if (capacidad > 8) {
-      setMessage({ type: "error", text: "Capacidad excedida: lleno cuenta 2, vacio cuenta 1, maximo 8" });
+      setMessage({
+        type: "error",
+        text: "Capacidad excedida: lleno cuenta 2, vacio cuenta 1, maximo 8",
+      });
       return;
     }
 
@@ -570,10 +671,13 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
 
       setEditingVagon(null);
       setMessage({ type: "ok", text: "Vagon actualizado" });
-      void playNotificationSound("arrastre_vagon_editado");
+      void playOperationConfirmation("arrastre_vagon_editado");
       await load(true);
     } catch (error) {
-      setMessage({ type: "error", text: error instanceof Error ? error.message : "No se pudo editar el vagon" });
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "No se pudo editar el vagon",
+      });
     } finally {
       setBusyAction(null);
     }
@@ -595,9 +699,13 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
 
     const vagones = draftVagones.map((vagon) => {
       const viaOrigen = operationalVias.find((via) => via.id === Number(vagon.viaOrigenId));
-      const seccionOrigen = viaOrigen?.secciones.find((section) => section.id === Number(vagon.seccionOrigenId));
+      const seccionOrigen = viaOrigen?.secciones.find(
+        (section) => section.id === Number(vagon.seccionOrigenId),
+      );
       const viaDestino = operationalVias.find((via) => via.id === Number(vagon.viaId));
-      const seccionDestino = viaDestino?.secciones.find((section) => section.id === Number(vagon.seccionId));
+      const seccionDestino = viaDestino?.secciones.find(
+        (section) => section.id === Number(vagon.seccionId),
+      );
       return {
         numeroVagon: vagon.numeroVagon.trim(),
         carga: vagon.carga,
@@ -619,23 +727,34 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
 
     const normalizedNumbers = vagones.map((vagon) => vagon.numeroVagon.toLocaleUpperCase("es-MX"));
     if (new Set(normalizedNumbers).size !== normalizedNumbers.length) {
-      setMessage({ type: "error", text: "No repitas el mismo número de vagón dentro de la solicitud." });
+      setMessage({
+        type: "error",
+        text: "No repitas el mismo número de vagón dentro de la solicitud.",
+      });
       return;
     }
 
-    if (vagones.some((vagon) => (
-      !vagon.viaOrigenId ||
-      !vagon.seccionOrigenId ||
-      !vagon.viaId ||
-      !vagon.seccionId
-    ))) {
-      setMessage({ type: "error", text: "Selecciona origen y destino del catálogo exclusivo del patio de Arrastre." });
+    if (
+      vagones.some(
+        (vagon) => !vagon.viaOrigenId || !vagon.seccionOrigenId || !vagon.viaId || !vagon.seccionId,
+      )
+    ) {
+      setMessage({
+        type: "error",
+        text: "Selecciona origen y destino del catálogo exclusivo del patio de Arrastre.",
+      });
       return;
     }
 
-    const capacidad = vagones.reduce((total, vagon) => total + arrastreVagonCapacity(vagon.carga), 0);
+    const capacidad = vagones.reduce(
+      (total, vagon) => total + arrastreVagonCapacity(vagon.carga),
+      0,
+    );
     if (capacidad > ARRASTRE_MAX_CAPACITY) {
-      setMessage({ type: "error", text: "Capacidad excedida: lleno cuenta 2, vacío cuenta 1, máximo 8" });
+      setMessage({
+        type: "error",
+        text: "Capacidad excedida: lleno cuenta 2, vacío cuenta 1, máximo 8",
+      });
       return;
     }
 
@@ -653,10 +772,13 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
       setInstrucciones("");
       setDraftVagones([makeVagonDraft(1)]);
       setMessage({ type: "ok", text: "Arrastre creado" });
-      void playNotificationSound("arrastre_creado");
+      void playOperationConfirmation("arrastre_creado");
       router.push("/cliente/torreon/movimientos");
     } catch (error) {
-      setMessage({ type: "error", text: error instanceof Error ? error.message : "No se pudo crear el arrastre" });
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "No se pudo crear el arrastre",
+      });
     } finally {
       setBusyAction(null);
     }
@@ -664,79 +786,106 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
 
   async function reorderVagon(arrastre: Arrastre, vagon: VagonArrastre, direction: "up" | "down") {
     if (!isArrastreEditable(arrastre.estado)) {
-      setMessage({ type: "error", text: `Solo puedes reordenar arrastres solicitados o detenidos sin vagon en proceso. Estado actual: ${statusText(arrastre.estado)}` });
+      setMessage({
+        type: "error",
+        text: `Solo puedes reordenar arrastres solicitados o detenidos sin vagon en proceso. Estado actual: ${statusText(arrastre.estado)}`,
+      });
       return;
     }
 
-    const vagones = [...(arrastre.vagones || [])].sort((left, right) => (left.orden ?? 0) - (right.orden ?? 0));
+    const vagones = [...(arrastre.vagones || [])].sort(
+      (left, right) => (left.orden ?? 0) - (right.orden ?? 0),
+    );
     const index = vagones.findIndex((item) => item.id === vagon.id);
     const nextIndex = direction === "up" ? index - 1 : index + 1;
     if (index < 0 || nextIndex < 0 || nextIndex >= vagones.length) return;
-    if (statusText(vagones[index].estado) === "EN_PROCESO" || statusText(vagones[nextIndex].estado) === "EN_PROCESO") {
-      setMessage({ type: "error", text: "No puedes mover un vagon que esta en proceso ni intercambiarlo con uno en proceso" });
+    if (
+      statusText(vagones[index].estado) === "EN_PROCESO" ||
+      statusText(vagones[nextIndex].estado) === "EN_PROCESO"
+    ) {
+      setMessage({
+        type: "error",
+        text: "No puedes mover un vagon que esta en proceso ni intercambiarlo con uno en proceso",
+      });
       return;
     }
 
     [vagones[index], vagones[nextIndex]] = [vagones[nextIndex], vagones[index]];
-    await runAction({
-      action: "REORDENAR_VAGONES",
-      arrastreId: arrastre.id,
-      vagonIds: vagones.map((item) => item.id),
-    }, (current) => current.map((item) => item.id === arrastre.id
-      ? { ...item, vagones: vagones.map((vagon, orden) => ({ ...vagon, orden: orden + 1 })) }
-      : item));
+    await runAction(
+      {
+        action: "REORDENAR_VAGONES",
+        arrastreId: arrastre.id,
+        vagonIds: vagones.map((item) => item.id),
+      },
+      (current) =>
+        current.map((item) =>
+          item.id === arrastre.id
+            ? { ...item, vagones: vagones.map((vagon, orden) => ({ ...vagon, orden: orden + 1 })) }
+            : item,
+        ),
+    );
   }
 
   async function reorderSolicitud(arrastre: Arrastre, direction: "up" | "down") {
     if (!canReorderSolicitud(arrastre)) {
-      setMessage({ type: "error", text: `Solo puedes reordenar solicitudes solicitadas o detenidas sin vagones en proceso. Estado actual: ${statusText(arrastre.estado)}` });
+      setMessage({
+        type: "error",
+        text: `Solo puedes reordenar solicitudes solicitadas o detenidas sin vagones en proceso. Estado actual: ${statusText(arrastre.estado)}`,
+      });
       return;
     }
 
-    const solicitudes = activeArrastres.filter(canReorderSolicitud);
-    const index = solicitudes.findIndex((item) => item.id === arrastre.id);
-    const nextIndex = direction === "up" ? index - 1 : index + 1;
-    if (index < 0 || nextIndex < 0 || nextIndex >= solicitudes.length) return;
-
-    [solicitudes[index], solicitudes[nextIndex]] = [solicitudes[nextIndex], solicitudes[index]];
-    await runAction({
-      action: "REORDENAR_SOLICITUDES",
-      arrastreId: arrastre.id,
-      arrastreIds: solicitudes.map((item) => item.id),
-    }, (current) => current.map((item) => {
-      const index = solicitudes.findIndex((solicitud) => solicitud.id === item.id);
-      return index >= 0 ? { ...item, ordenSolicitud: index + 1 } : item;
-    }));
+    await runAction({ action: "REORDENAR_SOLICITUDES", arrastreId: arrastre.id, direction });
   }
 
   async function prioritizeSolicitud(arrastre: Arrastre) {
     if (!canManageArrastre(arrastre)) {
-      setMessage({ type: "error", text: "No puedes cambiar el turno de una ronda perteneciente a otra empresa." });
+      setMessage({
+        type: "error",
+        text: "No puedes cambiar el turno de una ronda perteneciente a otra empresa.",
+      });
       return;
     }
     if (!hasOpenIncidentInQueue) {
-      setMessage({ type: "error", text: "Solo puedes subir una solicitud al frente cuando existe un incidente abierto en la cola." });
+      setMessage({
+        type: "error",
+        text: "Solo puedes subir una solicitud al frente cuando existe un incidente abierto en la cola.",
+      });
       return;
     }
     if (!canReorderSolicitud(arrastre)) {
-      setMessage({ type: "error", text: `Solo puedes subir solicitudes solicitadas o detenidas sin vagones en proceso. Estado actual: ${statusText(arrastre.estado)}` });
+      setMessage({
+        type: "error",
+        text: `Solo puedes subir solicitudes solicitadas o detenidas sin vagones en proceso. Estado actual: ${statusText(arrastre.estado)}`,
+      });
       return;
     }
     if (!hasPendingVagon(arrastre)) {
-      setMessage({ type: "error", text: "La solicitud no tiene vagones pendientes disponibles para subir al frente." });
+      setMessage({
+        type: "error",
+        text: "La solicitud no tiene vagones pendientes disponibles para subir al frente.",
+      });
       return;
     }
 
-    await runAction({
-      action: "PRIORIZAR_SOLICITUD",
-      arrastreId: arrastre.id,
-    }, (current) => [
-      { ...arrastre, ordenSolicitud: 1 },
-      ...current.filter((item) => item.id !== arrastre.id).map((item, index) => ({ ...item, ordenSolicitud: index + 2 })),
-    ]);
+    await runAction(
+      {
+        action: "PRIORIZAR_SOLICITUD",
+        arrastreId: arrastre.id,
+      },
+      (current) => [
+        { ...arrastre, ordenSolicitud: 1 },
+        ...current
+          .filter((item) => item.id !== arrastre.id)
+          .map((item, index) => ({ ...item, ordenSolicitud: index + 2 })),
+      ],
+    );
   }
 
-  async function runAction(payload: ActionPayload, optimistic?: (current: Arrastre[]) => Arrastre[]) {
+  async function runAction(
+    payload: ActionPayload,
+    optimistic?: (current: Arrastre[]) => Arrastre[],
+  ) {
     setMessage(null);
     const actionKey = `${payload.arrastreId}:${payload.vagonId ?? payload.action}`;
     setBusyAction(actionKey);
@@ -754,11 +903,14 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
       if (!response.ok) throw new Error(parseErrorMessage(data, "No se pudo operar el arrastre"));
 
       setMessage({ type: "ok", text: "Operacion aplicada" });
-      void playNotificationSound(String(payload.action));
+      void playOperationConfirmation(String(payload.action));
       await load(true);
     } catch (error) {
       if (optimistic) setArrastres(previous);
-      setMessage({ type: "error", text: error instanceof Error ? error.message : "No se pudo operar el arrastre" });
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "No se pudo operar el arrastre",
+      });
     } finally {
       setBusyAction(null);
     }
@@ -766,11 +918,17 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
 
   function cancelArrastre(arrastre: Arrastre) {
     if (!canManageArrastre(arrastre)) {
-      setMessage({ type: "error", text: "Esta ronda pertenece a otra empresa. Puedes consultarla, pero no cancelarla." });
+      setMessage({
+        type: "error",
+        text: "Esta ronda pertenece a otra empresa. Puedes consultarla, pero no cancelarla.",
+      });
       return;
     }
     if (!canCancelArrastreRequest(arrastre)) {
-      setMessage({ type: "error", text: "No puedes cancelar un movimiento concluido o con un vagón en proceso." });
+      setMessage({
+        type: "error",
+        text: "No puedes cancelar un movimiento concluido o con un vagón en proceso.",
+      });
       return;
     }
 
@@ -812,18 +970,23 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
         }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(parseErrorMessage(data, "No se pudo cancelar el movimiento"));
+      if (!response.ok)
+        throw new Error(parseErrorMessage(data, "No se pudo cancelar el movimiento"));
 
       const canceledId = cancelingArrastre.arrastreId;
       setCancelingArrastre(null);
-      setArrastres((currentArrastres) => currentArrastres.map((arrastre) => (
-        arrastre.id === canceledId ? { ...arrastre, estado: "CANCELADO" } : arrastre
-      )));
+      setArrastres((currentArrastres) =>
+        currentArrastres.map((arrastre) =>
+          arrastre.id === canceledId ? { ...arrastre, estado: "CANCELADO" } : arrastre,
+        ),
+      );
       setMessage({ type: "ok", text: "Movimiento cancelado y retirado de la cola." });
-      void playNotificationSound("arrastre_cancelado");
+      void playOperationConfirmation("arrastre_cancelado");
       await load(true);
     } catch (error) {
-      setCancelArrastreError(error instanceof Error ? error.message : "No se pudo cancelar el movimiento");
+      setCancelArrastreError(
+        error instanceof Error ? error.message : "No se pudo cancelar el movimiento",
+      );
     } finally {
       setBusyAction(null);
     }
@@ -842,7 +1005,9 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
 
     const incidentId = Number(incident.id);
     const currentFotos = Array.isArray(incident.fotos) ? incident.fotos.length : 0;
-    const shouldLoadDetail = Number.isFinite(incidentId) && (currentFotos === 0 || (incident.fotosCount ?? 0) > currentFotos);
+    const shouldLoadDetail =
+      Number.isFinite(incidentId) &&
+      (currentFotos === 0 || (incident.fotosCount ?? 0) > currentFotos);
     if (!shouldLoadDetail) return;
 
     const params = new URLSearchParams({
@@ -854,14 +1019,20 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
       cache: "no-store",
       credentials: "include",
     })
-      .then((response) => response.ok ? response.json() : null)
+      .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
-        const record = payload && typeof payload === "object" && "data" in payload
-          ? (payload as { data?: unknown }).data
-          : payload;
+        const record =
+          payload && typeof payload === "object" && "data" in payload
+            ? (payload as { data?: unknown }).data
+            : payload;
         if (!record || typeof record !== "object") return;
         setSelectedIncident((current) => {
-          if (!current || current.arrastreId !== arrastreId || Number(current.incident.id) !== incidentId) return current;
+          if (
+            !current ||
+            current.arrastreId !== arrastreId ||
+            Number(current.incident.id) !== incidentId
+          )
+            return current;
           return {
             ...current,
             incident: {
@@ -892,11 +1063,12 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
         }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(parseErrorMessage(data, "No se pudo resolver el incidente"));
+      if (!response.ok)
+        throw new Error(parseErrorMessage(data, "No se pudo resolver el incidente"));
 
       setSelectedIncident(null);
       setMessage({ type: "ok", text: "Incidente resuelto y bloqueo liberado" });
-      void playNotificationSound("arrastre_incidente_resuelto");
+      void playOperationConfirmation("arrastre_incidente_resuelto");
       await load(true);
     } catch (error) {
       const text = error instanceof Error ? error.message : "No se pudo resolver el incidente";
@@ -910,11 +1082,13 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
   if (arrastreOnly && !canViewArrastres) return null;
 
   const feedback = message && (
-    <div className={`rounded-lg border px-3 py-2 text-sm font-medium ${
-      message.type === "ok"
-        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-        : "border-rose-200 bg-rose-50 text-rose-800"
-    }`}>
+    <div
+      className={`rounded-lg border px-3 py-2 text-sm font-medium ${
+        message.type === "ok"
+          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+          : "border-rose-200 bg-rose-50 text-rose-800"
+      }`}
+    >
       {message.text}
     </div>
   );
@@ -923,9 +1097,19 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
     <section className="w-full px-3 py-4 sm:px-5">
       <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6">
         {loadError && (
-          <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
+          <div
+            role="alert"
+            className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200"
+          >
             {loadError} {arrastres.length > 0 && "Se conserva la última consulta disponible."}
-            <button type="button" disabled={loading || refreshing} onClick={() => load(true)} className="ml-3 font-semibold underline">Reintentar</button>
+            <button
+              type="button"
+              disabled={loading || refreshing}
+              onClick={() => load(true)}
+              className="ml-3 font-semibold underline"
+            >
+              Reintentar
+            </button>
           </div>
         )}
         {view === "dashboard" && (
@@ -938,6 +1122,7 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
             loading={loading}
             refreshing={refreshing}
             audience={arrastreOnly ? "arrastre" : "cliente"}
+            canPrioritizeByIncident={hasOpenIncidentInQueue}
             empresaId={empresaId}
             onMovimientos={() => router.push("/cliente/torreon/movimientos")}
             onCrear={() => router.push("/cliente/torreon/crear")}
@@ -959,12 +1144,13 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
             refreshing={refreshing}
             loading={loading}
             visibleArrastres={visibleArrastres}
-            activeCount={activeArrastres.length}
-            pastCount={pastArrastres.length}
+            activeCount={ambito === "actuales" ? meta?.total : undefined}
+            pastCount={ambito === "pasados" ? meta?.total : undefined}
             busyAction={busyAction}
             dailyCounters={dailyCounters}
             manageableRowIds={manageableVisibleRowIds}
             canPrioritizeByIncident={hasOpenIncidentInQueue}
+            pagination={meta ? { ...meta, page: requestedPage, onPage: setListPage } : undefined}
             onAmbito={setAmbito}
             onSearch={setSearch}
             onDateFilter={setDateFilter}
@@ -1011,7 +1197,9 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
             dailyCounters={dailyCounters}
             loading={loading}
             refreshing={refreshing}
-            resolvingId={busyAction?.startsWith("resolve:") ? busyAction.replace("resolve:", "") : null}
+            resolvingId={
+              busyAction?.startsWith("resolve:") ? busyAction.replace("resolve:", "") : null
+            }
             onRefresh={() => load(true)}
             onIncidentSelect={openIncident}
             onResolveClick={openIncident}
@@ -1037,11 +1225,15 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
             error={editArrastreError}
             busy={busyAction === `edit-arrastre:${editingArrastre.arrastreId}`}
             onInstructionsChange={(value) => {
-              setEditingArrastre((current) => current ? { ...current, instrucciones: value } : current);
+              setEditingArrastre((current) =>
+                current ? { ...current, instrucciones: value } : current,
+              );
               setEditArrastreError(null);
             }}
             onReasonChange={(value) => {
-              setEditingArrastre((current) => current ? { ...current, motivoEdicion: value } : current);
+              setEditingArrastre((current) =>
+                current ? { ...current, motivoEdicion: value } : current,
+              );
               setEditArrastreError(null);
             }}
             onUpdateVagon={updateEditingArrastreVagon}
@@ -1059,7 +1251,7 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
             busy={busyAction === `cancel:${cancelingArrastre.arrastreId}`}
             error={cancelArrastreError}
             onChange={(motivo) => {
-              setCancelingArrastre((current) => current ? { ...current, motivo } : current);
+              setCancelingArrastre((current) => (current ? { ...current, motivo } : current));
               setCancelArrastreError(null);
             }}
             onClose={() => {
@@ -1075,8 +1267,17 @@ export default function TorreonClientePanel({ localidadId, empresaId, role, view
             incident={selectedIncident.incident}
             title={selectedIncident.title}
             subtitle={selectedIncident.subtitle}
-            resolving={busyAction === `resolve:${selectedIncident.arrastreId}:${selectedIncident.incident.id}`}
-            onResolve={(solucion) => resolveIncident(selectedIncident.arrastreId, Number(selectedIncident.incident.id), solucion)}
+            resolving={
+              busyAction ===
+              `resolve:${selectedIncident.arrastreId}:${selectedIncident.incident.id}`
+            }
+            onResolve={(solucion) =>
+              resolveIncident(
+                selectedIncident.arrastreId,
+                Number(selectedIncident.incident.id),
+                solucion,
+              )
+            }
             onClose={() => setSelectedIncident(null)}
           />
         ) : null}

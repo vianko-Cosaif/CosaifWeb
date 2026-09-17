@@ -1,5 +1,12 @@
 import type { NextConfig } from "next";
+import createBundleAnalyzer from "@next/bundle-analyzer";
 import path from "node:path";
+
+const withBundleAnalyzer = createBundleAnalyzer({
+  enabled: process.env.ANALYZE === "true",
+  analyzerMode: "static",
+  openAnalyzer: false,
+});
 
 const securityHeaders = [
   {
@@ -23,7 +30,10 @@ const securityHeaders = [
   { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
   { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
   { key: "Origin-Agent-Cluster", value: "?1" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), browsing-topics=()" },
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(), geolocation=(), browsing-topics=()",
+  },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
@@ -34,8 +44,18 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Hosts adicionales para abrir next dev desde la red local (sin protocolo ni puerto).
+  allowedDevOrigins: (process.env.DEV_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((host) => host.trim())
+    .filter(Boolean),
   // Evita que `next build` reemplace los módulos de un `next dev` activo.
-  distDir: process.env.NODE_ENV === "development" ? ".next-dev" : ".next",
+  distDir:
+    process.env.COSAIF_QUALITY_BUILD === "1"
+      ? ".next-quality"
+      : process.env.NODE_ENV === "development"
+        ? ".next-dev"
+        : ".next",
   // Conserva las secciones visitadas durante una revisión local entre roles.
   onDemandEntries: {
     maxInactiveAge: 10 * 60 * 1000,
@@ -76,4 +96,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withBundleAnalyzer(nextConfig);

@@ -52,6 +52,16 @@ Comercial distingue `useCrmList` (una página de 25 registros) de `useCrmCatalog
 
 Los proxies comparten cabeceras, timeout, cancelación y errores en `lib/server/upstream.ts`. Conservar las reglas de alcance propias de cada adaptador. No reenviar cookies ni `Content-Length` de una respuesta que `fetch` pudo descomprimir. SSE usa cancelación del cliente, sin el timeout de una consulta ordinaria.
 
+## Rondas y límites de Next.js
+
+`/api/cliente/rondas` y la URL compatible `/cliente/rondas` exportan los mismos handlers desde `features/rail-queue/server`. Las rutas sólo declaran su configuración de Next; las consultas y acciones autorizadas viven en `read.ts` y `write.ts`. Los adaptadores de torno y Torreón conservan sus contratos. `mapping.ts` normaliza y proyecta datos, `transport.ts` comparte llamadas y errores del servicio, y `models.ts` reutiliza los contratos del tablero. Estos módulos declaran `server-only` para impedir su inclusión en el cliente.
+
+El alcance se deriva de la sesión verificada: actuales compartidos en la localidad del cliente; historial limitado a su empresa y localidad. Los cambios de orden e intercambios validan los registros antes de escribir. Los errores del servicio no se convierten en listas vacías. Las lecturas de detalles mantienen un máximo de cuatro solicitudes simultáneas y propagan cancelaciones.
+
+Los layouts de administrador, coordinador, supervisor y cliente son Server Components que componen las fronteras interactivas existentes. `LocalityQueue` comparte la presentación de administrador y coordinador; cada controlador conserva sus consultas, permisos y suscripciones. `TornoMeasuresDialog` comparte carga y errores en cuatro vistas y descarga el visor bajo demanda. Su hook cancela solicitudes al cerrar, desmontar o seleccionar otra locomotora.
+
+ESLint impide que los módulos importen rutas y que los servicios del dominio dependan de UI o hooks. No importar un handler desde otro handler: ambos deben componer o exportar el mismo servicio.
+
 ## Persistencia y permisos
 
 La cola usa transacciones de IndexedDB y un propietario explícito. Sólo se elimina la solicitud confirmada. Un envío reclamado por otra pestaña no puede enviarse a la vez; una reclamación vencida pasa a revisión. Un resultado incierto requiere conciliación y confirmación antes de reintentar con la misma clave. El backend es la autoridad final de idempotencia y permisos.

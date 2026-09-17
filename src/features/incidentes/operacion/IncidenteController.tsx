@@ -1,21 +1,32 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useId,
-  useRef,
-  useState,
-} from "react";
-import dynamic from 'next/dynamic';
-import { cachedFetchJson, invalidateCachedJson } from '@/lib/http/client';
-import { currentStorageScope } from '@/lib/auth/storageScope';
-import type { AuthorizationProfile } from '@/lib/accessControl';
-const IncidentesTable = dynamic(() => import('./IncidentesTable'), { loading: () => <div role="status" className="min-h-64 p-6 text-sm">Preparando la tabla de incidentes…</div> });
-const SmartIncidentBlocker = dynamic(() => import('./SmartIncidentBlocker'));
-const TorreonIncidentDetailModal = dynamic(() => import('@/features/torreon/coordinador/TorreonIncidentDetailModal'));
+import React, { useCallback, useEffect, useMemo, useId, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import { cachedFetchJson, invalidateCachedJson } from "@/lib/http/client";
+import {
+  detailCache,
+  fetchIncidenteDetailsBulk,
+  incidentCacheKey,
+  incidentRows,
+  incidentSourceQuery,
+  isTorreonIncident,
+  parseIncidentDetail,
+  parseIncidentPage,
+  type IncidentDetail,
+} from "./incidentData";
+import type { AuthorizationProfile } from "@/lib/accessControl";
+const IncidentesTable = dynamic(() => import("./IncidentesTable"), {
+  loading: () => (
+    <div role="status" className="min-h-64 p-6 text-sm">
+      Preparando la tabla de incidentes…
+    </div>
+  ),
+});
+const SmartIncidentBlocker = dynamic(() => import("./SmartIncidentBlocker"));
+const TorreonIncidentDetailModal = dynamic(
+  () => import("@/features/torreon/coordinador/TorreonIncidentDetailModal"),
+);
 import type { IncidenteRow, Meta, Role } from "./types";
 import {
   AlertTriangle,
@@ -33,13 +44,13 @@ import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 import { isTrainingIncidentId } from "@/lib/routePolicy";
 import { SearchInput, ModuleHeader, DataEmptyState } from "@/components/ui";
 import { GuidedTarget } from "@/features/capacitacion";
-import {
-  TRAINING_INCIDENT_ID,
-  useTrainingTour,
-} from "@/features/capacitacion/TrainingTourContext";
+import { TRAINING_INCIDENT_ID, useTrainingTour } from "@/features/capacitacion/TrainingTourContext";
 import { IncidentCatalogSelect, IncidentStatCard } from "@/features/incidentes";
-import { useRealtimeMovimientos, type RealtimeMovementEvent } from "@/features/movimientos/useRealtimeMovimientos";
-import { playNotificationSound } from "@/lib/notificationSound";
+import {
+  useRealtimeMovimientos,
+  type RealtimeMovementEvent,
+} from "@/features/movimientos/useRealtimeMovimientos";
+import { playOperationConfirmation } from "@/lib/notificationSound";
 
 /** Incidentes son locality-aware: Torreon usa ms_torreon y el resto Cosaif normal. */
 const INCIDENTES = "/api/incidentes";
@@ -88,122 +99,6 @@ function prettyError(object: any): string {
   }
 }
 
-// Cache optimizado con TTL
-class DetailCache {
-  private cache = new Map<string, { data: any; timestamp: number }>();
-  private TTL = 5 * 60 * 1000; // 5 minutos
-
-  set(key: string, data: any) {
-    this.cache.set(key, { data, timestamp: Date.now() });
-  }
-
-  get(key: string) {
-    const entry = this.cache.get(key);
-    if (!entry) return null;
-    if (Date.now() - entry.timestamp > this.TTL) {
-      this.cache.delete(key);
-      return null;
-    }
-    return entry.data;
-  }
-
-  clear() {
-    this.cache.clear();
-  }
-}
-
-const detailCache = new DetailCache();
-
-function incidentSourceQuery(incident: any): string {
-  const source = String(incident?._source || incident?.source || incident?._detalle?._source || "").toLowerCase();
-  if (source !== "torreon") return "";
-  const params = new URLSearchParams({ source: "torreon" });
-  const tipo = String(
-    incident?._torreonTipo ||
-    incident?.tipoIncidente ||
-    incident?._detalle?._torreonTipo ||
-    incident?._detalle?.tipoIncidente ||
-    ""
-  ).toUpperCase();
-  if (tipo.includes("ARRASTRE")) params.set("tipo", "ARRASTRE");
-  if (tipo.includes("NATURAL")) params.set("tipo", "NATURAL");
-  const localidadId =
-    incident?.localidadId ??
-    incident?.movimiento?.localidadId ??
-    incident?._detalle?.localidadId ??
-    incident?._detalle?.movimiento?.localidadId;
-  if (localidadId) params.set("localidadId", String(localidadId));
-  return `?${params.toString()}`;
-}
-
-function incidentCacheKey(incident: any) {
-  const tipo = String(incident?._torreonTipo || incident?.tipoIncidente || "general").toLowerCase();
-  return `${currentStorageScope() ?? "anonymous"}:${String(incident?._source || incident?.source || "cosaif").toLowerCase()}:${tipo}:${Number(incident?.id) || incident?.id}`;
-}
-
-async function fetchIncidenteDetailsBulk(
-  incidents: any[],
-  signal: AbortSignal,
-  maxConcurrency = 4
-): Promise<Record<string, any>> {
-  const result: Record<string, any> = {};
-  const uniqueIncidents = Array.from(
-    new Map(
-      incidents
-        .filter((incident) => incident?.id)
-        .filter((incident) => !isTorreonIncident(incident))
-        .filter((incident) => !incident.movimiento?.empresa || !incident.movimiento?.viaOrigen || !incident.movimiento?.viaDestino)
-        .map((incident) => [incidentCacheKey(incident), incident])
-    ).values()
-  );
-  const pending: any[] = [];
-
-  for (const incident of uniqueIncidents) {
-    const key = incidentCacheKey(incident);
-    const cached = detailCache.get(key);
-    if (cached) result[key] = cached;
-    else pending.push(incident);
-  }
-
-  for (let i = 0; i < pending.length; i += maxConcurrency) {
-    if (signal.aborted) break;
-    const chunk = pending.slice(i, i + maxConcurrency);
-    await Promise.all(
-      chunk.map(async (incident) => {
-        const id = Number(incident.id);
-        const key = incidentCacheKey(incident);
-        try {
-          const response = await cachedFetchJson<any>(`${INCIDENTES}/${encodeURIComponent(String(incident.id))}${incidentSourceQuery(incident)}`, { signal }, { ttlMs: 30_000 });
-          const data = (response as any)?.data ?? response;
-          if (signal.aborted) return;
-          detailCache.set(key, data);
-          result[key] = data;
-          return { id, data };
-        } catch {
-          return { id, data: null };
-        }
-      })
-    );
-  }
-  return result;
-}
-
-function formatDate(dateString: string): string {
-  try {
-    return new Date(dateString).toLocaleDateString("es-ES", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-  } catch {
-    return "Fecha inválida";
-  }
-}
-
-function isTorreonIncident(incident: any) {
-  return String(incident?._source || incident?.source || incident?._detalle?._source || "").toLowerCase() === "torreon";
-}
-
 function torreonMovementFolio(incident: any) {
   const movimiento = incident?.movimiento ?? incident?._detalle?.movimiento;
   if (movimiento?.folioLocalidadLabel) return movimiento.folioLocalidadLabel;
@@ -213,16 +108,27 @@ function torreonMovementFolio(incident: any) {
 }
 
 function torreonIncidentTitle(incident: any) {
-  const tipo = String(incident?._torreonTipo || incident?.tipoIncidente || incident?._detalle?._torreonTipo || "").toUpperCase();
-  const arrastreId = incident?.arrastreId ?? incident?.arrastre?.id ?? incident?._detalle?.arrastreId ?? incident?._detalle?.arrastre?.id;
-  if (tipo.includes("ARRASTRE") || arrastreId) return `Arrastre #${arrastreId ?? "—"} · Incidente #${incident?.id ?? "—"}`;
+  const tipo = String(
+    incident?._torreonTipo || incident?.tipoIncidente || incident?._detalle?._torreonTipo || "",
+  ).toUpperCase();
+  const arrastreId =
+    incident?.arrastreId ??
+    incident?.arrastre?.id ??
+    incident?._detalle?.arrastreId ??
+    incident?._detalle?.arrastre?.id;
+  if (tipo.includes("ARRASTRE") || arrastreId)
+    return `Arrastre #${arrastreId ?? "—"} · Incidente #${incident?.id ?? "—"}`;
   return `Movimiento Torreon ${torreonMovementFolio(incident)} · Incidente #${incident?.id ?? "—"}`;
 }
 
 function torreonIncidentSubtitle(incident: any) {
-  const tipo = String(incident?._torreonTipo || incident?.tipoIncidente || incident?._detalle?._torreonTipo || "").toUpperCase();
-  const empresa = incident?.movimiento?.empresa?.nombre ?? incident?._detalle?.movimiento?.empresa?.nombre;
-  const destino = incident?.movimiento?.viaDestino?.nombre ?? incident?._detalle?.movimiento?.viaDestino?.nombre;
+  const tipo = String(
+    incident?._torreonTipo || incident?.tipoIncidente || incident?._detalle?._torreonTipo || "",
+  ).toUpperCase();
+  const empresa =
+    incident?.movimiento?.empresa?.nombre ?? incident?._detalle?.movimiento?.empresa?.nombre;
+  const destino =
+    incident?.movimiento?.viaDestino?.nombre ?? incident?._detalle?.movimiento?.viaDestino?.nombre;
   const label = tipo.includes("ARRASTRE") ? "Incidente de arrastre" : "Incidente natural";
   return [label, empresa, destino].filter(Boolean).join(" · ");
 }
@@ -245,8 +151,7 @@ function useUserRole(authorization?: AuthorizationProfile): {
 
   useEffect(() => {
     try {
-      const userString =
-        typeof window !== "undefined" ? localStorage.getItem("user") : null;
+      const userString = typeof window !== "undefined" ? localStorage.getItem("user") : null;
       const user = userString ? JSON.parse(userString) : {};
       const roleCookie = String(getCookie("role") || user.rol || "CLIENTE").toUpperCase() as Role;
       const locFromCookie = Number(getCookie("locId") || "") || null;
@@ -261,11 +166,13 @@ function useUserRole(authorization?: AuthorizationProfile): {
     }
   }, []);
 
-  return authorization ? {
-    role: authorization.role as Role,
-    empresaId: authorization.scope.empresaId,
-    localidadId: authorization.scope.localidadId,
-  } : userInfo;
+  return authorization
+    ? {
+        role: authorization.role as Role,
+        empresaId: authorization.scope.empresaId,
+        localidadId: authorization.scope.localidadId,
+      }
+    : userInfo;
 }
 
 // Hook para notificaciones
@@ -277,22 +184,24 @@ function useNotifications() {
   });
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-  const showNotification = useCallback(
-    (type: NotificationState["type"], message: string) => {
-      setNotification({ show: true, type, message });
+  useEffect(
+    () => () => {
       if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(
-        () =>
-          setNotification((prev) => ({
-            ...prev,
-            show: false,
-          })),
-        5000
-      );
     },
-    []
+    [],
   );
+  const showNotification = useCallback((type: NotificationState["type"], message: string) => {
+    setNotification({ show: true, type, message });
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(
+      () =>
+        setNotification((prev) => ({
+          ...prev,
+          show: false,
+        })),
+      5000,
+    );
+  }, []);
 
   const hideNotification = useCallback(
     () =>
@@ -300,33 +209,37 @@ function useNotifications() {
         ...prev,
         show: false,
       })),
-    []
+    [],
   );
 
   return { notification, showNotification, hideNotification };
 }
 
-export default function IncidenteController({ authorization }: { authorization?: AuthorizationProfile } = {}) {
+export default function IncidenteController({
+  authorization,
+}: { authorization?: AuthorizationProfile } = {}) {
   const trainingTour = useTrainingTour();
   const searchParams = useSearchParams();
   const initialSource: IncidentSource =
     String(searchParams.get("source") || "").toLowerCase() === "torreon" ? "torreon" : "cosaif";
-  const initialTipo = String(searchParams.get("tipo") || searchParams.get("tipoIncidente") || "").toUpperCase();
+  const initialTipo = String(
+    searchParams.get("tipo") || searchParams.get("tipoIncidente") || "",
+  ).toUpperCase();
   const initialTorreonTipo: TorreonIncidentKind =
     initialTipo === "ARRASTRE" ? "ARRASTRE" : initialTipo === "NATURAL" ? "NATURAL" : "TODOS";
-  const { role, empresaId: userEmpresaId, localidadId: userLocalidadId } =
-    useUserRole(authorization);
-  const { notification, showNotification, hideNotification } =
-    useNotifications();
+  const {
+    role,
+    empresaId: userEmpresaId,
+    localidadId: userLocalidadId,
+  } = useUserRole(authorization);
+  const { notification, showNotification, hideNotification } = useNotifications();
 
-  const isLimitedClientView = authorization ? ["COMPANY", "COMPANY_LOCALITY"].includes(authorization.scope.mode) : ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON"].includes(role);
-  const isLocalityScopedView = authorization ? ["LOCALITY", "COMPANY_LOCALITY"].includes(authorization.scope.mode) : [
-    "CLIENTE",
-    "CLIENTE_ADMIN",
-    "CLIENTE_COOR",
-    "COORDINADOR",
-    "SUPERVISOR",
-  ].includes(role);
+  const isLimitedClientView = authorization
+    ? ["COMPANY", "COMPANY_LOCALITY"].includes(authorization.scope.mode)
+    : ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON"].includes(role);
+  const isLocalityScopedView = authorization
+    ? ["LOCALITY", "COMPANY_LOCALITY"].includes(authorization.scope.mode)
+    : ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "COORDINADOR", "SUPERVISOR"].includes(role);
 
   const tabs: Tab[] = ["Actuales", "Pasados"];
   const [activeTab, setActiveTab] = useState<Tab>("Actuales");
@@ -395,26 +308,36 @@ export default function IncidenteController({ authorization }: { authorization?:
     if (!isLocalityScopedView && !isLimitedClientView) return;
     setFilters((prev) => ({
       ...prev,
-      empresaId: isLimitedClientView ? userEmpresaId ?? prev.empresaId : prev.empresaId,
+      empresaId: isLimitedClientView ? (userEmpresaId ?? prev.empresaId) : prev.empresaId,
       localidadId: isLocalityScopedView ? userLocalidadId : prev.localidadId,
-      source: isLocalityScopedView ? isTorreonLocalidadId(userLocalidadId) ? "torreon" : "cosaif" : prev.source,
-      torreonTipo: isLocalityScopedView && !isTorreonLocalidadId(userLocalidadId) ? "TODOS" : prev.torreonTipo,
+      source: isLocalityScopedView
+        ? isTorreonLocalidadId(userLocalidadId)
+          ? "torreon"
+          : "cosaif"
+        : prev.source,
+      torreonTipo:
+        isLocalityScopedView && !isTorreonLocalidadId(userLocalidadId) ? "TODOS" : prev.torreonTipo,
     }));
   }, [isLimitedClientView, isLocalityScopedView, userEmpresaId, userLocalidadId]);
 
   /** Carga catálogos de empresas y localidades */
   useEffect(() => {
     const controller = new AbortController();
-    const read = (url: string) => cachedFetchJson<any>(url, { signal: controller.signal }, { ttlMs: 300_000 });
+    const read = (url: string) =>
+      cachedFetchJson<any>(url, { signal: controller.signal }, { ttlMs: 300_000 });
     const load = async () => {
       setCatalogues((p) => ({ ...p, loading: true }));
       try {
         const [empresasResponse, localidadesResponse] = await Promise.all([
           isLimitedClientView
-            ? userEmpresaId ? read(`${EMPRESAS}/${userEmpresaId}`) : null
+            ? userEmpresaId
+              ? read(`${EMPRESAS}/${userEmpresaId}`)
+              : null
             : read(EMPRESAS),
           isLocalityScopedView
-            ? userLocalidadId ? read(`${LOCALIDADES}/${userLocalidadId}`) : null
+            ? userLocalidadId
+              ? read(`${LOCALIDADES}/${userLocalidadId}`)
+              : null
             : read(LOCALIDADES),
         ]);
 
@@ -457,10 +380,8 @@ export default function IncidenteController({ authorization }: { authorization?:
         estado: estadoParam,
       });
 
-      if (filters.empresaId)
-        searchParams.set("empresaId", String(filters.empresaId));
-      if (filters.localidadId)
-        searchParams.set("localidadId", String(filters.localidadId));
+      if (filters.empresaId) searchParams.set("empresaId", String(filters.empresaId));
+      if (filters.localidadId) searchParams.set("localidadId", String(filters.localidadId));
       if (isTorreonScope) {
         searchParams.set("source", "torreon");
         if (filters.torreonTipo !== "TODOS") searchParams.set("tipo", filters.torreonTipo);
@@ -468,12 +389,24 @@ export default function IncidenteController({ authorization }: { authorization?:
 
       return `${INCIDENTES}?${searchParams.toString()}`;
     },
-    [activeTab, filters.empresaId, filters.localidadId, filters.torreonTipo, isTorreonScope]
+    [activeTab, filters.empresaId, filters.localidadId, filters.torreonTipo, isTorreonScope],
   );
 
   const queryKey = buildApiUrl(1);
-  const ready = (!isLocalityScopedView || Boolean(filters.localidadId)) && (!isLimitedClientView || Boolean(filters.empresaId));
-  const incidentData = snapshot.queryKey === queryKey ? snapshot : { ...snapshot, data: [], meta: { page: 1, totalPages: 1 }, loading: ready, error: null, lastUpdated: null };
+  const ready =
+    (!isLocalityScopedView || Boolean(filters.localidadId)) &&
+    (!isLimitedClientView || Boolean(filters.empresaId));
+  const incidentData =
+    snapshot.queryKey === queryKey
+      ? snapshot
+      : {
+          ...snapshot,
+          data: [],
+          meta: { page: 1, totalPages: 1 },
+          loading: ready,
+          error: null,
+          lastUpdated: null,
+        };
 
   /** Fetch de incidentes + detalle, con logs de empresas */
   const fetchIncidents = useCallback(
@@ -499,89 +432,41 @@ export default function IncidenteController({ authorization }: { authorization?:
           loading: showLoading,
         }));
 
-        const response: any = await cachedFetchJson(url, { signal: controller.signal }, { ttlMs: 5_000, force });
-        if (!isCurrent()) return;
-
-        if (!response?.success || !Array.isArray(response.data)) {
-          throw new Error(
-            (response as any)?.error || "Formato de respuesta inesperado"
-          );
-        }
-
-        // Render the page immediately. Load only missing display details afterwards.
-        response.data = response.data.filter((incident: any) => activeTab === 'Actuales' ? incident.estado === 'ABIERTO' : ['CERRADO', 'RESUELTO'].includes(incident.estado));
-        const commit = (detailsMap: Record<string, any>) => {
-        if (!isCurrent()) return;
-
-        const statusDisplayMap: Record<string, string> = {
-          ABIERTO: "Activo",
-          CERRADO: "Cerrado",
-          RESUELTO: "Resuelto",
-        };
-
-        const enrichedIncidents: IncidenteRow[] = response.data.map(
-          (incident: any) => {
-            const details = detailsMap[incidentCacheKey(incident)] || {};
-            const movement = details.movimiento || incident.movimiento || {};
-            const original = { ...details, ...incident, movimiento: movement, _detalle: details };
-            const torreon = isTorreonIncident(original);
-            const tipoIncidente = String(
-              original?._torreonTipo || original?.tipoIncidente || details?._torreonTipo || ""
-            ).toUpperCase();
-
-            return {
-              id: incident.id,
-              empresa:
-                movement?.empresa?.nombre ??
-                incident?.movimiento?.empresa?.nombre,
-              locomotora:
-                movement?.locomotiveNumber ??
-                incident?.movimiento?.locomotiveNumber,
-              origen:
-                movement?.viaOrigen?.nombre ??
-                incident?.movimiento?.viaOrigen?.nombre,
-              destino:
-                movement?.viaDestino?.nombre ??
-                incident?.movimiento?.viaDestino?.nombre,
-              descripcion: details.descripcion ?? details.motivo ?? incident.descripcion ?? incident.motivo,
-              fecha: incident.fechaInicio
-                ? formatDate(incident.fechaInicio)
-                : "—",
-              estatus: statusDisplayMap[incident.estado] || "Desconocido",
-              estadoRaw: incident.estado,
-              usuario:
-                details?.usuario?.nombre ?? incident?.usuario?.nombre,
-              fuente: torreon ? "Torreón" : "Cosaif",
-              tipoIncidente: torreon ? (tipoIncidente === "ARRASTRE" ? "Arrastre" : "Natural") : "GDL",
-              _original: original,
-            };
-          }
+        const response = parseIncidentPage(
+          await cachedFetchJson<unknown>(
+            url,
+            { signal: controller.signal },
+            { ttlMs: 5_000, force },
+          ),
         );
+        if (!isCurrent()) return;
 
-        const filteredIncidents: IncidenteRow[] =
+        // Filtering must never mutate a response shared with another cache consumer.
+        const incidents = response.data.filter((incident) =>
           activeTab === "Actuales"
-            ? enrichedIncidents.filter((x) => x.estadoRaw === "ABIERTO")
-            : enrichedIncidents.filter(
-              (x) =>
-                x.estadoRaw === "CERRADO" || x.estadoRaw === "RESUELTO"
-            );
+            ? incident.estado === "ABIERTO"
+            : ["CERRADO", "RESUELTO"].includes(incident.estado),
+        );
+        const commit = (detailsMap: Record<string, IncidentDetail>) => {
+          if (!isCurrent()) return;
+          const filteredIncidents = incidentRows(incidents, detailsMap);
 
-        setIncidentData({
-          queryKey,
-          data: filteredIncidents,
-          meta: {
-            page: response.meta?.page ?? page,
-            totalPages: response.meta?.totalPages ?? 1,
-            total: response.meta?.total ?? filteredIncidents.length,
-            pageSize: response.meta?.pageSize ?? 20,
-          },
-          loading: false,
-          error: null,
-          lastUpdated: new Date(),
-        });
+          setIncidentData({
+            queryKey,
+            data: filteredIncidents,
+            meta: {
+              page: response.meta?.page ?? page,
+              totalPages: response.meta?.totalPages ?? 1,
+              total: response.meta?.total ?? filteredIncidents.length,
+              pageSize: response.meta?.pageSize ?? 20,
+            },
+            loading: false,
+            error: null,
+            lastUpdated: new Date(),
+          });
         };
         commit({});
-        const details = await fetchIncidenteDetailsBulk(response.data, controller.signal);
+        const details = await fetchIncidenteDetailsBulk(incidents, controller.signal);
         if (Object.keys(details).length) commit(details);
       } catch (error: any) {
         if (!isCurrent()) return;
@@ -593,35 +478,46 @@ export default function IncidenteController({ authorization }: { authorization?:
         showNotification("error", "Error al cargar incidentes");
       } finally {
         if (isCurrent()) {
-          requestRef.current = null; setUiState((prev) => ({ ...prev, refreshing: false }));
-          if (needsReloadRef.current === url) { needsReloadRef.current = null; void fetchIncidents(page, false, true); }
+          requestRef.current = null;
+          setUiState((prev) => ({ ...prev, refreshing: false }));
+          if (needsReloadRef.current === url) {
+            needsReloadRef.current = null;
+            void fetchIncidents(page, false, true);
+          }
         }
       }
     },
-    [ready, queryKey, buildApiUrl, activeTab, showNotification]
+    [ready, queryKey, buildApiUrl, activeTab, showNotification],
   );
 
-  const scheduleRealtimeIncidentRefresh = useCallback((force = false) => {
-    if (typeof window === "undefined" || document.visibilityState === "hidden") return;
-    realtimeForceRef.current ||= force;
-    if (realtimeRefreshTimerRef.current != null) return;
+  const scheduleRealtimeIncidentRefresh = useCallback(
+    (force = false) => {
+      if (typeof window === "undefined" || document.visibilityState === "hidden") return;
+      realtimeForceRef.current ||= force;
+      if (realtimeRefreshTimerRef.current != null) return;
 
-    const jitterMs = 450 + Math.floor(Math.random() * 1_250);
-    realtimeRefreshTimerRef.current = window.setTimeout(() => {
-      realtimeRefreshTimerRef.current = null;
-      const pendingForce = realtimeForceRef.current; realtimeForceRef.current = false;
-      if (document.visibilityState !== "hidden") void fetchIncidents(incidentData.meta.page || 1, false, pendingForce);
-    }, jitterMs);
-  }, [fetchIncidents, incidentData.meta.page]);
+      const jitterMs = 450 + Math.floor(Math.random() * 1_250);
+      realtimeRefreshTimerRef.current = window.setTimeout(() => {
+        realtimeRefreshTimerRef.current = null;
+        const pendingForce = realtimeForceRef.current;
+        realtimeForceRef.current = false;
+        if (document.visibilityState !== "hidden")
+          void fetchIncidents(incidentData.meta.page || 1, false, pendingForce);
+      }, jitterMs);
+    },
+    [fetchIncidents, incidentData.meta.page],
+  );
 
   useRealtimeMovimientos({
     enabled: ready && uiState.autoRefresh,
     localidadId: filters.localidadId,
     onEvent: (event: RealtimeMovementEvent) => {
       const type = String(event.type || "");
-      if (!type.includes("incidente") && type !== "realtime.ready" && type !== "realtime.resume") return;
+      if (!type.includes("incidente") && type !== "realtime.ready" && type !== "realtime.resume")
+        return;
       const eventLocalidadId = Number(event.localidadId || 0) || null;
-      if (filters.localidadId && eventLocalidadId && filters.localidadId !== eventLocalidadId) return;
+      if (filters.localidadId && eventLocalidadId && filters.localidadId !== eventLocalidadId)
+        return;
       scheduleRealtimeIncidentRefresh(type.includes("incidente"));
     },
   });
@@ -643,7 +539,8 @@ export default function IncidenteController({ authorization }: { authorization?:
       needsReloadRef.current = null;
       realtimeForceRef.current = false;
       detailAbortRef.current?.abort();
-      if (realtimeRefreshTimerRef.current != null) window.clearTimeout(realtimeRefreshTimerRef.current);
+      if (realtimeRefreshTimerRef.current != null)
+        window.clearTimeout(realtimeRefreshTimerRef.current);
       realtimeRefreshTimerRef.current = null;
     };
   }, [fetchIncidents]);
@@ -651,17 +548,28 @@ export default function IncidenteController({ authorization }: { authorization?:
   /** Auto-refresh */
   useEffect(() => {
     const cancelScheduled = () => {
-      if (realtimeRefreshTimerRef.current != null) window.clearTimeout(realtimeRefreshTimerRef.current);
-      realtimeRefreshTimerRef.current = null; realtimeForceRef.current = false; needsReloadRef.current = null;
+      if (realtimeRefreshTimerRef.current != null)
+        window.clearTimeout(realtimeRefreshTimerRef.current);
+      realtimeRefreshTimerRef.current = null;
+      realtimeForceRef.current = false;
+      needsReloadRef.current = null;
     };
-    if (!uiState.autoRefresh) { cancelScheduled(); return; }
+    if (!uiState.autoRefresh) {
+      cancelScheduled();
+      return;
+    }
     const refreshVisible = () => {
-      if (document.visibilityState !== 'hidden') void fetchIncidents(incidentData.meta.page || 1, false);
+      if (document.visibilityState !== "hidden")
+        void fetchIncidents(incidentData.meta.page || 1, false);
       else cancelScheduled();
     };
     const id = setInterval(refreshVisible, 30_000);
-    document.addEventListener('visibilitychange', refreshVisible);
-    return () => { clearInterval(id); document.removeEventListener('visibilitychange', refreshVisible); cancelScheduled(); };
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", refreshVisible);
+      cancelScheduled();
+    };
   }, [uiState.autoRefresh, fetchIncidents, incidentData.meta.page]);
 
   /** Handlers */
@@ -675,7 +583,7 @@ export default function IncidenteController({ authorization }: { authorization?:
       setUiState((prev) => ({ ...prev, refreshing: true }));
       fetchIncidents(page);
     },
-    [fetchIncidents]
+    [fetchIncidents],
   );
 
   const handleTabChange = useCallback((tab: Tab) => setActiveTab(tab), []);
@@ -692,14 +600,18 @@ export default function IncidenteController({ authorization }: { authorization?:
         if (filterKey === "localidadId" && isTorreonLocalidadId(value)) {
           next.source = "torreon";
         }
-        if (filterKey === "source" && value === "cosaif" && isTorreonLocalidadId(prev.localidadId)) {
+        if (
+          filterKey === "source" &&
+          value === "cosaif" &&
+          isTorreonLocalidadId(prev.localidadId)
+        ) {
           next.localidadId = null;
           next.torreonTipo = "TODOS";
         }
         return next;
       });
     },
-    [isLocalityScopedView, isLimitedClientView]
+    [isLocalityScopedView, isLimitedClientView],
   );
 
   const handleClearFilters = useCallback(() => {
@@ -709,50 +621,64 @@ export default function IncidenteController({ authorization }: { authorization?:
       empresaId: isLimitedClientView ? userEmpresaId : null,
       localidadId: isLocalityScopedView ? userLocalidadId : null,
       source: isLocalityScopedView && isTorreonLocalidadId(userLocalidadId) ? "torreon" : "cosaif",
-      torreonTipo: isLocalityScopedView && isTorreonLocalidadId(userLocalidadId) ? prev.torreonTipo : "TODOS",
+      torreonTipo:
+        isLocalityScopedView && isTorreonLocalidadId(userLocalidadId) ? prev.torreonTipo : "TODOS",
     }));
   }, [isLimitedClientView, isLocalityScopedView, userEmpresaId, userLocalidadId]);
 
-  const handleIncidentSelect = useCallback((incident: any) => {
-    const original = {
-      ...incident._original,
-      _openedDuringTraining: trainingTour.active,
-    };
-    setUiState((prev) => ({
-      ...prev,
-      selectedIncident: original,
-      blockerVisible: true,
-    }));
-    setModalKey((k) => k + 1);
+  const handleIncidentSelect = useCallback(
+    (incident: any) => {
+      const original = {
+        ...incident._original,
+        _openedDuringTraining: trainingTour.active,
+      };
+      setUiState((prev) => ({
+        ...prev,
+        selectedIncident: original,
+        blockerVisible: true,
+      }));
+      setModalKey((k) => k + 1);
 
-    if (!isTorreonIncident(original)) return;
-    const key = incidentCacheKey(original);
-    const cached = detailCache.get(key);
-    if (cached) {
-      setUiState((prev) => (
-        prev.selectedIncident && incidentCacheKey(prev.selectedIncident) === key
-          ? { ...prev, selectedIncident: { ...prev.selectedIncident, ...cached, _detalle: cached } }
-          : prev
-      ));
-      return;
-    }
-
-    detailAbortRef.current?.abort();
-    const controller = new AbortController();
-    detailAbortRef.current = controller;
-    cachedFetchJson<any>(`${INCIDENTES}/${encodeURIComponent(String(original.id))}${incidentSourceQuery(original)}`, { signal: controller.signal }, { ttlMs: 30_000 })
-      .then((response) => {
-        if (controller.signal.aborted) return;
-        const detail = (response as any)?.data ?? response;
-        detailCache.set(key, detail);
-        setUiState((prev) => (
+      if (!isTorreonIncident(original)) return;
+      const key = incidentCacheKey(original);
+      const cached = detailCache.get(key);
+      if (cached) {
+        setUiState((prev) =>
           prev.selectedIncident && incidentCacheKey(prev.selectedIncident) === key
-            ? { ...prev, selectedIncident: { ...prev.selectedIncident, ...detail, _detalle: detail } }
-            : prev
-        ));
-      })
-      .catch(() => undefined);
-  }, [trainingTour.active]);
+            ? {
+                ...prev,
+                selectedIncident: { ...prev.selectedIncident, ...cached, _detalle: cached },
+              }
+            : prev,
+        );
+        return;
+      }
+
+      detailAbortRef.current?.abort();
+      const controller = new AbortController();
+      detailAbortRef.current = controller;
+      cachedFetchJson<unknown>(
+        `${INCIDENTES}/${encodeURIComponent(String(original.id))}${incidentSourceQuery(original)}`,
+        { signal: controller.signal },
+        { ttlMs: 30_000 },
+      )
+        .then((response) => {
+          if (controller.signal.aborted) return;
+          const detail = parseIncidentDetail(response);
+          detailCache.set(key, detail);
+          setUiState((prev) =>
+            prev.selectedIncident && incidentCacheKey(prev.selectedIncident) === key
+              ? {
+                  ...prev,
+                  selectedIncident: { ...prev.selectedIncident, ...detail, _detalle: detail },
+                }
+              : prev,
+          );
+        })
+        .catch(() => undefined);
+    },
+    [trainingTour.active],
+  );
 
   const handleIncidentAction = useCallback(
     async (action: "resolve" | "skip", comments?: string) => {
@@ -762,7 +688,8 @@ export default function IncidenteController({ authorization }: { authorization?:
 
       try {
         const incidentId = Number(selectedIncident.id ?? selectedIncident.incidenteId);
-        const sandboxSelection = trainingTour.active || selectedIncident._openedDuringTraining === true;
+        const sandboxSelection =
+          trainingTour.active || selectedIncident._openedDuringTraining === true;
         if (sandboxSelection || isTrainingIncidentId(incidentId)) {
           if (incidentId !== TRAINING_INCIDENT_ID) {
             showNotification(
@@ -792,16 +719,19 @@ export default function IncidenteController({ authorization }: { authorization?:
         setUiState((prev) => ({ ...prev, refreshing: true }));
 
         if (action === "resolve") {
-          await withCreds(`${INCIDENTES}/${selectedIncident.id}${incidentSourceQuery(selectedIncident)}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              estado: "RESUELTO",
-              comentario: comments,
-            }),
-          });
+          await withCreds(
+            `${INCIDENTES}/${selectedIncident.id}${incidentSourceQuery(selectedIncident)}`,
+            {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                estado: "RESUELTO",
+                comentario: comments,
+              }),
+            },
+          );
           showNotification("success", "Incidente resuelto correctamente");
-          void playNotificationSound("incidente_resuelto");
+          void playOperationConfirmation("incidente_resuelto");
         } else {
           await withCreds(
             `${INCIDENTES}/${selectedIncident.id}/cerrar${incidentSourceQuery(selectedIncident)}`,
@@ -809,12 +739,15 @@ export default function IncidenteController({ authorization }: { authorization?:
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ comentario: comments }),
-            }
+            },
           );
-          showNotification("success", isTorreonIncident(selectedIncident)
-            ? "Incidente cerrado y movimiento cancelado"
-            : "Incidente cerrado sin resolución");
-          void playNotificationSound("incidente_cerrado");
+          showNotification(
+            "success",
+            isTorreonIncident(selectedIncident)
+              ? "Incidente cerrado y movimiento cancelado"
+              : "Incidente cerrado sin resolución",
+          );
+          void playOperationConfirmation("incidente_cerrado");
         }
 
         detailCache.clear();
@@ -837,26 +770,38 @@ export default function IncidenteController({ authorization }: { authorization?:
         incidentActionLockRef.current = false;
       }
     },
-    [uiState.selectedIncident, fetchIncidents, incidentData.meta.page, showNotification, trainingTour]
+    [
+      uiState.selectedIncident,
+      fetchIncidents,
+      incidentData.meta.page,
+      showNotification,
+      trainingTour,
+    ],
   );
 
   /** Filtro local por búsqueda */
   const filteredIncidents = useMemo(() => {
-    const trainingIsInCurrentTab = trainingTour.active && (
-      activeTab === "Actuales"
+    const trainingIsInCurrentTab =
+      trainingTour.active &&
+      (activeTab === "Actuales"
         ? trainingTour.incidentStatus === "ABIERTO"
-        : trainingTour.incidentStatus !== "ABIERTO"
-    );
+        : trainingTour.incidentStatus !== "ABIERTO");
     const trainingOriginal = {
       id: TRAINING_INCIDENT_ID,
       incidenteId: TRAINING_INCIDENT_ID,
       descripcion: "SIM-INC-041 · Obstáculo detectado durante una maniobra de capacitación.",
-      estado: trainingTour.incidentStatus === "ABIERTO" ? "ABIERTO" : trainingTour.incidentStatus === "RESUELTO" ? "RESUELTO" : "CERRADO",
+      estado:
+        trainingTour.incidentStatus === "ABIERTO"
+          ? "ABIERTO"
+          : trainingTour.incidentStatus === "RESUELTO"
+            ? "RESUELTO"
+            : "CERRADO",
       fechaInicio: new Date(Date.now() - 120_000).toISOString(),
       localidadId: filters.localidadId || 1,
       _source: "cosaif",
       imagenes: [],
-      operadorComentario: "Verifica el área, documenta la acción y elige resolver u omitir conscientemente.",
+      operadorComentario:
+        "Verifica el área, documenta la acción y elige resolver u omitir conscientemente.",
       movimiento: {
         id: 910_000_204,
         localidadId: filters.localidadId || 1,
@@ -868,7 +813,12 @@ export default function IncidenteController({ authorization }: { authorization?:
       id: TRAINING_INCIDENT_ID,
       fecha: new Date().toLocaleDateString("es-MX"),
       fechaISO: trainingOriginal.fechaInicio,
-      estatus: trainingOriginal.estado === "ABIERTO" ? "Requiere atención" : trainingOriginal.estado === "RESUELTO" ? "Resuelto" : "Cerrado",
+      estatus:
+        trainingOriginal.estado === "ABIERTO"
+          ? "Requiere atención"
+          : trainingOriginal.estado === "RESUELTO"
+            ? "Resuelto"
+            : "Cerrado",
       estadoRaw: trainingOriginal.estado,
       empresa: "Empresa de capacitación",
       empresaId: filters.empresaId || 91_001,
@@ -884,7 +834,10 @@ export default function IncidenteController({ authorization }: { authorization?:
       _original: trainingOriginal,
     };
     const rows = trainingIsInCurrentTab
-      ? [trainingRow, ...incidentData.data.filter((incident) => Number(incident.id) !== TRAINING_INCIDENT_ID)]
+      ? [
+          trainingRow,
+          ...incidentData.data.filter((incident) => Number(incident.id) !== TRAINING_INCIDENT_ID),
+        ]
       : incidentData.data;
     if (!filters.searchQuery.trim()) return rows;
     const searchTerm = filters.searchQuery.toLowerCase();
@@ -902,16 +855,23 @@ export default function IncidenteController({ authorization }: { authorization?:
         incident.tipoIncidente,
       ]
         .map((v) => String(v ?? "").toLowerCase())
-        .some((t) => t.includes(searchTerm))
+        .some((t) => t.includes(searchTerm)),
     );
-  }, [activeTab, incidentData.data, filters.empresaId, filters.localidadId, filters.searchQuery, trainingTour.active, trainingTour.incidentStatus]);
-
+  }, [
+    activeTab,
+    incidentData.data,
+    filters.empresaId,
+    filters.localidadId,
+    filters.searchQuery,
+    trainingTour.active,
+    trainingTour.incidentStatus,
+  ]);
 
   // Calculate Stats
-  const totalActivos = incidentData.data.filter(i => i.estadoRaw === "ABIERTO").length;
-  const totalResueltos = incidentData.data.filter(i => i.estadoRaw === "RESUELTO").length;
+  const totalActivos = incidentData.data.filter((i) => i.estadoRaw === "ABIERTO").length;
+  const totalResueltos = incidentData.data.filter((i) => i.estadoRaw === "RESUELTO").length;
   // Unique enterprises present in the current view
-  const totalEmpresas = new Set(incidentData.data.map(i => i.empresa).filter(Boolean)).size;
+  const totalEmpresas = new Set(incidentData.data.map((i) => i.empresa).filter(Boolean)).size;
 
   const renderNotification = () => {
     if (!notification.show) return null;
@@ -925,15 +885,18 @@ export default function IncidenteController({ authorization }: { authorization?:
         "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-200",
       error:
         "bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-950/40 dark:border-rose-800 dark:text-rose-200",
-      info:
-        "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-950/40 dark:border-blue-800 dark:text-blue-200",
+      info: "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-950/40 dark:border-blue-800 dark:text-blue-200",
     } as const;
     const Icon = iconMap[notification.type];
 
     return (
-      <div className={`fixed inset-x-4 top-[max(1rem,env(safe-area-inset-top))] z-50 flex items-start gap-3 rounded-lg border p-4 shadow-lg sm:left-auto sm:max-w-md ${colorMap[notification.type]}`}>
+      <div
+        className={`fixed inset-x-4 top-[max(1rem,env(safe-area-inset-top))] z-50 flex items-start gap-3 rounded-lg border p-4 shadow-lg sm:left-auto sm:max-w-md ${colorMap[notification.type]}`}
+      >
         <Icon className="h-5 w-5" />
-        <span className="min-w-0 flex-1 break-words text-sm font-medium">{notification.message}</span>
+        <span className="min-w-0 flex-1 break-words text-sm font-medium">
+          {notification.message}
+        </span>
         <button
           onClick={hideNotification}
           aria-label="Cerrar aviso"
@@ -948,11 +911,14 @@ export default function IncidenteController({ authorization }: { authorization?:
   const hasActiveFilters = Boolean(
     (!isLimitedClientView && filters.empresaId) ||
     (!isLocalityScopedView && (filters.localidadId || isTorreonScope)) ||
-    filters.torreonTipo !== "TODOS"
+    filters.torreonTipo !== "TODOS",
   );
 
   return (
-    <GuidedTarget id="incidents-center" className="flex min-w-0 w-full flex-col bg-[var(--app-bg)] text-[var(--app-text)]">
+    <GuidedTarget
+      id="incidents-center"
+      className="flex min-w-0 w-full flex-col bg-[var(--app-bg)] text-[var(--app-text)]"
+    >
       {renderNotification()}
 
       <div className="border-b border-[var(--app-border)] bg-[var(--app-surface)] p-4 sm:p-5">
@@ -963,8 +929,12 @@ export default function IncidenteController({ authorization }: { authorization?:
           loading={incidentData.loading}
         />
         <p className="mt-3 text-sm text-[var(--app-text-muted)]">
-          {isLimitedClientView ? "Información de tu empresa" : "Información de las empresas autorizadas"}
-          {isLocalityScopedView ? " en tu localidad asignada." : ". Filtra por localidad para consultar una operación."}
+          {isLimitedClientView
+            ? "Información de tu empresa"
+            : "Información de las empresas autorizadas"}
+          {isLocalityScopedView
+            ? " en tu localidad asignada."
+            : ". Filtra por localidad para consultar una operación."}
         </p>
       </div>
 
@@ -975,7 +945,10 @@ export default function IncidenteController({ authorization }: { authorization?:
             {/* Title / Brand area if needed, otherwise Tabs & Status */}
             <div className="flex flex-wrap items-center gap-2">
               {/* Tabs */}
-              <GuidedTarget id="incidents-scope-tabs" className="inline-flex rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-1">
+              <GuidedTarget
+                id="incidents-scope-tabs"
+                className="inline-flex rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-1"
+              >
                 {tabs.map((tab) => {
                   const isActive = activeTab === tab;
                   return (
@@ -983,19 +956,22 @@ export default function IncidenteController({ authorization }: { authorization?:
                       key={tab}
                       onClick={() => handleTabChange(tab)}
                       aria-pressed={isActive}
-                      className={`relative flex min-h-11 items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition-colors ${isActive
-                        ? "bg-[var(--app-surface)] text-[var(--app-accent)] shadow-sm"
-                        : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-                        }`}
+                      className={`relative flex min-h-11 items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
+                        isActive
+                          ? "bg-[var(--app-surface)] text-[var(--app-accent)] shadow-sm"
+                          : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                      }`}
                     >
                       {tab}
-
                     </button>
                   );
                 })}
               </GuidedTarget>
 
-              <GuidedTarget id="incidents-source-tabs" className="inline-flex flex-wrap rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1">
+              <GuidedTarget
+                id="incidents-source-tabs"
+                className="inline-flex flex-wrap rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1"
+              >
                 {[
                   { value: "cosaif", label: "Cosaif / GDL" },
                   { value: "torreon", label: "Torreón" },
@@ -1008,11 +984,16 @@ export default function IncidenteController({ authorization }: { authorization?:
                       onClick={() => handleFilterChange("source", option.value)}
                       aria-pressed={isActive}
                       disabled={isLocalityScopedView}
-                      title={isLocalityScopedView ? "La fuente depende de tu localidad asignada" : undefined}
-                      className={`min-h-11 rounded-md px-3 py-2 text-xs font-semibold transition-colors ${isActive
-                        ? "bg-[var(--app-accent-soft)] text-[var(--app-accent)]"
-                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-                        } ${isLocalityScopedView ? "cursor-not-allowed opacity-60" : ""}`}
+                      title={
+                        isLocalityScopedView
+                          ? "La fuente depende de tu localidad asignada"
+                          : undefined
+                      }
+                      className={`min-h-11 rounded-md px-3 py-2 text-xs font-semibold transition-colors ${
+                        isActive
+                          ? "bg-[var(--app-accent-soft)] text-[var(--app-accent)]"
+                          : "text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                      } ${isLocalityScopedView ? "cursor-not-allowed opacity-60" : ""}`}
                     >
                       {option.label}
                     </button>
@@ -1021,7 +1002,10 @@ export default function IncidenteController({ authorization }: { authorization?:
               </GuidedTarget>
 
               {isTorreonScope && (
-                <GuidedTarget id="incidents-torreon-type-tabs" className="inline-flex rounded-xl border border-emerald-200 bg-emerald-50/70 p-1 dark:border-emerald-800 dark:bg-emerald-950/30">
+                <GuidedTarget
+                  id="incidents-torreon-type-tabs"
+                  className="inline-flex rounded-xl border border-emerald-200 bg-emerald-50/70 p-1 dark:border-emerald-800 dark:bg-emerald-950/30"
+                >
                   {[
                     { value: "TODOS", label: "Todos" },
                     { value: "NATURAL", label: "Naturales" },
@@ -1034,10 +1018,11 @@ export default function IncidenteController({ authorization }: { authorization?:
                         type="button"
                         onClick={() => handleFilterChange("torreonTipo", option.value)}
                         aria-pressed={isActive}
-                        className={`min-h-11 rounded-md px-3 py-2 text-xs font-semibold transition-colors ${isActive
-                          ? "bg-emerald-600 text-white shadow-sm"
-                          : "text-emerald-700 hover:bg-white/70 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
-                          }`}
+                        className={`min-h-11 rounded-md px-3 py-2 text-xs font-semibold transition-colors ${
+                          isActive
+                            ? "bg-emerald-600 text-white shadow-sm"
+                            : "text-emerald-700 hover:bg-white/70 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
+                        }`}
                       >
                         {option.label}
                       </button>
@@ -1050,21 +1035,32 @@ export default function IncidenteController({ authorization }: { authorization?:
               {incidentData.lastUpdated && (
                 <span className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-subtle)] px-3 py-1.5 text-xs text-[var(--app-text-muted)]">
                   <Clock className="h-3 w-3" />
-                  Actualizado {incidentData.lastUpdated.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+                  Actualizado{" "}
+                  {incidentData.lastUpdated.toLocaleTimeString("es-ES", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </span>
               )}
 
               {/* Auto Refresh Toggle */}
               <button
-                onClick={() => setUiState(p => ({ ...p, autoRefresh: !p.autoRefresh }))}
-                className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${uiState.autoRefresh
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-300"
-                  : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
-                  }`}
-                title={uiState.autoRefresh ? "Pausar actualización automática" : "Activar actualización automática"}
+                onClick={() => setUiState((p) => ({ ...p, autoRefresh: !p.autoRefresh }))}
+                className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  uiState.autoRefresh
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-300"
+                    : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400"
+                }`}
+                title={
+                  uiState.autoRefresh
+                    ? "Pausar actualización automática"
+                    : "Activar actualización automática"
+                }
                 aria-pressed={uiState.autoRefresh}
               >
-                <RefreshCw className={`h-3 w-3 ${uiState.autoRefresh ? "animate-spin-slow" : ""}`} />
+                <RefreshCw
+                  className={`h-3 w-3 ${uiState.autoRefresh ? "animate-spin-slow" : ""}`}
+                />
                 {uiState.autoRefresh ? "Auto" : "Manual"}
               </button>
             </div>
@@ -1090,10 +1086,11 @@ export default function IncidenteController({ authorization }: { authorization?:
                 aria-expanded={filtersOpen}
                 aria-controls={filtersPanelId}
                 onClick={() => setFiltersOpen(!filtersOpen)}
-                className={`min-h-11 min-w-11 shrink-0 rounded-lg border p-2.5 transition-colors xl:hidden ${filtersOpen || hasActiveFilters
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-600 dark:bg-emerald-900/20 dark:border-emerald-800"
-                  : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700"
-                  }`}
+                className={`min-h-11 min-w-11 shrink-0 rounded-lg border p-2.5 transition-colors xl:hidden ${
+                  filtersOpen || hasActiveFilters
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-600 dark:bg-emerald-900/20 dark:border-emerald-800"
+                    : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700"
+                }`}
               >
                 <Filter className="h-4 w-4" />
               </button>
@@ -1101,7 +1098,8 @@ export default function IncidenteController({ authorization }: { authorization?:
               {/* Desktop Filter Bar (Visible only on LG) */}
               <div className="hidden flex-wrap items-end gap-3 xl:flex">
                 {!isLimitedClientView && (
-                  <label className="grid gap-1 text-xs text-[var(--app-text-muted)]">Empresa
+                  <label className="grid gap-1 text-xs text-[var(--app-text-muted)]">
+                    Empresa
                     <IncidentCatalogSelect
                       value={filters.empresaId}
                       onChange={(v: number | null) => handleFilterChange("empresaId", v)}
@@ -1110,15 +1108,18 @@ export default function IncidenteController({ authorization }: { authorization?:
                     />
                   </label>
                 )}
-                  <label className="grid gap-1 text-xs text-[var(--app-text-muted)]">Localidad
-                    <IncidentCatalogSelect
-                      value={filters.localidadId}
-                      onChange={(v: number | null) => handleFilterChange("localidadId", v)}
-                      options={catalogues.localidades}
-                      placeholder={isLocalityScopedView ? "Localidad asignada" : "Todas las localidades"}
-                      disabled={isLocalityScopedView}
-                    />
-                  </label>
+                <label className="grid gap-1 text-xs text-[var(--app-text-muted)]">
+                  Localidad
+                  <IncidentCatalogSelect
+                    value={filters.localidadId}
+                    onChange={(v: number | null) => handleFilterChange("localidadId", v)}
+                    options={catalogues.localidades}
+                    placeholder={
+                      isLocalityScopedView ? "Localidad asignada" : "Todas las localidades"
+                    }
+                    disabled={isLocalityScopedView}
+                  />
+                </label>
                 <button
                   onClick={handleRefresh}
                   disabled={uiState.refreshing || incidentData.loading}
@@ -1136,7 +1137,8 @@ export default function IncidenteController({ authorization }: { authorization?:
           <div id={filtersPanelId} hidden={!filtersOpen} className="mt-4 xl:hidden">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {!isLimitedClientView && (
-                <label className="grid gap-1 text-xs text-[var(--app-text-muted)]">Empresa
+                <label className="grid gap-1 text-xs text-[var(--app-text-muted)]">
+                  Empresa
                   <IncidentCatalogSelect
                     value={filters.empresaId}
                     onChange={(v: number | null) => handleFilterChange("empresaId", v)}
@@ -1146,16 +1148,19 @@ export default function IncidenteController({ authorization }: { authorization?:
                   />
                 </label>
               )}
-                <label className="grid gap-1 text-xs text-[var(--app-text-muted)]">Localidad
-                  <IncidentCatalogSelect
-                    value={filters.localidadId}
-                    onChange={(v: number | null) => handleFilterChange("localidadId", v)}
-                    options={catalogues.localidades}
-                    placeholder={isLocalityScopedView ? "Localidad asignada" : "Todas las localidades"}
-                    disabled={isLocalityScopedView}
-                    fullWidth
-                  />
-                </label>
+              <label className="grid gap-1 text-xs text-[var(--app-text-muted)]">
+                Localidad
+                <IncidentCatalogSelect
+                  value={filters.localidadId}
+                  onChange={(v: number | null) => handleFilterChange("localidadId", v)}
+                  options={catalogues.localidades}
+                  placeholder={
+                    isLocalityScopedView ? "Localidad asignada" : "Todas las localidades"
+                  }
+                  disabled={isLocalityScopedView}
+                  fullWidth
+                />
+              </label>
               <button
                 onClick={handleClearFilters}
                 className="flex items-center justify-center gap-2 min-h-11 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
@@ -1176,24 +1181,27 @@ export default function IncidenteController({ authorization }: { authorization?:
 
       {/* Content Area */}
       <div className="mx-auto w-full min-w-0 flex-1 space-y-4 p-4 sm:space-y-5 sm:p-5">
-
-        {!ready && <DataEmptyState icon={AlertTriangle} title="Falta información de tu acceso" description="No se pudo identificar la empresa o localidad asignada. Vuelve a iniciar sesión para recuperar tu acceso." />}
+        {!ready && (
+          <DataEmptyState
+            icon={AlertTriangle}
+            title="Falta información de tu acceso"
+            description="No se pudo identificar la empresa o localidad asignada. Vuelve a iniciar sesión para recuperar tu acceso."
+          />
+        )}
 
         {/* Summary describes only the loaded page. */}
         {!incidentData.error && incidentData.data.length > 0 && (
-          <GuidedTarget id="incidents-summary" className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          <GuidedTarget
+            id="incidents-summary"
+            className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4"
+          >
             <IncidentStatCard
               label="Incidentes en esta página"
               value={incidentData.data.length}
               icon={AlertTriangle}
               color="slate"
             />
-            <IncidentStatCard
-              label="Activos"
-              value={totalActivos}
-              icon={Clock}
-              color="emerald"
-            />
+            <IncidentStatCard label="Activos" value={totalActivos} icon={Clock} color="emerald" />
             <IncidentStatCard
               label="Resueltos"
               value={totalResueltos}
@@ -1211,10 +1219,17 @@ export default function IncidenteController({ authorization }: { authorization?:
 
         {/* Error State */}
         {incidentData.error && (
-          <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-center dark:border-rose-900 dark:bg-rose-950/20 sm:p-5">
+          <div
+            role="alert"
+            className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-center dark:border-rose-900 dark:bg-rose-950/20 sm:p-5"
+          >
             <AlertTriangle className="mx-auto h-10 w-10 text-rose-500 mb-3 block" />
-            <h3 className="text-lg font-bold text-rose-800 dark:text-rose-200">No se pudieron cargar los incidentes</h3>
-            <p className="text-rose-600 dark:text-rose-300 mb-6">{prettyError(incidentData.error)}</p>
+            <h3 className="text-lg font-bold text-rose-800 dark:text-rose-200">
+              No se pudieron cargar los incidentes
+            </h3>
+            <p className="text-rose-600 dark:text-rose-300 mb-6">
+              {prettyError(incidentData.error)}
+            </p>
             <button
               onClick={() => fetchIncidents(incidentData.meta.page)}
               className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-700"
@@ -1226,9 +1241,10 @@ export default function IncidenteController({ authorization }: { authorization?:
 
         {/* Table Container */}
         {ready && (!incidentData.error || incidentData.data.length > 0) && (
-          <GuidedTarget id="incidents-list" className="relative overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-[var(--app-shadow-sm)]">
-
-
+          <GuidedTarget
+            id="incidents-list"
+            className="relative overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] shadow-[var(--app-shadow-sm)]"
+          >
             <div className="overflow-x-auto">
               <div className="min-w-full">
                 <IncidentesTable
@@ -1239,7 +1255,13 @@ export default function IncidenteController({ authorization }: { authorization?:
                   onPageChange={handlePageChange}
                   onRefresh={handleRefresh}
                   refreshing={uiState.refreshing}
-                  emptyStateText={filters.searchQuery.trim() ? "Sin coincidencias en esta página" : activeTab === "Actuales" ? "No hay incidentes activos en esta página" : "No hay incidentes pasados en esta página"}
+                  emptyStateText={
+                    filters.searchQuery.trim()
+                      ? "Sin coincidencias en esta página"
+                      : activeTab === "Actuales"
+                        ? "No hay incidentes activos en esta página"
+                        : "No hay incidentes pasados en esta página"
+                  }
                 />
               </div>
             </div>
@@ -1248,8 +1270,9 @@ export default function IncidenteController({ authorization }: { authorization?:
       </div>
 
       {/* Smart Blocker Modal */}
-      {uiState.blockerVisible && uiState.selectedIncident && (
-        isTorreonIncident(uiState.selectedIncident) ? (
+      {uiState.blockerVisible &&
+        uiState.selectedIncident &&
+        (isTorreonIncident(uiState.selectedIncident) ? (
           <TorreonIncidentDetailModal
             key={`${uiState.selectedIncident.id}-${modalKey}`}
             incident={uiState.selectedIncident}
@@ -1275,8 +1298,7 @@ export default function IncidenteController({ authorization }: { authorization?:
             }}
             onSkip={() => handleIncidentAction("skip")}
           />
-        )
-      )}
+        ))}
     </GuidedTarget>
   );
 }

@@ -1,22 +1,3 @@
-/** * 1. CONFIGURACIÓN Y CONSTANTES TÉCNICAS
- * Se usa 'as const' para que TypeScript trate los valores como literales exactos.
- */
-export const MOV_CONFIG = {
-  API: {
-    BASE: process.env.NEXT_PUBLIC_API_URL || "/xapi",
-    SECCIONES: `${process.env.NEXT_PUBLIC_API_URL || "/xapi"}/secciones/secciones`,
-  },
-  STORAGE: {
-    DRAFT: "movement_draft_v3",
-    OUTBOX: "movement_outbox_v1",
-  },
-  TIMEOUTS: {
-    DOUBLE_TAP: 250,
-    FETCH: 12000,
-    FLUSH: 15000,
-  }
-} as const;
-
 /** * 2. DICCIONARIOS DE NEGOCIO (Passwords y Rutas)
  */
 export const ALTA_PASSWORDS: Record<number, string> = {
@@ -24,7 +5,7 @@ export const ALTA_PASSWORDS: Record<number, string> = {
   2: "ALTA-EMPRESA-2",
   3: "ALTA-EMPRESA-3",
   4: "ALTA-EMPRESA-4",
-  5: "ALTA-EMPRESA-5"
+  5: "ALTA-EMPRESA-5",
 };
 export const roleBase = (r?: string) => BASE_BY_ROLE[String(r || "").toUpperCase()] || "/cliente";
 export const BASE_BY_ROLE: Record<string, string> = {
@@ -44,9 +25,16 @@ export type Direccion = "EMPUJAR" | "JALAR" | "Sin_Solicitar";
 export type Polo = "NORTE" | "SUR" | "Sin_Solicitar";
 export type Posicion = "DENTRO" | "AFUERA" | "Sin_Solicitar";
 export type Rol = keyof typeof BASE_BY_ROLE;
-export type Option = { label: string; value: string }
-export interface Empresa { id: number; nombre: string }
-export interface Localidad { id: number; nombre: string; estado?: string }
+export type Option = { label: string; value: string };
+export interface Empresa {
+  id: number;
+  nombre: string;
+}
+export interface Localidad {
+  id: number;
+  nombre: string;
+  estado?: string;
+}
 export type ViaLifeLineSide = "izquierdo" | "derecho";
 export interface ViaLifeLineInfo {
   aplica: true;
@@ -54,7 +42,11 @@ export interface ViaLifeLineInfo {
   descripcion: string;
   esRP: boolean;
 }
-export interface Via { id: number; nombre: string; lineaDeVida?: ViaLifeLineInfo | null }
+export interface Via {
+  id: number;
+  nombre: string;
+  lineaDeVida?: ViaLifeLineInfo | null;
+}
 
 export interface Seccion {
   id: number;
@@ -201,25 +193,3 @@ export const INITIAL_MOVEMENT_FORM: Readonly<MovementFormData> = Object.freeze({
   agendado: false,
   fechaProgramada: "",
 });
-
-/** * 5. HELPERS OPTIMIZADOS (Lógica reutilizable)
- */
-export const MovementUtils = {
-  /** Obtiene la ruta base según el rol del usuario */
-  getRoleBase: (role?: string): string => {
-    const r = (role || "").toUpperCase();
-    return BASE_BY_ROLE[r] || "/cliente";
-  },
-
-  /** Valida si una contraseña es correcta para una empresa */
-  isValidPassword: (empresaId: number, pass: string): boolean => {
-    return ALTA_PASSWORDS[empresaId] === pass;
-  },
-
-  /** Formatea el objeto para envío a API (limpieza de datos) */
-  prepareForSubmit: (data: MovementFormData) => ({
-    ...data,
-    fechaInicio: new Date(data.fechaInicio).toISOString(),
-    locomotiveNumber: data.locomotiveNumber.trim().toUpperCase(),
-  })
-};

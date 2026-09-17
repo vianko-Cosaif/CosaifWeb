@@ -2,16 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { readTorreonJson, useTorreonCollection } from "../useTorreonCollection";
+import { arrastreListUrl, parseArrastrePage, arrastreDateError } from "../arrastres/listQuery";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { movementDateBoundary } from "@/lib/dateBoundary";
+import s from "../presentation/rail.module.scss";
+import ArrastreFocus from "../arrastres/components/ArrastreFocus";
 import { HISTORY_STATUSES, OPERATIONAL_STATUSES } from "../arrastres/constants";
-import {
-  CalendarDays,
-  ClipboardList,
-  ArrowRight,
-  AlertTriangle,
-  Hash,
-  RefreshCw,
-  Search,
-} from "lucide-react";
+import { CalendarDays, ClipboardList, ArrowRight, Hash, RefreshCw, Search } from "lucide-react";
 import Button from "@/components/ui/Button";
 import FieldShell from "@/components/ui/FieldShell";
 import FilterPanel from "@/components/ui/FilterPanel";
@@ -27,18 +24,14 @@ import {
   ArrastreStatusStrip,
   STATUS_OPTIONS,
   VAGON_STATUS_OPTIONS,
-  arrastreMatches,
   buildArrastreFolio,
   buildDailyCounters,
-  extractArray,
   fmtDateKey,
-  getArrastreDateValue,
+  extractArray,
   isHistoryArrastre,
   isLiveArrastre,
   localDateKey,
   normalizeStatus,
-  sortArrastres,
-  sortByFolioOrder,
   toLocalDateTimeInput,
   type Arrastre,
   type ArrastreEditAudit,
@@ -49,9 +42,11 @@ import {
 } from "@/features/torreon/arrastres";
 import { useRealtimeBoardRefresh } from "@/features/rail-queue/useRealtimeBoardRefresh";
 import { TorreonRealtimeBadge } from "@/features/torreon/components/TorreonRealtimeBadge";
-import { isTorreonArrastreEvent, realtimeArrastreSnapshot } from "@/features/torreon/realtime";
-import { playNotificationSound } from "@/lib/notificationSound";
-import TorreonIncidentDetailModal, { type TorreonIncidentDetail } from "./TorreonIncidentDetailModal";
+import { isTorreonArrastreEvent } from "@/features/torreon/realtime";
+import { playOperationConfirmation } from "@/lib/notificationSound";
+import TorreonIncidentDetailModal, {
+  type TorreonIncidentDetail,
+} from "./TorreonIncidentDetailModal";
 
 type Props = {
   localidadId: number;
@@ -61,7 +56,13 @@ type Props = {
   rol?: "ADMINISTRADOR" | "COORDINADOR";
 };
 
-export default function TorreonArrastresPanel({ localidadId, variant = "dashboard", embedded = false, onOpen, rol = "COORDINADOR" }: Props) {
+export default function TorreonArrastresPanel({
+  localidadId,
+  variant = "dashboard",
+  embedded = false,
+  onOpen,
+  rol = "COORDINADOR",
+}: Props) {
   const [scope, setScope] = useState<"actuales" | "pasados">("actuales");
   const [status, setStatus] = useState<ArrastreStatus>("TODOS");
   const [vagonStatus, setVagonStatus] = useState<VagonStatusFilter>("TODOS");
@@ -80,7 +81,9 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
   const [resolvingIncident, setResolvingIncident] = useState(false);
   const [priorityBusyId, setPriorityBusyId] = useState<number | null>(null);
   const [busyVagonKey, setBusyVagonKey] = useState<string | null>(null);
-  const [actionMessage, setActionMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+  const [actionMessage, setActionMessage] = useState<{ type: "ok" | "error"; text: string } | null>(
+    null,
+  );
   const [auditState, setAuditState] = useState<{
     arrastreId: number;
     entries: ArrastreEditAudit[];
@@ -88,56 +91,66 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
     error: string | null;
   } | null>(null);
 
-  const fetchArrastres = useCallback(async (signal: AbortSignal, force: boolean) => {
-    const buildUrl = (vista: "activos" | "historial", pageSize: number) => {
-      const params = new URLSearchParams({ localidadId: String(localidadId), vista, page: "1", pageSize: String(pageSize), includeFotos: "0" });
-      return `/api/cliente/torreon/arrastres?${params}`;
-    };
-    const [activeData, historyData] = await Promise.all([
-      readTorreonJson<unknown>(buildUrl("activos", variant === "movimientos" ? 160 : 80), signal, force),
-      variant === "movimientos" ? readTorreonJson<unknown>(buildUrl("historial", 160), signal, force) : Promise.resolve([]),
-    ]);
-    return sortArrastres([...extractArray<Arrastre>(activeData), ...extractArray<Arrastre>(historyData)]);
-  }, [localidadId, variant]);
-
-  const { rows: arrastres, setRows: setArrastres, loading, refreshing, error: loadError, load, refreshItem } = useTorreonCollection({
-    queryKey: `${rol}:${localidadId}:${variant}`,
-    fetchRows: fetchArrastres,
+  const deferredSearch = useDebouncedValue(search, 300);
+  const filterKey = JSON.stringify([
+    scope,
+    status,
+    vagonStatus,
+    deferredSearch,
+    fechaCampo,
+    desde,
+    hasta,
+    pageSize,
+    variant,
+  ]);
+  const [pageFilterKey, setPageFilterKey] = useState(filterKey);
+  const requestedPage = pageFilterKey === filterKey ? page : 1;
+  useEffect(() => {
+    setPage(1);
+    setPageFilterKey(filterKey);
+  }, [filterKey]);
+  const dateError = arrastreDateError(desde, hasta);
+  const listUrl = arrastreListUrl({
+    localidadId,
+    page: requestedPage,
+    pageSize: variant === "movimientos" ? pageSize : 8,
+    history: variant === "movimientos" && scope === "pasados",
+    q: deferredSearch,
+    estado: status,
+    vagonEstado: vagonStatus,
+    fechaCampo,
+    desde: desde ? (movementDateBoundary(desde) ?? undefined) : undefined,
+    hasta: hasta ? (movementDateBoundary(hasta, true) ?? undefined) : undefined,
   });
-
-  const refreshArrastreById = useCallback(async (arrastreId: number) => {
-    if (!Number.isFinite(arrastreId) || arrastreId <= 0) return load(true);
-    return refreshItem(arrastreId, async (signal) => {
-      const params = new URLSearchParams({ localidadId: String(localidadId), id: String(arrastreId), includeFotos: "0" });
-      const data = await readTorreonJson<Arrastre | Arrastre[]>(`/api/cliente/torreon/arrastres?${params}`, signal, true);
-      const next = Array.isArray(data) ? data[0] : data;
-      return next?.id ? next : null;
-    }, (current, next) => sortArrastres([...current.filter((item) => item.id !== next.id), next]));
-  }, [load, localidadId, refreshItem]);
-
+  const fetchArrastres = useCallback(
+    async (signal: AbortSignal, force: boolean) =>
+      parseArrastrePage(await readTorreonJson<unknown>(listUrl, signal, force)),
+    [listUrl],
+  );
+  const {
+    rows: arrastres,
+    meta,
+    loading,
+    refreshing,
+    error: collectionError,
+    load,
+  } = useTorreonCollection<Arrastre>({
+    queryKey: `${rol}:${listUrl}`,
+    fetchRows: fetchArrastres,
+    enabled: !dateError,
+  });
+  const loadError = dateError || collectionError;
   const realtimeStatus = useRealtimeBoardRefresh({
     enabled: true,
     realtimeLocalidadId: localidadId,
     scopeLocalidadId: localidadId,
     matchesEvent: isTorreonArrastreEvent,
-    onRefresh: ({ event }) => {
-      if (["realtime.ready", "realtime.resume"].includes(String(event.type))) return load();
-      const snapshot = realtimeArrastreSnapshot(event);
-      if (snapshot) {
-        setArrastres((current) => sortArrastres([snapshot, ...current.filter((item) => item.id !== snapshot.id)]));
-        return;
-      }
-      const arrastreId = Number(event.arrastreId || 0);
-      if (String(event.type || "").startsWith("torreon.arrastre") && arrastreId > 0) {
-        return refreshArrastreById(arrastreId);
-      }
-      return load(true);
-    },
+    onRefresh: ({ event }) =>
+      load(!["realtime.ready", "realtime.resume"].includes(String(event.type))),
   });
-
   useEffect(() => {
-    setPage(1);
-  }, [scope, status, vagonStatus, search, fechaCampo, desde, hasta, pageSize, variant]);
+    if (meta && requestedPage > meta.totalPages) setPage(meta.totalPages);
+  }, [meta, requestedPage]);
 
   const changeScope = useCallback((next: "actuales" | "pasados") => {
     setScope(next);
@@ -152,254 +165,326 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
   const dailyCounters = useMemo(() => buildDailyCounters(arrastres), [arrastres]);
 
   const stats = useMemo(() => {
-    const vagonesActivos = metricRows.filter(isLiveArrastre).flatMap((arrastre) => arrastre.vagones || []);
+    const vagonesActivos = metricRows
+      .filter(isLiveArrastre)
+      .flatMap((arrastre) => arrastre.vagones || []);
     const incidentes = metricRows.flatMap((arrastre) => arrastre.incidentes || []);
     return {
-      total: metricRows.length,
-      solicitados: metricRows.filter((item) => normalizeStatus(item.estado) === "SOLICITADO").length,
-      proceso: metricRows.filter((item) => normalizeStatus(item.estado) === "EN_PROCESO").length,
-      detenidos: metricRows.filter((item) => normalizeStatus(item.estado) === "DETENIDO").length,
-      concluidos: metricRows.filter((item) => normalizeStatus(item.estado) === "CONCLUIDO").length,
-      cancelados: metricRows.filter((item) => normalizeStatus(item.estado) === "CANCELADO").length,
-      vagonesPendientes: vagonesActivos.filter((item) => ["PENDIENTE", "EN_PROCESO", "BLOQUEADO"].includes(normalizeStatus(item.estado))).length,
-      incidentesAbiertos: incidentes.filter((item) => normalizeStatus(item.estado) === "ABIERTO").length,
+      total: meta?.total ?? metricRows.length,
+      solicitados:
+        meta?.statusCounts?.SOLICITADO ??
+        metricRows.filter((item) => normalizeStatus(item.estado) === "SOLICITADO").length,
+      proceso:
+        meta?.statusCounts?.EN_PROCESO ??
+        metricRows.filter((item) => normalizeStatus(item.estado) === "EN_PROCESO").length,
+      detenidos:
+        meta?.statusCounts?.DETENIDO ??
+        metricRows.filter((item) => normalizeStatus(item.estado) === "DETENIDO").length,
+      concluidos:
+        meta?.statusCounts?.CONCLUIDO ??
+        metricRows.filter((item) => normalizeStatus(item.estado) === "CONCLUIDO").length,
+      cancelados:
+        meta?.statusCounts?.CANCELADO ??
+        metricRows.filter((item) => normalizeStatus(item.estado) === "CANCELADO").length,
+      vagonesPendientes:
+        meta?.pendingWagons ??
+        vagonesActivos.filter((item) =>
+          ["PENDIENTE", "EN_PROCESO", "BLOQUEADO"].includes(normalizeStatus(item.estado)),
+        ).length,
+      incidentesAbiertos:
+        meta?.openIncidents ??
+        incidentes.filter((item) => normalizeStatus(item.estado) === "ABIERTO").length,
     };
-  }, [metricRows]);
+  }, [meta, metricRows]);
 
   const hasOpenIncidentInQueue = useMemo(
-    () => arrastres.some((arrastre) => isLiveArrastre(arrastre) && (arrastre.incidentes || []).some((incident) => normalizeStatus(incident.estado) === "ABIERTO")),
-    [arrastres]
+    () =>
+      meta?.canPrioritize ??
+      arrastres.some(
+        (arrastre) =>
+          isLiveArrastre(arrastre) &&
+          (arrastre.incidentes || []).some(
+            (incident) => normalizeStatus(incident.estado) === "ABIERTO",
+          ),
+      ),
+    [arrastres, meta],
   );
 
-  const visible = useMemo(() => {
-    const from = desde ? Date.parse(desde) : null;
-    const to = hasta ? Date.parse(hasta) : null;
-    return (variant === "movimientos" ? arrastres : dashboardArrastres)
-      .filter((arrastre) => status === "TODOS" || normalizeStatus(arrastre.estado) === status)
-      .filter((arrastre) => (
-        vagonStatus === "TODOS" ||
-        (arrastre.vagones || []).some((vagon) => normalizeStatus(vagon.estado) === vagonStatus)
-      ))
-      .filter((arrastre) => {
-        if (!from && !to) return true;
-        const value = getArrastreDateValue(arrastre, fechaCampo);
-        if (!value) return false;
-        const time = Date.parse(value);
-        if (Number.isNaN(time)) return false;
-        if (from && time < from) return false;
-        if (to && time > to) return false;
-        return true;
-      })
-      .filter((arrastre) => {
-        const query = search.trim().toLowerCase();
-        if (!query) return true;
-        const folio = buildArrastreFolio(arrastre, dailyCounters.get(arrastre.id)).toLowerCase();
-        return folio.includes(query) || arrastreMatches(arrastre, search);
-      })
-  }, [arrastres, dashboardArrastres, dailyCounters, desde, fechaCampo, hasta, search, status, vagonStatus, variant]);
-
-  const activeRows = useMemo(() => (
-    sortByFolioOrder(visible.filter(isLiveArrastre), dailyCounters)
-  ), [dailyCounters, visible]);
-  const historyRows = useMemo(() => (
-    sortArrastres(visible.filter(isHistoryArrastre))
-  ), [visible]);
-  const dashboardRows = useMemo(() => activeRows.slice(0, 8), [activeRows]);
-
+  const activeRows = useMemo(() => arrastres.filter(isLiveArrastre), [arrastres]);
+  const historyRows = useMemo(() => arrastres.filter(isHistoryArrastre), [arrastres]);
   const selectedRows = variant === "movimientos" && scope === "pasados" ? historyRows : activeRows;
-  const rows = variant === "movimientos" ? selectedRows : dashboardRows;
-  const selectedMode: "active" | "history" = variant === "movimientos" && scope === "pasados" ? "history" : "active";
-  const scopeOptions = useMemo(() => [
-    { value: "actuales" as const, label: "Actuales", count: activeRows.length },
-    { value: "pasados" as const, label: "Pasados", count: historyRows.length },
-  ], [activeRows.length, historyRows.length]);
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const paginatedRows = useMemo(() => {
-    if (variant !== "movimientos") return rows;
-    const start = (safePage - 1) * pageSize;
-    return rows.slice(start, start + pageSize);
-  }, [pageSize, rows, safePage, variant]);
-  const headerCount = variant === "movimientos" ? selectedRows.length : rows.length;
+  const rows = selectedRows;
+  const selectedMode: "active" | "history" =
+    variant === "movimientos" && scope === "pasados" ? "history" : "active";
+  const scopeOptions = [
+    {
+      value: "actuales" as const,
+      label: "Actuales",
+      count: scope === "actuales" ? meta?.total : undefined,
+    },
+    {
+      value: "pasados" as const,
+      label: "Pasados",
+      count: scope === "pasados" ? meta?.total : undefined,
+    },
+  ];
+  const totalPages = meta?.totalPages ?? 1;
+  const safePage = requestedPage;
+  const paginatedRows = rows;
+  const headerCount = meta?.total ?? rows.length;
 
   const applyToday = (field: ArrastreFechaCampo) => {
     const now = new Date();
     setFechaCampo(field);
-    setDesde(toLocalDateTimeInput(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0)));
-    setHasta(toLocalDateTimeInput(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59)));
+    setDesde(
+      toLocalDateTimeInput(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0)),
+    );
+    setHasta(
+      toLocalDateTimeInput(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59)),
+    );
   };
 
-  const resolveSelectedIncident = useCallback(async (solucion: string) => {
-    if (!selectedIncident?.arrastreId || !selectedIncident.incident.id) return;
-    setResolvingIncident(true);
-    try {
-      const response = await fetch("/api/cliente/torreon/arrastres/action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          action: "RESOLVER_INCIDENTE",
-          arrastreId: selectedIncident.arrastreId,
-          incidenteId: selectedIncident.incident.id,
-          solucion,
-        }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(typeof data?.error === "string" ? data.error : "No se pudo resolver el incidente");
+  const resolveSelectedIncident = useCallback(
+    async (solucion: string) => {
+      if (!selectedIncident?.arrastreId || !selectedIncident.incident.id) return;
+      setResolvingIncident(true);
+      try {
+        const response = await fetch("/api/cliente/torreon/arrastres/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            action: "RESOLVER_INCIDENTE",
+            arrastreId: selectedIncident.arrastreId,
+            incidenteId: selectedIncident.incident.id,
+            solucion,
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            typeof data?.error === "string" ? data.error : "No se pudo resolver el incidente",
+          );
+        }
+
+        setSelectedIncident(null);
+        void playOperationConfirmation("arrastre_incidente_resuelto");
+        await load(true);
+      } finally {
+        setResolvingIncident(false);
       }
+    },
+    [load, selectedIncident],
+  );
 
-      setSelectedIncident(null);
-      void playNotificationSound("arrastre_incidente_resuelto");
-      await load(true);
-    } finally {
-      setResolvingIncident(false);
-    }
-  }, [load, selectedIncident]);
+  const prioritizeArrastre = useCallback(
+    async (arrastre: Arrastre) => {
+      setActionMessage(null);
+      setPriorityBusyId(arrastre.id);
+      try {
+        const response = await fetch("/api/cliente/torreon/arrastres/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            action: "PRIORIZAR_SOLICITUD",
+            arrastreId: arrastre.id,
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            typeof data?.error === "string"
+              ? data.error
+              : "No se pudo subir la solicitud al frente",
+          );
+        }
 
-  const prioritizeArrastre = useCallback(async (arrastre: Arrastre) => {
-    setActionMessage(null);
-    setPriorityBusyId(arrastre.id);
-    try {
-      const response = await fetch("/api/cliente/torreon/arrastres/action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          action: "PRIORIZAR_SOLICITUD",
+        setActionMessage({ type: "ok", text: "Solicitud subida al frente de la cola operativa." });
+        void playOperationConfirmation("arrastre_prioridad_actualizada");
+        await load(true);
+      } catch (error) {
+        setActionMessage({
+          type: "error",
+          text: error instanceof Error ? error.message : "No se pudo subir la solicitud al frente",
+        });
+      } finally {
+        setPriorityBusyId(null);
+      }
+    },
+    [load],
+  );
+
+  const operateVagon = useCallback(
+    async (
+      action: "INICIAR_VAGON" | "FINALIZAR_VAGON",
+      arrastre: Arrastre,
+      vagon: VagonArrastre,
+    ) => {
+      const key = `${arrastre.id}:${vagon.id}`;
+      setBusyVagonKey(key);
+      setActionMessage(null);
+      try {
+        const response = await fetch("/api/cliente/torreon/arrastres/action", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action, arrastreId: arrastre.id, vagonId: vagon.id }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok)
+          throw new Error(
+            typeof data?.error === "string" ? data.error : "No se pudo actualizar el vagón",
+          );
+        setActionMessage({
+          type: "ok",
+          text:
+            action === "INICIAR_VAGON"
+              ? "Vagón iniciado. La cola ya está actualizada."
+              : "Vagón finalizado. Se mostró el siguiente pendiente.",
+        });
+        void playOperationConfirmation(action);
+        await load(true);
+      } catch (error) {
+        setActionMessage({
+          type: "error",
+          text: error instanceof Error ? error.message : "No se pudo actualizar el vagón",
+        });
+      } finally {
+        setBusyVagonKey(null);
+      }
+    },
+    [load],
+  );
+
+  const openAudit = useCallback(
+    async (arrastre: Arrastre) => {
+      setAuditState({ arrastreId: arrastre.id, entries: [], loading: true, error: null });
+      try {
+        const params = new URLSearchParams({
+          localidadId: String(localidadId),
+          auditId: String(arrastre.id),
+        });
+        const response = await fetch(`/api/cliente/torreon/arrastres?${params.toString()}`, {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const data = await response.json().catch(() => []);
+        if (!response.ok) {
+          const record = data && typeof data === "object" ? (data as { error?: unknown }) : {};
+          throw new Error(String(record.error || "No se pudo cargar la bitácora"));
+        }
+        setAuditState({
           arrastreId: arrastre.id,
-        }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(typeof data?.error === "string" ? data.error : "No se pudo subir la solicitud al frente");
+          entries: extractArray<ArrastreEditAudit>(data),
+          loading: false,
+          error: null,
+        });
+      } catch (error) {
+        setAuditState({
+          arrastreId: arrastre.id,
+          entries: [],
+          loading: false,
+          error: error instanceof Error ? error.message : "No se pudo cargar la bitácora",
+        });
       }
-
-      setActionMessage({ type: "ok", text: "Solicitud subida al frente de la cola operativa." });
-      void playNotificationSound("arrastre_prioridad_actualizada");
-      await load(true);
-    } catch (error) {
-      setActionMessage({ type: "error", text: error instanceof Error ? error.message : "No se pudo subir la solicitud al frente" });
-    } finally {
-      setPriorityBusyId(null);
-    }
-  }, [load]);
-
-  const operateVagon = useCallback(async (action: "INICIAR_VAGON" | "FINALIZAR_VAGON", arrastre: Arrastre, vagon: VagonArrastre) => {
-    const key = `${arrastre.id}:${vagon.id}`;
-    setBusyVagonKey(key);
-    setActionMessage(null);
-    try {
-      const response = await fetch("/api/cliente/torreon/arrastres/action", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, arrastreId: arrastre.id, vagonId: vagon.id }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(typeof data?.error === "string" ? data.error : "No se pudo actualizar el vagón");
-      setActionMessage({ type: "ok", text: action === "INICIAR_VAGON" ? "Vagón iniciado. La cola ya está actualizada." : "Vagón finalizado. Se mostró el siguiente pendiente." });
-      void playNotificationSound(action);
-      await load(true);
-    } catch (error) {
-      setActionMessage({ type: "error", text: error instanceof Error ? error.message : "No se pudo actualizar el vagón" });
-    } finally {
-      setBusyVagonKey(null);
-    }
-  }, [load]);
-
-  const openAudit = useCallback(async (arrastre: Arrastre) => {
-    setAuditState({ arrastreId: arrastre.id, entries: [], loading: true, error: null });
-    try {
-      const params = new URLSearchParams({ localidadId: String(localidadId), auditId: String(arrastre.id) });
-      const response = await fetch(`/api/cliente/torreon/arrastres?${params.toString()}`, {
-        cache: "no-store",
-        credentials: "include",
-      });
-      const data = await response.json().catch(() => []);
-      if (!response.ok) {
-        const record = data && typeof data === "object" ? data as { error?: unknown } : {};
-        throw new Error(String(record.error || "No se pudo cargar la bitácora"));
-      }
-      setAuditState({ arrastreId: arrastre.id, entries: extractArray<ArrastreEditAudit>(data), loading: false, error: null });
-    } catch (error) {
-      setAuditState({ arrastreId: arrastre.id, entries: [], loading: false, error: error instanceof Error ? error.message : "No se pudo cargar la bitácora" });
-    }
-  }, [localidadId]);
+    },
+    [localidadId],
+  );
 
   const loadFeedback = loadError && (
-    <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
+    <div
+      role="alert"
+      className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200"
+    >
       {loadError} {arrastres.length > 0 && "Se conserva la última consulta disponible."}
-      <button type="button" disabled={loading || refreshing} onClick={() => load(true)} className="ml-3 font-semibold underline">Reintentar</button>
+      <button
+        type="button"
+        disabled={loading || refreshing}
+        onClick={() => load(true)}
+        className="ml-3 font-semibold underline"
+      >
+        Reintentar
+      </button>
     </div>
   );
 
   if (variant === "summary") {
     const attention = stats.detenidos + stats.incidentesAbiertos;
     return (
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex min-w-0 items-start gap-3">
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
-              <ClipboardList className="h-5 w-5" aria-hidden />
-            </span>
-            <div>
-              <p className="text-xs font-black uppercase tracking-wide text-slate-400">Operación actual</p>
-              <h2 className="mt-1 text-xl font-black text-slate-950 dark:text-white">Arrastres</h2>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Solicitudes y vagones que esperan atención.</p>
-            </div>
+      <section className={s.summaryCard}>
+        <div className={s.summaryHeading}>
+          <div>
+            <p className={s.eyebrow}>
+              <ClipboardList size={16} aria-hidden />
+              Vagones
+            </p>
+            <h2 className="mt-2">Arrastres</h2>
           </div>
           <TorreonRealtimeBadge status={realtimeStatus} />
         </div>
-
+        <p className={s.subtitle}>Solicitudes, composición del tren y avance por vagón.</p>
         {loadFeedback}
-        <div className="mt-5 grid grid-cols-3 gap-2">
-          <SummaryValue label="En espera" value={stats.solicitados} />
-          <SummaryValue label="En movimiento" value={stats.proceso} />
-          <SummaryValue label="Por atender" value={attention} alert={attention > 0} />
+        <div className={s.summaryNumbers}>
+          <div>
+            <strong>{stats.solicitados}</strong>
+            <span>En espera</span>
+          </div>
+          <div>
+            <strong>{stats.proceso}</strong>
+            <span>En movimiento</span>
+          </div>
+          <div>
+            <strong>{attention}</strong>
+            <span>Alertas y pausas</span>
+          </div>
         </div>
-
-        <button
-          type="button"
-          onClick={onOpen}
-          className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-emerald-700 dark:bg-white dark:text-slate-950 dark:hover:bg-emerald-300"
-        >
+        <button type="button" onClick={onOpen} className={s.primaryButton}>
           Ver cola de arrastres
-          <ArrowRight className="h-4 w-4" aria-hidden />
+          <ArrowRight size={16} aria-hidden />
         </button>
       </section>
     );
   }
 
   return (
-    <section className={embedded ? "min-w-0" : "overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"}>
-      {!embedded ? <div className="border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950 sm:px-5">
-        <ModuleHeader
-          eyebrow="Torreón"
-          title={variant === "dashboard" ? "Cola de arrastres" : "Seguimiento de arrastres"}
-          subtitle={variant === "dashboard" ? `Operación actual · ${fmtDateKey(todayKey)}` : "Solicitudes activas e historial"}
-          icon={ClipboardList}
-          actions={
-            <>
-              <TorreonRealtimeBadge status={realtimeStatus} />
-              <span className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
-                <Hash className="h-4 w-4 text-emerald-600" />
-                {headerCount} solicitud{headerCount === 1 ? "" : "es"}
-            </span>
-            {realtimeStatus !== "connected" ? <Button
-              onClick={() => load(true)}
-              loading={refreshing}
-              leftIcon={<RefreshCw className="h-4 w-4" aria-hidden />}
-              >
-                Reintentar
-              </Button> : null}
-            </>
-          }
-        />
-      </div> : null}
+    <section className={embedded ? "min-w-0" : s.workspace}>
+      {!embedded ? (
+        <div className={s.pageHeader}>
+          <ModuleHeader
+            eyebrow="Torreón"
+            title={variant === "dashboard" ? "Cola de arrastres" : "Seguimiento de arrastres"}
+            subtitle={
+              variant === "dashboard"
+                ? `Operación actual · ${fmtDateKey(todayKey)}`
+                : "Solicitudes activas e historial"
+            }
+            icon={ClipboardList}
+            actions={
+              <>
+                <TorreonRealtimeBadge status={realtimeStatus} />
+                <span className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
+                  <Hash className="h-4 w-4 text-emerald-600" />
+                  {headerCount} solicitud{headerCount === 1 ? "" : "es"}
+                </span>
+                {realtimeStatus !== "connected" ? (
+                  <Button
+                    onClick={() => load(true)}
+                    loading={refreshing}
+                    leftIcon={<RefreshCw className="h-4 w-4" aria-hidden />}
+                  >
+                    Reintentar
+                  </Button>
+                ) : null}
+              </>
+            }
+          />
+        </div>
+      ) : null}
 
-      <div className={embedded ? "space-y-3" : "space-y-4 p-4 sm:p-5"}>
+      <div className={s.workspace}>
         {loadFeedback}
+
         {embedded && variant === "movimientos" ? (
           <div className="space-y-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -415,15 +500,17 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
                   <Hash className="h-3.5 w-3.5 text-emerald-600" />
                   {headerCount} registro{headerCount === 1 ? "" : "s"}
                 </span>
-                {realtimeStatus !== "connected" ? <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => load(true)}
-                  loading={refreshing}
-                  leftIcon={<RefreshCw className="h-4 w-4" aria-hidden />}
-                >
-                  Reintentar
-                </Button> : null}
+                {realtimeStatus !== "connected" ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => load(true)}
+                    loading={refreshing}
+                    leftIcon={<RefreshCw className="h-4 w-4" aria-hidden />}
+                  >
+                    Reintentar
+                  </Button>
+                ) : null}
               </div>
             </div>
             <SearchInput
@@ -437,7 +524,11 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
           </div>
         ) : null}
 
-        {!embedded ? <ArrastreStatusStrip stats={stats} operational={variant === "dashboard"} /> : null}
+        {!embedded ? (
+          <ArrastreStatusStrip stats={stats} operational={variant === "dashboard"} />
+        ) : null}
+
+        {variant === "dashboard" && !loading ? <ArrastreFocus rows={rows} /> : null}
 
         {variant === "movimientos" && !embedded && (
           <SegmentedControl
@@ -449,117 +540,148 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
         )}
 
         {actionMessage ? (
-          <div className={`rounded-xl border px-3 py-2 text-sm font-bold ${
-            actionMessage.type === "ok"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
-              : "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200"
-          }`}>
+          <div
+            className={`rounded-xl border px-3 py-2 text-sm font-bold ${
+              actionMessage.type === "ok"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
+                : "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200"
+            }`}
+          >
             {actionMessage.text}
           </div>
         ) : null}
 
-        {variant === "movimientos" ? <FilterPanel
-          title="Filtros de arrastre"
-          count={`${selectedRows.length} visibles`}
-          collapsible
-          defaultOpen={embedded}
-          footer={
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Button size="sm" onClick={() => applyToday("solicitud")}>
-                Solicitudes hoy
-              </Button>
-              <Button size="sm" onClick={() => applyToday("inicio")}>
-                Inicios hoy
-              </Button>
-              <Button size="sm" onClick={() => applyToday("fin")}>
-                Cierres hoy
-              </Button>
-              <Button size="sm" variant="danger" onClick={() => { setDesde(""); setHasta(""); }}>
-                Limpiar fechas
-              </Button>
-              <span className="ml-auto inline-flex h-8 items-center rounded-lg bg-slate-50 px-3 text-xs font-black text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-                Activos {activeRows.length} · Historial {historyRows.length}
-              </span>
-            </div>
-          }
-        >
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-12">
-            {!embedded ? (
-              <FieldShell className="md:col-span-2 xl:col-span-4" label="Buscar" icon={<Search className="h-4 w-4" aria-hidden />}>
+        {variant === "movimientos" ? (
+          <FilterPanel
+            title="Filtros de arrastre"
+            count={`${meta?.total ?? selectedRows.length} resultados`}
+            collapsible
+            defaultOpen={embedded}
+            footer={
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button size="sm" onClick={() => applyToday("solicitud")}>
+                  Solicitudes hoy
+                </Button>
+                <Button size="sm" onClick={() => applyToday("inicio")}>
+                  Inicios hoy
+                </Button>
+                <Button size="sm" onClick={() => applyToday("fin")}>
+                  Cierres hoy
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => {
+                    setDesde("");
+                    setHasta("");
+                  }}
+                >
+                  Limpiar fechas
+                </Button>
+                <span className="ml-auto inline-flex h-8 items-center rounded-lg bg-slate-50 px-3 text-xs font-black text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                  Activos {activeRows.length} · Historial {historyRows.length}
+                </span>
+              </div>
+            }
+          >
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-12">
+              {!embedded ? (
+                <FieldShell
+                  className="md:col-span-2 xl:col-span-4"
+                  label="Buscar"
+                  icon={<Search className="h-4 w-4" aria-hidden />}
+                >
+                  <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    className="min-w-0 flex-1 bg-transparent text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100"
+                    placeholder="Folio, ID, vagon, estado..."
+                  />
+                </FieldShell>
+              ) : null}
+              <FieldShell className="xl:col-span-2" label="Estado">
+                <select
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value as ArrastreStatus)}
+                  className="w-full bg-transparent font-black text-slate-700 outline-none dark:text-slate-100"
+                  aria-label="Estado de arrastre"
+                >
+                  {STATUS_OPTIONS.filter(
+                    (option) => option.value === "TODOS" || periodStatuses.has(option.value),
+                  ).map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </FieldShell>
+              <FieldShell className="xl:col-span-2" label="Vagones">
+                <select
+                  value={vagonStatus}
+                  onChange={(event) => setVagonStatus(event.target.value as VagonStatusFilter)}
+                  className="w-full bg-transparent font-black text-slate-700 outline-none dark:text-slate-100"
+                  aria-label="Estado de vagon"
+                >
+                  {VAGON_STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </FieldShell>
+              <FieldShell className="xl:col-span-2" label="Fecha base">
+                <select
+                  value={fechaCampo}
+                  onChange={(event) => setFechaCampo(event.target.value as ArrastreFechaCampo)}
+                  className="w-full bg-transparent font-black text-slate-700 outline-none dark:text-slate-100"
+                  aria-label="Fecha base de arrastre"
+                >
+                  <option value="solicitud">Solicitud</option>
+                  <option value="inicio">Inicio</option>
+                  <option value="fin">Fin</option>
+                </select>
+              </FieldShell>
+              <FieldShell
+                className="xl:col-span-3"
+                label="Desde"
+                icon={<CalendarDays className="h-4 w-4" aria-hidden />}
+              >
                 <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  className="min-w-0 flex-1 bg-transparent text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100"
-                  placeholder="Folio, ID, vagon, estado..."
+                  type="datetime-local"
+                  value={desde}
+                  onChange={(event) => setDesde(event.target.value)}
+                  className="min-w-0 flex-1 bg-transparent font-semibold text-slate-700 outline-none dark:text-slate-100"
                 />
               </FieldShell>
-            ) : null}
-            <FieldShell className="xl:col-span-2" label="Estado">
-              <select
-                value={status}
-                onChange={(event) => setStatus(event.target.value as ArrastreStatus)}
-                className="w-full bg-transparent font-black text-slate-700 outline-none dark:text-slate-100"
-                aria-label="Estado de arrastre"
+              <FieldShell
+                className="xl:col-span-3"
+                label="Hasta"
+                icon={<CalendarDays className="h-4 w-4" aria-hidden />}
               >
-                {STATUS_OPTIONS.filter((option) => option.value === "TODOS" || periodStatuses.has(option.value)).map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </FieldShell>
-            <FieldShell className="xl:col-span-2" label="Vagones">
-              <select
-                value={vagonStatus}
-                onChange={(event) => setVagonStatus(event.target.value as VagonStatusFilter)}
-                className="w-full bg-transparent font-black text-slate-700 outline-none dark:text-slate-100"
-                aria-label="Estado de vagon"
-              >
-                {VAGON_STATUS_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </FieldShell>
-            <FieldShell className="xl:col-span-2" label="Fecha base">
-              <select
-                value={fechaCampo}
-                onChange={(event) => setFechaCampo(event.target.value as ArrastreFechaCampo)}
-                className="w-full bg-transparent font-black text-slate-700 outline-none dark:text-slate-100"
-                aria-label="Fecha base de arrastre"
-              >
-                <option value="solicitud">Solicitud</option>
-                <option value="inicio">Inicio</option>
-                <option value="fin">Fin</option>
-              </select>
-            </FieldShell>
-            <FieldShell className="xl:col-span-3" label="Desde" icon={<CalendarDays className="h-4 w-4" aria-hidden />}>
-              <input
-                type="datetime-local"
-                value={desde}
-                onChange={(event) => setDesde(event.target.value)}
-                className="min-w-0 flex-1 bg-transparent font-semibold text-slate-700 outline-none dark:text-slate-100"
-              />
-            </FieldShell>
-            <FieldShell className="xl:col-span-3" label="Hasta" icon={<CalendarDays className="h-4 w-4" aria-hidden />}>
-              <input
-                type="datetime-local"
-                value={hasta}
-                onChange={(event) => setHasta(event.target.value)}
-                className="min-w-0 flex-1 bg-transparent font-semibold text-slate-700 outline-none dark:text-slate-100"
-              />
-            </FieldShell>
-            <FieldShell className="xl:col-span-2" label="Por pagina">
-              <select
-                value={pageSize}
-                onChange={(event) => setPageSize(Number(event.target.value))}
-                className="w-full bg-transparent font-black text-slate-700 outline-none dark:text-slate-100"
-                aria-label="Arrastres por página"
-              >
-                {[10, 25, 50, 100].map((size) => (
-                  <option key={size} value={size}>{size}</option>
-                ))}
-              </select>
-            </FieldShell>
-          </div>
-        </FilterPanel> : null}
+                <input
+                  type="datetime-local"
+                  value={hasta}
+                  onChange={(event) => setHasta(event.target.value)}
+                  className="min-w-0 flex-1 bg-transparent font-semibold text-slate-700 outline-none dark:text-slate-100"
+                />
+              </FieldShell>
+              <FieldShell className="xl:col-span-2" label="Por pagina">
+                <select
+                  value={pageSize}
+                  onChange={(event) => setPageSize(Number(event.target.value))}
+                  className="w-full bg-transparent font-black text-slate-700 outline-none dark:text-slate-100"
+                  aria-label="Arrastres por página"
+                >
+                  {[10, 25, 50, 100].map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+              </FieldShell>
+            </div>
+          </FilterPanel>
+        ) : null}
 
         {embedded ? <ArrastreStatusStrip stats={stats} operational={false} /> : null}
 
@@ -585,12 +707,14 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
             <ArrastreAirportBoard
               rows={paginatedRows}
               dailyCounters={dailyCounters}
-              onIncidentSelect={(incident, arrastre) => setSelectedIncident({
-                arrastreId: arrastre.id,
-                incident,
-                title: `Arrastre ${buildArrastreFolio(arrastre, dailyCounters.get(arrastre.id))}`,
-                subtitle: `Movimiento de arrastre #${arrastre.id}`,
-              })}
+              onIncidentSelect={(incident, arrastre) =>
+                setSelectedIncident({
+                  arrastreId: arrastre.id,
+                  incident,
+                  title: `Arrastre ${buildArrastreFolio(arrastre, dailyCounters.get(arrastre.id))}`,
+                  subtitle: `Movimiento de arrastre #${arrastre.id}`,
+                })
+              }
               onAuditSelect={rol === "ADMINISTRADOR" ? openAudit : undefined}
             />
           ) : rows.length ? (
@@ -602,29 +726,41 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
               canPrioritizeByIncident={hasOpenIncidentInQueue}
               onPrioritizeArrastre={selectedMode === "active" ? prioritizeArrastre : undefined}
               busyVagonKey={busyVagonKey}
-              onStartVagon={rol === "COORDINADOR" && selectedMode === "active" ? (arrastre, vagon) => operateVagon("INICIAR_VAGON", arrastre, vagon) : undefined}
-              onFinishVagon={rol === "COORDINADOR" && selectedMode === "active" ? (arrastre, vagon) => operateVagon("FINALIZAR_VAGON", arrastre, vagon) : undefined}
-              onIncidentSelect={(incident, arrastre) => setSelectedIncident({
-                arrastreId: arrastre.id,
-                incident,
-                title: `Arrastre ${buildArrastreFolio(arrastre, dailyCounters.get(arrastre.id))}`,
-                subtitle: `Movimiento de arrastre #${arrastre.id}`,
-              })}
+              onStartVagon={
+                rol === "COORDINADOR" && selectedMode === "active"
+                  ? (arrastre, vagon) => operateVagon("INICIAR_VAGON", arrastre, vagon)
+                  : undefined
+              }
+              onFinishVagon={
+                rol === "COORDINADOR" && selectedMode === "active"
+                  ? (arrastre, vagon) => operateVagon("FINALIZAR_VAGON", arrastre, vagon)
+                  : undefined
+              }
+              onIncidentSelect={(incident, arrastre) =>
+                setSelectedIncident({
+                  arrastreId: arrastre.id,
+                  incident,
+                  title: `Arrastre ${buildArrastreFolio(arrastre, dailyCounters.get(arrastre.id))}`,
+                  subtitle: `Movimiento de arrastre #${arrastre.id}`,
+                })
+              }
               onAuditSelect={rol === "ADMINISTRADOR" ? openAudit : undefined}
             />
           ) : (
             <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-slate-200 text-sm font-semibold text-slate-500 dark:border-slate-700 dark:text-slate-400">
-              {selectedMode === "history" ? "No hay arrastres en el historial." : "No hay arrastres activos en este momento."}
+              {selectedMode === "history"
+                ? "No hay arrastres en el historial."
+                : "No hay arrastres activos en este momento."}
             </div>
           )}
         </div>
 
-        {variant === "movimientos" && !loading && rows.length > 0 && (
+        {(variant === "movimientos" || totalPages > 1) && !loading && rows.length > 0 && (
           <PaginationBar
             page={safePage}
             totalPages={totalPages}
-            pageSize={pageSize}
-            totalItems={rows.length}
+            pageSize={variant === "movimientos" ? pageSize : 8}
+            totalItems={meta?.total ?? rows.length}
             onPageChange={setPage}
           />
         )}
@@ -649,17 +785,5 @@ export default function TorreonArrastresPanel({ localidadId, variant = "dashboar
         />
       ) : null}
     </section>
-  );
-}
-
-function SummaryValue({ label, value, alert = false }: { label: string; value: number; alert?: boolean }) {
-  return (
-    <div className={`rounded-xl border p-3 ${alert ? "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30" : "border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950"}`}>
-      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400">
-        {alert ? <AlertTriangle className="h-3.5 w-3.5 text-amber-600" aria-hidden /> : null}
-        {label}
-      </div>
-      <p className="mt-1 text-2xl font-black tabular-nums text-slate-950 dark:text-white">{value}</p>
-    </div>
   );
 }

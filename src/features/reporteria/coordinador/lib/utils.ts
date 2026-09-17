@@ -13,11 +13,6 @@ export function fmtMaybeInt(value: unknown) {
   return fmtInt.format(Number(value));
 }
 
-export function fmtMaybeDec(value: unknown) {
-  if (value == null || value === "" || Number.isNaN(Number(value))) return "—";
-  return fmtDec.format(Number(value));
-}
-
 export function fmtMaybePct(value: unknown) {
   if (value == null || value === "" || Number.isNaN(Number(value))) return "—";
   return `${fmtDec.format(Number(value))}%`;
@@ -48,15 +43,6 @@ export function weekMondayISO(input?: string | Date) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${dd}`;
-}
-
-export function daysAgoISO(days: number) {
-  const d = new Date();
-  d.setDate(d.getDate() - Math.max(0, Math.floor(days)));
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
 }
 
 export function isYYYYMMDD(value: string) {
@@ -95,7 +81,8 @@ export function buildAnchorFecha({
   if (periodo === "dia") return diaISO;
   if (periodo === "semana") return semanaISO;
   if (periodo === "mes") return `${mesYM}-01`;
-  if (periodo === "bimestre") return `${bimYear}-${String((bimIndex - 1) * 2 + 1).padStart(2, "0")}-01`;
+  if (periodo === "bimestre")
+    return `${bimYear}-${String((bimIndex - 1) * 2 + 1).padStart(2, "0")}-01`;
   if (periodo === "semestre") return `${semYear}-${semIndex === 1 ? "01" : "07"}-01`;
   return `${anio}-01-01`;
 }

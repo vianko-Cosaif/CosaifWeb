@@ -1,12 +1,7 @@
 import type { TorreonIncidentDetail } from "@/features/torreon/coordinador/TorreonIncidentDetailModal";
 
 export type ArrastreStatus =
-  | "TODOS"
-  | "SOLICITADO"
-  | "EN_PROCESO"
-  | "DETENIDO"
-  | "CONCLUIDO"
-  | "CANCELADO";
+  "TODOS" | "SOLICITADO" | "EN_PROCESO" | "DETENIDO" | "CONCLUIDO" | "CANCELADO";
 
 export type VagonStatus = "PENDIENTE" | "EN_PROCESO" | "BLOQUEADO" | "CONCLUIDO";
 export type VagonStatusFilter = "TODOS" | VagonStatus;
@@ -45,6 +40,7 @@ export type IncidenteArrastre = TorreonIncidentDetail & {
 
 export type Arrastre = {
   id: number;
+  folioLabel?: string;
   estado?: string | null;
   ordenSolicitud?: number | null;
   empresaId?: number | null;

@@ -8,14 +8,16 @@ import { loginProfile } from "./fixtures/authorization";
 import type { VerifiedSession } from "@/lib/sessionToken";
 
 const upstream = vi.hoisted(() => ({ fetch: vi.fn(), torreon: vi.fn(), session: vi.fn() }));
-vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => ({ value: "synthetic-upstream-token" }) }) }));
+vi.mock("next/headers", () => ({
+  cookies: async () => ({ get: () => ({ value: "synthetic-upstream-token" }) }),
+}));
 vi.mock("@/lib/server/session", () => ({ getVerifiedSession: upstream.session }));
 vi.mock("@/lib/server/upstream", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@/lib/server/upstream")>(),
+  ...(await importOriginal<typeof import("@/lib/server/upstream")>()),
   fetchUpstream: upstream.fetch,
 }));
 vi.mock("@/lib/torreonMs", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@/lib/torreonMs")>(),
+  ...(await importOriginal<typeof import("@/lib/torreonMs")>()),
   fetchTorreonMsJson: upstream.torreon,
 }));
 
@@ -40,24 +42,45 @@ beforeEach(() => {
 
 function round(id: number, empresaId = 3, localidadId = 1, concluido = false) {
   return {
-    id, empresaId, localidadId, concluido, rondaNumero: 1, orden: id,
+    id,
+    empresaId,
+    localidadId,
+    concluido,
+    rondaNumero: 1,
+    orden: id,
     empresa: { id: empresaId, nombre: `Empresa ${empresaId}` },
     movimiento: {
-      id: id * 10, estado: concluido ? "CONCLUIDO" : "EN_PROCESO", locomotiveNumber: `LOC-${id}`,
-      createdAt: "2026-09-08T10:00:00Z", fechaSolicitud: "2026-09-08T11:00:00Z", tipoMovimiento: "NATURAL", accion: "TRASLADO",
-      instrucciones: `Private notes ${empresaId}`, viaOrigen: { nombre: "Vía 1" }, viaDestino: { nombre: "Vía 2" },
+      id: id * 10,
+      estado: concluido ? "CONCLUIDO" : "EN_PROCESO",
+      locomotiveNumber: `LOC-${id}`,
+      createdAt: "2026-09-08T10:00:00Z",
+      fechaSolicitud: "2026-09-08T11:00:00Z",
+      tipoMovimiento: "NATURAL",
+      accion: "TRASLADO",
+      instrucciones: `Private notes ${empresaId}`,
+      viaOrigen: { nombre: "Vía 1" },
+      viaDestino: { nombre: "Vía 2" },
     },
   };
 }
 
 describe("client current rounds and private history", () => {
   it("returns all current companies only in the signed locality without fetching private details", async () => {
-    upstream.fetch.mockResolvedValueOnce(Response.json([round(1), round(2, 4), round(3, 4, 2), round(4, 4, 1, true)]));
+    upstream.fetch.mockResolvedValueOnce(
+      Response.json([round(1), round(2, 4), round(3, 4, 2), round(4, 4, 1, true)]),
+    );
     const response = await read();
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.map((row: { id: number }) => row.id)).toEqual([1, 2]);
-    expect(data[0]).toMatchObject({ localidadId: 1, movimiento: { createdAt: "2026-09-08T10:00:00Z", tipoMovimiento: "NATURAL", accion: "TRASLADO" } });
+    expect(data[0]).toMatchObject({
+      localidadId: 1,
+      movimiento: {
+        createdAt: "2026-09-08T10:00:00Z",
+        tipoMovimiento: "NATURAL",
+        accion: "TRASLADO",
+      },
+    });
     expect(data[0].movimiento.instrucciones).toBe("Private notes 3");
     expect(data[1].movimiento.instrucciones).toBeNull();
     expect(upstream.fetch).toHaveBeenCalledTimes(1);
@@ -77,7 +100,9 @@ describe("client current rounds and private history", () => {
 
   it("filters completed and other-locality rows even when the fallback ignores its query", async () => {
     upstream.fetch.mockResolvedValueOnce(Response.json({}, { status: 404 }));
-    upstream.fetch.mockResolvedValueOnce(Response.json([round(1), round(2, 4), round(3, 3, 2), round(4, 4, 1, true)]));
+    upstream.fetch.mockResolvedValueOnce(
+      Response.json([round(1), round(2, 4), round(3, 3, 2), round(4, 4, 1, true)]),
+    );
     const response = await read("alcance=localidad");
     expect(response.status).toBe(200);
     expect((await response.json()).map((row: { id: number }) => row.id)).toEqual([1, 2]);
@@ -85,14 +110,20 @@ describe("client current rounds and private history", () => {
   });
 
   it("forces private company and locality for history even if alcance is manipulated", async () => {
-    upstream.fetch.mockResolvedValueOnce(Response.json({ data: [
-      { id: 1, empresaId: 3, localidadId: 1, estado: "CONCLUIDO" },
-      { id: 2, empresaId: 4, localidadId: 1, estado: "CONCLUIDO" },
-      { id: 3, empresaId: 3, localidadId: 2, estado: "CONCLUIDO" },
-    ] }));
+    upstream.fetch.mockResolvedValueOnce(
+      Response.json({
+        data: [
+          { id: 1, empresaId: 3, localidadId: 1, estado: "CONCLUIDO" },
+          { id: 2, empresaId: 4, localidadId: 1, estado: "CONCLUIDO" },
+          { id: 3, empresaId: 3, localidadId: 2, estado: "CONCLUIDO" },
+        ],
+      }),
+    );
     const response = await read("estado=terminados&alcance=localidad");
     expect(response.status).toBe(200);
-    expect((await response.json()).map((row: { movimientoId: number }) => row.movimientoId)).toEqual([1]);
+    expect(
+      (await response.json()).map((row: { movimientoId: number }) => row.movimientoId),
+    ).toEqual([1]);
     const url = new URL(upstream.fetch.mock.calls[0][0]);
     expect(url.pathname).toBe("/movimientos/buscar");
     expect(url.searchParams.get("empresaId")).toBe("3");
@@ -106,22 +137,35 @@ describe("client current rounds and private history", () => {
   });
 
   it("does not grant private detail access through the shared locality flag", async () => {
-    upstream.fetch.mockResolvedValueOnce(Response.json({ empresa: { id: 4 }, movimiento: { id: 7, localidadId: 1, instrucciones: "Other company secret" } }));
-    const response = await readPrivateRoundInfo(new Request("http://localhost:3012/api/cliente/ronda-info?ids=7&alcance=localidad"));
+    upstream.fetch.mockResolvedValueOnce(
+      Response.json({
+        empresa: { id: 4 },
+        movimiento: { id: 7, localidadId: 1, instrucciones: "Other company secret" },
+      }),
+    );
+    const response = await readPrivateRoundInfo(
+      new Request("http://localhost:3012/api/cliente/ronda-info?ids=7&alcance=localidad"),
+    );
     expect(response.status).toBe(403);
     expect(await response.text()).not.toContain("Other company secret");
   });
 
   it("does not return private details from another locality of the same company", async () => {
-    upstream.fetch.mockResolvedValueOnce(Response.json({ empresa: { id: 3 }, movimiento: { id: 7, localidadId: 2 } }));
-    const response = await readPrivateRoundInfo(new Request("http://localhost:3012/api/cliente/ronda-info?ids=7"));
+    upstream.fetch.mockResolvedValueOnce(
+      Response.json({ empresa: { id: 3 }, movimiento: { id: 7, localidadId: 2 } }),
+    );
+    const response = await readPrivateRoundInfo(
+      new Request("http://localhost:3012/api/cliente/ronda-info?ids=7"),
+    );
     expect(response.status).toBe(403);
   });
 
   it("keeps own company/locality details available", async () => {
     const data = { empresa: { id: 3 }, movimiento: { id: 7, localidadId: 1 } };
     upstream.fetch.mockResolvedValueOnce(Response.json(data));
-    const response = await readPrivateRoundInfo(new Request("http://localhost:3012/api/cliente/ronda-info?ids=7"));
+    const response = await readPrivateRoundInfo(
+      new Request("http://localhost:3012/api/cliente/ronda-info?ids=7"),
+    );
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ 7: data });
   });
@@ -133,10 +177,15 @@ describe("client current rounds and private history", () => {
       { id: 2, empresaId: 4, localidadId: 2, estado: "CONCLUIDO" },
       { id: 3, empresaId: 3, localidadId: 3, estado: "CONCLUIDO" },
     ]);
-    const response = await readArrastres(new NextRequest("http://localhost:3012/api/cliente/torreon/arrastres?localidadId=2&vista=HISTORIAL&alcance=localidad"));
+    const response = await readArrastres(
+      new NextRequest(
+        "http://localhost:3012/api/cliente/torreon/arrastres?localidadId=2&vista=HISTORIAL&alcance=localidad",
+      ),
+    );
     expect(response.status).toBe(200);
     expect((await response.json()).map((row: { id: number }) => row.id)).toEqual([1]);
-    const params = new URL(upstream.torreon.mock.calls[0][0], "http://synthetic-torreon.invalid").searchParams;
+    const params = new URL(upstream.torreon.mock.calls[0][0], "http://synthetic-torreon.invalid")
+      .searchParams;
     expect(params.get("empresaId")).toBe("3");
     expect(params.get("localidadId")).toBe("2");
     expect(params.has("alcance")).toBe(false);
@@ -150,37 +199,62 @@ describe("client current rounds and private history", () => {
       { id: 3, empresaId: 4, localidadId: 2, estado: "CONCLUIDO" },
       { id: 4, empresaId: 4, localidadId: 3, estado: "SOLICITADO" },
     ]);
-    const response = await readArrastres(new NextRequest("http://localhost:3012/api/cliente/torreon/arrastres?alcance=localidad"));
+    const response = await readArrastres(
+      new NextRequest("http://localhost:3012/api/cliente/torreon/arrastres?alcance=localidad"),
+    );
     expect(response.status).toBe(200);
     expect((await response.json()).map((row: { id: number }) => row.id)).toEqual([1, 2]);
   });
 
   it("does not expose another company's arrastre details through alcance", async () => {
     upstream.session.mockResolvedValue(clientSession(2));
-    upstream.torreon.mockResolvedValueOnce({ id: 8, empresaId: 4, localidadId: 2, instrucciones: "Other company secret" });
-    const response = await readArrastres(new NextRequest("http://localhost:3012/api/cliente/torreon/arrastres?localidadId=2&id=8&alcance=localidad"));
+    upstream.torreon.mockResolvedValueOnce({
+      id: 8,
+      empresaId: 4,
+      localidadId: 2,
+      instrucciones: "Other company secret",
+    });
+    const response = await readArrastres(
+      new NextRequest(
+        "http://localhost:3012/api/cliente/torreon/arrastres?localidadId=2&id=8&alcance=localidad",
+      ),
+    );
     expect(response.status).toBe(403);
     expect(await response.text()).not.toContain("Other company secret");
   });
 });
-afterEach(() => { vi.unstubAllEnvs(); });
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("rondas GET upstream failures", () => {
-  it.each(["", "estado=terminados", "entity=torneados"])("returns 502 instead of an empty successful queue for %s", async (query) => {
-    upstream.fetch.mockResolvedValueOnce(Response.json({ message: "sensitive database detail" }, { status: 503 }));
-    const response = await read(query);
-    expect(response.status).toBe(502);
-    expect(await response.json()).toEqual({ message: "No se pudieron cargar las rondas. Inténtalo de nuevo." });
-    expect(upstream.fetch).toHaveBeenCalledTimes(1);
-  });
+  it.each(["", "estado=terminados", "entity=torneados"])(
+    "returns 502 instead of an empty successful queue for %s",
+    async (query) => {
+      upstream.fetch.mockResolvedValueOnce(
+        Response.json({ message: "sensitive database detail" }, { status: 503 }),
+      );
+      const response = await read(query);
+      expect(response.status).toBe(502);
+      expect(await response.json()).toEqual({
+        message: "No se pudieron cargar las rondas. Inténtalo de nuevo.",
+      });
+      expect(upstream.fetch).toHaveBeenCalledTimes(1);
+    },
+  );
 
-  it.each([401, 403, 504])("preserves the actionable upstream status %s without fallback", async (status) => {
-    upstream.fetch.mockResolvedValueOnce(Response.json({ message: "private upstream message" }, { status }));
-    const response = await read();
-    expect(response.status).toBe(status);
-    expect(await response.text()).not.toContain("private upstream message");
-    expect(upstream.fetch).toHaveBeenCalledTimes(1);
-  });
+  it.each([401, 403, 504])(
+    "preserves the actionable upstream status %s without fallback",
+    async (status) => {
+      upstream.fetch.mockResolvedValueOnce(
+        Response.json({ message: "private upstream message" }, { status }),
+      );
+      const response = await read();
+      expect(response.status).toBe(status);
+      expect(await response.text()).not.toContain("private upstream message");
+      expect(upstream.fetch).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it.each([404, 405])("uses a compatible endpoint only after %s", async (status) => {
     upstream.fetch.mockResolvedValueOnce(Response.json({}, { status }));
@@ -198,15 +272,23 @@ describe("rondas GET upstream failures", () => {
     expect(upstream.fetch).toHaveBeenCalledTimes(2);
   });
 
-  it.each(["", "estado=terminados", "entity=torneados"])("preserves a valid empty collection for %s", async (query) => {
-    upstream.fetch.mockResolvedValueOnce(Response.json({ data: [] }));
-    const response = await read(query);
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual([]);
-    expect(upstream.fetch).toHaveBeenCalledTimes(1);
-  });
+  it.each(["", "estado=terminados", "entity=torneados"])(
+    "preserves a valid empty collection for %s",
+    async (query) => {
+      upstream.fetch.mockResolvedValueOnce(Response.json({ data: [] }));
+      const response = await read(query);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual([]);
+      expect(upstream.fetch).toHaveBeenCalledTimes(1);
+    },
+  );
 
-  it.each(["<html>backend error</html>", JSON.stringify({ message: "unexpected payload" }), JSON.stringify([null]), JSON.stringify([{}])])("rejects malformed collections without retrying another endpoint: %s", async (body) => {
+  it.each([
+    "<html>backend error</html>",
+    JSON.stringify({ message: "unexpected payload" }),
+    JSON.stringify([null]),
+    JSON.stringify([{}]),
+  ])("rejects malformed collections without retrying another endpoint: %s", async (body) => {
     upstream.fetch.mockResolvedValueOnce(new Response(body));
     const response = await read();
     expect(response.status).toBe(502);
@@ -218,7 +300,9 @@ describe("rondas GET upstream failures", () => {
     session.role = "COORDINADOR";
     session.authorization.role = "COORDINADOR";
     upstream.session.mockResolvedValue(session);
-    upstream.fetch.mockResolvedValueOnce(Response.json([{ id: 1, rondaNumero: 1, orden: 1, movimientoId: 7 }]));
+    upstream.fetch.mockResolvedValueOnce(
+      Response.json([{ id: 1, rondaNumero: 1, orden: 1, movimientoId: 7 }]),
+    );
     upstream.fetch.mockResolvedValueOnce(Response.json({}, { status: 503 }));
     const response = await read();
     expect(response.status).toBe(502);
@@ -226,7 +310,17 @@ describe("rondas GET upstream failures", () => {
   });
 
   it("propagates a Torno detail outage instead of dropping its queue row", async () => {
-    upstream.fetch.mockResolvedValueOnce(Response.json([{ id: 1, movimientoId: 7, localidadId: 1, status: "SOLICITADO", movimiento: { empresa: { id: 3 } } }]));
+    upstream.fetch.mockResolvedValueOnce(
+      Response.json([
+        {
+          id: 1,
+          movimientoId: 7,
+          localidadId: 1,
+          status: "SOLICITADO",
+          movimiento: { empresa: { id: 3 } },
+        },
+      ]),
+    );
     upstream.fetch.mockResolvedValueOnce(Response.json({}, { status: 503 }));
     const response = await read("entity=torneados");
     expect(response.status).toBe(502);
@@ -235,9 +329,16 @@ describe("rondas GET upstream failures", () => {
 
   it("forwards cancellation and returns 504 for an aborted read", async () => {
     const controller = new AbortController();
-    upstream.fetch.mockImplementationOnce((_url, _init, signal: AbortSignal) => new Promise((_resolve, reject) => {
-      signal.addEventListener("abort", () => reject(new DOMException("Cancelled", "AbortError")), { once: true });
-    }));
+    upstream.fetch.mockImplementationOnce(
+      (_url, _init, signal: AbortSignal) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => reject(new DOMException("Cancelled", "AbortError")),
+            { once: true },
+          );
+        }),
+    );
     const pending = read("", { signal: controller.signal });
     await vi.waitFor(() => expect(upstream.fetch).toHaveBeenCalledTimes(1));
     const forwardedSignal = upstream.fetch.mock.calls[0][2] as AbortSignal;
@@ -253,14 +354,17 @@ describe("rondas GET upstream failures", () => {
     expect(upstream.torreon).not.toHaveBeenCalled();
   });
 
-  it.each([401, 403, 503, 504])("reports Torreón service failure %s without expiring the user session", async (status) => {
-    upstream.session.mockResolvedValue(clientSession(2));
-    upstream.torreon.mockRejectedValueOnce(new TorreonMsError("private service error", status));
-    const response = await read("localidadId=2");
-    expect(response.status).toBe(status === 504 ? 504 : 502);
-    expect(await response.text()).not.toContain("private service error");
-    expect(upstream.fetch).not.toHaveBeenCalled();
-  });
+  it.each([401, 403, 503, 504])(
+    "reports Torreón service failure %s without expiring the user session",
+    async (status) => {
+      upstream.session.mockResolvedValue(clientSession(2));
+      upstream.torreon.mockRejectedValueOnce(new TorreonMsError("private service error", status));
+      const response = await read("localidadId=2");
+      expect(response.status).toBe(status === 504 ? 504 : 502);
+      expect(await response.text()).not.toContain("private service error");
+      expect(upstream.fetch).not.toHaveBeenCalled();
+    },
+  );
 
   it("preserves a valid empty Torreón queue and passes an abort signal", async () => {
     upstream.session.mockResolvedValue(clientSession(2));
@@ -268,5 +372,58 @@ describe("rondas GET upstream failures", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual([]);
     expect(upstream.torreon.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+  });
+});
+
+describe("paginated arrastre scope", () => {
+  for (const role of ["CLIENTE", "ARRASTRE_TORREON"] as const) {
+    for (const history of [false, true]) {
+      it(`${role} ${history ? "private history" : "shared current locality"} forwards filters and metadata`, async () => {
+        const session = clientSession(2);
+        session.role = role;
+        session.authorization = {
+          ...loginProfile(role),
+          scope: { mode: "COMPANY_LOCALITY", empresaId: 3, localidadId: 2 },
+        };
+        upstream.session.mockResolvedValue(session);
+        const meta = { page: 4, pageSize: 25, total: 150, totalPages: 6 };
+        upstream.torreon.mockResolvedValue({
+          data: [
+            {
+              id: 80,
+              localidadId: 2,
+              empresaId: history ? 3 : 4,
+              estado: history ? "CONCLUIDO" : "SOLICITADO",
+              vagones: [],
+            },
+          ],
+          meta,
+        });
+        const response = await readArrastres(
+          new NextRequest(
+            `http://localhost/api/cliente/torreon/arrastres?pagination=1&localidadId=2&vista=${history ? "historial" : "activos"}&alcance=localidad&page=4&pageSize=25&q=150&priorityEmpresaId=999`,
+          ),
+        );
+        expect(response.status).toBe(200);
+        expect((await response.json()).meta).toEqual(meta);
+        const params = new URL(upstream.torreon.mock.calls[0][0], "http://synthetic").searchParams;
+        expect(params.get("empresaId")).toBe(history ? "3" : null);
+        expect(params.get("priorityEmpresaId")).toBe("3");
+        expect(params.get("page")).toBe("4");
+        expect(params.get("q")).toBe("150");
+      });
+    }
+  }
+  it("does not silently consume a legacy service when pagination is requested", async () => {
+    upstream.session.mockResolvedValue(clientSession(2));
+    expect(
+      (
+        await readArrastres(
+          new NextRequest(
+            "http://localhost/api/cliente/torreon/arrastres?localidadId=2&pagination=1",
+          ),
+        )
+      ).status,
+    ).toBe(502);
   });
 });

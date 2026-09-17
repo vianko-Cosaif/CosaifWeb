@@ -1,14 +1,20 @@
 const overlays: HTMLElement[] = [];
 const originalInert = new Map<HTMLElement, boolean>();
-let originalOverflow = '';
+let originalOverflow = "";
 let originalFocus: HTMLElement | null = null;
 
 function sync() {
-  const top = overlays.at(-1);
-  for (const node of document.body.children) {
-    if (!(node instanceof HTMLElement)) continue;
-    if (!originalInert.has(node)) originalInert.set(node, node.inert);
-    node.inert = node !== top;
+  for (const [node, inert] of originalInert) node.inert = inert;
+  let active = overlays.at(-1);
+  // A fullscreen portal is nested inside the board; keep its ancestors interactive.
+  while (active?.parentElement) {
+    for (const node of active.parentElement.children) {
+      if (!(node instanceof HTMLElement)) continue;
+      if (!originalInert.has(node)) originalInert.set(node, node.inert);
+      node.inert = node !== active;
+    }
+    if (active.parentElement === document.body) break;
+    active = active.parentElement;
   }
 }
 
@@ -20,14 +26,15 @@ export function registerDialog(overlay: HTMLElement) {
     originalFocus = previousFocus;
   }
   overlays.push(overlay);
-  document.body.style.overflow = 'hidden';
+  document.body.style.overflow = "hidden";
   sync();
   return () => {
     const index = overlays.indexOf(overlay);
     if (index !== -1) overlays.splice(index, 1);
     if (overlays.length) {
       sync();
-      if (previousFocus?.isConnected && overlays.at(-1)?.contains(previousFocus)) previousFocus.focus();
+      if (previousFocus?.isConnected && overlays.at(-1)?.contains(previousFocus))
+        previousFocus.focus();
     } else {
       for (const [node, inert] of originalInert) node.inert = inert;
       originalInert.clear();
