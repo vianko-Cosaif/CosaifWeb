@@ -2,7 +2,7 @@
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import ClientPageWrapper from "../../features/cliente/ClientPageWrapper";
-import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
+import { hasPermission, PERMISSIONS } from "@/lib/accessControl";
 import { getVerifiedSession } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +11,8 @@ type SP = { loc?: string | string[] };
 
 export default async function Page({ searchParams }: { searchParams: Promise<SP> }) {
   const session = await getVerifiedSession();
-  if (!session || session.authorization.capabilities.area !== "cliente") redirect("/login?loc=cliente");
+  if (!session || session.authorization.capabilities.area !== "cliente")
+    redirect("/login?loc=cliente");
 
   const { loc } = await searchParams;
   const qLoc = Array.isArray(loc) ? loc[0] : loc;
@@ -21,10 +22,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<SP>
   const role = session.role;
   const capabilities = session.authorization.capabilities;
   const effectiveLocalidadId = capabilities.canSwitchLocalidad
-    ? toInt(qLoc) ?? assignedLocalidadId
+    ? (toInt(qLoc) ?? assignedLocalidadId)
     : assignedLocalidadId;
 
-  if (!capabilities.canSwitchLocalidad && isTorreonLocalidadId(assignedLocalidadId)) {
+  if (role === "ARRASTRE_TORREON") {
     redirect("/cliente/torreon");
   }
 
@@ -35,7 +36,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<SP>
           <div className="h-32 rounded-2xl border-2 border-slate-200 bg-white animate-pulse shadow-sm" />
         }
       >
-        <ClientPageWrapper localidadId={effectiveLocalidadId} empresaId={empresaId} role={role} />
+        <ClientPageWrapper
+          localidadId={effectiveLocalidadId}
+          empresaId={empresaId}
+          role={role}
+          canCreateMovements={hasPermission(session.authorization, PERMISSIONS.MOVEMENTS_CREATE)}
+        />
       </Suspense>
     </section>
   );

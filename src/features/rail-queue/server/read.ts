@@ -198,19 +198,23 @@ export async function GET(req: NextRequest) {
     const token = cookieStore.get(process.env.JWT_COOKIE_NAME || "token")?.value;
     const session = await getVerifiedSession();
     if (!token || !session) return NextResponse.json({ message: "No autorizado" }, { status: 401 });
+    if (session.role === "ARRASTRE_TORREON")
+      return NextResponse.json({ message: "Tu perfil sólo permite arrastres." }, { status: 403 });
     if (!hasPermission(session.authorization, PERMISSIONS.ROUNDS_READ)) {
       return NextResponse.json({ message: "No autorizado para consultar rondas" }, { status: 403 });
     }
     const { authorization } = session;
+    const editing = searchParams.get("editing") === "1";
+    const clientEditor = editing && ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"].includes(session.role);
     const readScope = resolveMovementReadScope(
-      session,
-      concluido ? "history-list" : "current-list",
+      clientEditor ? { ...session, role: "CLIENTE" } : session,
+      editing ? "detail" : concluido ? "history-list" : "current-list",
       searchParams,
     );
     const { empresaId, localidadId } = readScope;
     const generalLocalityView =
       readScope.sharedCurrentLocality ||
-      (session.role !== "CLIENTE" &&
+      (!editing && session.role !== "CLIENTE" &&
         requestedGeneralLocalityView &&
         authorization.capabilities.canViewAllCompanies);
 

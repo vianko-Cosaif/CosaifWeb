@@ -37,3 +37,12 @@ describe("notification event identity", () => {
     }
   });
 });
+
+it("keeps new data revisions while notifying an incident only once", () => {
+  const first = { type: "incidente.estado", incidenteId: 15, movimientoId: 10, localidadId: 1, estado: "ABIERTO", version: 1 };
+  const changed = { ...first, version: 2 };
+  const suppress = createRealtimeEventDeduplicator();
+  expect(suppress(first)).toBe(false);
+  expect(suppress(changed)).toBe(false);
+  expect(notificationIdentity(first).key).toBe(notificationIdentity(changed).key);
+});

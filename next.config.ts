@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { FIREBASE_WORKER_CSP } from "./src/lib/firebaseMessagingWorker";
 import createBundleAnalyzer from "@next/bundle-analyzer";
 import path from "node:path";
 
@@ -69,6 +70,15 @@ const nextConfig: NextConfig = {
       {
         source: "/:path*",
         headers: securityHeaders,
+      },
+      {
+        source: "/firebase-messaging-sw.js",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: FIREBASE_WORKER_CSP,
+          },
+        ],
       },
       {
         source: "/sw.js",

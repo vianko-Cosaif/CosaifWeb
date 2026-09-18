@@ -4,6 +4,7 @@ import {
   type AuthorizationProfile,
   type NavModuleId,
 } from "./accessControl";
+import { torreonClientKind } from "./auth/torreonClientPolicy";
 
 export type AppNavigationItem = {
   id: NavModuleId;
@@ -81,7 +82,11 @@ function hrefForModule(role: string | null | undefined, moduleId: NavModuleId) {
   if (moduleId === "torno") return `${base}/torno`;
   if (moduleId === "configuracion") return `${base}/configuracion`;
   if (moduleId === "usuarios") return `${base}/usuarios`;
-  if (moduleId === "incidentes" && capabilities.area === "cliente" && capabilities.canViewTorreonArrastres) {
+  if (
+    moduleId === "incidentes" &&
+    capabilities.area === "cliente" &&
+    capabilities.canViewTorreonArrastres
+  ) {
     return "/cliente/torreon/incidentes";
   }
   if (moduleId === "incidentes") return `${base}/incidentes`;
@@ -106,13 +111,17 @@ export function buildNavigationForRole(role?: string | null): AppNavigationItem[
   }));
 }
 
-export function buildNavigationForAuthorization(authorization: AuthorizationProfile): AppNavigationItem[] {
+export function buildNavigationForAuthorization(
+  authorization: AuthorizationProfile,
+): AppNavigationItem[] {
   const role = authorization.role;
-  return authorization.capabilities.navModules.map((moduleId) => ({
-    id: moduleId,
-    href: hrefForModule(role, moduleId),
-    ...MODULE_COPY[moduleId],
-  }));
+  return authorization.capabilities.navModules
+    .filter((moduleId) => moduleId !== "torreon_arrastres" || torreonClientKind(role) !== "NATURAL")
+    .map((moduleId) => ({
+      id: moduleId,
+      href: hrefForModule(role, moduleId),
+      ...MODULE_COPY[moduleId],
+    }));
 }
 
 export function isNavigationItemActive(pathname: string, item: AppNavigationItem) {

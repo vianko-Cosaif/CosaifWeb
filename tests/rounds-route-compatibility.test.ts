@@ -5,7 +5,7 @@ import * as compatibility from "@/app/cliente/rondas/route";
 import { loginProfile } from "./fixtures/authorization";
 import { PERMISSIONS } from "@/lib/accessControl";
 
-const upstream = vi.hoisted(() => ({ fetch: vi.fn(), session: vi.fn() }));
+const upstream = vi.hoisted(() => ({ fetch: vi.fn(), session: vi.fn(), torreon: vi.fn() }));
 vi.mock("next/headers", () => ({
   cookies: async () => ({ get: () => ({ value: "synthetic-token" }) }),
 }));
@@ -13,6 +13,9 @@ vi.mock("@/lib/server/session", () => ({ getVerifiedSession: upstream.session })
 vi.mock("@/lib/server/upstream", async (original) => ({
   ...(await original<typeof import("@/lib/server/upstream")>()),
   fetchUpstream: upstream.fetch,
+}));
+vi.mock("@/lib/torreonMs", async original => ({
+  ...(await original<typeof import("@/lib/torreonMs")>()), fetchTorreonMsJson: upstream.torreon,
 }));
 const session = () => ({
   role: "CLIENTE",
@@ -51,6 +54,9 @@ describe.each([
     expect(upstream.fetch).not.toHaveBeenCalled();
   });
   it("keeps the compatibility order action and validates ownership before its write", async () => {
+    const operator = session(); operator.role = "COORDINADOR";
+    operator.authorization.scope.mode = "LOCALITY";
+    upstream.session.mockResolvedValue(operator);
     expect((await post({ action: "orden", id: 10, orden: 2 })).status).toBe(200);
     expect(upstream.fetch).toHaveBeenCalledTimes(2);
     const [url, init, signal] = upstream.fetch.mock.calls[1];
@@ -66,6 +72,27 @@ describe.each([
     upstream.fetch.mockResolvedValue(Response.json(detail(company, locality)));
     expect((await post({ action: "orden", id: 10, orden: 2 })).status).toBe(403);
     expect(upstream.fetch.mock.calls.every(([, init]) => init.method === "GET")).toBe(true);
+  });
+  it.each(["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"])("blocks foreign rounds even with broad authorization for %s", async role => {
+    const viewer = { ...session(), role }; viewer.authorization.scope.mode = "GLOBAL";
+    upstream.session.mockResolvedValue(viewer);
+    upstream.fetch.mockResolvedValueOnce(Response.json(detail())).mockResolvedValueOnce(Response.json(detail(4)));
+    expect((await post({ action: "swap", rondaAId: 10, rondaBId: 11 })).status).toBe(403);
+    expect(upstream.fetch.mock.calls.every(([, init]) => init.method === "GET")).toBe(true);
+  });
+  it("allows swapping two own-company rounds", async () => {
+    expect((await post({ action: "swap", rondaAId: 10, rondaBId: 11 })).status).toBe(200);
+    expect(upstream.fetch.mock.calls.at(-1)?.[1].method).toBe("PATCH");
+  });
+  it("blocks a raw client reorder that could shift other companies", async () => {
+    expect((await post({ action: "orden", id: 10, orden: 2 })).status).toBe(403);
+    expect(upstream.fetch).not.toHaveBeenCalled();
+  });
+  it.each([[4, 2], [3, 1]])("blocks foreign Torreon company/patio %s/%s before PATCH", async (empresaId, localidadId) => {
+    upstream.session.mockResolvedValue({ ...session(), localidadId: 2 });
+    upstream.torreon.mockResolvedValue([{ id: 1, numeroRonda: 1, localidadId, movimientos: [{ id: 10, empresaId, movimientoId: 50, movimiento: { id: 50, empresaId, estado: "SOLICITADO" } }] }]);
+    expect((await post({ action: "orden", id: 10, orden: 2 })).status).toBe(403);
+    expect(upstream.torreon.mock.calls.every(([, init]) => init?.method !== "PATCH")).toBe(true);
   });
   it("validates both sides of a swap", async () => {
     upstream.fetch.mockResolvedValueOnce(Response.json(detail()));

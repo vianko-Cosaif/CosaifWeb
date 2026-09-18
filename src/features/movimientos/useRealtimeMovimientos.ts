@@ -6,6 +6,9 @@ import { useEffect, useRef, useState } from "react";
 import { handleAuthError } from "@/lib/auth/auth";
 
 export type RealtimeMovementEventType =
+  | "movimiento.recordatorio"
+  | "torreon.movimiento.recordatorio"
+  | "torreon.arrastre.recordatorio"
   | "movimiento.creado"
   | "movimiento.estado"
   | "movimiento.incidente"

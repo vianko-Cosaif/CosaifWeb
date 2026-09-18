@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
-import { canResolveTorreonIncidentRole, canViewTorreonArrastreRole } from "@/lib/torreonLocalidad";
+import { canViewTorreonArrastreRole } from "@/lib/torreonLocalidad";
 import { toTorreonImageProxyUrl } from "@/lib/torreonImageProxy";
 import {
   ARRASTRE_MAX_CAPACITY,
@@ -193,6 +193,8 @@ export async function GET(req: NextRequest) {
       return jsonError("No autorizado", 401);
     }
     const role = session.role;
+    if (!canViewTorreonArrastreRole(role))
+      return jsonError("Tu perfil sólo permite movimientos naturales.", 403);
     const historyRequested =
       ["HISTORIAL", "COMPLETADOS", "CONCLUIDOS", "CERRADOS", "PASADOS"].includes(
         String(vista || "").toUpperCase(),
@@ -202,7 +204,7 @@ export async function GET(req: NextRequest) {
         .split(",")
         .some((value) => ["CONCLUIDO", "CANCELADO"].includes(value.trim()));
     const clientScope =
-      role === "CLIENTE"
+      role === "ARRASTRE_TORREON"
         ? resolveMovementReadScope(
             session,
             id || auditId ? "detail" : historyRequested ? "history-list" : "current-list",
@@ -225,9 +227,6 @@ export async function GET(req: NextRequest) {
     const generalLocalityView = clientScope
       ? clientScope.sharedCurrentLocality
       : !historyRequested && searchParams.get("alcance") === "localidad" && !id && !auditId;
-    if (!canViewTorreonArrastreRole(role) && !canResolveTorreonIncidentRole(role)) {
-      return NextResponse.json([], { status: 200 });
-    }
 
     if (localityScoped && sessionLocalidadId && sessionLocalidadId !== Number(localidadId)) {
       return jsonError("No autorizado para consultar otra localidad", 403);

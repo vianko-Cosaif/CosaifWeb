@@ -98,6 +98,24 @@ const server = createServer(async (request, response) => {
   const key = String(request.headers.authorization || "").replace(/^Bearer e2e-/, "");
   if (!Object.hasOwn(profiles, key))
     return json(response, 401, { error: "Sesión de prueba inválida" });
+  // One explicit synthetic write exercises the natural client creation boundary.
+  if (
+    key === "cliente_torreon" &&
+    request.method === "POST" &&
+    url.pathname === "/torreon/movimientos"
+  ) {
+    let body = "";
+    for await (const chunk of request) body += chunk;
+    const input = JSON.parse(body || "{}");
+    if (
+      input.empresaId !== 3 ||
+      input.localidadId !== 2 ||
+      input.creadoPorId !== user(key).id ||
+      input.clienteId !== user(key).id
+    )
+      return json(response, 403, { error: "Creación fuera de alcance" });
+    return json(response, 201, { id: 9071, ...input, estado: "SOLICITADO" });
+  }
   if (request.method !== "GET")
     return json(response, 405, { error: "La API de prueba no admite escrituras" });
   if (url.pathname === "/usuarios/me")
@@ -109,6 +127,11 @@ const server = createServer(async (request, response) => {
     return json(response, 200, { version: "e2e-empty", updatedAt: null });
   if (/^\/empresas(?:\/lite)?$/.test(url.pathname)) return json(response, 200, empresas);
   if (/^\/localidades(?:\/lite)?$/.test(url.pathname)) return json(response, 200, localidades);
+  if (key === "cliente_torreon" && url.pathname === "/vias/localidad/2")
+    return json(response, 200, [
+      { id: 21, nombre: "Recepción" },
+      { id: 22, nombre: "Salida" },
+    ]);
   if (/^\/rondas(?:\/localidad\/\d+\/estado\/(?:true|false))?$/.test(url.pathname)) {
     return json(
       response,

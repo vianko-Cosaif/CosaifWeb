@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
 import { runInNewContext } from "node:vm";
 import { claimNotification } from "../src/lib/notificationDelivery";
+import nextConfig from "../next.config";
 import { GET } from "../src/app/firebase-messaging-sw.js/route";
 
 afterEach(() => {
@@ -59,4 +60,48 @@ test("el almacenamiento no disponible conserva avisos nuevos sin repetirlos", as
   vi.stubGlobal("indexedDB", undefined);
   expect(await claimNotification("memory-only")).toBe(true);
   expect(await claimNotification("memory-only")).toBe(false);
+});
+
+test("la CSP del worker permite sus imports de Firebase sin habilitar scripts arbitrarios", async () => {
+  const response = GET();
+  const source = await response.text();
+  const policy = response.headers.get("content-security-policy") ?? "";
+  const scripts =
+    policy
+      .split(";")
+      .map((directive) => directive.trim())
+      .find((directive) => directive.startsWith("script-src ")) ?? "";
+  const allowedSources = scripts.split(/\s+/).slice(1);
+  const importedUrls = [...source.matchAll(/importScripts\("([^"]+)"\)/g)].map((match) => match[1]);
+  expect(importedUrls).toHaveLength(2);
+  for (const url of importedUrls) {
+    expect(
+      allowedSources.some(
+        (allowed) =>
+          allowed.startsWith("https://www.gstatic.com/firebasejs/") && url.startsWith(allowed),
+      ),
+    ).toBe(true);
+  }
+  expect(allowedSources).not.toContain("'unsafe-inline'");
+  expect(allowedSources).not.toContain("'unsafe-eval'");
+  expect(allowedSources).not.toContain("https:");
+  expect(allowedSources).not.toContain("*");
+  expect(policy).toContain("default-src 'none'");
+  expect(policy).toContain("connect-src 'self' https://*.googleapis.com");
+  expect(response.headers.get("service-worker-allowed")).toBe("/");
+});
+
+test("Next aplica la CSP de Firebase despues de la politica general", async () => {
+  const headers = await nextConfig.headers!();
+  const generalIndex = headers.findIndex((entry) => entry.source === "/:path*");
+  const workerIndex = headers.findIndex((entry) => entry.source === "/firebase-messaging-sw.js");
+  expect(workerIndex).toBeGreaterThan(generalIndex);
+  const workerPolicy = headers[workerIndex].headers.find(
+    (header) => header.key === "Content-Security-Policy",
+  )?.value;
+  const pagePolicy = headers[generalIndex].headers.find(
+    (header) => header.key === "Content-Security-Policy",
+  )?.value;
+  expect(workerPolicy).toBe(GET().headers.get("content-security-policy"));
+  expect(pagePolicy).not.toContain("www.gstatic.com");
 });

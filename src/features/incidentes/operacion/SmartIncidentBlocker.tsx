@@ -59,9 +59,9 @@ const INCIDENTES = "/api/incidentes";
 const WINDOW_DURATION_MS = 10 * 60 * 1000;
 
 const URGENCY = {
-  NORMAL: { max: 50, label: "NORMAL", color: "text-emerald-300", bar: "bg-emerald-300" },
-  ALERTA: { max: 85, label: "ALERTA", color: "text-amber-300", bar: "bg-amber-300" },
-  CRITICO: { max: 100, label: "CRITICO", color: "text-rose-300", bar: "bg-rose-300" },
+  NORMAL: { max: 50, label: "Tiempo disponible", color: "text-emerald-300", bar: "bg-emerald-300" },
+  ALERTA: { max: 85, label: "Atención pendiente", color: "text-amber-300", bar: "bg-amber-300" },
+  CRITICO: { max: 100, label: "Requiere atención", color: "text-rose-300", bar: "bg-rose-300" },
 } as const;
 
 const ESTADO_COLORS = {
@@ -110,7 +110,7 @@ function normalizeImageUrl(raw: string, incident?: Incident | null) {
   return /^https?:\/\//i.test(raw) ? viaProxy(raw) : viaProxy(`/incidentes/imagen/${encodeURIComponent(raw)}`);
 }
 function formatTime(ms: number) {
-  const s = Math.floor(ms / 1000);
+  const s = Math.max(0, Math.ceil(ms / 1000));
   const m = Math.floor(s / 60);
   const r = s % 60;
   return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
@@ -212,11 +212,11 @@ const TimerBar = React.memo(function TimerBar({ leftMs, pct }: { leftMs: number;
     <div className="mt-3 sm:mt-4">
       <div className="flex items-center gap-2 text-white">
         <TimerReset className="h-4 w-4" />
-        <span className={cn("text-sm sm:text-base font-bold", u.color)}>{formatTime(leftMs)}</span>
-        <span className="text-[10px] sm:text-xs opacity-90">restante</span>
+        <span className={cn("text-3xl sm:text-4xl font-bold tabular-nums", u.color)}>{formatTime(leftMs)}</span>
+        <span className="text-[10px] sm:text-xs opacity-90">para atender</span>
         <span className="ml-3 text-[10px] sm:text-xs font-semibold">{u.label}</span>
       </div>
-      <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/30 dark:bg-white/20">
+      <div role="progressbar" aria-label="Tiempo transcurrido del incidente" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/30 dark:bg-white/20">
         <div className={cn("h-2 rounded-full transition-[width] duration-300", u.bar)} style={{ width: `${pct}%` }} />
       </div>
     </div>
@@ -412,8 +412,11 @@ export default function SmartIncidentBlocker({
   /* Timer tick each 1s */
   useEffect(() => {
     if (!countdownAllowed) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
+    const refresh = () => setNow(Date.now());
+    const id = setInterval(refresh, 1000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { clearInterval(id); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
   }, [countdownAllowed]);
 
   /* Derived */
@@ -429,7 +432,7 @@ export default function SmartIncidentBlocker({
     () => new Date(fetched?.fechaInicio ?? incident?.fechaInicio ?? Date.now()).getTime(),
     [fetched, incident]
   );
-  const leftMs = Math.max(0, WINDOW_DURATION_MS - (now - startMs));
+  const leftMs = Number.isFinite(startMs) ? Math.max(0, Math.min(WINDOW_DURATION_MS, WINDOW_DURATION_MS - (now - startMs))) : 0;
   const pct = Math.round(((WINDOW_DURATION_MS - leftMs) / WINDOW_DURATION_MS) * 100);
   const estado = (fetched?.estado || incident?.estado || "ABIERTO") as keyof typeof ESTADO_COLORS;
   const canActOnIncident = estado === "ABIERTO" && (!countdownAllowed || leftMs > 0);

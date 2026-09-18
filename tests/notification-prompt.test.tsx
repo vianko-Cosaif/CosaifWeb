@@ -36,6 +36,7 @@ vi.mock("@/lib/notificationSound", () => ({
 
 beforeEach(() => {
   vi.useFakeTimers();
+  localStorage.setItem("user", JSON.stringify({ rol: "COORDINADOR", localidadId: 10 }));
   setRealtimeNotificationConnection(false);
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
   runtime.pathname = "/administrador";
@@ -54,6 +55,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -156,7 +158,7 @@ describe("notification runtime lifecycle", () => {
     setRealtimeNotificationConnection(true);
     await act(async () =>
       callback({
-        data: { eventId: "push-realtime", eventType: "torreon.arrastre.creado", title: "Creado" },
+        data: { recipientRoles: "COORDINADOR", localidadId: "10", eventId: "push-realtime", eventType: "torreon.arrastre.creado", title: "Creado" },
       }),
     );
     expect(Notification).not.toHaveBeenCalled();
@@ -164,18 +166,18 @@ describe("notification runtime lifecycle", () => {
     setRealtimeNotificationConnection(false);
     await act(async () =>
       callback({
-        data: { eventId: "push-fallback", eventType: "torreon.arrastre.creado", title: "Creado" },
+        data: { recipientRoles: "COORDINADOR", localidadId: "10", eventId: "push-fallback", eventType: "torreon.arrastre.creado", title: "Creado" },
       }),
     );
     await advance(0);
-    expect(Notification).toHaveBeenCalledTimes(1);
+    expect(Notification).not.toHaveBeenCalled();
     expect(runtime.playSound).toHaveBeenCalledTimes(1);
     await act(async () =>
       callback({
-        data: { eventId: "push-fallback", eventType: "torreon.arrastre.creado", title: "Creado" },
+        data: { recipientRoles: "COORDINADOR", localidadId: "10", eventId: "push-fallback", eventType: "torreon.arrastre.creado", title: "Creado" },
       }),
     );
-    expect(Notification).toHaveBeenCalledTimes(1);
+    expect(Notification).not.toHaveBeenCalled();
   });
   it("keeps unrelated push notices even when realtime is connected", async () => {
     render(<FirebaseNotificationPrompt />);
@@ -184,12 +186,13 @@ describe("notification runtime lifecycle", () => {
     await act(async () =>
       runtime.listen.mock.calls[0][0]({
         data: {
+          recipientRoles: "COORDINADOR", localidadId: "10",
           eventId: "maintenance-notice",
           tipo: "mantenimiento_programado",
           title: "Mantenimiento",
         },
       }),
     );
-    expect(Notification).toHaveBeenCalledTimes(1);
+    expect(Notification).not.toHaveBeenCalled();
   });
 });

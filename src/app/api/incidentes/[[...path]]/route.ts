@@ -8,6 +8,7 @@ import { isTrainingIncidentId } from "@/lib/routePolicy";
 import { PERMISSIONS, hasPermission } from "@/lib/accessControl";
 import { getVerifiedSession } from "@/lib/server/session";
 import type { VerifiedSession } from "@/lib/sessionToken";
+import { torreonClientKind } from "@/lib/auth/torreonClientPolicy";
 
 export const dynamic = "force-dynamic";
 
@@ -36,13 +37,17 @@ function cleanText(input: unknown) {
 }
 
 function isLocalityScoped(session: VerifiedSession) {
-  return session.authorization.scope.mode === "LOCALITY"
-    || session.authorization.scope.mode === "COMPANY_LOCALITY";
+  return (
+    session.authorization.scope.mode === "LOCALITY" ||
+    session.authorization.scope.mode === "COMPANY_LOCALITY"
+  );
 }
 
 function isCompanyScoped(session: VerifiedSession) {
-  return session.authorization.scope.mode === "COMPANY"
-    || session.authorization.scope.mode === "COMPANY_LOCALITY";
+  return (
+    session.authorization.scope.mode === "COMPANY" ||
+    session.authorization.scope.mode === "COMPANY_LOCALITY"
+  );
 }
 
 function getIncidentLocalidadId(input: unknown) {
@@ -84,7 +89,7 @@ function localityScopeError(session: VerifiedSession) {
   if (session.localidadId) return null;
   return NextResponse.json(
     { success: false, error: "No hay una localidad asignada a la sesión" },
-    { status: 403 }
+    { status: 403 },
   );
 }
 
@@ -93,23 +98,26 @@ function companyScopeError(session: VerifiedSession) {
   if (session.empresaId) return null;
   return NextResponse.json(
     { success: false, error: "No hay una empresa asignada a la sesión" },
-    { status: 403 }
+    { status: 403 },
   );
 }
 
-function incidentMatchesSessionScope(
-  session: VerifiedSession,
-  incident: unknown
-) {
+function incidentMatchesSessionScope(session: VerifiedSession, incident: unknown) {
   const localidadId = session.localidadId;
   const empresaId = session.empresaId;
   const incidentLocalidadId = getIncidentLocalidadId(incident);
   const incidentEmpresaId = getIncidentEmpresaId(incident);
 
-  if (isLocalityScoped(session) && (!localidadId || !incidentLocalidadId || localidadId !== incidentLocalidadId)) {
+  if (
+    isLocalityScoped(session) &&
+    (!localidadId || !incidentLocalidadId || localidadId !== incidentLocalidadId)
+  ) {
     return false;
   }
-  if (isCompanyScoped(session) && (!empresaId || !incidentEmpresaId || empresaId !== incidentEmpresaId)) {
+  if (
+    isCompanyScoped(session) &&
+    (!empresaId || !incidentEmpresaId || empresaId !== incidentEmpresaId)
+  ) {
     return false;
   }
   return true;
@@ -117,19 +125,24 @@ function incidentMatchesSessionScope(
 
 function requireTorreonSession(session: VerifiedSession | null) {
   if (!session || !hasPermission(session.authorization, PERMISSIONS.INCIDENTS_READ)) {
-    return { ok: false as const, response: NextResponse.json({ success: false, error: "No autorizado" }, { status: 401 }) };
+    return {
+      ok: false as const,
+      response: NextResponse.json({ success: false, error: "No autorizado" }, { status: 401 }),
+    };
   }
   return { ok: true as const, session };
 }
 
 function assertTorreonAccess(
   session: VerifiedSession,
-  incidente: ReturnType<typeof mapTorreonIncidente>
+  incidente: ReturnType<typeof mapTorreonIncidente>,
 ) {
   const empresaId = session.empresaId;
   const localidadId = session.localidadId;
   const incidenteEmpresaId = asNumber(incidente.movimiento?.empresaId);
   const incidenteLocalidadId = asNumber(incidente.localidadId);
+  const kind = torreonClientKind(session.role);
+  if (kind && incidente._torreonTipo !== kind) return false;
 
   if (isLocalityScoped(session)) {
     if (!localidadId || !incidenteLocalidadId || localidadId !== incidenteLocalidadId) return false;
@@ -147,8 +160,16 @@ function formatTorreonRef(snapshot: unknown, fallbackPrefix: string, id: unknown
 
 function formatTorreonVia(movimiento: UnknownRecord, prefix: "Origen" | "Destino") {
   const key = prefix === "Origen" ? "Origen" : "Destino";
-  const via = formatTorreonRef(movimiento[`via${key}NombreSnapshot`], "Vía", movimiento[`via${key}Id`]);
-  const seccion = formatTorreonRef(movimiento[`seccion${key}NombreSnapshot`], "Sección", movimiento[`seccion${key}Id`]);
+  const via = formatTorreonRef(
+    movimiento[`via${key}NombreSnapshot`],
+    "Vía",
+    movimiento[`via${key}Id`],
+  );
+  const seccion = formatTorreonRef(
+    movimiento[`seccion${key}NombreSnapshot`],
+    "Sección",
+    movimiento[`seccion${key}Id`],
+  );
   if (via && seccion) return `${via} / ${seccion}`;
   return via || seccion || null;
 }
@@ -206,19 +227,21 @@ function mapTorreonIncidente(input: UnknownRecord) {
   const routeOrigen = isArrastre
     ? formatTorreonZona(
         vagon.viaOrigenId ?? arrastre.viaOrigenId ?? viaBloqueadaId,
-        vagon.seccionOrigenId ?? arrastre.seccionOrigenId ?? seccionBloqueadaId
+        vagon.seccionOrigenId ?? arrastre.seccionOrigenId ?? seccionBloqueadaId,
       )
     : formatTorreonVia(movimiento, "Origen");
   const routeDestino = isArrastre
     ? formatTorreonZona(
         vagon.viaId ?? arrastre.viaDestinoId ?? viaBloqueadaId,
-        vagon.seccionId ?? arrastre.seccionDestinoId ?? seccionBloqueadaId
+        vagon.seccionId ?? arrastre.seccionDestinoId ?? seccionBloqueadaId,
       )
     : formatTorreonVia(movimiento, "Destino");
 
   return {
     id: asNumber(input.id) ?? input.id,
-    descripcion: cleanText(input.motivo) || (isArrastre ? "Incidente de arrastre Torreón" : "Incidente de ronda natural en Torreón"),
+    descripcion:
+      cleanText(input.motivo) ||
+      (isArrastre ? "Incidente de arrastre Torreón" : "Incidente de ronda natural en Torreón"),
     motivo: cleanText(input.motivo),
     solucion: cleanText(input.solucion),
     estado: cleanText(input.estado) || "ABIERTO",
@@ -257,11 +280,14 @@ function mapTorreonIncidente(input: UnknownRecord) {
         ? {
             id: empresaId,
             nombre:
-              cleanText(isArrastre ? arrastre.empresaNombreSnapshot : movimiento.empresaNombreSnapshot) ||
-              `Empresa ${empresaId}`,
+              cleanText(
+                isArrastre ? arrastre.empresaNombreSnapshot : movimiento.empresaNombreSnapshot,
+              ) || `Empresa ${empresaId}`,
           }
         : undefined,
-      locomotiveNumber: isArrastre ? `Arrastre #${arrastreId ?? input.id}` : movimiento.locomotiveNumber ?? null,
+      locomotiveNumber: isArrastre
+        ? `Arrastre #${arrastreId ?? input.id}`
+        : (movimiento.locomotiveNumber ?? null),
       viaOrigen: { nombre: routeOrigen },
       viaDestino: { nombre: routeDestino },
     },
@@ -286,14 +312,17 @@ function getTorreonSearchParams(req: NextRequest, session: VerifiedSession) {
   const scopedLocalidadId = session.localidadId;
 
   const localidadId = isLocalityScoped(session)
-    ? scopedLocalidadId ? String(scopedLocalidadId) : ""
+    ? scopedLocalidadId
+      ? String(scopedLocalidadId)
+      : ""
     : incoming.get("localidadId") || "";
   if (localidadId) params.set("localidadId", localidadId);
 
   const estado = incoming.get("estado");
   if (estado) params.set("estado", estado);
 
-  const tipo = incoming.get("tipo") || incoming.get("tipoIncidente");
+  const tipo =
+    torreonClientKind(session.role) || incoming.get("tipo") || incoming.get("tipoIncidente");
   if (tipo) params.set("tipo", tipo);
 
   params.set("page", incoming.get("page") || "1");
@@ -315,7 +344,10 @@ function shouldUseTorreon(req: NextRequest, session: VerifiedSession) {
     return isTorreonLocalidad(session.localidadId || undefined);
   }
   const source = String(req.nextUrl.searchParams.get("source") || "").toLowerCase();
-  return source === "torreon" || isTorreonLocalidad(req.nextUrl.searchParams.get("localidadId") || undefined);
+  return (
+    source === "torreon" ||
+    isTorreonLocalidad(req.nextUrl.searchParams.get("localidadId") || undefined)
+  );
 }
 
 async function readJsonBody(req: NextRequest) {
@@ -341,10 +373,15 @@ async function proxyCosaif(req: NextRequest, segments: string[], session: Verifi
   search.delete("source");
   if (scopedLocalidadId) search.set("localidadId", String(scopedLocalidadId));
   if (scopedEmpresaId) search.set("empresaId", String(scopedEmpresaId));
-  const pathName = ["incidentes", ...segments].map((segment) => encodeURIComponent(segment)).join("/");
+  const pathName = ["incidentes", ...segments]
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
   const url = `${ORIGIN}/${pathName}${search.size ? `?${search.toString()}` : ""}`;
 
-  const token = cookieStore.get(process.env.JWT_COOKIE_NAME || "token")?.value || cookieStore.get("token")?.value || "";
+  const token =
+    cookieStore.get(process.env.JWT_COOKIE_NAME || "token")?.value ||
+    cookieStore.get("token")?.value ||
+    "";
   const headers = new Headers();
   const accept = req.headers.get("accept");
   const contentType = req.headers.get("content-type");
@@ -352,7 +389,11 @@ async function proxyCosaif(req: NextRequest, segments: string[], session: Verifi
   if (contentType) headers.set("content-type", contentType);
   if (token) headers.set("authorization", `Bearer ${token}`);
 
-  if ((scopedLocalidadId || scopedEmpresaId) && segments[0] && !["GET", "HEAD"].includes(req.method)) {
+  if (
+    (scopedLocalidadId || scopedEmpresaId) &&
+    segments[0] &&
+    !["GET", "HEAD"].includes(req.method)
+  ) {
     const detailParams = new URLSearchParams();
     if (scopedLocalidadId) detailParams.set("localidadId", String(scopedLocalidadId));
     if (scopedEmpresaId) detailParams.set("empresaId", String(scopedEmpresaId));
@@ -362,7 +403,7 @@ async function proxyCosaif(req: NextRequest, segments: string[], session: Verifi
     if (!detailResponse.ok || !incidentMatchesSessionScope(session, detail)) {
       return NextResponse.json(
         { success: false, error: "Solo puedes gestionar incidentes de tu empresa y localidad" },
-        { status: 403 }
+        { status: 403 },
       );
     }
   }
@@ -378,19 +419,24 @@ async function proxyCosaif(req: NextRequest, segments: string[], session: Verifi
       signal: controller.signal,
     });
     const body = await upstream.arrayBuffer();
-    if ((scopedLocalidadId || scopedEmpresaId) && req.method === "GET" && segments.length === 1 && upstream.ok) {
+    if (
+      (scopedLocalidadId || scopedEmpresaId) &&
+      req.method === "GET" &&
+      segments.length === 1 &&
+      upstream.ok
+    ) {
       try {
         const detail = JSON.parse(new TextDecoder().decode(body));
         if (!incidentMatchesSessionScope(session, detail)) {
           return NextResponse.json(
             { success: false, error: "Solo puedes consultar incidentes de tu empresa y localidad" },
-            { status: 403 }
+            { status: 403 },
           );
         }
       } catch {
         return NextResponse.json(
           { success: false, error: "No se pudo validar la localidad del incidente" },
-          { status: 403 }
+          { status: 403 },
         );
       }
     }
@@ -417,7 +463,9 @@ async function listTorreon(req: NextRequest, verified: VerifiedSession) {
   const params = getTorreonSearchParams(req, verified);
   const raw = await fetchTorreonMsJson(`/incidentes?${params.toString()}`);
   const record = asRecord(raw);
-  const data = asArray(raw).map(mapTorreonIncidente).filter((incidente) => assertTorreonAccess(verified, incidente));
+  const data = asArray(raw)
+    .map(mapTorreonIncidente)
+    .filter((incidente) => assertTorreonAccess(verified, incidente));
 
   return NextResponse.json({
     success: true,
@@ -427,19 +475,26 @@ async function listTorreon(req: NextRequest, verified: VerifiedSession) {
 }
 
 function getTorreonTipo(req: NextRequest) {
-  const tipo = String(req.nextUrl.searchParams.get("tipo") || req.nextUrl.searchParams.get("tipoIncidente") || "").toUpperCase();
+  const tipo = String(
+    req.nextUrl.searchParams.get("tipo") || req.nextUrl.searchParams.get("tipoIncidente") || "",
+  ).toUpperCase();
   return tipo.includes("ARRASTRE") ? "ARRASTRE" : tipo.includes("NATURAL") ? "NATURAL" : "";
 }
 
 async function getTorreonById(req: NextRequest, id: string, verified: VerifiedSession) {
   const access = requireTorreonSession(verified);
   if (!access.ok) return access.response;
+  const kind = torreonClientKind(verified.role);
+  const requestedKind = getTorreonTipo(req);
+  if (kind && requestedKind && requestedKind !== kind) {
+    return NextResponse.json({ error: "Incidente fuera de tu tipo de operación" }, { status: 403 });
+  }
   const scopeError = localityScopeError(verified);
   if (scopeError) return scopeError;
   const empresaScopeError = companyScopeError(verified);
   if (empresaScopeError) return empresaScopeError;
 
-  const tipo = getTorreonTipo(req);
+  const tipo = torreonClientKind(verified.role) || getTorreonTipo(req);
   const query = tipo ? `?tipo=${encodeURIComponent(tipo)}` : "";
   const raw = await fetchTorreonMsJson(`/incidentes/${encodeURIComponent(id)}${query}`);
   const data = mapTorreonIncidente(asRecord(raw));
@@ -449,20 +504,33 @@ async function getTorreonById(req: NextRequest, id: string, verified: VerifiedSe
   return NextResponse.json({ success: true, data });
 }
 
-async function mutateTorreonIncident(req: NextRequest, id: string, action: "resolver" | "cerrar", verified: VerifiedSession) {
+async function mutateTorreonIncident(
+  req: NextRequest,
+  id: string,
+  action: "resolver" | "cerrar",
+  verified: VerifiedSession,
+) {
   const access = requireTorreonSession(verified);
   if (!access.ok) return access.response;
+  const kind = torreonClientKind(verified.role);
+  const requestedKind = getTorreonTipo(req);
+  if (kind && requestedKind && requestedKind !== kind) {
+    return NextResponse.json({ error: "Incidente fuera de tu tipo de operación" }, { status: 403 });
+  }
   const scopeError = localityScopeError(verified);
   if (scopeError) return scopeError;
   const empresaScopeError = companyScopeError(verified);
   if (empresaScopeError) return empresaScopeError;
   if (!hasPermission(verified.authorization, PERMISSIONS.INCIDENTS_RESOLVE)) {
-    return NextResponse.json({ success: false, error: "No autorizado para gestionar incidentes" }, { status: 403 });
+    return NextResponse.json(
+      { success: false, error: "No autorizado para gestionar incidentes" },
+      { status: 403 },
+    );
   }
 
   const userId = verified.userId;
 
-  const tipo = getTorreonTipo(req);
+  const tipo = torreonClientKind(verified.role) || getTorreonTipo(req);
   const query = tipo ? `?tipo=${encodeURIComponent(tipo)}` : "";
   const detail = await fetchTorreonMsJson(`/incidentes/${encodeURIComponent(id)}${query}`);
   const mapped = mapTorreonIncidente(asRecord(detail));
@@ -489,7 +557,8 @@ async function mutateTorreonIncident(req: NextRequest, id: string, action: "reso
 
 function requiredIncidentPermission(method: string, action: string | undefined) {
   const normalizedAction = String(action || "").toLowerCase();
-  if (["resuelto", "resolver", "cerrar"].includes(normalizedAction)) return PERMISSIONS.INCIDENTS_RESOLVE;
+  if (["resuelto", "resolver", "cerrar"].includes(normalizedAction))
+    return PERMISSIONS.INCIDENTS_RESOLVE;
   if (method === "GET" || method === "HEAD") return PERMISSIONS.INCIDENTS_READ;
   if (method === "POST") return PERMISSIONS.INCIDENTS_CREATE;
   if (method === "DELETE") return PERMISSIONS.INCIDENTS_DELETE;
@@ -504,7 +573,7 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path?: string[]
   if (id && isTrainingIncidentId(id)) {
     return NextResponse.json(
       { success: false, error: "Los incidentes SIM sólo existen dentro de la capacitación." },
-      { status: 409 }
+      { status: 409 },
     );
   }
 
@@ -514,12 +583,16 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path?: string[]
   }
   const requiredPermission = requiredIncidentPermission(req.method, action);
   if (!hasPermission(session.authorization, requiredPermission)) {
-    return NextResponse.json({ success: false, error: "No autorizado para esta operacion" }, { status: 403 });
+    return NextResponse.json(
+      { success: false, error: "No autorizado para esta operacion" },
+      { status: 403 },
+    );
   }
 
   if (shouldUseTorreon(req, session)) {
     if (req.method === "GET" && segments.length === 0) return listTorreon(req, session);
-    if (req.method === "GET" && id && segments.length === 1) return getTorreonById(req, id, session);
+    if (req.method === "GET" && id && segments.length === 1)
+      return getTorreonById(req, id, session);
     if (id && ["resuelto", "resolver"].includes(String(action || "").toLowerCase())) {
       return mutateTorreonIncident(req, id, "resolver", session);
     }
@@ -529,7 +602,10 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path?: string[]
     if (req.method === "PUT" && id && segments.length === 1) {
       return mutateTorreonIncident(req, id, "resolver", session);
     }
-    return NextResponse.json({ success: false, error: "Operacion Torreon no soportada" }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: "Operacion Torreon no soportada" },
+      { status: 400 },
+    );
   }
 
   return proxyCosaif(req, segments, session);

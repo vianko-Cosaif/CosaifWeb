@@ -13,6 +13,7 @@ import {
   ChevronUp,
   Droplet,
   Pencil,
+  Plus,
   RefreshCw,
   Settings,
   TrainFront,
@@ -86,11 +87,13 @@ export default function RailQueueBoard({
   localidadId,
   empresaId,
   role,
+  canCreateMovements = false,
   autoMs = 120_000,
 }: {
   localidadId: number;
   empresaId?: number | null;
   role?: string | null;
+  canCreateMovements?: boolean;
   autoMs?: number;
 }) {
   const sharedLocality = role === "CLIENTE";
@@ -294,6 +297,11 @@ export default function RailQueueBoard({
           </span>
         </div>
         <div className={S.Header.right}>
+          {canCreateMovements && empresaId && (
+            <Link href="/movimientos/crear" className={S.Header.btnEdit}>
+              <Plus className="h-4 w-4" aria-hidden /> Crear movimiento
+            </Link>
+          )}
           <button
             onClick={() => setPolling(!polling)}
             className={S.Header.btn(polling)}

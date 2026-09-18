@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
+import { torreonClientKind } from "@/lib/auth/torreonClientPolicy";
 
 import React, { useCallback, useEffect, useMemo, useId, useRef, useState } from "react";
 import dynamic from "next/dynamic";
@@ -233,6 +234,7 @@ export default function IncidenteController({
     localidadId: userLocalidadId,
   } = useUserRole(authorization);
   const { notification, showNotification, hideNotification } = useNotifications();
+  const clientIncidentKind = torreonClientKind(role);
 
   const isLimitedClientView = authorization
     ? ["COMPANY", "COMPANY_LOCALITY"].includes(authorization.scope.mode)
@@ -384,12 +386,20 @@ export default function IncidenteController({
       if (filters.localidadId) searchParams.set("localidadId", String(filters.localidadId));
       if (isTorreonScope) {
         searchParams.set("source", "torreon");
-        if (filters.torreonTipo !== "TODOS") searchParams.set("tipo", filters.torreonTipo);
+        if (clientIncidentKind || filters.torreonTipo !== "TODOS")
+          searchParams.set("tipo", clientIncidentKind || filters.torreonTipo);
       }
 
       return `${INCIDENTES}?${searchParams.toString()}`;
     },
-    [activeTab, filters.empresaId, filters.localidadId, filters.torreonTipo, isTorreonScope],
+    [
+      activeTab,
+      filters.empresaId,
+      filters.localidadId,
+      filters.torreonTipo,
+      isTorreonScope,
+      clientIncidentKind,
+    ],
   );
 
   const queryKey = buildApiUrl(1);
@@ -1001,7 +1011,7 @@ export default function IncidenteController({
                 })}
               </GuidedTarget>
 
-              {isTorreonScope && (
+              {isTorreonScope && !clientIncidentKind && (
                 <GuidedTarget
                   id="incidents-torreon-type-tabs"
                   className="inline-flex rounded-xl border border-emerald-200 bg-emerald-50/70 p-1 dark:border-emerald-800 dark:bg-emerald-950/30"

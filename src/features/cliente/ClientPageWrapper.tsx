@@ -7,6 +7,7 @@ interface ClientPageWrapperProps {
   localidadId: number | null;
   empresaId: number | null;
   role?: string | null;
+  canCreateMovements?: boolean;
 }
 
 /* ================= Componentes de UI ================= */
@@ -48,22 +49,24 @@ class ErrorBoundary extends React.Component<
 
   render() {
     if (this.state.hasError) {
-      return this.props.fallback || (
-        <div className="flex flex-col items-center justify-center min-h-[400px] p-6 text-center">
-          <div className="text-6xl mb-4">⚠️</div>
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
-            Error al cargar el panel
-          </h3>
-          <p className="text-slate-600 dark:text-slate-400 mb-4 max-w-md">
-            Ha ocurrido un error inesperado al cargar el tablero de control.
-          </p>
-          <button
-            onClick={() => this.setState({ hasError: false })}
-            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
-          >
-            Reintentar
-          </button>
-        </div>
+      return (
+        this.props.fallback || (
+          <div className="flex flex-col items-center justify-center min-h-[400px] p-6 text-center">
+            <div className="text-6xl mb-4">⚠️</div>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
+              Error al cargar el panel
+            </h3>
+            <p className="text-slate-600 dark:text-slate-400 mb-4 max-w-md">
+              Ha ocurrido un error inesperado al cargar el tablero de control.
+            </p>
+            <button
+              onClick={() => this.setState({ hasError: false })}
+              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+            >
+              Reintentar
+            </button>
+          </div>
+        )
       );
     }
 
@@ -81,7 +84,12 @@ const preloadRailQueueBoard = () => {
 const LazyRailQueueBoard = lazy(() => preloadRailQueueBoard());
 
 /* ================= Componente Principal Mejorado ================= */
-export default function ClientPageWrapper({ localidadId, empresaId, role }: ClientPageWrapperProps) {
+export default function ClientPageWrapper({
+  localidadId,
+  empresaId,
+  role,
+  canCreateMovements = false,
+}: ClientPageWrapperProps) {
   const capabilities = React.useMemo(() => getRoleCapabilities(role), [role]);
   // Preload del componente cuando el wrapper se monta
   React.useEffect(() => {
@@ -96,7 +104,12 @@ export default function ClientPageWrapper({ localidadId, empresaId, role }: Clie
         <ErrorBoundary>
           {localidadId ? (
             <Suspense fallback={<LoadingFallback />}>
-              <LazyRailQueueBoard localidadId={localidadId} empresaId={empresaId} role={role} />
+              <LazyRailQueueBoard
+                localidadId={localidadId}
+                empresaId={empresaId}
+                role={role}
+                canCreateMovements={canCreateMovements}
+              />
             </Suspense>
           ) : (
             <div className="flex flex-col items-center justify-center min-h-[420px] rounded-2xl border border-slate-200 bg-white/70 p-6 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900/60">
@@ -122,8 +135,4 @@ export default function ClientPageWrapper({ localidadId, empresaId, role }: Clie
 
 /* ================= Componente de Carga Optimizado (Alternativa) ================= */
 // Exportación de componentes auxiliares para testing
-export {
-  LoadingFallback,
-  ErrorBoundary,
-
-};
+export { LoadingFallback, ErrorBoundary };

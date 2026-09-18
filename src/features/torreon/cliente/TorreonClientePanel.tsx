@@ -1079,7 +1079,7 @@ export default function TorreonClientePanel({
     }
   }
 
-  if (arrastreOnly && !canViewArrastres) return null;
+  if (!canViewArrastres) return null;
 
   const feedback = message && (
     <div

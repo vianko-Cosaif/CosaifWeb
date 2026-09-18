@@ -1,5 +1,12 @@
 import "server-only";
-import { PERMISSIONS, hasAnyPermission, hasPermission, type AuthorizationProfile, type Permission } from "@/lib/accessControl";
+import { canClientUseTorreonPath } from "@/lib/auth/torreonClientPolicy";
+import {
+  PERMISSIONS,
+  hasAnyPermission,
+  hasPermission,
+  type AuthorizationProfile,
+  type Permission,
+} from "@/lib/accessControl";
 
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -8,9 +15,12 @@ function requiredPermissions(pathname: string, method: string): Permission[] | n
   method = method.toUpperCase();
   const read = READ_METHODS.has(method);
 
-  if (path === "/realtime/events" || path === "/realtime/stats") return read ? [PERMISSIONS.SESSION_READ] : [];
-  if (path === "/banner" || path.startsWith("/banner/")) return [read ? PERMISSIONS.UPDATES_READ : PERMISSIONS.UPDATES_MANAGE];
-  if (path === "/comercial" || path.startsWith("/comercial/")) return [PERMISSIONS.REPORTS_COMMERCIAL_READ];
+  if (path === "/realtime/events" || path === "/realtime/stats")
+    return read ? [PERMISSIONS.SESSION_READ] : [];
+  if (path === "/banner" || path.startsWith("/banner/"))
+    return [read ? PERMISSIONS.UPDATES_READ : PERMISSIONS.UPDATES_MANAGE];
+  if (path === "/comercial" || path.startsWith("/comercial/"))
+    return [PERMISSIONS.REPORTS_COMMERCIAL_READ];
 
   if (path === "/usuarios/me") return [PERMISSIONS.SESSION_READ];
   if (path === "/usuarios" || path.startsWith("/usuarios/")) {
@@ -20,7 +30,11 @@ function requiredPermissions(pathname: string, method: string): Permission[] | n
     return [read ? PERMISSIONS.CATALOGS_READ : PERMISSIONS.COMPANIES_MANAGE];
   }
   if (path.startsWith("/catalogos-operativos")) return [PERMISSIONS.CATALOG_CONFIGURATION_MANAGE];
-  if (path.startsWith("/localidades") || path.startsWith("/vias") || path.startsWith("/secciones")) {
+  if (
+    path.startsWith("/localidades") ||
+    path.startsWith("/vias") ||
+    path.startsWith("/secciones")
+  ) {
     return [read ? PERMISSIONS.CATALOGS_READ : PERMISSIONS.OPERATIONAL_CATALOGS_MANAGE];
   }
   if (path.startsWith("/actualizaciones")) {
@@ -44,7 +58,8 @@ function requiredPermissions(pathname: string, method: string): Permission[] | n
     if (read) return [PERMISSIONS.INCIDENTS_READ];
     if (method === "POST") return [PERMISSIONS.INCIDENTS_CREATE, PERMISSIONS.INCIDENTS_MANAGE];
     if (method === "DELETE") return [PERMISSIONS.INCIDENTS_DELETE];
-    if (/\/(cerrar|resuelto|resolver)$/.test(path)) return [PERMISSIONS.INCIDENTS_RESOLVE, PERMISSIONS.INCIDENTS_MANAGE];
+    if (/\/(cerrar|resuelto|resolver)$/.test(path))
+      return [PERMISSIONS.INCIDENTS_RESOLVE, PERMISSIONS.INCIDENTS_MANAGE];
     return [PERMISSIONS.INCIDENTS_UPDATE, PERMISSIONS.INCIDENTS_MANAGE];
   }
   if (path.startsWith("/torno")) return [read ? PERMISSIONS.TORNO_READ : PERMISSIONS.TORNO_OPERATE];
@@ -65,10 +80,33 @@ function requiredPermissions(pathname: string, method: string): Permission[] | n
   return null;
 }
 
-export function canForwardApiRequest(authorization: AuthorizationProfile, pathname: string, method: string) {
+export function canForwardApiRequest(
+  authorization: AuthorizationProfile,
+  pathname: string,
+  method: string,
+) {
+  if (
+    pathname.startsWith("/torreon/") &&
+    !canClientUseTorreonPath(authorization.role, method, pathname.slice(8))
+  )
+    return false;
+  if (
+    authorization.role === "ARRASTRE_TORREON" &&
+    /^\/(movimientos|rondas|torno)(?:\/|$)/.test(pathname)
+  )
+    return false;
   const required = requiredPermissions(pathname, method);
   if (!required || !authorization.platforms.web) return false;
-  if ((pathname === "/comercial" || pathname.startsWith("/comercial/")) && !["ADMINISTRADOR", "COMERCIAL"].includes(authorization.role)) return false;
-  if (/\/(pdf|excel)(?:\/|$)/.test(pathname) && /\/(comercial|reporteria|reporterias)(?:\/|$)/.test(pathname) && !hasPermission(authorization, PERMISSIONS.REPORTS_EXPORT)) return false;
+  if (
+    (pathname === "/comercial" || pathname.startsWith("/comercial/")) &&
+    !["ADMINISTRADOR", "COMERCIAL"].includes(authorization.role)
+  )
+    return false;
+  if (
+    /\/(pdf|excel)(?:\/|$)/.test(pathname) &&
+    /\/(comercial|reporteria|reporterias)(?:\/|$)/.test(pathname) &&
+    !hasPermission(authorization, PERMISSIONS.REPORTS_EXPORT)
+  )
+    return false;
   return hasAnyPermission(authorization, required);
 }

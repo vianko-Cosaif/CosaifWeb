@@ -9,12 +9,15 @@ export const dynamic = "force-dynamic";
 
 export default async function Page() {
   const session = await getVerifiedSession();
-  if (!session || session.authorization.capabilities.area !== "cliente") redirect("/login?loc=cliente");
+  if (!session || session.authorization.capabilities.area !== "cliente")
+    redirect("/login?loc=cliente");
   const role = session.role;
+  if (role !== "ARRASTRE_TORREON") redirect("/cliente");
   const capabilities = session.authorization.capabilities;
-  const localidadId = capabilities.canSwitchLocalidad && !isTorreonLocalidadId(session.localidadId)
-    ? getPrimaryTorreonLocalidadId()
-    : session.localidadId;
+  const localidadId =
+    capabilities.canSwitchLocalidad && !isTorreonLocalidadId(session.localidadId)
+      ? getPrimaryTorreonLocalidadId()
+      : session.localidadId;
   const empresaId = session.empresaId;
 
   if (!localidadId || !isTorreonLocalidadId(localidadId)) {
@@ -25,5 +28,12 @@ export default async function Page() {
     return <ClientPageWrapper localidadId={localidadId} empresaId={empresaId} />;
   }
 
-  return <TorreonClientePanel localidadId={localidadId} empresaId={empresaId} role={role} view="dashboard" />;
+  return (
+    <TorreonClientePanel
+      localidadId={localidadId}
+      empresaId={empresaId}
+      role={role}
+      view="dashboard"
+    />
+  );
 }

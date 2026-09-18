@@ -7,6 +7,7 @@ import {
 } from "@/features/torreon/arrastres/constants";
 import { PERMISSIONS, hasAnyPermission, hasPermission } from "@/lib/accessControl";
 import { getVerifiedSession } from "@/lib/server/session";
+import { canViewTorreonArrastreRole } from "@/lib/torreonLocalidad";
 
 export const dynamic = "force-dynamic";
 
@@ -145,6 +146,8 @@ export async function POST(req: NextRequest) {
 
     const { authorization } = session;
     const role = authorization.role;
+    if (!canViewTorreonArrastreRole(role))
+      return jsonError("Tu perfil sólo permite movimientos naturales.", 403);
     const empresaId = session.empresaId;
     const userId = session.userId;
     const companyScoped =
@@ -173,6 +176,12 @@ export async function POST(req: NextRequest) {
     }
 
     const arrastre = await getArrastreForAccess(arrastreId, companyScoped, empresaId);
+    if (
+      ["LOCALITY", "COMPANY_LOCALITY"].includes(authorization.scope.mode) &&
+      Number(arrastre.localidadId) !== session.localidadId
+    ) {
+      return jsonError("Solo puedes modificar arrastres de tu localidad.", 403);
+    }
 
     if (action === "EDITAR_ARRASTRE") {
       if (statusText(arrastre.estado) !== "SOLICITADO") {

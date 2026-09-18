@@ -3,11 +3,12 @@ import { fetchUpstream } from "@/lib/server/upstream";
 import { NextResponse, NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { PERMISSIONS, hasPermission } from "@/lib/accessControl";
-import { fetchTorreonMsJson, isTorreonLocalidad } from "@/lib/torreonMs";
+import { fetchTorreonMsJson, isTorreonLocalidad, TorreonMsError } from "@/lib/torreonMs";
 import { containsTrainingReservedId } from "@/lib/routePolicy";
 import { getVerifiedSession } from "@/lib/server/session";
 import type { VerifiedSession } from "@/lib/sessionToken";
 import type { RondaInfoRecord, MovimientoRecord } from "./models";
+import { mapTorreonRondasToOut } from "./torreon";
 import { asRecord, firstPositiveNumber } from "./mapping";
 import {
   getApiBase,
@@ -17,8 +18,13 @@ import {
   fetchMovimientoDetail,
 } from "./transport";
 
+function isClientEditor(session: VerifiedSession) {
+  return ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"].includes(session.role);
+}
+
 function isLocalityScoped(session: VerifiedSession) {
   return (
+    isClientEditor(session) ||
     session.authorization.scope.mode === "LOCALITY" ||
     session.authorization.scope.mode === "COMPANY_LOCALITY"
   );
@@ -26,13 +32,14 @@ function isLocalityScoped(session: VerifiedSession) {
 
 function isCompanyScoped(session: VerifiedSession) {
   return (
+    isClientEditor(session) ||
     session.authorization.scope.mode === "COMPANY" ||
     session.authorization.scope.mode === "COMPANY_LOCALITY"
   );
 }
 
 function getInfoEmpresaId(info: RondaInfoRecord | null) {
-  return Number(info?.empresa?.id ?? info?.movimiento?.empresa?.id ?? NaN) || null;
+  return Number(info?.empresa?.id ?? info?.movimiento?.empresa?.id ?? info?.movimiento?.empresaId ?? NaN) || null;
 }
 
 function getInfoLocalidadId(info: RondaInfoRecord | null) {
@@ -85,6 +92,8 @@ export async function POST(req: NextRequest) {
 
     const session = await getVerifiedSession();
     if (!session) return NextResponse.json({ message: "No autorizado" }, { status: 401 });
+    if (session.role === "ARRASTRE_TORREON")
+      return NextResponse.json({ message: "Tu perfil sólo permite arrastres." }, { status: 403 });
     const requiredPermission =
       action === "cancel" ? PERMISSIONS.MOVEMENTS_CANCEL : PERMISSIONS.ROUNDS_EDIT;
     if (!hasPermission(session.authorization, requiredPermission)) {
@@ -133,6 +142,15 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ message: "Faltan id y orden:number" }, { status: 400 });
         }
 
+        // HMAC upstream requests use service credentials: validate the signed-in
+        // viewer's company and patio here before authorizing the mutation.
+        const params = new URLSearchParams({ localidadId: String(scopedLocalidadId) });
+        if (shouldScopeEmpresa) params.set("empresaId", String(empresaId));
+        const raw = await fetchTorreonMsJson(`/rondas?${params}`, { signal: req.signal });
+        const allowed = mapTorreonRondasToOut(raw, false, shouldScopeEmpresa ? empresaId : null, scopedLocalidadId);
+        if (!allowed.some(round => round.id === id)) {
+          return NextResponse.json({ message: "Solo puedes modificar movimientos de tu empresa y localidad." }, { status: 403 });
+        }
         const payload = {
           rondaMovimientoId: id,
           orden,
@@ -167,6 +185,9 @@ export async function POST(req: NextRequest) {
           { message: swap ? "Faltan rondaAId y rondaBId numéricos" : "Faltan id y orden:number" },
           { status: 400 },
         );
+      }
+      if (!swap && shouldScopeEmpresa) {
+        return NextResponse.json({ message: "Intercambia únicamente movimientos de tu empresa para conservar las posiciones de otros clientes." }, { status: 403 });
       }
       try {
         const rounds = await Promise.all(
@@ -207,7 +228,7 @@ export async function POST(req: NextRequest) {
 
       try {
         const movimiento = await fetchMovimientoDetail(base, headers, movimientoId, req.signal);
-        const targetEmpresaId = Number(movimiento?.empresa?.id ?? NaN) || null;
+        const targetEmpresaId = Number(movimiento?.empresa?.id ?? movimiento?.empresaId ?? NaN) || null;
         assertEmpresaScope(shouldScopeEmpresa, empresaId, [targetEmpresaId]);
         assertLocalidadScope(scopedLocalidadId, [getMovimientoLocalidadId(movimiento)]);
       } catch (error) {
@@ -234,6 +255,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ message: "Acción no soportada" }, { status: 400 });
   } catch (err) {
+    if (err instanceof TorreonMsError && [403, 404, 409].includes(err.status))
+      return NextResponse.json({ message: err.message }, { status: err.status });
     console.error("[api/cliente/rondas] POST error:", err);
     return NextResponse.json({ message: "Error inesperado" }, { status: 500 });
   }

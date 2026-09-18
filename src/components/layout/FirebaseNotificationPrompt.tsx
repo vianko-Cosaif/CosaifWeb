@@ -1,8 +1,11 @@
 "use client";
+import { logicalNotificationId } from "@/lib/logicalNotificationId";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Bell, Loader2 } from "lucide-react";
+import { Bell, Loader2, X } from "lucide-react";
+import { matchesNotificationAudience } from "@/lib/notificationAudience";
+import { currentNotificationViewer } from "@/lib/notificationViewer";
 import { claimNotification, shouldDeferPushToRealtime } from "@/lib/notificationDelivery";
 import { assertSameOriginUrl, getNotificationRuntimePolicy } from "@/lib/notificationRuntime";
 
@@ -28,9 +31,19 @@ export default function FirebaseNotificationPrompt() {
   const [state, setState] = useState<PromptState>("checking");
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
   const [listenerAttempt, setListenerAttempt] = useState(0);
+  const [dismissed, setDismissed] = useState<boolean | null>(null);
+  const dismissalKey = `${policy.statusKey}:dismissed`;
   const shouldRegisterToken = policy.enabled && !pathname.startsWith("/login");
   const generationRef = useRef(0);
   const requestingRef = useRef(false);
+
+  useEffect(() => {
+    try {
+      setDismissed(window.localStorage.getItem(dismissalKey) === "1");
+    } catch {
+      setDismissed(false);
+    }
+  }, [dismissalKey]);
 
   useEffect(() => {
     generationRef.current += 1;
@@ -168,13 +181,17 @@ export default function FirebaseNotificationPrompt() {
         if (!mounted) return;
         const nextUnsubscribe = await listenFirebaseForegroundMessages(async (payload) => {
           if (!mounted || browserPermission() !== "granted") return;
+          if (!matchesNotificationAudience(payload.data, currentNotificationViewer())) return;
           if (document.visibilityState === "visible" && shouldDeferPushToRealtime(payload.data))
             return;
-          const eventId = payload.data?.eventId || payload.messageId;
+          const eventId = logicalNotificationId(payload.data ?? {}) || payload.data?.eventId || payload.messageId;
           if (eventId && !(await claimNotification(eventId))) return;
           if (!mounted) return;
           const title = payload.notification?.title || payload.data?.title || "Nueva notificación";
           const body = payload.notification?.body || payload.data?.body || "";
+          window.dispatchEvent(new CustomEvent("cosaif:activity-event", { detail: {
+            eventId, title, description: body, source: payload.data?.localidadId ? `Patio ${payload.data.localidadId}` : "Operación",
+          } }));
           const url = assertSameOriginUrl(payload.data?.url || "/", "/");
           const tag =
             payload.data?.eventId ||
@@ -205,9 +222,12 @@ export default function FirebaseNotificationPrompt() {
             .catch((error) =>
               console.warn("No se pudo reproducir el aviso de notificación.", error),
             );
+          // The visible page already shows its one in-app notice.
+          if (document.visibilityState === "visible") return;
           const notification = new Notification(title, options);
           notification.onclick = (event) => {
             event.preventDefault();
+            notification.close();
             window.focus();
             window.location.assign(url);
           };
@@ -254,16 +274,28 @@ export default function FirebaseNotificationPrompt() {
 
   const shouldShow =
     state === "idle" || state === "requesting" || state === "error" || state === "denied";
-  if (!shouldRegisterToken || !shouldShow) return null;
+  if (!shouldRegisterToken || !shouldShow || dismissed !== false) return null;
 
   return (
-    <div className="fixed right-3 top-[calc(env(safe-area-inset-top)+1rem)] z-50 w-[min(25rem,calc(100vw-1.5rem))] rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg shadow-slate-900/10 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+    <div className="fixed right-3 top-[calc(env(safe-area-inset-top)+4.5rem)] z-50 w-[min(25rem,calc(100vw-1.5rem))] rounded-xl border border-slate-200 bg-white/95 p-3 shadow-lg shadow-slate-900/10 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+      <button
+        type="button"
+        aria-label="Ocultar aviso de notificaciones"
+        title="Ocultar aviso"
+        onClick={() => {
+          setDismissed(true);
+          safeSet(dismissalKey, "1");
+        }}
+        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-400 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+      >
+        <X className="h-4 w-4" aria-hidden="true" />
+      </button>
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
           <Bell className="h-4 w-4" aria-hidden="true" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold leading-5 text-slate-900 dark:text-white">
+          <p className="pr-7 text-sm font-semibold leading-5 text-slate-900 dark:text-white">
             {copy.title}
           </p>
           <p className="mt-0.5 text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">

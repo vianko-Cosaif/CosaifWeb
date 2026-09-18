@@ -1,5 +1,12 @@
+import { logicalNotificationId } from "./logicalNotificationId";
 /** Identidad del evento, independiente del transporte o del momento de recepción. */
 export function notificationIdentity(event: Record<string, unknown>) {
+  const logicalId = logicalNotificationId(event);
+  return logicalId ? { key: logicalId, ttlMs: 86_400_000 } : transportEventIdentity(event);
+}
+
+// Data refreshes keep their revision identity even after the notice was consumed.
+function transportEventIdentity(event: Record<string, unknown>) {
   const eventId = String(event.eventId ?? "").trim();
   const version = event.version ?? event.occurredAt;
   const key =
@@ -29,7 +36,7 @@ export function createRealtimeEventDeduplicator() {
   const seen = new Map<string, number>();
   return (event: Record<string, unknown>, now = Date.now()) => {
     if (String(event.type ?? "").startsWith("realtime.")) return false;
-    const { key, ttlMs } = notificationIdentity(event);
+    const { key, ttlMs } = transportEventIdentity(event);
     if ((seen.get(key) ?? 0) > now) return true;
     for (const [id, expiry] of seen) if (expiry <= now) seen.delete(id);
     seen.delete(key);

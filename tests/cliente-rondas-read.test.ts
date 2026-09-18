@@ -21,10 +21,13 @@ vi.mock("@/lib/torreonMs", async (importOriginal) => ({
   fetchTorreonMsJson: upstream.torreon,
 }));
 
-function clientSession(localidadId = 1): VerifiedSession {
-  const authorization = loginProfile();
+function clientSession(
+  localidadId = 1,
+  role: "CLIENTE" | "ARRASTRE_TORREON" = "CLIENTE",
+): VerifiedSession {
+  const authorization = loginProfile(role);
   authorization.scope.localidadId = localidadId;
-  return { role: "CLIENTE", userId: 7, empresaId: 3, localidadId, authorization };
+  return { role, userId: 7, empresaId: 3, localidadId, authorization };
 }
 
 function read(query = "", init?: ConstructorParameters<typeof NextRequest>[1]) {
@@ -32,6 +35,8 @@ function read(query = "", init?: ConstructorParameters<typeof NextRequest>[1]) {
 }
 
 beforeEach(() => {
+  upstream.fetch.mockReset();
+  upstream.torreon.mockReset();
   vi.stubEnv("API_ORIGIN", "http://synthetic-backend.invalid");
   vi.stubEnv("TORREON_LOCALIDAD_IDS", "2");
   upstream.session.mockResolvedValue(clientSession());
@@ -88,6 +93,17 @@ describe("client current rounds and private history", () => {
     expect(params.get("alcance")).toBe("localidad");
     expect(params.get("localidadId")).toBe("1");
     expect(params.has("empresaId")).toBe(false);
+  });
+
+  it.each(["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"])("limits editor options to the signed company for %s", async role => {
+    upstream.session.mockResolvedValue({ ...clientSession(), role });
+    upstream.fetch.mockResolvedValueOnce(Response.json([round(1), round(2, 4), round(3, 3, 2)]));
+    const response = await read("editing=1&alcance=localidad");
+    expect(response.status).toBe(200);
+    expect((await response.json()).map((row: { id: number }) => row.id)).toEqual([1]);
+    const params = new URL(upstream.fetch.mock.calls[0][0]).searchParams;
+    expect(params.get("empresaId")).toBe("3");
+    expect(params.has("alcance")).toBe(false);
   });
 
   it("allows filtering another company only in the current assigned locality", async () => {
@@ -171,7 +187,7 @@ describe("client current rounds and private history", () => {
   });
 
   it("keeps arrastre history private even when the locality flag is forged", async () => {
-    upstream.session.mockResolvedValue(clientSession(2));
+    upstream.session.mockResolvedValue(clientSession(2, "ARRASTRE_TORREON"));
     upstream.torreon.mockResolvedValueOnce([
       { id: 1, empresaId: 3, localidadId: 2, estado: "CONCLUIDO" },
       { id: 2, empresaId: 4, localidadId: 2, estado: "CONCLUIDO" },
@@ -192,7 +208,7 @@ describe("client current rounds and private history", () => {
   });
 
   it("shares current arrastres only in the signed locality and excludes history", async () => {
-    upstream.session.mockResolvedValue(clientSession(2));
+    upstream.session.mockResolvedValue(clientSession(2, "ARRASTRE_TORREON"));
     upstream.torreon.mockResolvedValueOnce([
       { id: 1, empresaId: 3, localidadId: 2, estado: "EN_PROCESO" },
       { id: 2, empresaId: 4, localidadId: 2, estado: "SOLICITADO" },
@@ -207,7 +223,7 @@ describe("client current rounds and private history", () => {
   });
 
   it("does not expose another company's arrastre details through alcance", async () => {
-    upstream.session.mockResolvedValue(clientSession(2));
+    upstream.session.mockResolvedValue(clientSession(2, "ARRASTRE_TORREON"));
     upstream.torreon.mockResolvedValueOnce({
       id: 8,
       empresaId: 4,
@@ -376,7 +392,7 @@ describe("rondas GET upstream failures", () => {
 });
 
 describe("paginated arrastre scope", () => {
-  for (const role of ["CLIENTE", "ARRASTRE_TORREON"] as const) {
+  for (const role of ["ARRASTRE_TORREON"] as const) {
     for (const history of [false, true]) {
       it(`${role} ${history ? "private history" : "shared current locality"} forwards filters and metadata`, async () => {
         const session = clientSession(2);
@@ -415,7 +431,7 @@ describe("paginated arrastre scope", () => {
     }
   }
   it("does not silently consume a legacy service when pagination is requested", async () => {
-    upstream.session.mockResolvedValue(clientSession(2));
+    upstream.session.mockResolvedValue(clientSession(2, "ARRASTRE_TORREON"));
     expect(
       (
         await readArrastres(

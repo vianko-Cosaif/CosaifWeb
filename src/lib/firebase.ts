@@ -258,7 +258,9 @@ export async function registerFirebaseNotificationToken(
   if (accessToken) body.accessToken = accessToken;
   if (activeLocalidadId) body.localidadId = activeLocalidadId;
 
-  const registrationKey = `${token}:${activeLocalidadId ?? "global"}:${policy.runtimeEnv}:${policy.appEnv}`;
+  let userId = '';
+  try { userId = String(JSON.parse(localStorage.getItem('user') || '{}').id ?? ''); } catch { /* registration still validates the session server-side */ }
+  const registrationKey = `${userId}:${token}:${activeLocalidadId ?? "global"}:${policy.runtimeEnv}:${policy.appEnv}`;
   if (lastRegisteredTokenKey === registrationKey) return;
   if (tokenRegistrationPromise && tokenRegistrationKey === registrationKey) {
     return tokenRegistrationPromise;

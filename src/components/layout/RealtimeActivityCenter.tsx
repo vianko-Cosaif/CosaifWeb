@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { operationalMessage } from "@/lib/operationalMessage";
 import { AlertTriangle, Bell, Wifi, WifiOff, X } from "lucide-react";
 import {
   useRealtimeMovimientos,
@@ -9,7 +11,8 @@ import {
 import { claimNotification } from "@/lib/notificationDelivery";
 import { notificationIdentity } from "@/lib/notificationIdentity";
 import { playNotificationSound } from "@/lib/notificationSound";
-import { getEmpresaIdClient, getLocIdClient } from "@/lib/cookies";
+import { matchesNotificationAudience } from "@/lib/notificationAudience";
+import { currentNotificationViewer } from "@/lib/notificationViewer";
 
 type AppActivityEvent = {
   eventId?: string;
@@ -28,114 +31,49 @@ type ActivityItem = {
   receivedAt: number;
 };
 
-function eventTitle(event: RealtimeMovementEvent) {
-  const type = String(event.type ?? "");
-  const action = String(event.accion ?? "")
-    .replaceAll("_", " ")
-    .trim();
-  const entity = event.arrastreId
-    ? `Arrastre #${event.arrastreId}`
-    : event.movimientoId
-      ? `Movimiento #${event.movimientoId}`
-      : event.incidenteId
-        ? `Incidente #${event.incidenteId}`
-        : "Operación";
-  if (type === "movimiento.creado") return `Nuevo ${entity.toLowerCase()}`;
-  if (type === "movimiento.estado" || type === "torreon.movimiento.estado") {
-    const estado = String(event.estado ?? "").toUpperCase();
-    const estadoAnterior = String(event.estadoAnterior ?? "").toUpperCase();
-    if (estado === "EN_PROCESO") {
-      return estadoAnterior === "DETENIDO" ? `${entity} reanudado` : `${entity} iniciado`;
-    }
-    if (estado === "DETENIDO") return `${entity} detenido`;
-    if (estado === "CONCLUIDO") return `${entity} finalizado`;
-    if (estado === "CANCELADO") return `${entity} cancelado`;
-    if (estado === "SOLICITADO") return `${entity} solicitado`;
-  }
-  if (type === "movimiento.incidente") return `${entity}: incidente reportado`;
-  if (type === "incidente.estado") return `${entity}: estado actualizado`;
-  return action ? `${entity}: ${action}` : `${entity} actualizado`;
+function activityScope() {
+  const viewer = currentNotificationViewer();
+  return `cosaif:activity:v1:${viewer.id ?? 'session'}:${viewer.role}:${viewer.localidadId}:${viewer.empresaId}`;
 }
-
-function eventDescription(event: RealtimeMovementEvent) {
-  const transition =
-    event.estadoAnterior && event.estado
-      ? `${String(event.estadoAnterior).replaceAll("_", " ")} → ${String(event.estado).replaceAll("_", " ")}`
-      : null;
-  const details = [
-    event.descripcion ? String(event.descripcion) : null,
-    event.locomotiveNumber ? `Locomotora ${event.locomotiveNumber}` : null,
-    transition ? `Estado: ${transition}` : event.estado ? `Estado: ${event.estado}` : null,
-  ].filter(Boolean);
-  return details.join(" · ") || undefined;
-}
-
 function realtimeSoundType(event: RealtimeMovementEvent) {
   const type = String(event.type ?? "");
   return [type, event.accion, event.estado].filter(Boolean).map(String).join("_") || "generic";
 }
 
-function currentViewerScope() {
-  let storedUser: Record<string, unknown> = {};
-  try {
-    storedUser = JSON.parse(window.localStorage.getItem("user") || "{}") as Record<string, unknown>;
-  } catch {
-    storedUser = {};
-  }
-  const role = String(storedUser.rol || storedUser.role || "").toUpperCase();
-  const empresaId = getEmpresaIdClient() ?? (Number(storedUser.empresaId || 0) || null);
-  const localidadId = getLocIdClient() ?? (Number(storedUser.localidadId || 0) || null);
-  return { role, empresaId, localidadId };
-}
-
-function eventMatchesViewerScope(event: RealtimeMovementEvent) {
-  const { role, empresaId, localidadId } = currentViewerScope();
-  if (!role || role === "ADMINISTRADOR") return true;
-
-  const eventEmpresaId = Number(event.empresaId ?? NaN);
-  const eventLocalidadId = Number(event.localidadId ?? NaN);
-  const isCompanyClient = ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON"].includes(
-    role,
-  );
-  const isLocalityOperator = [
-    "COORDINADOR",
-    "SUPERVISOR",
-    "MAQUINISTA",
-    "MAQUINISTA_ARRASTRE",
-  ].includes(role);
-
-  if (
-    isCompanyClient &&
-    empresaId &&
-    (!Number.isFinite(eventEmpresaId) || eventEmpresaId !== empresaId)
-  ) {
-    return false;
-  }
-  if (
-    (role === "CLIENTE" || role === "ARRASTRE_TORREON" || isLocalityOperator) &&
-    localidadId &&
-    (!Number.isFinite(eventLocalidadId) || eventLocalidadId !== localidadId)
-  ) {
-    return false;
-  }
-  return true;
-}
-
 export default function RealtimeActivityCenter() {
+  const pathname = usePathname();
+  const [filter, setFilter] = useState("Todas");
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [open, setOpen] = useState(false);
   const [toast, setToast] = useState<ActivityItem | null>(null);
-  const [lastReadAt, setLastReadAt] = useState(() => Date.now());
+  const seen = useRef(new Set<string>());
+  const scopeRef = useRef<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const closeActivity = useCallback(() => {
+    const viewed = new Set(seen.current);
+    setItems(current => current.filter(item => !viewed.has(item.eventId)));
+    setToast(current => current && !viewed.has(current.eventId) ? current : null);
+    seen.current.clear();
+    setOpen(false);
+  }, []);
   const [incidentStatus, setIncidentStatus] = useState({ activeCount: 0, connected: true });
 
   // Mantiene WebSocket/SSE activo en cualquier pantalla que use el shell,
   // aunque el tablero visible no tenga su propia suscripcion.
   useRealtimeMovimientos({ onEvent: () => undefined });
 
+  useEffect(() => {
+    const scope = activityScope();
+    if (scopeRef.current !== scope) { setItems([]); setToast(null); setOpen(false); seen.current.clear(); scopeRef.current = scope; }
+    // Remove the old content history; delivery IDs remain solely for deduplication.
+    try { Object.keys(localStorage).filter(key => key.startsWith("cosaif:activity:v1:")).forEach(key => localStorage.removeItem(key)); } catch { /* restricted storage */ }
+  }, [pathname]);
+
   const pushItem = useCallback((item: ActivityItem, showToast = false) => {
-    setItems((current) =>
-      [item, ...current.filter((entry) => entry.eventId !== item.eventId)].slice(0, 40),
-    );
+    setItems((current) => {
+      const updated = [item, ...current.filter(entry => entry.eventId !== item.eventId)].slice(0, 200);
+      return updated;
+    });
     if (showToast) setToast(item);
   }, []);
 
@@ -145,13 +83,13 @@ export default function RealtimeActivityCenter() {
       const event = (raw as CustomEvent<RealtimeMovementEvent>).detail;
       const type = String(event?.type ?? "");
       if (!event || type.startsWith("realtime.")) return;
-      if (!eventMatchesViewerScope(event)) return;
+      if (!matchesNotificationAudience(event, currentNotificationViewer())) return;
       const identity = notificationIdentity(event);
       const item: ActivityItem = {
         eventId: identity.key,
-        title: eventTitle(event),
-        description: eventDescription(event),
-        source: event.source ? String(event.source).toUpperCase() : "Realtime",
+        title: operationalMessage(event).title,
+        description: operationalMessage(event).body,
+        source: event.localidadId ? `Patio ${event.localidadId}` : "Operación",
         kind: "realtime",
         receivedAt: Date.now(),
       };
@@ -175,29 +113,14 @@ export default function RealtimeActivityCenter() {
           kind: "app",
           receivedAt: Date.now(),
         },
-        false,
+        document.visibilityState === "visible",
       );
     };
 
     const onRealtimeStatus = (raw: Event) => {
       const status = String((raw as CustomEvent<{ status?: string }>).detail?.status ?? "");
       if (!status) return;
-      pushItem(
-        {
-          eventId: "realtime-connection-status",
-          title:
-            status === "connected"
-              ? "Monitor conectado"
-              : status === "connecting"
-                ? "Monitor conectando"
-                : "Monitor desconectado",
-          description: "Estado del canal en tiempo real",
-          source: "Sistema",
-          kind: "status",
-          receivedAt: Date.now(),
-        },
-        false,
-      );
+      setIncidentStatus(current => ({ ...current, connected: status === "connected" }));
     };
 
     const onIncidentStatus = (raw: Event) => {
@@ -223,7 +146,10 @@ export default function RealtimeActivityCenter() {
 
   useEffect(() => {
     if (!toast) return;
-    const timer = window.setTimeout(() => setToast(null), 4_500);
+    const timer = window.setTimeout(() => {
+      if (document.visibilityState === "visible") setItems(current => current.filter(item => item.eventId !== toast.eventId));
+      setToast(null);
+    }, 7_000);
     return () => window.clearTimeout(timer);
   }, [toast]);
 
@@ -231,35 +157,31 @@ export default function RealtimeActivityCenter() {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setLastReadAt(Date.now());
-        setOpen(false);
+        closeActivity();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open]);
+  }, [open, closeActivity]);
 
-  const unread = useMemo(
-    () =>
-      Math.min(
-        items.filter(
-          (item) =>
-            (item.kind === "realtime" || item.kind === "app") && item.receivedAt > lastReadAt,
-        ).length,
-        99,
-      ),
-    [items, lastReadAt],
-  );
-
-  const openActivity = () => {
-    setLastReadAt(Date.now());
-    setOpen(true);
-  };
-
-  const closeActivity = () => {
-    setLastReadAt(Date.now());
-    setOpen(false);
-  };
+  const unread = Math.min(items.length, 99);
+  const openActivity = () => { seen.current.clear(); setOpen(true); setToast(null); };
+  const markRead = () => { setItems([]); setToast(null); seen.current.clear(); };
+  const visibleItems = useMemo(() => items.filter(item => filter !== 'Incidentes' || /incidente/i.test(item.title)), [items, filter]);
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+    const elements = listRef.current.querySelectorAll<HTMLElement>('[data-notice-id]');
+    if (typeof IntersectionObserver === 'undefined') {
+      elements.forEach(element => seen.current.add(element.dataset.noticeId!));
+      return;
+    }
+    const observer = new IntersectionObserver(entries => {
+      if (document.visibilityState !== 'visible') return;
+      entries.forEach(entry => { if (entry.isIntersecting) seen.current.add((entry.target as HTMLElement).dataset.noticeId!); });
+    }, { root: listRef.current, threshold: 0.75 });
+    elements.forEach(element => observer.observe(element));
+    return () => observer.disconnect();
+  }, [open, visibleItems]);
 
   return (
     <>
@@ -270,7 +192,7 @@ export default function RealtimeActivityCenter() {
             openActivity();
             setToast(null);
           }}
-          className="fixed right-4 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[1070] w-[min(calc(100vw-2rem),390px)] rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-4 py-3 text-left text-sm text-[var(--app-text)] shadow-[var(--app-shadow-md)]"
+          className="fixed right-4 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[1070] w-[min(calc(100vw-2rem),440px)] rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-4 py-3 text-left text-sm text-[var(--app-text)] shadow-[var(--app-shadow-md)]"
           aria-label={`Abrir actividad: ${toast.title}`}
           role={toast.title.toLowerCase().includes("incidente") ? "alert" : "status"}
           aria-live={toast.title.toLowerCase().includes("incidente") ? "assertive" : "polite"}
@@ -300,9 +222,9 @@ export default function RealtimeActivityCenter() {
         aria-controls="realtime-activity-panel"
       >
         <Bell className="h-5 w-5 text-[var(--app-accent)]" />
-        {unread || incidentStatus.activeCount ? (
+        {unread ? (
           <span className="absolute -right-1.5 -top-1.5 grid min-h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white ring-2 ring-[var(--app-bg)]">
-            {Math.min(99, unread + incidentStatus.activeCount)}
+            {unread}
           </span>
         ) : null}
       </button>
@@ -311,12 +233,12 @@ export default function RealtimeActivityCenter() {
         <aside
           id="realtime-activity-panel"
           aria-label="Actividad reciente"
-          className="fixed right-4 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[60] max-h-[min(72vh,560px)] w-[min(calc(100vw-2rem),390px)] overflow-hidden rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-[var(--app-shadow-md)]"
+          className="fixed right-4 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[60] max-h-[min(82vh,680px)] w-[min(calc(100vw-2rem),440px)] overflow-hidden rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-[var(--app-shadow-md)]"
         >
           <header className="flex items-center justify-between border-b border-[var(--app-border)] px-4 py-3">
             <div>
-              <p className="text-sm font-bold text-[var(--app-text)]">Alertas y actividad</p>
-              <p className="text-xs text-[var(--app-text-muted)]">Todo en un solo lugar</p>
+              <p className="text-lg font-bold text-[var(--app-text)]">Notificaciones</p>
+              <p className="text-xs text-[var(--app-text-muted)]">Avisos pendientes de tu patio</p>
             </div>
             <button
               type="button"
@@ -350,12 +272,17 @@ export default function RealtimeActivityCenter() {
               </p>
             </div>
           </div>
-          <div className="max-h-[430px] overflow-y-auto p-2">
-            {items.length ? (
-              items.map((item, index) => (
+          <div className="flex flex-wrap items-center gap-2 border-b border-[var(--app-border)] p-3">
+            {['Todas', 'Incidentes'].map(label => <button key={label} type="button" aria-pressed={filter === label} onClick={() => setFilter(label)} className={`min-h-10 rounded-lg px-3 text-sm font-semibold ${filter === label ? 'bg-[var(--app-accent)] text-white' : 'bg-[var(--app-surface-muted)] text-[var(--app-text)]'}`}>{label}</button>)}
+            {unread > 0 && <button type="button" onClick={markRead} className="min-h-10 text-xs font-semibold text-[var(--app-accent)]">Eliminar todos</button>}
+          </div>
+          <div ref={listRef} className="max-h-[min(46vh,430px)] overflow-y-auto p-3">
+            {visibleItems.length ? (
+              visibleItems.map((item, index) => (
                 <div
                   key={item.eventId || `${item.kind}-${index}`}
-                  className="border-b border-[var(--app-border)] px-2 py-3 last:border-0"
+                  data-notice-id={item.eventId}
+                  className="mb-2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-3"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-sm font-semibold text-[var(--app-text)]">{item.title}</p>
@@ -366,23 +293,24 @@ export default function RealtimeActivityCenter() {
                     ) : null}
                   </div>
                   {item.description ? (
-                    <p className="mt-1 text-xs text-[var(--app-text-muted)]">{item.description}</p>
+                    <p className="mt-2 text-sm leading-6 text-[var(--app-text-muted)]">{item.description}</p>
                   ) : null}
                   <p className="mt-1 text-xs text-[var(--app-text-muted)]">
-                    {new Date(item.receivedAt).toLocaleTimeString("es-MX", {
+                    {new Date(item.receivedAt).toLocaleString("es-MX", {
+                      day: "2-digit", month: "short",
                       hour: "2-digit",
                       minute: "2-digit",
-                      second: "2-digit",
                     })}
                   </p>
                 </div>
               ))
             ) : (
               <p className="p-6 text-center text-sm text-[var(--app-text-muted)]">
-                Aún no hay actividad.
+                Estás al día. No tienes avisos pendientes.
               </p>
             )}
           </div>
+          <p className="border-t border-[var(--app-border)] p-3 text-xs text-[var(--app-text-muted)]">Los avisos que veas se eliminan al cerrar. No se guarda historial.</p>
         </aside>
       ) : null}
     </>

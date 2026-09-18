@@ -318,6 +318,7 @@ export const useRondaData = (localidadId: number, onClose: () => void) => {
           localidadId: String(localidadId),
           estado: 'pendientes',
           entity: 'movimientos',
+          editing: '1',
         });
         const rondas = await getAppJson<Ronda[]>(`/api/cliente/rondas?${query.toString()}`);
 

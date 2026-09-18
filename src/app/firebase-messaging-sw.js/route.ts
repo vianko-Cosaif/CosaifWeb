@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
+import { FIREBASE_CDN_VERSION, FIREBASE_WORKER_CSP } from "@/lib/firebaseMessagingWorker";
 
 export const dynamic = "force-dynamic";
-
-const FIREBASE_CDN_VERSION = "12.14.0";
 
 function serviceWorkerSource() {
   const firebaseConfig = {
@@ -108,6 +107,7 @@ export function GET() {
       "Cache-Control": "public, max-age=0, must-revalidate",
       "Content-Type": "application/javascript; charset=utf-8",
       "Service-Worker-Allowed": "/",
+      "Content-Security-Policy": FIREBASE_WORKER_CSP,
     },
   });
 }

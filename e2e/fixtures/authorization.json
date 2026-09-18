@@ -417,5 +417,60 @@
       "canViewTorno": true,
       "navModules": ["dashboard", "movimientos", "torno", "usuarios", "incidentes", "reporteria"]
     }
+  },
+  "cliente_torreon": {
+    "policyVersion": 3,
+    "role": "CLIENTE",
+    "roleLabel": "Cliente",
+    "platforms": {
+      "web": true,
+      "mobile": true
+    },
+    "scope": {
+      "mode": "COMPANY_LOCALITY",
+      "empresaId": 3,
+      "localidadId": 2
+    },
+    "permissions": [
+      "session.read",
+      "catalogs.read",
+      "updates.read",
+      "movements.read",
+      "movements.create",
+      "movements.edit",
+      "movements.cancel",
+      "rounds.read",
+      "rounds.create",
+      "rounds.edit",
+      "incidents.read",
+      "incidents.manage",
+      "incidents.create",
+      "incidents.update",
+      "incidents.resolve",
+      "torno.read",
+      "reports.client.read",
+      "torreon.read",
+      "torreon.create"
+    ],
+    "capabilities": {
+      "area": "cliente",
+      "home": "/cliente",
+      "label": "Cliente",
+      "isClientLike": true,
+      "isOperationalOnly": false,
+      "canUseWeb": true,
+      "canCreateMovements": true,
+      "canViewMovementDuration": false,
+      "canViewAllCompanies": false,
+      "canViewCompanyWide": false,
+      "canSwitchLocalidad": false,
+      "canViewNaturalMovements": true,
+      "canViewTorreonArrastres": false,
+      "canCreateTorreonArrastres": false,
+      "canManageUsers": false,
+      "canViewReports": false,
+      "canViewTorno": true,
+      "navModules": ["dashboard", "movimientos", "torno", "incidentes"]
+    }
   }
 }

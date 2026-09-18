@@ -14,7 +14,8 @@ export const APP_ROLES = [
 ] as const;
 
 export type AppRole = (typeof APP_ROLES)[number];
-export type RoleArea = "administrador" | "comercial" | "coordinador" | "supervisor" | "cliente" | "unsupported";
+export type RoleArea =
+  "administrador" | "comercial" | "coordinador" | "supervisor" | "cliente" | "unsupported";
 export type NavModuleId =
   | "dashboard"
   | "movimientos"
@@ -75,7 +76,8 @@ export const PERMISSIONS = {
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
-export type AuthorizationScopeMode = "GLOBAL" | "COMMERCIAL" | "COMPANY" | "LOCALITY" | "COMPANY_LOCALITY" | "DENY";
+export type AuthorizationScopeMode =
+  "GLOBAL" | "COMMERCIAL" | "COMPANY" | "LOCALITY" | "COMPANY_LOCALITY" | "DENY";
 
 export type RoleCapabilities = {
   area: RoleArea;
@@ -166,7 +168,14 @@ const COMERCIAL_CAPABILITIES: RoleCapabilities = {
   canManageUsers: false,
   canViewReports: true,
   canViewTorno: false,
-  navModules: ["commercial_general", "commercial_clients", "commercial_contracts", "commercial_packages", "commercial_collections", "commercial_reports"],
+  navModules: [
+    "commercial_general",
+    "commercial_clients",
+    "commercial_contracts",
+    "commercial_packages",
+    "commercial_collections",
+    "commercial_reports",
+  ],
 };
 
 const COORDINADOR_CAPABILITIES: RoleCapabilities = {
@@ -227,9 +236,6 @@ const CLIENT_ADMIN_CAPABILITIES: RoleCapabilities = {
   label: ROLE_LABELS.CLIENTE_ADMIN,
   canViewCompanyWide: true,
   canSwitchLocalidad: false,
-  canViewTorreonArrastres: true,
-  canCreateTorreonArrastres: true,
-  navModules: ["dashboard", "movimientos", "torreon_arrastres", "torno", "incidentes"],
 };
 
 const CLIENT_COOR_CAPABILITIES: RoleCapabilities = {
@@ -295,7 +301,9 @@ const CAPABILITIES_BY_ROLE: Record<AppRole, RoleCapabilities> = {
 };
 
 export function normalizeAppRole(input?: string | null): AppRole | null {
-  const value = String(input || "").trim().toUpperCase();
+  const value = String(input || "")
+    .trim()
+    .toUpperCase();
   return (APP_ROLES as readonly string[]).includes(value) ? (value as AppRole) : null;
 }
 
@@ -322,13 +330,40 @@ export function canUseWeb(role?: string | null): boolean {
 
 const PERMISSION_VALUES = new Set<string>(Object.values(PERMISSIONS));
 const NAV_MODULE_VALUES = new Set<string>([
-  "dashboard", "movimientos", "torreon_arrastres", "torno", "configuracion", "usuarios", "incidentes", "reporteria",
-  "commercial_general", "commercial_clients", "commercial_contracts", "commercial_packages", "commercial_collections", "commercial_reports",
+  "dashboard",
+  "movimientos",
+  "torreon_arrastres",
+  "torno",
+  "configuracion",
+  "usuarios",
+  "incidentes",
+  "reporteria",
+  "commercial_general",
+  "commercial_clients",
+  "commercial_contracts",
+  "commercial_packages",
+  "commercial_collections",
+  "commercial_reports",
 ]);
-const SCOPE_VALUES = new Set<AuthorizationScopeMode>(["GLOBAL", "COMMERCIAL", "COMPANY", "LOCALITY", "COMPANY_LOCALITY", "DENY"]);
-const AREA_VALUES = new Set<RoleArea>(["administrador", "comercial", "coordinador", "supervisor", "cliente", "unsupported"]);
+const SCOPE_VALUES = new Set<AuthorizationScopeMode>([
+  "GLOBAL",
+  "COMMERCIAL",
+  "COMPANY",
+  "LOCALITY",
+  "COMPANY_LOCALITY",
+  "DENY",
+]);
+const AREA_VALUES = new Set<RoleArea>([
+  "administrador",
+  "comercial",
+  "coordinador",
+  "supervisor",
+  "cliente",
+  "unsupported",
+]);
 
-const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value));
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value && typeof value === "object" && !Array.isArray(value));
 const nullablePositiveInteger = (value: unknown) => {
   if (value == null) return null;
   const parsed = Number(value);
@@ -347,25 +382,47 @@ export function parseAuthorizationProfile(value: unknown): AuthorizationProfile 
   const scope = isRecord(value.scope) ? value.scope : null;
   const capabilities = isRecord(value.capabilities) ? value.capabilities : null;
   const policyVersion = Number(value.policyVersion);
-  if (!role || policyVersion !== AUTHORIZATION_POLICY_VERSION || !platforms || !scope || !capabilities) return null;
+  if (
+    !role ||
+    policyVersion !== AUTHORIZATION_POLICY_VERSION ||
+    !platforms ||
+    !scope ||
+    !capabilities
+  )
+    return null;
 
-  const area = typeof capabilities.area === "string" ? capabilities.area as RoleArea : "unsupported";
+  const area =
+    typeof capabilities.area === "string" ? (capabilities.area as RoleArea) : "unsupported";
   const home = safeInternalHome(capabilities.home);
-  const scopeMode = typeof scope.mode === "string" ? scope.mode as AuthorizationScopeMode : "DENY";
+  const scopeMode =
+    typeof scope.mode === "string" ? (scope.mode as AuthorizationScopeMode) : "DENY";
   if (!AREA_VALUES.has(area) || !home || !SCOPE_VALUES.has(scopeMode)) return null;
 
   const permissions = Array.isArray(value.permissions)
-    ? [...new Set(value.permissions.filter((item): item is Permission => typeof item === "string" && PERMISSION_VALUES.has(item)))]
+    ? [
+        ...new Set(
+          value.permissions.filter(
+            (item): item is Permission => typeof item === "string" && PERMISSION_VALUES.has(item),
+          ),
+        ),
+      ]
     : [];
   const navModules = Array.isArray(capabilities.navModules)
-    ? [...new Set(capabilities.navModules.filter((item): item is NavModuleId => typeof item === "string" && NAV_MODULE_VALUES.has(item)))]
+    ? [
+        ...new Set(
+          capabilities.navModules.filter(
+            (item): item is NavModuleId => typeof item === "string" && NAV_MODULE_VALUES.has(item),
+          ),
+        ),
+      ]
     : [];
   const booleanCapability = (name: keyof RoleCapabilities) => capabilities[name] === true;
 
   return {
     policyVersion,
     role,
-    roleLabel: typeof value.roleLabel === "string" ? value.roleLabel.slice(0, 80) : ROLE_LABELS[role],
+    roleLabel:
+      typeof value.roleLabel === "string" ? value.roleLabel.slice(0, 80) : ROLE_LABELS[role],
     platforms: { web: platforms.web === true, mobile: platforms.mobile === true },
     scope: {
       mode: scopeMode,
@@ -376,7 +433,10 @@ export function parseAuthorizationProfile(value: unknown): AuthorizationProfile 
     capabilities: {
       area,
       home,
-      label: typeof capabilities.label === "string" ? capabilities.label.slice(0, 80) : ROLE_LABELS[role],
+      label:
+        typeof capabilities.label === "string"
+          ? capabilities.label.slice(0, 80)
+          : ROLE_LABELS[role],
       isClientLike: booleanCapability("isClientLike"),
       isOperationalOnly: booleanCapability("isOperationalOnly"),
       canUseWeb: booleanCapability("canUseWeb"),
@@ -396,10 +456,16 @@ export function parseAuthorizationProfile(value: unknown): AuthorizationProfile 
   };
 }
 
-export function hasPermission(profile: AuthorizationProfile | null | undefined, permission: Permission) {
+export function hasPermission(
+  profile: AuthorizationProfile | null | undefined,
+  permission: Permission,
+) {
   return Boolean(profile?.permissions.includes(permission));
 }
 
-export function hasAnyPermission(profile: AuthorizationProfile | null | undefined, permissions: readonly Permission[]) {
+export function hasAnyPermission(
+  profile: AuthorizationProfile | null | undefined,
+  permissions: readonly Permission[],
+) {
   return permissions.some((permission) => hasPermission(profile, permission));
 }

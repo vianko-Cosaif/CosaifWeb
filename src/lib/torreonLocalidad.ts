@@ -43,18 +43,15 @@ export function normalizeRoleName(role?: string | null) {
 }
 
 export function isClienteAreaRole(role?: string | null) {
-  return ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON"].includes(normalizeRoleName(role));
+  return ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON"].includes(
+    normalizeRoleName(role),
+  );
 }
 
 export function canViewTorreonArrastreRole(role?: string | null) {
-  return [
-    "ADMINISTRADOR",
-    "COORDINADOR",
-    "SUPERVISOR",
-    "CLIENTE_ADMIN",
-    "CLIENTE_COOR",
-    "ARRASTRE_TORREON",
-  ].includes(normalizeRoleName(role));
+  return ["ADMINISTRADOR", "COORDINADOR", "SUPERVISOR", "ARRASTRE_TORREON"].includes(
+    normalizeRoleName(role),
+  );
 }
 
 export function canResolveTorreonIncidentRole(role?: string | null) {
