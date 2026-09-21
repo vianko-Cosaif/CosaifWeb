@@ -14,6 +14,12 @@ import {
   useRealtimeMovimientos,
   type RealtimeMovementEvent,
 } from "@/features/movimientos/useRealtimeMovimientos";
+import { fetchTorreonIncidentDetail } from "@/features/torreon/incidents/incidentDetail";
+import {
+  torreonIncidentRequest,
+  torreonIncidentSourceQuery,
+  withTorreonIncidentDetail,
+} from "./torreonIncidentDetail";
 
 const IncidentModal = dynamic(() => import("./IncidentModal"), { ssr: false });
 
@@ -24,19 +30,6 @@ const getCookie = (name: string) => {
   if (typeof document === "undefined") return null;
   const m = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
   return m ? decodeURIComponent(m[1]) : null;
-};
-
-const incidentSourceQuery = (incident: IncidenteEmergente): string => {
-  const original = (incident as any)?._original ?? {};
-  const source = String(original?._source || (incident as any)?._source || "").toLowerCase();
-  if (source !== "torreon") return "";
-  const params = new URLSearchParams({ source: "torreon" });
-  const localidadId =
-    original?.localidadId ??
-    original?.movimiento?.localidadId ??
-    (incident as any)?.movimiento?.localidadId;
-  if (localidadId) params.set("localidadId", String(localidadId));
-  return `?${params.toString()}`;
 };
 
 /** empresaId tolerante a typos comunes en cookie */
@@ -109,9 +102,14 @@ export default function IncidentMonitor({
 
   const [currentIncident, setCurrentIncident] = useState<IncidenteEmergente | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [loadingImages, setLoadingImages] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
   const [processedIncidents, setProcessedIncidents] = useState<Set<number>>(new Set());
 
   const realtimeCheckTimerRef = useRef<number | null>(null);
+  const incidentDetailControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => incidentDetailControllerRef.current?.abort(), []);
 
   useEffect(() => {
     setEmpresaId(empresaIdProp ?? getEmpresaIdFromCookie());
@@ -129,12 +127,36 @@ export default function IncidentMonitor({
       }
       if (!processedIncidents.has(incident.id)) {
         if (autoOpenNewIncidents) {
+          incidentDetailControllerRef.current?.abort();
           setCurrentIncident(incident);
           setIsModalOpen(true);
+          setImageError(null);
+          const request = torreonIncidentRequest(incident, localidadId);
+          setLoadingImages(Boolean(request));
+          if (request) {
+            const controller = new AbortController();
+            incidentDetailControllerRef.current = controller;
+            void fetchTorreonIncidentDetail(request, controller.signal)
+              .then((detail) => {
+                if (controller.signal.aborted) return;
+                setCurrentIncident((current) =>
+                  current?.id === incident.id ? withTorreonIncidentDetail(current, detail) : current,
+                );
+                setLoadingImages(false);
+              })
+              .catch((error: unknown) => {
+                if (controller.signal.aborted) return;
+                setImageError(error instanceof Error ? error.message : "No se pudieron cargar las imágenes.");
+                setLoadingImages(false);
+              })
+              .finally(() => {
+                if (incidentDetailControllerRef.current === controller) incidentDetailControllerRef.current = null;
+              });
+          }
         }
       }
     },
-    [processedIncidents, empresaId, autoOpenNewIncidents],
+    [processedIncidents, empresaId, autoOpenNewIncidents, localidadId],
   );
 
   const { isMonitoring, lastCheck, error, activeIncidents, checkNow, checkIfStale } =
@@ -153,6 +175,9 @@ export default function IncidentMonitor({
 
   useEffect(() => {
     if (!trainingAlertStep) return;
+    incidentDetailControllerRef.current?.abort();
+    setLoadingImages(false);
+    setImageError(null);
     setCurrentIncident({
       id: TRAINING_INCIDENT_ID,
       descripcion: "SIM-INC-041 · Obstáculo detectado en la vía de capacitación",
@@ -247,8 +272,9 @@ export default function IncidentMonitor({
           onIncidentResolved?.(incident);
           return;
         }
+        const sourceQuery = torreonIncidentSourceQuery(incident, localidadId);
         const response = await handleFetchRequest(
-          `${apiBase}/incidentes/${incident.id}/resuelto${incidentSourceQuery(incident)}`,
+          `${sourceQuery ? "/api" : apiBase}/incidentes/${incident.id}/resuelto${sourceQuery}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -257,6 +283,7 @@ export default function IncidentMonitor({
           },
         );
         if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
+        incidentDetailControllerRef.current?.abort();
         setProcessedIncidents((prev) => new Set(prev).add(incident.id));
         setIsModalOpen(false);
         setCurrentIncident(null);
@@ -266,7 +293,7 @@ export default function IncidentMonitor({
         alert("No se pudo resolver el incidente. Inténtalo de nuevo.");
       }
     },
-    [apiBase, onIncidentResolved, handleFetchRequest, trainingTour],
+    [apiBase, onIncidentResolved, handleFetchRequest, trainingTour, localidadId],
   );
 
   const handleSkip = useCallback(
@@ -286,14 +313,16 @@ export default function IncidentMonitor({
           onIncidentSkipped?.(incident);
           return;
         }
+        const sourceQuery = torreonIncidentSourceQuery(incident, localidadId);
         const response = await handleFetchRequest(
-          `${apiBase}/incidentes/${incident.id}/cerrar${incidentSourceQuery(incident)}`,
+          `${sourceQuery ? "/api" : apiBase}/incidentes/${incident.id}/cerrar${sourceQuery}`,
           {
             method: "POST",
             credentials: "include",
           },
         );
         if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
+        incidentDetailControllerRef.current?.abort();
         setProcessedIncidents((prev) => new Set(prev).add(incident.id));
         setIsModalOpen(false);
         setCurrentIncident(null);
@@ -303,11 +332,12 @@ export default function IncidentMonitor({
         alert("No se pudo omitir el incidente. Inténtalo de nuevo.");
       }
     },
-    [apiBase, onIncidentSkipped, handleFetchRequest, trainingTour],
+    [apiBase, onIncidentSkipped, handleFetchRequest, trainingTour, localidadId],
   );
 
   const handleContinue = useCallback(
     (incident: IncidenteEmergente) => {
+      incidentDetailControllerRef.current?.abort();
       setProcessedIncidents((prev) => new Set(prev).add(incident.id));
       setIsModalOpen(false);
       setCurrentIncident(null);
@@ -317,6 +347,8 @@ export default function IncidentMonitor({
   );
 
   const handleClose = useCallback(() => {
+    incidentDetailControllerRef.current?.abort();
+    setLoadingImages(false);
     setIsModalOpen(false);
     setCurrentIncident(null);
   }, []);
@@ -336,6 +368,8 @@ export default function IncidentMonitor({
           onSkip={handleSkip}
           onContinue={handleContinue}
           countdownEnabled={countdownEnabled}
+          loadingImages={loadingImages}
+          imageError={imageError}
         />
       )}
     </>

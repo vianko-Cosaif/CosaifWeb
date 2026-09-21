@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { PERMISSIONS, hasAnyPermission } from "@/lib/accessControl";
 import { getVerifiedSession } from "@/lib/server/session";
+import { getTorreonUploadsRoots } from "@/lib/server/torreonImageStorage";
 
 export const dynamic = "force-dynamic";
 
@@ -24,16 +25,6 @@ const ALLOWED_ROLES = new Set([
   "CLIENTE_COOR",
   "ARRASTRE_TORREON",
 ]);
-
-function getUploadsRoots() {
-  return [
-    process.env.TORREON_UPLOADS_DIR,
-    path.resolve(process.cwd(), "../BackCosaif2/uploads/incidentes"),
-    path.resolve(process.cwd(), "../BackCosaif2/ms_torreon/uploads/incidentes"),
-  ]
-    .filter((item): item is string => Boolean(item))
-    .map((item) => path.resolve(item));
-}
 
 async function hasSession() {
   const cookieStore = await cookies();
@@ -70,7 +61,7 @@ export async function GET(
 
     let file: Buffer | null = null;
     let target = "";
-    for (const root of getUploadsRoots()) {
+    for (const root of getTorreonUploadsRoots()) {
       const candidate = path.resolve(root, ...cleanSegments);
       if (candidate !== root && !candidate.startsWith(`${root}${path.sep}`)) {
         return NextResponse.json({ error: "Ruta invalida" }, { status: 400 });

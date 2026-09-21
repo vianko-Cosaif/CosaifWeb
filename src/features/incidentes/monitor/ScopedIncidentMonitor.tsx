@@ -43,6 +43,7 @@ export default function ScopedIncidentMonitor({
   const [scopeReady, setScopeReady] = useState(false);
   const [monitorReady, setMonitorReady] = useState(false);
   const [countdownEnabled, setCountdownEnabled] = useState(true);
+  const [torreonScope, setTorreonScope] = useState(false);
 
   useEffect(() => {
     const refreshScope = () => {
@@ -58,11 +59,12 @@ export default function ScopedIncidentMonitor({
           : scope;
 
       const applyScope = (nextEmpresaId: number | null, nextLocalidadId: number | null) => {
+        const isTorreonScope =
+          normalizedRole.includes("TORREON") || isTorreonLocalidadId(nextLocalidadId);
         setEmpresaId(nextEmpresaId);
         setLocalidadId(nextLocalidadId);
-        setCountdownEnabled(
-          !normalizedRole.includes("TORREON") && !isTorreonLocalidadId(nextLocalidadId),
-        );
+        setTorreonScope(isTorreonScope);
+        setCountdownEnabled(!isTorreonScope);
         setScopeReady(true);
       };
 
@@ -102,7 +104,7 @@ export default function ScopedIncidentMonitor({
 
   return (
     <IncidentMonitor
-      apiBase={DEFAULT_API_BASE}
+      apiBase={torreonScope ? "/api" : DEFAULT_API_BASE}
       intervalMs={intervalMs}
       enabled={true}
       empresaId={empresaId}

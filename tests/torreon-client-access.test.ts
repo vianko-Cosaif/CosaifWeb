@@ -177,3 +177,29 @@ it("rejects opposite-domain incident IDs instead of remapping them to a differen
   expect(response.status).toBe(403);
   expect(mock.ms).not.toHaveBeenCalled();
 });
+
+it("loads arrastre evidence from the incident detail and maps it to the image proxy", async () => {
+  session("ARRASTRE_TORREON");
+  mock.ms.mockResolvedValue({
+    id: 31,
+    _torreonTipo: "ARRASTRE",
+    localidadId: 2,
+    arrastreId: 8,
+    arrastre: { id: 8, localidadId: 2, empresaId: 3 },
+    fotos: [{ id: 4, orden: 1, url: "2026/09/21/torreon_incidente_arrastre_31_1.jpeg" }],
+  });
+
+  const response = await readIncidents(
+    new NextRequest("http://localhost/api/incidentes/31?source=torreon&tipo=ARRASTRE&localidadId=2"),
+    { params: Promise.resolve({ path: ["31"] }) },
+  );
+
+  expect(response.status).toBe(200);
+  expect(mock.ms).toHaveBeenCalledWith("/incidentes/31?tipo=ARRASTRE");
+  expect((await response.json()).data.fotos).toEqual([
+    expect.objectContaining({
+      id: 4,
+      url: "/api/torreon/imagenes/2026/09/21/torreon_incidente_arrastre_31_1.jpeg",
+    }),
+  ]);
+});

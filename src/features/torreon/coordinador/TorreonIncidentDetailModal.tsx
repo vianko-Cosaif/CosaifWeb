@@ -34,6 +34,8 @@ type Props = {
   title: string;
   subtitle?: string;
   resolving?: boolean;
+  loadingEvidence?: boolean;
+  evidenceError?: string | null;
   onResolve?: (solucion: string) => Promise<void> | void;
   onCancel?: (motivo: string) => Promise<void> | void;
   onClose: () => void;
@@ -68,7 +70,7 @@ function incidentImages(incident: TorreonIncidentDetail) {
     .map<TorreonIncidentImage>((url, index) => ({ url, orden: index + 1 }));
 }
 
-export default function TorreonIncidentDetailModal({ incident, title, subtitle, resolving = false, onResolve, onCancel, onClose }: Props) {
+export default function TorreonIncidentDetailModal({ incident, title, subtitle, resolving = false, loadingEvidence = false, evidenceError, onResolve, onCancel, onClose }: Props) {
   const status = normalizeStatus(incident.estado);
   const fotos = incidentImages(incident);
   const canResolve = status === "ABIERTO" && Boolean(onResolve);
@@ -263,9 +265,19 @@ export default function TorreonIncidentDetailModal({ incident, title, subtitle, 
                 <Camera className="h-4 w-4 text-slate-500" />
                 Evidencias
               </div>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300">{fotos.length}</span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300">{loadingEvidence ? incident.fotosCount ?? fotos.length : fotos.length}</span>
             </div>
-            {fotos.length ? (
+            {evidenceError ? (
+              <div role="alert" className="mb-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-center text-sm font-semibold text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300">
+                {evidenceError}
+              </div>
+            ) : null}
+            {loadingEvidence ? (
+              <div className="flex min-h-32 items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 p-5 text-sm font-semibold text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Cargando evidencias…
+              </div>
+            ) : fotos.length ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 {fotos.map((foto, index) => (
                   <EvidenceFigure
@@ -276,11 +288,11 @@ export default function TorreonIncidentDetailModal({ incident, title, subtitle, 
                   />
                 ))}
               </div>
-            ) : (
+            ) : !evidenceError ? (
               <div className="rounded-xl border border-dashed border-slate-200 p-5 text-center text-sm font-semibold text-slate-400 dark:border-slate-700 dark:text-slate-500">
                 Sin evidencias registradas.
               </div>
-            )}
+            ) : null}
           </section>
 
         </div>

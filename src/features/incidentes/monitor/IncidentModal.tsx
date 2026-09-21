@@ -26,6 +26,8 @@ interface IncidentModalProps {
   onSkip: (incident: IncidenteEmergente) => void;
   onContinue: (incident: IncidenteEmergente) => void;
   countdownEnabled?: boolean;
+  loadingImages?: boolean;
+  imageError?: string | null;
 }
 
 /* ================= Constantes ================= */
@@ -92,6 +94,8 @@ export default function IncidentModal({
   onSkip,
   onContinue,
   countdownEnabled = true,
+  loadingImages = false,
+  imageError,
 }: IncidentModalProps) {
   const [resolution, setResolution] = useState("");
   const [now, setNow] = useState<number>(Date.now());
@@ -367,6 +371,11 @@ export default function IncidentModal({
             </div>
           ) : (
             <div>
+              {imageError ? (
+                <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                  No se pudieron cargar las imágenes: {imageError}
+                </p>
+              ) : null}
               {hasImages ? (
                 <ImageGallery
                   images={images}
@@ -375,7 +384,11 @@ export default function IncidentModal({
                   fullscreen={fullscreen}
                   onToggleFullscreen={() => setFullscreen((v) => !v)}
                 />
-              ) : (
+              ) : loadingImages ? (
+                <div role="status" className="py-12 text-center text-sm text-slate-500">
+                  Cargando imágenes del incidente…
+                </div>
+              ) : !imageError ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <ImageIcon className="h-12 w-12 text-slate-400 mb-4" />
                   <h3 className="text-lg font-semibold text-slate-600 dark:text-slate-400 mb-2">No hay imágenes disponibles</h3>
@@ -383,7 +396,7 @@ export default function IncidentModal({
                     Este incidente no tiene imágenes asociadas.
                   </p>
                 </div>
-              )}
+              ) : null}
             </div>
           )}
         </div>

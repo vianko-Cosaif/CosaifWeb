@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { readTorreonJson, useTorreonCollection } from "../useTorreonCollection";
 import { arrastreListUrl, parseArrastrePage, arrastreDateError } from "../arrastres/listQuery";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -44,6 +44,7 @@ import { useRealtimeBoardRefresh } from "@/features/rail-queue/useRealtimeBoardR
 import { TorreonRealtimeBadge } from "@/features/torreon/components/TorreonRealtimeBadge";
 import { isTorreonArrastreEvent } from "@/features/torreon/realtime";
 import { playOperationConfirmation } from "@/lib/notificationSound";
+import { fetchTorreonIncidentDetail } from "@/features/torreon/incidents/incidentDetail";
 import TorreonIncidentDetailModal, {
   type TorreonIncidentDetail,
 } from "./TorreonIncidentDetailModal";
@@ -77,7 +78,10 @@ export default function TorreonArrastresPanel({
     incident: TorreonIncidentDetail;
     title: string;
     subtitle?: string;
+    loadingEvidence: boolean;
+    evidenceError: string | null;
   } | null>(null);
+  const incidentDetailControllerRef = useRef<AbortController | null>(null);
   const [resolvingIncident, setResolvingIncident] = useState(false);
   const [priorityBusyId, setPriorityBusyId] = useState<number | null>(null);
   const [busyVagonKey, setBusyVagonKey] = useState<string | null>(null);
@@ -163,6 +167,68 @@ export default function TorreonArrastresPanel({
   const dashboardArrastres = useMemo(() => arrastres.filter(isLiveArrastre), [arrastres]);
   const metricRows = variant === "movimientos" ? arrastres : dashboardArrastres;
   const dailyCounters = useMemo(() => buildDailyCounters(arrastres), [arrastres]);
+
+  useEffect(() => () => incidentDetailControllerRef.current?.abort(), []);
+
+  const openIncident = useCallback(
+    (incident: TorreonIncidentDetail, arrastre: Arrastre) => {
+      incidentDetailControllerRef.current?.abort();
+      const incidentId = Number(incident.id);
+      const currentFotos = Array.isArray(incident.fotos) ? incident.fotos.length : 0;
+      const shouldLoadDetail =
+        Number.isFinite(incidentId) &&
+        (currentFotos === 0 || (incident.fotosCount ?? 0) > currentFotos);
+      const selected = {
+        arrastreId: arrastre.id,
+        incident,
+        title: `Arrastre ${buildArrastreFolio(arrastre, dailyCounters.get(arrastre.id))}`,
+        subtitle: `Movimiento de arrastre #${arrastre.id}`,
+        loadingEvidence: shouldLoadDetail,
+        evidenceError: null,
+      };
+      setSelectedIncident(selected);
+      if (!shouldLoadDetail) return;
+
+      const controller = new AbortController();
+      incidentDetailControllerRef.current = controller;
+      void fetchTorreonIncidentDetail({ incidentId, localidadId, tipo: "ARRASTRE" }, controller.signal)
+        .then((detail) => {
+          if (controller.signal.aborted) return;
+          setSelectedIncident((current) => {
+            if (
+              !current ||
+              current.arrastreId !== arrastre.id ||
+              Number(current.incident.id) !== incidentId
+            ) {
+              return current;
+            }
+            return {
+              ...current,
+              incident: { ...current.incident, ...detail },
+              loadingEvidence: false,
+            };
+          });
+        })
+        .catch((error: unknown) => {
+          if (controller.signal.aborted) return;
+          setSelectedIncident((current) =>
+            current &&
+            current.arrastreId === arrastre.id &&
+            Number(current.incident.id) === incidentId
+              ? {
+                  ...current,
+                  loadingEvidence: false,
+                  evidenceError: error instanceof Error ? error.message : "No se pudieron cargar las evidencias.",
+                }
+              : current,
+          );
+        })
+        .finally(() => {
+          if (incidentDetailControllerRef.current === controller) incidentDetailControllerRef.current = null;
+        });
+    },
+    [dailyCounters, localidadId],
+  );
 
   const stats = useMemo(() => {
     const vagonesActivos = metricRows
@@ -707,14 +773,7 @@ export default function TorreonArrastresPanel({
             <ArrastreAirportBoard
               rows={paginatedRows}
               dailyCounters={dailyCounters}
-              onIncidentSelect={(incident, arrastre) =>
-                setSelectedIncident({
-                  arrastreId: arrastre.id,
-                  incident,
-                  title: `Arrastre ${buildArrastreFolio(arrastre, dailyCounters.get(arrastre.id))}`,
-                  subtitle: `Movimiento de arrastre #${arrastre.id}`,
-                })
-              }
+              onIncidentSelect={openIncident}
               onAuditSelect={rol === "ADMINISTRADOR" ? openAudit : undefined}
             />
           ) : rows.length ? (
@@ -736,14 +795,7 @@ export default function TorreonArrastresPanel({
                   ? (arrastre, vagon) => operateVagon("FINALIZAR_VAGON", arrastre, vagon)
                   : undefined
               }
-              onIncidentSelect={(incident, arrastre) =>
-                setSelectedIncident({
-                  arrastreId: arrastre.id,
-                  incident,
-                  title: `Arrastre ${buildArrastreFolio(arrastre, dailyCounters.get(arrastre.id))}`,
-                  subtitle: `Movimiento de arrastre #${arrastre.id}`,
-                })
-              }
+              onIncidentSelect={openIncident}
               onAuditSelect={rol === "ADMINISTRADOR" ? openAudit : undefined}
             />
           ) : (
@@ -771,8 +823,13 @@ export default function TorreonArrastresPanel({
           title={selectedIncident.title}
           subtitle={selectedIncident.subtitle}
           resolving={resolvingIncident}
+          loadingEvidence={selectedIncident.loadingEvidence}
+          evidenceError={selectedIncident.evidenceError}
           onResolve={resolveSelectedIncident}
-          onClose={() => setSelectedIncident(null)}
+          onClose={() => {
+            incidentDetailControllerRef.current?.abort();
+            setSelectedIncident(null);
+          }}
         />
       )}
       {auditState ? (

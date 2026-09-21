@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { readTorreonJson, useTorreonCollection } from "../useTorreonCollection";
 import { arrastreListUrl, parseArrastrePage } from "../arrastres/listQuery";
@@ -47,6 +47,7 @@ import { useRealtimeBoardRefresh } from "@/features/rail-queue/useRealtimeBoardR
 import { isTorreonArrastreEvent } from "@/features/torreon/realtime";
 import { canViewTorreonArrastreRole, normalizeRoleName } from "@/lib/torreonLocalidad";
 import { playOperationConfirmation } from "@/lib/notificationSound";
+import { fetchTorreonIncidentDetail } from "@/features/torreon/incidents/incidentDetail";
 import TorreonIncidentDetailModal, {
   type TorreonIncidentDetail,
 } from "@/features/torreon/coordinador/TorreonIncidentDetailModal";
@@ -108,7 +109,12 @@ export default function TorreonClientePanel({
     arrastreId: number;
     title: string;
     subtitle?: string;
+    loadingEvidence: boolean;
+    evidenceError: string | null;
   } | null>(null);
+  const incidentDetailControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => incidentDetailControllerRef.current?.abort(), []);
 
   const [listPage, setListPage] = useState(1);
   const deferredSearch = useDebouncedValue(search, 300);
@@ -993,6 +999,7 @@ export default function TorreonClientePanel({
   }
 
   function openIncident(incident: IncidenteArrastre, arrastre: Arrastre) {
+    incidentDetailControllerRef.current?.abort();
     const arrastreId = arrastre.id;
     const title = `Arrastre ${buildArrastreFolio(arrastre, dailyCounters.get(arrastre.id))}`;
     const subtitle = `Movimiento de arrastre #${arrastre.id}`;
@@ -1001,6 +1008,8 @@ export default function TorreonClientePanel({
       arrastreId,
       title,
       subtitle,
+      loadingEvidence: false,
+      evidenceError: null,
     });
 
     const incidentId = Number(incident.id);
@@ -1010,22 +1019,14 @@ export default function TorreonClientePanel({
       (currentFotos === 0 || (incident.fotosCount ?? 0) > currentFotos);
     if (!shouldLoadDetail) return;
 
-    const params = new URLSearchParams({
-      source: "torreon",
-      tipo: "ARRASTRE",
-      localidadId: String(localidadId),
-    });
-    fetch(`/api/incidentes/${incidentId}?${params.toString()}`, {
-      cache: "no-store",
-      credentials: "include",
-    })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((payload) => {
-        const record =
-          payload && typeof payload === "object" && "data" in payload
-            ? (payload as { data?: unknown }).data
-            : payload;
-        if (!record || typeof record !== "object") return;
+    setSelectedIncident((current) =>
+      current ? { ...current, loadingEvidence: true } : current,
+    );
+    const controller = new AbortController();
+    incidentDetailControllerRef.current = controller;
+    void fetchTorreonIncidentDetail({ incidentId, localidadId, tipo: "ARRASTRE" }, controller.signal)
+      .then((record) => {
+        if (controller.signal.aborted) return;
         setSelectedIncident((current) => {
           if (
             !current ||
@@ -1037,12 +1038,29 @@ export default function TorreonClientePanel({
             ...current,
             incident: {
               ...current.incident,
-              ...(record as TorreonIncidentDetail),
+              ...record,
             },
+            loadingEvidence: false,
           };
         });
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setSelectedIncident((current) =>
+          current &&
+          current.arrastreId === arrastreId &&
+          Number(current.incident.id) === incidentId
+            ? {
+                ...current,
+                loadingEvidence: false,
+                evidenceError: error instanceof Error ? error.message : "No se pudieron cargar las evidencias.",
+              }
+            : current,
+        );
+      })
+      .finally(() => {
+        if (incidentDetailControllerRef.current === controller) incidentDetailControllerRef.current = null;
+      });
   }
 
   async function resolveIncident(arrastreId: number, incidenteId: number, solucion: string) {
@@ -1267,6 +1285,8 @@ export default function TorreonClientePanel({
             incident={selectedIncident.incident}
             title={selectedIncident.title}
             subtitle={selectedIncident.subtitle}
+            loadingEvidence={selectedIncident.loadingEvidence}
+            evidenceError={selectedIncident.evidenceError}
             resolving={
               busyAction ===
               `resolve:${selectedIncident.arrastreId}:${selectedIncident.incident.id}`
@@ -1278,7 +1298,10 @@ export default function TorreonClientePanel({
                 solucion,
               )
             }
-            onClose={() => setSelectedIncident(null)}
+            onClose={() => {
+              incidentDetailControllerRef.current?.abort();
+              setSelectedIncident(null);
+            }}
           />
         ) : null}
       </div>
