@@ -7,7 +7,15 @@ export const MOVEMENT_STATES = {
   actuales: ["SOLICITADO", "EN_PROCESO", "ESPERA"],
   pasados: ["DETENIDO", "CANCELADO", "CONCLUIDO"],
 } as const;
-export const CURRENT_QUEUE_STATES = [...MOVEMENT_STATES.actuales, "DETENIDO", "AGENDADO"] as const;
+export const CURRENT_QUEUE_STATES = [
+  ...MOVEMENT_STATES.actuales,
+  "DETENIDO",
+  "AGENDADO",
+  "PENDIENTE",
+  "ACTIVO",
+  "BLOQUEADO",
+] as const;
+export const CLOSED_MOVEMENT_STATES = ["CONCLUIDO", "CANCELADO", "RESUELTO"] as const;
 const ORDERS = [
   "id",
   "locomotora",

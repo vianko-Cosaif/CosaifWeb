@@ -6,7 +6,7 @@ import {
 import type { AppRole, AuthorizationProfile } from "@/lib/accessControl";
 import { cachedFetchJson } from "@/lib/http/client";
 
-import { DEFAULT_MOVEMENT_FILTERS, CURRENT_QUEUE_STATES, movementDateBoundary, movementFilterError, movementFilterPolicy, movementSearchParams, normalizeMovementFilters, type MovementFilterScope } from './filterRules';
+import { DEFAULT_MOVEMENT_FILTERS, CLOSED_MOVEMENT_STATES, movementDateBoundary, movementFilterError, movementFilterPolicy, movementSearchParams, normalizeMovementFilters, type MovementFilterScope } from './filterRules';
 
 /* ================== CONFIGURACIÓN ================== */
 const DEFAULT_API_BASE =
@@ -495,7 +495,7 @@ export function currentQueueMovements(data: unknown, localidadId: number): Movem
     const dto = row.movimiento;
     const id = Number(dto?.id ?? row.movimientoId);
     if (!dto || !Number.isSafeInteger(id) || id <= 0 || row.concluido || Number(row.localidadId ?? dto.localidadId) !== localidadId) continue;
-    if (!(CURRENT_QUEUE_STATES as readonly string[]).includes(normalizarEstado(dto.estado))) continue;
+    if ((CLOSED_MOVEMENT_STATES as readonly string[]).includes(normalizarEstado(dto.estado))) continue;
     const technicalId = Number(dto.idTecnico ?? row.movimientoId ?? id);
     if (!Number.isSafeInteger(technicalId) || technicalId <= 0) continue;
     unique.set(technicalId, { ...mapearDTO({ ...dto, id, idTecnico: technicalId, empresa: row.empresa ?? dto.empresa, localidadId, finalizado: false }), rondaNumero: row.rondaNumero, ordenEnRonda: row.orden });

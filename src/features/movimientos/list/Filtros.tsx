@@ -8,6 +8,7 @@ import type {
   OpcionEmpresa,
   OpcionLocalidad,
 } from "./useMovimientos";
+import { CURRENT_QUEUE_STATES, MOVEMENT_STATES } from "./filterRules";
 import { Eraser, Calendar, ChevronDown, SlidersHorizontal, X } from "lucide-react";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 
@@ -91,10 +92,10 @@ export default function Filtros({
   const [showEstadoDropdown, setShowEstadoDropdown] = useState(false);
 
   const estados = useMemo<readonly string[]>(() => estadosPermitidos ?? (ambito === "pasados"
-    ? ["DETENIDO", "CANCELADO", "CONCLUIDO"]
+    ? MOVEMENT_STATES.pasados
     : actualesCompartidos
-      ? ["SOLICITADO", "EN_PROCESO", "ESPERA", "DETENIDO", "AGENDADO"]
-      : ["SOLICITADO", "EN_PROCESO", "ESPERA"]), [ambito, actualesCompartidos, estadosPermitidos]);
+      ? CURRENT_QUEUE_STATES
+      : MOVEMENT_STATES.actuales), [ambito, actualesCompartidos, estadosPermitidos]);
   useEffect(() => {
     const raw = filtros.estado ?? "";
     const next = raw.split(",").map(value => value.trim()).filter(value => estados.includes(value)).join(",");

@@ -83,10 +83,10 @@ describe("movement filters follow the signed role and contextual scope", () => {
     expect(query.has("localidadId")).toBe(false);
   });
 
-  it("keeps current shared stopped/scheduled multi-state filters and clears terminal states", () => {
+  it("keeps current shared generic and Torreon multi-state filters and clears terminal states", () => {
     const scope = signedScope("CLIENTE", "COMPANY_LOCALITY");
-    const filters = normalizeMovementFilters({ estado: " DETENIDO,AGENDADO,CONCLUIDO " }, "actuales", scope);
-    expect(filters.estado?.split(",").sort()).toEqual(["AGENDADO", "DETENIDO"]);
+    const filters = normalizeMovementFilters({ estado: " DETENIDO,AGENDADO,PENDIENTE,ACTIVO,BLOQUEADO,CONCLUIDO " }, "actuales", scope);
+    expect(filters.estado?.split(",").sort()).toEqual(["ACTIVO", "AGENDADO", "BLOQUEADO", "DETENIDO", "PENDIENTE"]);
     expect(new URLSearchParams(movementSearchParams(filters, "actuales")).get("estado")).toBe(filters.estado);
     expect(normalizeMovementFilters(filters, "pasados", scope).estado).toBe("DETENIDO");
     expect(normalizeMovementFilters(filters, "actuales", signedScope("ADMINISTRADOR", "GLOBAL")).estado).toBeUndefined();
@@ -155,10 +155,24 @@ describe("complete current-round movement projection", () => {
     expect(rows[1]).toMatchObject({ id: 2, idTecnico: 5002, folioLocalidad: 2, folioLocalidadLabel: "GDL-2", empresaId: 4, empresaNombre: "Ferromex", localidadId: 1, locomotora: 4002, estado: "DETENIDO", finalizado: false, viaOrigen: "Vía 1", viaDestino: "Vía 2" });
   });
 
+  it("retains active Torreon statuses that are not part of the generic movement vocabulary", () => {
+    const rows = currentQueueMovements([
+      round(1, 10, 1, "PENDIENTE"),
+      round(2, 10, 1, "ACTIVO"),
+      round(3, 10, 1, "BLOQUEADO"),
+    ], 1);
+
+    expect(rows.map(row => [row.id, row.estado])).toEqual([
+      [1, "PENDIENTE"],
+      [2, "ACTIVO"],
+      [3, "BLOQUEADO"],
+    ]);
+  });
+
   it("excludes closed rounds, terminal movements, missing identities and another locality, and deduplicates movement IDs", () => {
     const items = [
       round(1), { ...round(1), id: 9001 }, round(2, 4, 2),
-      { ...round(3), concluido: true }, round(4, 3, 1, "CONCLUIDO"), round(5, 3, 1, "CANCELADO"),
+      { ...round(3), concluido: true }, round(4, 3, 1, "CONCLUIDO"), round(5, 3, 1, "CANCELADO"), round(8, 3, 1, "RESUELTO"),
       { ...round(6), localidadId: undefined }, { ...round(7), movimiento: undefined }, round(-1),
     ];
     expect(currentQueueMovements(items, 1).map(row => row.id)).toEqual([1]);
