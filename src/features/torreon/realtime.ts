@@ -13,6 +13,7 @@ export function isTorreonNaturalEvent(event: RealtimeMovementEvent) {
 export function isTorreonArrastreEvent(event: RealtimeMovementEvent) {
   const type = String(event.type ?? "");
   if (type === "realtime.ready" || type === "realtime.resume") return true;
+  if (type === "realtime.arrastre.refresh") return true;
   if (type.startsWith("torreon.arrastre.")) return true;
   return type.startsWith("torreon.incidente.") && Number(event.arrastreId) > 0;
 }

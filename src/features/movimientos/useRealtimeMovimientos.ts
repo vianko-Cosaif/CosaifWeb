@@ -25,7 +25,8 @@ export type RealtimeMovementEventType =
   | "torreon.arrastre.orden"
   | "realtime.ready"
   | "realtime.resume"
-  | "realtime.pong";
+  | "realtime.pong"
+  | "realtime.arrastre.refresh";
 
 export type RealtimeMovementEvent = {
   type?: RealtimeMovementEventType;

@@ -141,9 +141,14 @@ export function useRealtimeBoardRefresh({
     localidadId: realtimeLocalidadId,
     onEvent: (event) => {
       if (!enabled || document.visibilityState === "hidden") return;
-      if (!isBoardRefreshEvent(event)) return;
+      const type = String(event.type ?? "");
+      if (type === "realtime.arrastre.refresh") {
+        if (!matchesEventRef.current?.(event)) return;
+      } else {
+        if (!isBoardRefreshEvent(event)) return;
+        if (matchesEventRef.current && !matchesEventRef.current(event)) return;
+      }
       if (!matchesLocalidadScope(event, scopeLocalidadId)) return;
-      if (matchesEventRef.current && !matchesEventRef.current(event)) return;
 
       const key = eventKey(event);
       const now = Date.now();
