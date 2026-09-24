@@ -2,6 +2,7 @@ import type { MovementFormData, Rol } from "../movimientos.shared";
 import type { ResolvedIds, SelectionMode, UserSession } from "./controller.types";
 import type { TornoMedicionState } from "./tornoMedicion.types";
 import { buildBackendTornoMedidas } from "./tornoSubmit.adapter";
+import { isTornoModuleEnabled } from "@/lib/tornoFeature";
 
 /**
  * MODULO: crearMovimiento.domain
@@ -292,7 +293,7 @@ export function buildMovimientoPayload(args: {
     incidenteGlobal: false,
   };
 
-  if (form.service === "Torno" && fromTrack) {
+  if (isTornoModuleEnabled && form.service === "Torno" && fromTrack) {
     if (!tornoMedicion) {
       throw new Error("No hay mediciones de torno disponibles para este movimiento.");
     }

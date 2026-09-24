@@ -77,6 +77,7 @@ export type HeaderEvent = {
   occurredAtMs: number;
   tone: HeaderEventTone;
   firstSeenAtMs?: number;
+  isRunning?: boolean;
 };
 
 export type ChangeKind = "updated" | "moved" | "removed";
@@ -101,6 +102,7 @@ export type PatioTrack = {
     status: PatioLocomotiveStatus;
     type: MovementType;
     activeIncidentCount: number;
+    queueOrder?: number;
     placement: PatioPlacement | null;
     originTrackId: string | null;
     destinationTrackId: string | null;

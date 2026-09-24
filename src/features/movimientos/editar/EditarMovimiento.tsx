@@ -15,6 +15,7 @@ import MobileGuidedTornoMeasuresStep, { getGuidedTornoMeasuresPageCount, getGuid
 import { createEmptyTornoRow, DEFAULT_TORNO_MEDICION_STATE, EMPTY_TORNO_VALUE, normalizeTornoMeasureValue, sanitizeTornoMeasurePart, type TornoMeasurementField, type TornoMeasurementPart, type TornoMedicionState, type TornoWheelCount, type TornoWheelPosition } from "@/features/movimientos/crear/tornoMedicion.types";
 import { buildTrainingEditInfo, TRAINING_EDIT_VIAS, trainingPosition, trainingDirection, TRAINING_EDIT_SECTIONS } from "./training";
 import { Badge, RoleBadge, Step1Edit, Step2Edit, Step3Edit } from "./components/EditSteps";
+import { isTornoModuleEnabled } from "@/lib/tornoFeature";
 
 export const serializeTornoMedicion = (value: TornoMedicionState) => JSON.stringify(value);
 
@@ -204,7 +205,8 @@ export default function EditarMovimiento({
         setPosicionCabina(data.movimiento.posicionCabina ?? "Sin_Solicitar");
         setPosicionChimenea(data.movimiento.posicionChimenea ?? "Sin_Solicitar");
         setDireccionEmpuje(data.movimiento.direccionEmpuje ?? "Sin_Solicitar");
-        setServiceVia((!data.movimiento.Lavado && !data.movimiento.torno) ? "" : (data.movimiento.torno ? "Torno" : "Lavado"));
+        const movementServiceFlags = data.movimiento as typeof data.movimiento & { lavado?: boolean };
+        setServiceVia(movementServiceFlags.lavado || data.movimiento.Lavado ? "Lavado" : data.movimiento.torno ? "Torno" : "");
         const parsedTorno = parseTornoMedicionFromApi(data);
         setTornoMedicion(parsedTorno);
         setInitialTornoMedicion(parsedTorno);
@@ -381,15 +383,15 @@ export default function EditarMovimiento({
 
   const tornoMobilePageCount = getGuidedTornoMeasuresPageCount();
   const isMobileEditFlow = editFlowMode === "mobile";
-  const isMobileTornoEditor = serviceVia === "Torno" && isMobileEditFlow && tornoEditMode === "mobile";
+  const isMobileTornoEditor = isTornoModuleEnabled && serviceVia === "Torno" && isMobileEditFlow && tornoEditMode === "mobile";
   const tornoEditorSubtitle = isMobileTornoEditor
     ? getGuidedTornoMeasuresPageTitle(mobileTornoPage, tornoMedicion.wheelCount)
     : "Diagnostico torno";
-  const mobileTotalUnits = serviceVia === "Torno" ? 7 : 6;
+  const mobileTotalUnits = isTornoModuleEnabled && serviceVia === "Torno" ? 7 : 6;
   const mobileCurrentUnit =
     step === 1
       ? mobileStepOnePage + 1
-      : step === 2 && serviceVia === "Torno"
+      : step === 2 && isTornoModuleEnabled && serviceVia === "Torno"
         ? 4 + mobileTornoPage + 1
         : step === 2
           ? 5
@@ -400,7 +402,7 @@ export default function EditarMovimiento({
   const mobileStepTitle = isMobileEditFlow
     ? step === 1
       ? mobileStepOneTitles[mobileStepOnePage] ?? "Datos"
-      : step === 2 && serviceVia === "Torno"
+      : step === 2 && isTornoModuleEnabled && serviceVia === "Torno"
         ? getGuidedTornoMeasuresPageTitle(mobileTornoPage, tornoMedicion.wheelCount)
         : step === 2
           ? "Detalles operativos"
@@ -420,7 +422,7 @@ export default function EditarMovimiento({
     if (isMobileEditFlow && step === 2) {
       setMobileStepOnePage(mobileStepOneSections.length - 1);
     }
-    if (isMobileEditFlow && step === 3 && serviceVia === "Torno") {
+    if (isMobileEditFlow && step === 3 && isTornoModuleEnabled && serviceVia === "Torno") {
       setMobileTornoPage(Math.max(0, tornoMobilePageCount - 1));
     }
     setStep((s) => (s === 1 ? 1 : ((s - 1) as 1 | 2 | 3)));
@@ -479,7 +481,7 @@ export default function EditarMovimiento({
       payload.lavado = serviceVia === "Lavado";
     }
 
-    if (serviceVia === "Torno") {
+    if (isTornoModuleEnabled && serviceVia === "Torno") {
       const currentTornoSerialized = serializeTornoMedicion(tornoMedicion);
       if (currentTornoSerialized !== initialTornoSerialized) {
         payload.medidasTorno = buildBackendTornoMedidas({
@@ -807,7 +809,7 @@ export default function EditarMovimiento({
                 errors={errors}
               />
 
-              {serviceVia === "Torno" ? (
+              {isTornoModuleEnabled && serviceVia === "Torno" ? (
                 <section className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-900/40">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div>
@@ -941,13 +943,13 @@ export default function EditarMovimiento({
           </button>
         </div>
 
-        <TornoMeasuresViewerModal
+        {isTornoModuleEnabled ? <TornoMeasuresViewerModal
           open={showTornoViewerModal}
           onClose={() => setShowTornoViewerModal(false)}
           tornoMedicion={tornoMedicion}
           locomotiveLabel={locomotiveNumber || String(info.movimiento.locomotiveNumber ?? "")}
           companyName={info.movimiento.empresa?.nombre}
-        />
+        /> : null}
 
         {showTrainingSaveConfirmation ? (
           <div

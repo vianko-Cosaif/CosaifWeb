@@ -13,6 +13,7 @@ import { EMPTY_DATA, RIGHT_PANEL_ROTATION_MS, panelMotion } from "./styles";
 import { clampNumber } from "./patio/geometry";
 import { buildPanelSnapshots, buildRealtimeHeaderEvents, dedupeRowsByKey, buildHeaderEvents, annotateRowsWithIncidents, extractArray, mapMovement, filterRecentIncidents, sortIncidentsByState, mapIncident, dedupePatioTrackCatalog, mapViaToPatioTrack } from "./data";
 import { LiveEventTicker, IncidentColumn, WorkArea, RightOperationsPanel } from "./components/StatusPanels";
+import { isTornoModuleEnabled } from "@/lib/tornoFeature";
 
 export default function PanelGrafico({
   backHref = "/coordinador",
@@ -46,14 +47,14 @@ export default function PanelGrafico({
   const firstLoadRef = useRef(true);
   const requestRef = useRef<AbortController | null>(null);
   const changeTimerRef = useRef<number | null>(null);
-  const loading = sectionLoading.movements || sectionLoading.torneados || sectionLoading.incidents || sectionLoading.tracks;
+  const loading = sectionLoading.movements || (isTornoModuleEnabled && sectionLoading.torneados) || sectionLoading.incidents || sectionLoading.tracks;
 
   const startRightPanelResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const startX = event.clientX;
     const startWidth = rightPanelWidth;
     const handleMove = (moveEvent: PointerEvent) => {
-      const nextWidth = clampNumber(startWidth - (moveEvent.clientX - startX), 300, Math.min(620, window.innerWidth * 0.48));
+      const nextWidth = clampNumber(startWidth - (moveEvent.clientX - startX), 300, Math.max(300, window.innerWidth * 0.6));
       setRightPanelWidth(nextWidth);
     };
     const handleUp = () => {
@@ -63,6 +64,15 @@ export default function PanelGrafico({
     window.addEventListener("pointermove", handleMove);
     window.addEventListener("pointerup", handleUp);
   }, [rightPanelWidth]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setRightPanelWidth((width) => clampNumber(width, 300, Math.max(300, window.innerWidth * 0.6)));
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const reconcilePanelData = useCallback((nextData: PanelData) => {
     const { signatures, positions, rows } = buildPanelSnapshots(nextData);
@@ -107,7 +117,7 @@ export default function PanelGrafico({
     const controller = new AbortController(); requestRef.current = controller;
     const queryJson = (url: string, ttlMs = 1000) => cachedFetchJson<unknown>(url, { credentials: "include", signal: controller.signal }, { ttlMs, force: showRefreshing && ttlMs < 2000 });
     if (showRefreshing) setRefreshing(true);
-    setSectionLoading({ movements: true, torneados: true, incidents: true, tracks: true });
+    setSectionLoading({ movements: true, torneados: isTornoModuleEnabled, incidents: true, tracks: true });
     setError("");
 
     const query = new URLSearchParams();
@@ -146,7 +156,9 @@ export default function PanelGrafico({
         const nextData = {
           incidents,
           movements: nextMovementsRaw ? annotateRowsWithIncidents(nextMovementsRaw, incidents) : annotateRowsWithIncidents(current.movements, incidents),
-          torneados: nextTorneadosRaw ? annotateRowsWithIncidents(nextTorneadosRaw, incidents) : annotateRowsWithIncidents(current.torneados, incidents),
+          torneados: isTornoModuleEnabled
+            ? (nextTorneadosRaw ? annotateRowsWithIncidents(nextTorneadosRaw, incidents) : annotateRowsWithIncidents(current.torneados, incidents))
+            : [],
         };
         reconcilePanelData(nextData);
         return nextData;
@@ -161,13 +173,13 @@ export default function PanelGrafico({
         })
         .catch((loadError) => { if (!controller.signal.aborted) setError(loadError instanceof Error ? loadError.message : "No se pudieron cargar movimientos."); })
         .finally(() => { if (!controller.signal.aborted) setSectionLoading((current) => ({ ...current, movements: false })); }),
-      queryJson(`/api/cliente/rondas?${torneadoQuery.toString()}`)
+      ...(isTornoModuleEnabled ? [queryJson(`/api/cliente/rondas?${torneadoQuery.toString()}`)
         .then((result) => {
           nextTorneadosRaw = (extractArray(result).map(mapMovement).filter(Boolean).slice(0, 30) as MovementRow[]);
           commitRows();
         })
         .catch((loadError) => { if (!controller.signal.aborted) setError(loadError instanceof Error ? loadError.message : "No se pudieron cargar torneados."); })
-        .finally(() => { if (!controller.signal.aborted) setSectionLoading((current) => ({ ...current, torneados: false })); }),
+        .finally(() => { if (!controller.signal.aborted) setSectionLoading((current) => ({ ...current, torneados: false })); })] : []),
       Promise.all([
         queryJson(`/api/incidentes?${incidentQuery.toString()}`),
         queryJson(`/api/incidentes?${inactiveIncidentQuery.toString()}`),
@@ -234,6 +246,7 @@ export default function PanelGrafico({
 
   useEffect(() => {
     const timer = window.setInterval(() => {
+      if (!isTornoModuleEnabled) return;
       setRightPanelMode((mode) => (mode === "movimientos" ? "torneados" : "movimientos"));
       setRightPanelTimerKey((key) => key + 1);
     }, RIGHT_PANEL_ROTATION_MS);
@@ -383,11 +396,12 @@ export default function PanelGrafico({
                 <WorkArea
                   metrics={metrics}
                   movements={data.movements}
-                  torneados={data.torneados}
+                  torneados={isTornoModuleEnabled ? data.torneados : []}
                   trackCatalog={patioTrackCatalog}
                   showKpis={showKpiPanel}
-                  loading={sectionLoading.movements || sectionLoading.torneados || sectionLoading.tracks}
+                  loading={sectionLoading.movements || (isTornoModuleEnabled && sectionLoading.torneados) || sectionLoading.tracks}
                   changedKeys={changedKeys}
+                  showTorneados={isTornoModuleEnabled}
                 />
               </motion.div>
             ) : null}
@@ -407,13 +421,14 @@ export default function PanelGrafico({
             <RightOperationsPanel
               mode={rightPanelMode}
               movements={data.movements}
-              torneados={data.torneados}
+              torneados={isTornoModuleEnabled ? data.torneados : []}
               metrics={metrics}
               loading={rightPanelMode === "movimientos" ? sectionLoading.movements : sectionLoading.torneados}
               changedKeys={changedKeys}
               timerKey={rightPanelTimerKey}
               rotationMs={RIGHT_PANEL_ROTATION_MS}
               onModeChange={changeRightPanelMode}
+              showTorneados={isTornoModuleEnabled}
             />
           </motion.div>
         </section>

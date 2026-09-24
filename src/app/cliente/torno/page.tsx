@@ -4,10 +4,12 @@ import { normalizeTornoRole } from "@/features/torno/lib/permissions";
 import { redirect } from "next/navigation";
 import TornoModule from "@/features/torno/components/TornoModule";
 import { isClienteAreaRole } from "@/lib/torreonLocalidad";
+import { isTornoModuleEnabled } from "@/lib/tornoFeature";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
+  if (!isTornoModuleEnabled) redirect("/cliente");
   const session = await getVerifiedSession();
   if (!session) redirect("/login?loc=cliente");
   const role = session.role;

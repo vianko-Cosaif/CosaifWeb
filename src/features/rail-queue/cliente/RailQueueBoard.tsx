@@ -47,6 +47,7 @@ import {
   primeNotificationSound,
 } from "@/lib/notificationSound";
 import { PANEL_GRAFICO_ENABLED } from "@/features/panel-grafico/panelGrafico.config";
+import { isTornoModuleEnabled } from "@/lib/tornoFeature";
 
 const fmtLoco = (value: unknown) => formatLoco(value, "—");
 
@@ -132,6 +133,12 @@ export default function RailQueueBoard({
     },
   });
   const info = useMemo(() => clientQueueInfo(items), [items]);
+
+  useEffect(() => {
+    if (!isTornoModuleEnabled && activeEntity === "torneados") {
+      setActiveEntity("movimientos");
+    }
+  }, [activeEntity]);
 
   useEffect(() => {
     if (soundOn) preloadNotificationSound();
@@ -244,7 +251,7 @@ export default function RailQueueBoard({
   }, [info, trainingQueueItems]);
   const entityOptions = useMemo<QueueSegmentedFilterOption<QueueEntityKind>[]>(
     () =>
-      ENTITY_OPTIONS.map((option) => ({
+      ENTITY_OPTIONS.filter((option) => isTornoModuleEnabled || option.value !== "torneados").map((option) => ({
         ...option,
         count: option.value === activeEntity ? entityItems.length : undefined,
       })),
@@ -478,7 +485,7 @@ export default function RailQueueBoard({
         </div>
       )}
 
-      <TornoMeasuresDialog state={measuresModal} onClose={closeMeasuresModal} />
+      {isTornoModuleEnabled ? <TornoMeasuresDialog state={measuresModal} onClose={closeMeasuresModal} /> : null}
 
       {/* ─── TOASTS ─── */}
       <div className={S.Toast.wrap}>
@@ -522,7 +529,7 @@ function HeroCard({
   const orig = info?.movimiento?.viaOrigen?.nombre || "—";
   const dest = info?.movimiento?.viaDestino?.nombre || "—";
   const movementId = movementIdFrom(item, info);
-  const canViewMeasures = Boolean(canAccessMeasures && info?.movimiento?.torno && movementId);
+  const canViewMeasures = Boolean(isTornoModuleEnabled && canAccessMeasures && info?.movimiento?.torno && movementId);
 
   return (
     <GuidedTarget id="dashboard-current-movement">
@@ -577,9 +584,11 @@ function HeroCard({
                 <span className={S.Services.pill(!!info?.movimiento?.lavado)}>
                   <Droplet className="w-3 h-3" /> Lavado
                 </span>
-                <span className={S.Services.pill(!!info?.movimiento?.torno)}>
-                  <Settings className="w-3 h-3" /> Torno
-                </span>
+                {isTornoModuleEnabled ? (
+                  <span className={S.Services.pill(!!info?.movimiento?.torno)}>
+                    <Settings className="w-3 h-3" /> Torno
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>
@@ -675,7 +684,7 @@ function QueueCard({
   const newRound = idx === 0 || item.rondaNumero !== prev?.rondaNumero;
   const loco = fmtLoco(info?.movimiento?.locomotora || info?.movimiento?.locomotiveNumber);
   const movementId = movementIdFrom(item, info);
-  const canViewMeasures = Boolean(canAccessMeasures && info?.movimiento?.torno && movementId);
+  const canViewMeasures = Boolean(isTornoModuleEnabled && canAccessMeasures && info?.movimiento?.torno && movementId);
 
   return (
     <Fragment>
@@ -755,7 +764,7 @@ function QueueCard({
         <div className={S.List.bottom}>
           <div className="flex gap-1">
             {info?.movimiento?.lavado && <span className={S.List.badge}>LAV</span>}
-            {info?.movimiento?.torno && <span className={S.List.badge}>TOR</span>}
+            {isTornoModuleEnabled && info?.movimiento?.torno && <span className={S.List.badge}>TOR</span>}
           </div>
           <span className={S.List.date}>{fmtDate(item.createdAt)}</span>
         </div>

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { Activity, AlertTriangle, Clock3, Droplet, Gauge, GitBranch, MapPinned, PauseCircle, Route, TrainFront, Wrench, type LucideIcon } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Activity, AlertTriangle, Clock3, Droplet, Gauge, GitBranch, LoaderCircle, MapPinned, PauseCircle, Route, TrainFront, Wrench, type LucideIcon } from "lucide-react";
 import { type HeaderEvent, type HeaderEventTone, type IncidentRow, type ChangeKind, type MovementRow, type PatioTrackCatalogItem } from "../types";
 import { tickerTone, panelClass, listContainerMotion, listItemMotion, panelEase, KPI_PANEL_ROTATION_MS, activeServiceTone, rowTypeTone, rowTypeAccentTone, movementTypeTone, statusTone } from "../styles";
 import { incidentSeverityRail } from "../data";
@@ -67,6 +67,7 @@ function RouteWithServiceIcon({ row }: { row: MovementRow }) {
 }
 
 export function LiveEventTicker({ events, loading }: { events: HeaderEvent[]; loading: boolean }) {
+  const prefersReducedMotion = useReducedMotion();
   const [cycleCount, setCycleCount] = useState(0);
   const items = events.length
     ? events
@@ -107,25 +108,42 @@ export function LiveEventTicker({ events, loading }: { events: HeaderEvent[]; lo
       >
         {loopItems.map((event, index) => {
           const highlighted = Date.now() - (event.firstSeenAtMs ?? event.occurredAtMs) < 2 * 60 * 60 * 1000 || cycleCount < 15;
+          const processEvent = event.isRunning === true;
+          const incidentEvent = /incidente|detenido/i.test(`${event.label} ${event.detail}`);
+          const normalizedType = event.typeLabel.trim().toLocaleLowerCase();
+          const eventType: MovementRow["type"] = normalizedType.includes("torno") ? "Torno" : normalizedType.includes("lavado") ? "Lavado" : "Normal";
+          const runningTone = activeServiceTone(eventType);
           const relativeIndex = index % items.length;
           const ageClass = highlighted
-            ? "bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,.16),0_0_16px_rgba(16,185,129,.45)] animate-pulse"
+            ? "bg-blue-500/75 shadow-[0_0_0_3px_rgba(59,130,246,.10)]"
             : relativeIndex < 6
               ? "bg-blue-500/75 shadow-[0_0_0_3px_rgba(59,130,246,.10)]"
               : "bg-slate-400 opacity-55";
+          const eventGlow = incidentEvent
+            ? ["0 0 0 1px rgba(245,158,11,.10)", "0 0 0 3px rgba(245,158,11,.24)", "0 0 0 1px rgba(245,158,11,.10)"]
+            : runningTone.shadowPulse;
           return (
-          <span
+          <motion.span
             key={`${event.key}-${index}`}
-            className={`inline-flex max-w-[520px] items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-black shadow-sm ${tickerTone[event.tone]}`}
+            animate={prefersReducedMotion || (!incidentEvent && !processEvent) ? { boxShadow: "0 0 0 1px rgba(0,0,0,0)" } : { boxShadow: eventGlow }}
+            transition={{ boxShadow: { duration: incidentEvent ? 2.1 : 2.5, repeat: Infinity, ease: "easeInOut", delay: (index % items.length) * 0.12 } }}
+            className={`inline-flex max-w-[520px] items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-black shadow-sm ${
+              incidentEvent
+                ? "border-amber-300 bg-amber-50 text-amber-800 ring-2 ring-amber-300/80 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-600/70"
+                : processEvent
+                  ? `${runningTone.className} ${runningTone.text} ${runningTone.ring}`
+                  : tickerTone[event.tone]
+            }`}
           >
-            <span className={`h-2 w-2 shrink-0 rounded-full ${ageClass}`} title={highlighted ? "Evento destacado" : "Evento anterior"} />
+            <span className={`h-2 w-2 shrink-0 rounded-full ${processEvent ? runningTone.dot : ageClass}`} title={highlighted ? "Evento destacado" : "Evento anterior"} />
+            {incidentEvent ? <AlertTriangle className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-200" /> : processEvent ? <LoaderCircle className={`h-3.5 w-3.5 shrink-0 ${runningTone.text} ${prefersReducedMotion ? "" : "animate-[spin_2.6s_linear_infinite]"}`} /> : null}
             <span className="uppercase tracking-[.12em] opacity-75">{event.label}</span>
             <span className="min-w-0 max-w-[92px] truncate text-[var(--app-text)] dark:text-white">{event.subject}</span>
             <span className="rounded-full bg-white/70 px-1.5 py-0.5 uppercase tracking-wide text-current ring-1 ring-current/10 dark:bg-black/20">{event.typeLabel}</span>
             <span className="min-w-0 max-w-[110px] truncate opacity-80">{event.company}</span>
             <span className="tabular-nums text-[9px] opacity-70">{event.time}</span>
             <span className="sr-only">{event.detail}</span>
-          </span>
+          </motion.span>
         );
         })}
       </motion.div>
@@ -234,6 +252,7 @@ export function WorkArea({
   showKpis,
   loading,
   changedKeys,
+  showTorneados = true,
 }: {
   metrics: { totalMovements: number; enProceso: number; detenidos: number; enCola: number; sinDetencionPct: number | null };
   movements: MovementRow[];
@@ -242,6 +261,7 @@ export function WorkArea({
   showKpis: boolean;
   loading: boolean;
   changedKeys: Map<string, ChangeKind>;
+  showTorneados?: boolean;
 }) {
   const hasChanges = changedKeys.size > 0;
   const [viewMode, setViewMode] = useState<WorkAreaViewMode>("circuit");
@@ -257,7 +277,7 @@ export function WorkArea({
             transition={{ duration: 0.24, ease: "easeOut" }}
             className="overflow-hidden"
           >
-            <KpiCarousel metrics={metrics} movements={movements} torneados={torneados} active={hasChanges} />
+            <KpiCarousel metrics={metrics} movements={movements} torneados={torneados} active={hasChanges} showTorneados={showTorneados} />
           </motion.div>
         ) : null}
       </AnimatePresence>
@@ -492,26 +512,39 @@ function FlowMovementCard({
   meta: string;
   changed: boolean;
 }) {
-  const activeTone = activeServiceTone(row.type);
+  const prefersReducedMotion = useReducedMotion();
   const isActive = row.status === "EN PROCESO";
+  const hasIncident = row.activeIncidentCount > 0;
+  const activeTone = activeServiceTone(row.type);
+  const emphasisShadow = hasIncident
+    ? ["0 5px 16px rgba(245,158,11,.12)", "0 10px 24px rgba(245,158,11,.28)", "0 5px 16px rgba(245,158,11,.12)"]
+    : isActive
+      ? activeTone.shadowPulse
+      : changed
+        ? "0 12px 28px rgba(37,99,235,.18)"
+        : "0 5px 14px rgba(15,23,42,.06)";
   return (
     <motion.article
       layout
-      animate={{ boxShadow: changed ? "0 12px 28px rgba(37,99,235,.18)" : isActive ? activeTone.shadow : "0 5px 14px rgba(15,23,42,.06)" }}
-      className={`relative min-w-0 overflow-hidden rounded-lg border px-2 py-2 text-left ${rowTypeTone[row.type]} ${rowTypeAccentTone[row.type]} ${isActive ? activeTone.className : ""} before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-r-full before:content-['']`}
+      animate={{ boxShadow: prefersReducedMotion && (hasIncident || isActive) ? emphasisShadow[0] : emphasisShadow }}
+      transition={{ boxShadow: { duration: hasIncident || isActive ? 2.2 : 0.35, repeat: hasIncident || isActive ? Infinity : 0, ease: "easeInOut" } }}
+      className={`relative min-w-0 overflow-hidden rounded-lg border px-2 py-2 text-left ${isActive ? activeTone.className : rowTypeTone[row.type]} ${rowTypeAccentTone[row.type]} ${hasIncident ? "ring-2 ring-amber-300/80 dark:ring-amber-700/70" : isActive ? activeTone.ring : ""} before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-r-full before:content-['']`}
     >
       <div className="flex min-w-0 items-center justify-between gap-2">
-        <span className="min-w-0 truncate text-sm font-black text-slate-950 dark:text-white">{row.equipment}</span>
+        <span className="inline-flex min-w-0 items-center gap-1 truncate text-sm font-black text-slate-950 dark:text-white">
+          {hasIncident ? <AlertTriangle className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-200" /> : isActive ? <span className={`h-2 w-2 shrink-0 rounded-full ${activeTone.dot}`} /> : null}
+          <span className="truncate">{row.equipment}</span>
+        </span>
         <MovementTypeBadge type={row.type} className="shrink-0 px-1.5 py-0.5 text-[9px]" />
       </div>
       <p className="mt-1 truncate text-[10px] font-bold text-[var(--app-text-muted)]">{meta}</p>
       <div className="mt-2 flex min-w-0 items-center justify-between gap-2">
-        <span className={`inline-flex min-w-0 items-center gap-1 truncate rounded-md border px-1.5 py-0.5 text-[8px] font-black ${statusTone[row.status]}`}>
-          {isActive ? <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${activeTone.dot}`} /> : null}
+        <span className={`inline-flex min-w-0 items-center gap-1 truncate rounded-md border px-1.5 py-0.5 text-[8px] font-black ${isActive ? movementTypeTone[row.type] : statusTone[row.status]}`}>
+          {isActive ? <LoaderCircle className={`h-3 w-3 shrink-0 ${activeTone.text} ${prefersReducedMotion ? "" : "animate-[spin_2.6s_linear_infinite]"}`} /> : null}
           <span className="truncate">{row.status}</span>
         </span>
         <span className="shrink-0 rounded-md bg-white/75 px-1.5 py-0.5 text-[9px] font-black text-amber-800 ring-1 ring-amber-100 dark:bg-slate-950/60 dark:text-amber-200 dark:ring-amber-900/50">
-          {row.time}
+          {hasIncident ? `${row.activeIncidentCount} inc.` : row.time}
         </span>
       </div>
     </motion.article>
@@ -523,11 +556,13 @@ export function KpiCarousel({
   movements,
   torneados,
   active,
+  showTorneados = true,
 }: {
   metrics: { totalMovements: number; enProceso: number; detenidos: number; enCola: number; sinDetencionPct: number | null };
   movements: MovementRow[];
   torneados: MovementRow[];
   active: boolean;
+  showTorneados?: boolean;
 }) {
   const [viewIndex, setViewIndex] = useState(0);
   const [timerKey, setTimerKey] = useState(0);
@@ -538,6 +573,12 @@ export function KpiCarousel({
     const lavadoMovements = movements.filter((row) => row.type === "Lavado").length;
     const tornoMovements = movements.filter((row) => row.type === "Torno").length;
     const rondaCount = new Set(movements.map((row) => row.rondaNumero).filter(Boolean)).size;
+
+    const serviceMetrics = [
+      ...(showTorneados ? [{ icon: Wrench, label: "Torneados", value: String(torneados.length || tornoMovements), note: `${activeTorneados} en proceso`, noteTone: "text-rose-600 dark:text-rose-300" }] : []),
+      { icon: Activity, label: "Lavados", value: String(lavadoMovements), note: `${activeLavados} en proceso`, noteTone: "text-sky-600 dark:text-sky-300" },
+      { icon: TrainFront, label: "Normales", value: String(normalMovements), note: "movimientos base", noteTone: "text-emerald-600 dark:text-emerald-300" },
+    ];
 
     return [
       [
@@ -550,13 +591,9 @@ export function KpiCarousel({
         { icon: Activity, label: "Rondas vivas", value: String(rondaCount), note: "con movimientos", noteTone: "text-blue-600 dark:text-blue-300" },
         { icon: TrainFront, label: "Equipos activos", value: String(metrics.totalMovements), note: "en tablero", noteTone: "text-emerald-600 dark:text-emerald-300" },
       ],
-      [
-        { icon: Wrench, label: "Torneados", value: String(torneados.length || tornoMovements), note: `${activeTorneados} en proceso`, noteTone: "text-rose-600 dark:text-rose-300" },
-        { icon: Activity, label: "Lavados", value: String(lavadoMovements), note: `${activeLavados} en proceso`, noteTone: "text-sky-600 dark:text-sky-300" },
-        { icon: TrainFront, label: "Normales", value: String(normalMovements), note: "movimientos base", noteTone: "text-emerald-600 dark:text-emerald-300" },
-      ],
+      serviceMetrics,
     ];
-  }, [metrics.detenidos, metrics.enCola, metrics.enProceso, metrics.sinDetencionPct, metrics.totalMovements, movements, torneados]);
+  }, [metrics.detenidos, metrics.enCola, metrics.enProceso, metrics.sinDetencionPct, metrics.totalMovements, movements, showTorneados, torneados]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -615,6 +652,7 @@ export function RightOperationsPanel({
   timerKey,
   rotationMs,
   onModeChange,
+  showTorneados = true,
 }: {
   mode: "movimientos" | "torneados";
   movements: MovementRow[];
@@ -625,21 +663,23 @@ export function RightOperationsPanel({
   timerKey: number;
   rotationMs: number;
   onModeChange: (mode: "movimientos" | "torneados") => void;
+  showTorneados?: boolean;
 }) {
-  const rows = mode === "movimientos" ? movements : torneados;
+  const effectiveMode = showTorneados ? mode : "movimientos";
+  const rows = effectiveMode === "movimientos" ? movements : torneados;
   const localMetrics = useMemo(() => {
-    if (mode === "movimientos") return metrics;
+    if (effectiveMode === "movimientos") return metrics;
     const totalMovements = torneados.length;
     const enProceso = torneados.filter((row) => row.status === "EN PROCESO").length;
     const detenidos = torneados.filter((row) => row.status === "DETENIDO").length;
     const enCola = torneados.filter((row) => row.status === "EN COLA" || row.status === "SOLICITADO" || row.status === "EN ESPERA").length;
     return { totalMovements, enProceso, detenidos, enCola };
-  }, [metrics, mode, torneados]);
-  const title = mode === "movimientos" ? "Movimientos activos" : "Torneados activos";
-  const emptyText = mode === "movimientos" ? "No hay movimientos activos." : "No hay torneados activos.";
-  const accent = mode === "movimientos" ? "emerald" : "rose";
+  }, [effectiveMode, metrics, torneados]);
+  const title = effectiveMode === "movimientos" ? "Movimientos activos" : "Torneados activos";
+  const emptyText = effectiveMode === "movimientos" ? "No hay movimientos activos." : "No hay torneados activos.";
+  const accent = effectiveMode === "movimientos" ? "emerald" : "rose";
   const panelBackground =
-    mode === "movimientos"
+    effectiveMode === "movimientos"
       ? "bg-[linear-gradient(180deg,rgba(236,253,245,.96),rgba(255,255,255,.92)_34%,rgba(240,253,244,.82))] dark:bg-[linear-gradient(180deg,rgba(6,78,59,.34),rgba(9,9,11,.94)_34%,rgba(6,95,70,.18))]"
       : "bg-[linear-gradient(180deg,rgba(255,241,242,.96),rgba(255,255,255,.92)_34%,rgba(254,226,226,.78))] dark:bg-[linear-gradient(180deg,rgba(76,5,25,.40),rgba(9,9,11,.94)_34%,rgba(127,29,29,.20))]";
 
@@ -647,8 +687,8 @@ export function RightOperationsPanel({
     <aside className={`${panelClass(panelBackground)} flex min-h-0 min-w-0 flex-col overflow-hidden`}>
       <div className="h-1 w-full overflow-hidden bg-[var(--app-surface-muted)]" aria-label={`Cambio automatico en ${Math.round(rotationMs / 1000)} segundos`}>
         <motion.div
-          key={`${mode}-${timerKey}`}
-          className={`h-full ${mode === "movimientos" ? "bg-emerald-600" : "bg-rose-600"}`}
+          key={`${effectiveMode}-${timerKey}`}
+          className={`h-full ${effectiveMode === "movimientos" ? "bg-emerald-600" : "bg-rose-600"}`}
           initial={{ width: "0%" }}
           animate={{ width: "100%" }}
           transition={{ duration: rotationMs / 1000, ease: "linear" }}
@@ -691,33 +731,33 @@ export function RightOperationsPanel({
               <button
                 type="button"
                 onClick={() => onModeChange("movimientos")}
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-1 transition ${mode === "movimientos" ? "bg-emerald-600 text-white shadow-sm" : "text-[var(--app-text-muted)] hover:text-[var(--app-text)]"}`}
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-1 transition ${effectiveMode === "movimientos" ? "bg-emerald-600 text-white shadow-sm" : "text-[var(--app-text-muted)] hover:text-[var(--app-text)]"}`}
               >
                 <TrainFront className="h-3 w-3 shrink-0" aria-hidden="true" />
                 Mov.
               </button>
-              <button
+              {showTorneados ? <button
                 type="button"
                 onClick={() => onModeChange("torneados")}
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-1 transition ${mode === "torneados" ? "bg-rose-600 text-white shadow-sm" : "text-[var(--app-text-muted)] hover:text-[var(--app-text)]"}`}
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-1 transition ${effectiveMode === "torneados" ? "bg-rose-600 text-white shadow-sm" : "text-[var(--app-text-muted)] hover:text-[var(--app-text)]"}`}
               >
                 <Wrench className="h-3 w-3 shrink-0" aria-hidden="true" />
                 Tor.
-              </button>
+              </button> : null}
             </div>
           </div>
         </div>
       </div>
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
-          key={mode}
-          initial={{ opacity: 0, x: mode === "movimientos" ? -18 : 18, filter: "blur(6px)" }}
+          key={effectiveMode}
+          initial={{ opacity: 0, x: effectiveMode === "movimientos" ? -18 : 18, filter: "blur(6px)" }}
           animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-          exit={{ opacity: 0, x: mode === "movimientos" ? 18 : -18, filter: "blur(6px)" }}
+          exit={{ opacity: 0, x: effectiveMode === "movimientos" ? 18 : -18, filter: "blur(6px)" }}
           transition={{ duration: 0.34, ease: panelEase }}
           className="flex min-h-0 flex-1 flex-col"
         >
-          <OperationsTable rows={rows} loading={loading} emptyText={emptyText} changedKeys={changedKeys} showRoundDividers={mode === "movimientos"} />
+          <OperationsTable rows={rows} loading={loading} emptyText={emptyText} changedKeys={changedKeys} showRoundDividers={effectiveMode === "movimientos"} />
         </motion.div>
       </AnimatePresence>
     </aside>
@@ -737,6 +777,7 @@ export function OperationsTable({
   changedKeys: Map<string, ChangeKind>;
   showRoundDividers?: boolean;
 }) {
+  const prefersReducedMotion = useReducedMotion();
   return (
     <>
       <div className="sticky top-0 z-10 grid shrink-0 grid-cols-[minmax(70px,1.05fr)_minmax(56px,.68fr)_minmax(46px,.5fr)_minmax(64px,.68fr)_minmax(42px,.42fr)] gap-1 border-b border-[var(--app-border)] bg-[var(--app-surface)]/95 px-1.5 py-1 text-center text-[8px] font-black text-blue-900 backdrop-blur dark:text-blue-200 2xl:grid-cols-[minmax(88px,1.12fr)_minmax(70px,.78fr)_minmax(56px,.58fr)_minmax(78px,.78fr)_minmax(52px,.48fr)] 2xl:px-2 2xl:text-[9px]">
@@ -764,7 +805,7 @@ export function OperationsTable({
           const rowPaddingY = 2 + proximity * 2;
           const rowPriorityGlow =
             hasIncident
-              ? "ring-2 ring-amber-300/90 dark:ring-amber-600/80"
+              ? "ring-2 ring-amber-300/90 shadow-[0_0_0_1px_rgba(245,158,11,.28),0_0_22px_rgba(245,158,11,.22)] dark:ring-amber-600/80"
               : isActiveService
                 ? activeTone.ring
               : proximity > 0.72
@@ -772,6 +813,17 @@ export function OperationsTable({
               : proximity > 0.38
                 ? "ring-1 ring-slate-200/65 dark:ring-slate-800/55"
                 : "ring-1 ring-slate-200/35 dark:ring-slate-800/35";
+          const emphasisShadow = hasIncident
+            ? ["0 0 0 1px rgba(245,158,11,.16),0 5px 14px rgba(245,158,11,.10)", "0 0 0 2px rgba(245,158,11,.34),0 8px 22px rgba(245,158,11,.24)", "0 0 0 1px rgba(245,158,11,.16),0 5px 14px rgba(245,158,11,.10)"]
+            : isActiveService
+              ? activeTone.shadowPulse
+              : changeKind === "moved"
+                ? "0 14px 34px rgba(16,185,129,0.22)"
+                : changeKind === "updated"
+                  ? "0 0 0 1px rgba(37,99,235,0.24)"
+                  : proximity > 0.72
+                    ? "0 8px 18px rgba(15,23,42,0.08)"
+                    : "0 4px 10px rgba(15,23,42,0.04)";
           return (
           <div key={rowKey} className="min-w-0 px-1.5">
             {showDivider ? (
@@ -793,30 +845,39 @@ export function OperationsTable({
                 opacity: 1,
                 y: 0,
                 scale: 1,
-                boxShadow:
-                  hasIncident && changeKind
-                    ? "0 14px 34px rgba(245,158,11,0.24)"
-                    : hasIncident
-                      ? "0 10px 28px rgba(245,158,11,0.18)"
-                    : isActiveService
-                      ? activeTone.shadow
-                    : changeKind === "moved"
-                    ? "0 14px 34px rgba(16,185,129,0.22)"
-                    : changeKind === "updated"
-                      ? "0 0 0 1px rgba(37,99,235,0.24)"
-                      : proximity > 0.72
-                        ? "0 8px 18px rgba(15,23,42,0.08)"
-                        : "0 4px 10px rgba(15,23,42,0.04)",
+                boxShadow: prefersReducedMotion && (hasIncident || isActiveService)
+                  ? emphasisShadow[0]
+                  : emphasisShadow,
               }}
               exit={listItemMotion.exit}
-              transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.8, delay: Math.min(index * 0.035, 0.28) }}
+              transition={{
+                type: "spring",
+                stiffness: 420,
+                damping: 34,
+                mass: 0.8,
+                delay: Math.min(index * 0.035, 0.28),
+                boxShadow: { duration: hasIncident || isActiveService ? 2.2 : 0.35, repeat: hasIncident || isActiveService ? Infinity : 0, ease: "easeInOut" },
+              }}
               style={{ minHeight: rowMinHeight, paddingTop: rowPaddingY, paddingBottom: rowPaddingY }}
-              className={`relative mb-1 grid grid-cols-[minmax(70px,1.05fr)_minmax(56px,.68fr)_minmax(46px,.5fr)_minmax(64px,.68fr)_minmax(42px,.42fr)] items-center gap-1 overflow-hidden rounded-lg border px-1.5 text-center text-[10px] transition hover:brightness-[.985] dark:hover:brightness-110 2xl:grid-cols-[minmax(88px,1.12fr)_minmax(70px,.78fr)_minmax(56px,.58fr)_minmax(78px,.78fr)_minmax(52px,.48fr)] 2xl:px-2 2xl:text-[11px] before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-r-full before:content-[''] ${rowTypeTone[movement.type]} ${rowTypeAccentTone[movement.type]} ${isActiveService ? activeTone.className : ""} ${hasIncident ? "after:pointer-events-none after:absolute after:inset-0 after:bg-[radial-gradient(circle_at_14%_50%,rgba(245,158,11,.18),transparent_38%)] after:content-['']" : ""} ${rowPriorityGlow}`}
+              className={`relative mb-1 grid grid-cols-[minmax(70px,1.05fr)_minmax(56px,.68fr)_minmax(46px,.5fr)_minmax(64px,.68fr)_minmax(42px,.42fr)] items-center gap-1 overflow-hidden rounded-lg border px-1.5 text-center text-[10px] transition hover:brightness-[.985] dark:hover:brightness-110 2xl:grid-cols-[minmax(88px,1.12fr)_minmax(70px,.78fr)_minmax(56px,.58fr)_minmax(78px,.78fr)_minmax(52px,.48fr)] 2xl:px-2 2xl:text-[11px] before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-r-full before:content-[''] ${isActiveService ? activeTone.className : rowTypeTone[movement.type]} ${rowTypeAccentTone[movement.type]} ${hasIncident ? "after:pointer-events-none after:absolute after:inset-0 after:bg-[radial-gradient(circle_at_14%_50%,rgba(245,158,11,.18),transparent_38%)] after:content-['']" : ""} ${rowPriorityGlow}`}
             >
-              {isActiveService ? (
-                <span className={`pointer-events-none absolute inset-y-1 left-1 w-1 rounded-full ${activeTone.bar}`}>
-                  <span className={`absolute inset-0 animate-pulse rounded-full ${activeTone.bar}`} />
+              {isActiveService || hasIncident ? (
+                <span className="pointer-events-none absolute right-1 top-1 z-[1] inline-flex items-center gap-1 rounded-full border border-white/50 bg-[var(--app-surface)]/90 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[.08em] shadow-sm backdrop-blur dark:border-slate-700/70 dark:bg-slate-950/75">
+                  {hasIncident ? (
+                    <>
+                      <AlertTriangle className="h-2.5 w-2.5 text-amber-600 dark:text-amber-200" />
+                      <span className="text-amber-700 dark:text-amber-200">Inc.</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className={`h-1.5 w-1.5 rounded-full ${activeTone.dot}`} />
+                      <span className={activeTone.text}>Activo</span>
+                    </>
+                  )}
                 </span>
+              ) : null}
+              {isActiveService ? (
+                <span className={`pointer-events-none absolute inset-y-1 left-1 w-1 rounded-full ${activeTone.bar}`} />
               ) : null}
               <span className="min-w-0 rounded-lg bg-slate-50/80 px-1 py-1 text-[12px] font-black leading-tight text-slate-950 ring-1 ring-slate-200/70 dark:bg-slate-900/60 dark:text-white dark:ring-slate-800 2xl:px-1.5 2xl:text-[13px]">
                 <span className="flex min-w-0 items-center justify-center gap-1 truncate">
@@ -834,12 +895,9 @@ export function OperationsTable({
                 <RouteWithServiceIcon row={movement} />
               </span>
               <MovementTypeBadge type={movement.type} className="min-h-6 px-1 text-[9px] 2xl:px-1.5 2xl:text-[10px]" />
-              <span className={`inline-flex min-h-6 min-w-0 items-center justify-center gap-1 truncate rounded-md border px-1 text-[8px] font-black 2xl:px-1.5 2xl:text-[9px] ${statusTone[movement.status]}`}>
+              <span className={`inline-flex min-h-6 min-w-0 items-center justify-center gap-1 truncate rounded-md border px-1 text-[8px] font-black 2xl:px-1.5 2xl:text-[9px] ${isActiveService ? movementTypeTone[movement.type] : statusTone[movement.status]}`}>
                 {isActiveService ? (
-                  <span className="relative inline-flex h-2 w-2 shrink-0">
-                    <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${activeTone.dot} opacity-70`} />
-                    <span className={`relative inline-flex h-2 w-2 rounded-full ${activeTone.dot}`} />
-                  </span>
+                  <LoaderCircle className={`h-3 w-3 shrink-0 ${activeTone.text} ${prefersReducedMotion ? "" : "animate-[spin_2.6s_linear_infinite]"}`} />
                 ) : null}
                 <span className="truncate">{movement.status}</span>
               </span>

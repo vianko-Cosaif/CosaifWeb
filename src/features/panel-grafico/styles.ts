@@ -34,8 +34,10 @@ export function activeServiceTone(type: MovementType) {
       className: "border-rose-300/90 bg-[linear-gradient(90deg,rgba(255,228,230,.98),rgba(255,241,242,.80))] dark:border-rose-800/80 dark:bg-[linear-gradient(90deg,rgba(76,5,25,.74),rgba(127,29,29,.28))]",
       ring: "ring-2 ring-rose-300/80 dark:ring-rose-700/75",
       shadow: "0 12px 30px rgba(225,29,72,0.20)",
+      shadowPulse: ["0 0 0 1px rgba(225,29,72,.10),0 5px 14px rgba(225,29,72,.08)", "0 0 0 2px rgba(225,29,72,.28),0 8px 22px rgba(225,29,72,.22)", "0 0 0 1px rgba(225,29,72,.10),0 5px 14px rgba(225,29,72,.08)"],
       bar: "bg-rose-500 shadow-[0_0_16px_rgba(225,29,72,.55)]",
       dot: "bg-rose-600 dark:bg-rose-300",
+      text: "text-rose-700 dark:text-rose-200",
     };
   }
 
@@ -44,8 +46,10 @@ export function activeServiceTone(type: MovementType) {
       className: "border-sky-300/90 bg-[linear-gradient(90deg,rgba(224,242,254,.98),rgba(240,249,255,.80))] dark:border-sky-800/80 dark:bg-[linear-gradient(90deg,rgba(8,47,73,.74),rgba(12,74,110,.28))]",
       ring: "ring-2 ring-sky-300/80 dark:ring-sky-700/75",
       shadow: "0 12px 30px rgba(14,165,233,0.20)",
+      shadowPulse: ["0 0 0 1px rgba(14,165,233,.10),0 5px 14px rgba(14,165,233,.08)", "0 0 0 2px rgba(14,165,233,.28),0 8px 22px rgba(14,165,233,.22)", "0 0 0 1px rgba(14,165,233,.10),0 5px 14px rgba(14,165,233,.08)"],
       bar: "bg-sky-500 shadow-[0_0_16px_rgba(14,165,233,.55)]",
       dot: "bg-sky-600 dark:bg-sky-300",
+      text: "text-sky-700 dark:text-sky-200",
     };
   }
 
@@ -53,8 +57,10 @@ export function activeServiceTone(type: MovementType) {
     className: "border-emerald-300/90 bg-[linear-gradient(90deg,rgba(209,250,229,.98),rgba(236,253,245,.80))] dark:border-emerald-800/80 dark:bg-[linear-gradient(90deg,rgba(6,78,59,.74),rgba(6,95,70,.28))]",
     ring: "ring-2 ring-emerald-300/80 dark:ring-emerald-700/75",
     shadow: "0 12px 30px rgba(16,185,129,0.20)",
+    shadowPulse: ["0 0 0 1px rgba(16,185,129,.10),0 5px 14px rgba(16,185,129,.08)", "0 0 0 2px rgba(16,185,129,.28),0 8px 22px rgba(16,185,129,.22)", "0 0 0 1px rgba(16,185,129,.10),0 5px 14px rgba(16,185,129,.08)"],
     bar: "bg-emerald-500 shadow-[0_0_16px_rgba(16,185,129,.55)]",
     dot: "bg-emerald-600 dark:bg-emerald-300",
+    text: "text-emerald-700 dark:text-emerald-200",
   };
 }
 

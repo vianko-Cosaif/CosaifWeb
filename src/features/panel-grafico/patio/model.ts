@@ -21,15 +21,15 @@ export const PATIO_BASE_LABELS = new Map(PATIO_BASE_TRACKS.map((track) => [track
 
 export function buildPatioTracks(movements: MovementRow[], catalog: PatioTrackCatalogItem[]): PatioTrack[] {
   const trackDefinitions = buildPatioTrackDefinitions(movements, catalog);
-  const assigned = new Map<string, Array<{ movement: MovementRow; placement: PatioPlacement; originTrackId: string | null; destinationTrackId: string | null }>>();
-  movements.forEach((movement) => {
+  const assigned = new Map<string, Array<{ movement: MovementRow; placement: PatioPlacement; originTrackId: string | null; destinationTrackId: string | null; queueOrder: number }>>();
+  movements.forEach((movement, queueOrder) => {
     const placement = movementPatioPlacement(movement);
     if (!placement.trackId) return;
     if (placement.placement === "destination" && !placement.originTrackId) return;
 
     const current = assigned.get(placement.trackId) ?? [];
     if (current.length >= 3) return;
-    current.push({ movement, ...placement });
+    current.push({ movement, ...placement, queueOrder });
     assigned.set(placement.trackId, current);
   });
 
@@ -49,6 +49,7 @@ export function buildPatioTracks(movements: MovementRow[], catalog: PatioTrackCa
       status: toPatioStatus(itemMovement.status),
       type: itemMovement.type,
       activeIncidentCount: itemMovement.activeIncidentCount,
+      queueOrder: itemPlacement.queueOrder,
       placement: itemPlacement.placement,
       originTrackId: itemPlacement.originTrackId,
       destinationTrackId: itemPlacement.destinationTrackId,
@@ -66,6 +67,7 @@ export function buildPatioTracks(movements: MovementRow[], catalog: PatioTrackCa
             status,
             type: movement.type,
             activeIncidentCount: movement.activeIncidentCount,
+            queueOrder: mainAssignment?.queueOrder,
             placement: mainAssignment?.placement ?? null,
             originTrackId: mainAssignment?.originTrackId ?? null,
             destinationTrackId: mainAssignment?.destinationTrackId ?? null,
@@ -78,7 +80,7 @@ export function buildPatioTracks(movements: MovementRow[], catalog: PatioTrackCa
 
 export function buildPatioStagingLocomotives(movements: MovementRow[]): PatioStagingLocomotive[] {
   return movements
-    .map((movement) => {
+    .map((movement, queueOrder) => {
       const placement = movementPatioPlacement(movement);
       const flow = patioMovementFlow(movement, placement);
       if (!flow || (flow.stageKind === "yard-transfer" && placement.originTrackId && placement.destinationTrackId)) return null;
@@ -89,6 +91,7 @@ export function buildPatioStagingLocomotives(movements: MovementRow[]): PatioSta
         status: toPatioStatus(movement.status),
         type: movement.type,
         activeIncidentCount: movement.activeIncidentCount,
+        queueOrder,
         placement: "destination" as const,
         originTrackId: placement.originTrackId,
         destinationTrackId: placement.destinationTrackId,

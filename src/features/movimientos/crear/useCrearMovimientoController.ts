@@ -17,6 +17,7 @@ import {
 import { downloadTornoPdf } from "./tornoPdf";
 import { parseTornoMedicionFromApi } from "../torno/tornoMeasureParser";
 import type { ScheduledTornoMovement } from "./components/ScheduledTornoActivationModal";
+import { isTornoModuleEnabled } from "@/lib/tornoFeature";
 import {
   createEmptyTornoRow,
   DEFAULT_TORNO_MEDICION_STATE,
@@ -116,7 +117,7 @@ export function useCrearMovimientoController(
   const [scheduledTornoLoading, setScheduledTornoLoading] = useState(false);
   const requestedScheduledTornoRef = useRef(false);
   const isService = !!form.service;
-  const hasTornoPdfStep = form.service === "Torno" && selectionMode === "de_via";
+  const hasTornoPdfStep = isTornoModuleEnabled && form.service === "Torno" && selectionMode === "de_via";
   const maxStep: CrearMovimientoStep = hasTornoPdfStep ? 4 : 3;
 
   /** Capa 1: sesion/permisos. */
@@ -363,7 +364,7 @@ export function useCrearMovimientoController(
   }, []);
 
   const refreshScheduledTornoMovements = useCallback(async () => {
-    if (sandbox) {
+    if (!isTornoModuleEnabled || sandbox) {
       setScheduledTornoMovements([]);
       setScheduledTornoLoading(false);
       return;
@@ -389,7 +390,7 @@ export function useCrearMovimientoController(
   }, [normalizeScheduledTornoList, sandbox]);
 
   useEffect(() => {
-    if (sandbox || form.service !== "Torno" || requestedScheduledTornoRef.current) return;
+    if (!isTornoModuleEnabled || sandbox || form.service !== "Torno" || requestedScheduledTornoRef.current) return;
     void refreshScheduledTornoMovements();
   }, [form.service, refreshScheduledTornoMovements, sandbox]);
 
@@ -498,6 +499,12 @@ export function useCrearMovimientoController(
       rows: {},
     });
   }, []);
+
+  useEffect(() => {
+    if (isTornoModuleEnabled || form.service !== "Torno") return;
+    setForm((prev) => ({ ...prev, agendado: false, fechaProgramada: "" }));
+    clearTornoMedicion();
+  }, [clearTornoMedicion, form.service]);
 
   const activateScheduledTornoMovement = useCallback(async (scheduledMovement: ScheduledTornoMovement) => {
     const id = Number(scheduledMovement?.id);

@@ -5,6 +5,7 @@ import {
   type NavModuleId,
 } from "./accessControl";
 import { torreonClientKind } from "./auth/torreonClientPolicy";
+import { isTornoModuleEnabled } from "./tornoFeature";
 
 export type AppNavigationItem = {
   id: NavModuleId;
@@ -104,7 +105,7 @@ function hrefForModule(role: string | null | undefined, moduleId: NavModuleId) {
 export function buildNavigationForRole(role?: string | null): AppNavigationItem[] {
   const capabilities = getRoleCapabilities(role);
 
-  return capabilities.navModules.map((moduleId) => ({
+  return capabilities.navModules.filter((moduleId) => isTornoModuleEnabled || moduleId !== "torno").map((moduleId) => ({
     id: moduleId,
     href: hrefForModule(role, moduleId),
     ...MODULE_COPY[moduleId],
@@ -117,6 +118,7 @@ export function buildNavigationForAuthorization(
   const role = authorization.role;
   return authorization.capabilities.navModules
     .filter((moduleId) => moduleId !== "torreon_arrastres" || torreonClientKind(role) !== "NATURAL")
+    .filter((moduleId) => isTornoModuleEnabled || moduleId !== "torno")
     .map((moduleId) => ({
       id: moduleId,
       href: hrefForModule(role, moduleId),

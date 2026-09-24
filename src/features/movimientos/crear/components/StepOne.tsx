@@ -11,6 +11,7 @@ import {
 } from "../../movimientos.shared";
 import { Field, Select, inputBase } from "./ui";
 import ScheduledTornoActivationModal, { type ScheduledTornoMovement } from "./ScheduledTornoActivationModal";
+import { isTornoModuleEnabled } from "@/lib/tornoFeature";
 
 
 type SelectionMode = "de_via" | "para_via";
@@ -378,7 +379,7 @@ export default function StepOne(props: StepOneProps) {
         </GuidedTarget>
       </div> : null}
 
-      {showSection("service") && form.service === "Torno" && selectionMode === "de_via" ? (
+      {isTornoModuleEnabled && showSection("service") && form.service === "Torno" && selectionMode === "de_via" ? (
         <GuidedTarget id="create-movement-torno-schedule" className="sm:col-span-2">
           <div className="cosaif-motion-card rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/50">
             <label className="flex items-center gap-2">
@@ -495,7 +496,7 @@ export default function StepOne(props: StepOneProps) {
           </GuidedTarget>
           <div className="sm:col-span-2 -mt-2">
             <ScheduledTornoActivationModal
-              enabled={form.service === "Torno"}
+              enabled={isTornoModuleEnabled && form.service === "Torno"}
               locomotiveNumber={form.locomotiveNumber}
               viaOrigenId={form.fromTrack}
               localidadId={form.selectedLocalityId}

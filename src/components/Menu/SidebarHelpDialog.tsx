@@ -5,6 +5,7 @@ import { ArrowUpRight, BookOpen } from "lucide-react";
 import type { AppRole } from "@/lib/accessControl";
 import Modal from "@/components/ui/Modal";
 import SearchInput from "@/components/ui/SearchInput";
+import { isTornoModuleEnabled } from "@/lib/tornoFeature";
 
 type HelpGuideAction = "general-help" | "full-role-training";
 
@@ -172,7 +173,8 @@ export default function SidebarHelpDialog({ role, onClose, onSelect }: {
   const suggestions = useMemo(() => {
     const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     const terms = normalize(query).trim().split(/\s+/).filter(Boolean);
-    return HELP_GUIDE_CATALOG.filter(item => (!item.roles || item.roles.includes(role)) &&
+    return HELP_GUIDE_CATALOG.filter(item => (isTornoModuleEnabled || item.id !== "torno-training") &&
+      (!item.roles || item.roles.includes(role)) &&
       terms.every(term => normalize([item.label, item.description, ...item.keywords].join(" ")).includes(term)));
   }, [query, role]);
 

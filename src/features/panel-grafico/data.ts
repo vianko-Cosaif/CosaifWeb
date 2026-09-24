@@ -224,6 +224,7 @@ export function movementEventBase(row: MovementRow) {
     subject: row.equipment,
     typeLabel: row.type,
     company: row.company,
+    isRunning: row.status === "EN PROCESO",
   };
 }
 

@@ -1,3 +1,5 @@
+import { isTornoModuleEnabled } from "./tornoFeature";
+
 export const APP_ROLES = [
   "ADMINISTRADOR",
   "COMERCIAL",
@@ -309,7 +311,13 @@ export function normalizeAppRole(input?: string | null): AppRole | null {
 
 export function getRoleCapabilities(input?: string | null): RoleCapabilities {
   const role = normalizeAppRole(input);
-  return role ? CAPABILITIES_BY_ROLE[role] : UNSUPPORTED_CAPABILITIES;
+  const capabilities = role ? CAPABILITIES_BY_ROLE[role] : UNSUPPORTED_CAPABILITIES;
+  if (isTornoModuleEnabled) return capabilities;
+  return {
+    ...capabilities,
+    canViewTorno: false,
+    navModules: capabilities.navModules.filter((moduleId) => moduleId !== "torno"),
+  };
 }
 
 export function getAreaBase(role?: string | null): string {
@@ -405,7 +413,7 @@ export function parseAuthorizationProfile(value: unknown): AuthorizationProfile 
             (item): item is Permission => typeof item === "string" && PERMISSION_VALUES.has(item),
           ),
         ),
-      ]
+      ].filter((permission) => isTornoModuleEnabled || !permission.startsWith("torno."))
     : [];
   const navModules = Array.isArray(capabilities.navModules)
     ? [
@@ -414,7 +422,7 @@ export function parseAuthorizationProfile(value: unknown): AuthorizationProfile 
             (item): item is NavModuleId => typeof item === "string" && NAV_MODULE_VALUES.has(item),
           ),
         ),
-      ]
+      ].filter((moduleId) => isTornoModuleEnabled || moduleId !== "torno")
     : [];
   const booleanCapability = (name: keyof RoleCapabilities) => capabilities[name] === true;
 
@@ -450,7 +458,7 @@ export function parseAuthorizationProfile(value: unknown): AuthorizationProfile 
       canCreateTorreonArrastres: booleanCapability("canCreateTorreonArrastres"),
       canManageUsers: booleanCapability("canManageUsers"),
       canViewReports: booleanCapability("canViewReports"),
-      canViewTorno: booleanCapability("canViewTorno"),
+      canViewTorno: isTornoModuleEnabled && booleanCapability("canViewTorno"),
       navModules,
     },
   };

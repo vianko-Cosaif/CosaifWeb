@@ -13,6 +13,7 @@ import { containsTrainingReservedId } from "@/lib/routePolicy";
 import { getVerifiedSession } from "@/lib/server/session";
 import { rejectCrossSiteMutation } from "@/lib/server/requestSecurity";
 import { canForwardApiRequest } from "@/lib/server/requestAuthorization";
+import { isTornoModuleEnabled } from "@/lib/tornoFeature";
 
 const ORIGIN = normalizeHttpOrigin(process.env.API_ORIGIN);
 
@@ -108,6 +109,9 @@ async function proxy(req: NextRequest) {
   const restrictedCompany = scopeMode === "COMPANY" || scopeMode === "COMPANY_LOCALITY";
   const restrictedCoordinator = role === "COORDINADOR";
   let upstreamPath = req.nextUrl.pathname.replace(/^\/bff/, "");
+  if (!isTornoModuleEnabled && (upstreamPath === "/torno" || upstreamPath.startsWith("/torno/"))) {
+    return NextResponse.json({ message: "Modulo de torno desactivado." }, { status: 404 });
+  }
   if (!canForwardApiRequest(session.authorization, upstreamPath, req.method)) {
     return NextResponse.json(
       { message: "Esta acción no está habilitada para tu perfil." },

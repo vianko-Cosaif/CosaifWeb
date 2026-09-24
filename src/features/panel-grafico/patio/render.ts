@@ -39,7 +39,7 @@ export function drawPatioCanvas(
   };
 
   ctx.clearRect(0, 0, width, height);
-  drawCanvasBackground(ctx, width, height);
+  drawCanvasBackground(ctx, width, height, colors);
   drawRoundhouse(ctx, layout, colors);
   drawTracks(ctx, layout, options.tracks, options.selectedTrackId, colors, options.time, options.reducedMotion);
   drawTurntable(ctx, layout, options.tracks, options.selectedTrackId, colors);
@@ -50,7 +50,50 @@ export function drawPatioCanvas(
   drawLocomotives(ctx, layout, options.tracks, colors, options.time, options.changedKeys, options.reducedMotion, options.removedGhosts);
 }
 
-export function drawCanvasBackground(ctx: CanvasRenderingContext2D, width: number, height: number) {
+export function alphaColor(color: string, alpha: number, fallback: string) {
+  const normalized = color.trim();
+  const hexMatch = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(normalized);
+  if (hexMatch) {
+    const value = hexMatch[1];
+    const full = value.length === 3 ? value.split("").map((char) => `${char}${char}`).join("") : value;
+    const numeric = Number.parseInt(full, 16);
+    const r = (numeric >> 16) & 255;
+    const g = (numeric >> 8) & 255;
+    const b = numeric & 255;
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  const rgbMatch = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i.exec(normalized);
+  if (rgbMatch) return `rgba(${rgbMatch[1]},${rgbMatch[2]},${rgbMatch[3]},${alpha})`;
+  return fallback;
+}
+
+function drawExecutionSpinner(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  time: number,
+  color: string,
+  reducedMotion: boolean,
+  radius = 4.5
+) {
+  ctx.save();
+  ctx.lineWidth = 1.8;
+  ctx.lineCap = "round";
+  ctx.strokeStyle = alphaColor(color, 0.24, "rgba(16,185,129,.24)");
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 5;
+  const startAngle = reducedMotion ? -Math.PI / 2 : (time / 430) % (Math.PI * 2) - Math.PI / 2;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, startAngle, startAngle + Math.PI * 1.35);
+  ctx.stroke();
+  ctx.restore();
+}
+
+export function drawCanvasBackground(ctx: CanvasRenderingContext2D, width: number, height: number, colors: Record<string, string>) {
   const gradient = ctx.createRadialGradient(width * 0.5, height * 0.5, 0, width * 0.5, height * 0.5, Math.max(width, height) * 0.65);
   gradient.addColorStop(0, "rgba(37,99,235,.08)");
   gradient.addColorStop(0.52, "rgba(16,185,129,.04)");
@@ -59,7 +102,7 @@ export function drawCanvasBackground(ctx: CanvasRenderingContext2D, width: numbe
   ctx.fillRect(0, 0, width, height);
 
   ctx.save();
-  ctx.strokeStyle = "rgba(148,163,184,.10)";
+  ctx.strokeStyle = alphaColor(colors.border, 0.34, "rgba(148,163,184,.14)");
   ctx.lineWidth = 1;
   for (let x = 0; x < width; x += 48) {
     ctx.beginPath();
@@ -805,29 +848,29 @@ export function drawStagingLocomotives(
   const slotHeight = 48;
 
   ctx.save();
-  ctx.fillStyle = "rgba(248,250,252,.88)";
-  ctx.strokeStyle = "rgba(14,165,233,.32)";
+  ctx.fillStyle = alphaColor(colors.surface, 0.92, "rgba(248,250,252,.92)");
+  ctx.strokeStyle = alphaColor(colors.moving, 0.38, "rgba(14,165,233,.38)");
   ctx.lineWidth = 1.4;
   ctx.beginPath();
   roundRect(ctx, areaX, areaY, areaWidth, areaHeight, 14);
   ctx.fill();
   ctx.stroke();
 
-  ctx.fillStyle = "rgba(14,165,233,.10)";
+  ctx.fillStyle = alphaColor(colors.moving, 0.1, "rgba(14,165,233,.10)");
   ctx.beginPath();
   roundRect(ctx, areaX + 10, areaY + 10, headerWidth - 20, areaHeight - 20, 10);
   ctx.fill();
 
-  ctx.fillStyle = "#0369a1";
+  ctx.fillStyle = colors.moving;
   ctx.font = "950 11px Inter, Arial, sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillText("Flujo externo", areaX + 20, areaY + 27);
   ctx.fillStyle = colors.muted;
   ctx.font = "800 8px Inter, Arial, sans-serif";
-  ctx.fillText("Servicios / para via", areaX + 20, areaY + 43);
+  ctx.fillText("Orden de ingreso", areaX + 20, areaY + 43);
 
-  ctx.fillStyle = "#0ea5e9";
+  ctx.fillStyle = colors.moving;
   ctx.beginPath();
   ctx.arc(areaX + headerWidth - 28, areaY + 28, 13, 0, Math.PI * 2);
   ctx.fill();
@@ -836,7 +879,7 @@ export function drawStagingLocomotives(
   ctx.textAlign = "center";
   ctx.fillText(String(locomotives.length), areaX + headerWidth - 28, areaY + 28);
 
-  ctx.strokeStyle = "rgba(14,165,233,.28)";
+  ctx.strokeStyle = alphaColor(colors.moving, 0.34, "rgba(14,165,233,.34)");
   ctx.lineWidth = 3;
   ctx.lineCap = "round";
   ctx.beginPath();
@@ -844,16 +887,48 @@ export function drawStagingLocomotives(
   ctx.lineTo(areaX + areaWidth - 18, laneY);
   ctx.stroke();
 
-  ctx.fillStyle = "#0ea5e9";
+  ctx.fillStyle = colors.moving;
   ctx.beginPath();
   ctx.moveTo(areaX + areaWidth - 18, laneY);
   ctx.lineTo(areaX + areaWidth - 30, laneY - 6);
   ctx.lineTo(areaX + areaWidth - 30, laneY + 6);
   ctx.closePath();
   ctx.fill();
+
+  ctx.fillStyle = colors.muted;
+  ctx.font = "850 7px Inter, Arial, sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("Primero", laneX, laneY - 11);
+  ctx.textAlign = "right";
+  ctx.fillText("Ultimo", areaX + areaWidth - 18, laneY - 11);
   ctx.restore();
 
-  visible.forEach((locomotive, index) => {
+  const visiblePositions = visible.map((locomotive, index) => ({ locomotive, index }));
+  visiblePositions.forEach(({ locomotive, index }) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const x = laneX + slotWidth * column + slotWidth / 2;
+    const y = areaY + 60 + slotHeight * row;
+    const statusColor = patioMovementColor(locomotive.type, colors);
+    ctx.save();
+    ctx.strokeStyle = alphaColor(statusColor, 0.38, "rgba(14,165,233,.38)");
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x, laneY + 5);
+    ctx.lineTo(x, y - 21);
+    ctx.stroke();
+    ctx.fillStyle = statusColor;
+    ctx.beginPath();
+    ctx.arc(x, laneY, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "950 8px Inter, Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(index + 1), x, laneY + 0.5);
+    ctx.restore();
+  });
+  [...visiblePositions].reverse().forEach(({ locomotive, index }) => {
     const column = index % columns;
     const row = Math.floor(index / columns);
     const x = laneX + slotWidth * column + slotWidth / 2;
@@ -888,14 +963,17 @@ export function drawStagingCard(
   const changeKind = changedKeys.get(locomotive.key);
   const pulse = reducedMotion ? 0.22 : 0.12 + ((Math.sin(time / 520) + 1) / 2) * 0.16;
   const changed = Boolean(changeKind);
+  const active = locomotive.status === "moving";
+  const incident = locomotive.activeIncidentCount > 0;
+  const emphasisColor = incident ? "#f59e0b" : statusColor;
 
   ctx.save();
-  ctx.shadowColor = changed ? statusColor : "rgba(15,23,42,.16)";
-  ctx.shadowBlur = changed ? 18 + pulse * 12 : 8;
+  ctx.shadowColor = incident || active ? emphasisColor : changed ? statusColor : "rgba(15,23,42,.16)";
+  ctx.shadowBlur = incident ? 22 + pulse * 22 : changed ? 18 + pulse * 12 : active ? 17 + pulse * 20 : 8;
   ctx.shadowOffsetY = 3;
-  ctx.fillStyle = "rgba(255,255,255,.95)";
-  ctx.strokeStyle = statusColor;
-  ctx.lineWidth = changed ? 2.4 : 1.6;
+  ctx.fillStyle = alphaColor(colors.surface, 0.96, "rgba(255,255,255,.96)");
+  ctx.strokeStyle = incident || active ? emphasisColor : statusColor;
+  ctx.lineWidth = incident ? 2.6 + pulse * 2.2 : active ? 2.2 + pulse * 1.8 : changed ? 2.4 : 1.6;
   ctx.beginPath();
   roundRect(ctx, x - width / 2, y - height / 2, width, height, 8);
   ctx.fill();
@@ -937,6 +1015,18 @@ export function drawStagingCard(
   ctx.font = "950 7px Inter, Arial, sans-serif";
   ctx.textAlign = "center";
   ctx.fillText(shortStageLabel(locomotive.stageLabel), x + width / 2 - 28, y - 3, 34);
+
+  if (active && !incident) {
+    drawExecutionSpinner(ctx, x - width / 2 + 8, y - height / 2 + 5, time, emphasisColor, reducedMotion, 4.5);
+  } else if (incident) {
+    ctx.fillStyle = "#f59e0b";
+    ctx.shadowColor = "#f59e0b";
+    ctx.shadowBlur = 8 + pulse * 10;
+    ctx.beginPath();
+    ctx.arc(x - width / 2 + 8, y - height / 2 + 5, 4.5 + pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
   ctx.restore();
 }
 
@@ -968,19 +1058,20 @@ export function drawLocomotives(
     drawLocomotiveChip(ctx, point.x, point.y, ghost, colors, time, new Map(), reducedMotion, { alpha, scale });
   });
 
-  tracks.forEach((track) => {
+  const drawQueue = tracks.flatMap((track, trackIndex) => {
     const locomotives = track.locomotives?.length ? track.locomotives : track.locomotive ? [track.locomotive] : [];
     const visibleLocomotives = locomotives.slice(0, 3);
-    [...visibleLocomotives]
-      .sort((left, right) => {
-        const priority = (locomotive: NonNullable<PatioTrack["locomotive"]>) =>
-          locomotive.status === "moving" || locomotive.status === "stopped" ? 2 : locomotive.status === "operating" ? 1 : 0;
-        const priorityDelta = priority(left) - priority(right);
-        if (priorityDelta !== 0) return priorityDelta;
-        return visibleLocomotives.findIndex((item) => item.key === right.key) - visibleLocomotives.findIndex((item) => item.key === left.key);
-      })
-      .forEach((locomotive) => {
-      const index = visibleLocomotives.findIndex((item) => item.key === locomotive.key);
+    return visibleLocomotives.map((locomotive, index) => ({
+      track,
+      locomotive,
+      index,
+      count: visibleLocomotives.length,
+      panelOrder: locomotive.queueOrder ?? trackIndex * 3 + index,
+    }));
+  });
+  drawQueue
+    .sort((left, right) => right.panelOrder - left.panelOrder)
+    .forEach(({ track, locomotive, index, count }) => {
       const placement = locomotive.placement ?? track.placement;
       const baseRadiusFactor =
         placement === "destination"
@@ -988,14 +1079,13 @@ export function drawLocomotives(
           : placement === "origin"
             ? 0.58
             : 0.72;
-      const radiusOffset = (index - (visibleLocomotives.length - 1) / 2) * 0.085;
+      const radiusOffset = (index - (count - 1) / 2) * 0.085;
       const radiusFactor = clampNumber(baseRadiusFactor + radiusOffset, 0.48, 0.92);
       const point = polarPoint(layout, layout.turntableRadius + (layout.innerRadius - layout.turntableRadius) * radiusFactor, toRad(track.angle));
       drawLocomotiveChip(ctx, point.x, point.y, { ...track, locomotive, placement }, colors, time, changedKeys, reducedMotion, {
         scale: index === 0 ? 1 : 0.92,
       });
-      });
-  });
+    });
 }
 
 export function drawLocomotiveChip(
@@ -1023,6 +1113,9 @@ export function drawLocomotiveChip(
   const radius = 28;
   const changeKind = changedKeys.get(locomotive.key);
   const changed = Boolean(changeKind);
+  const active = locomotive.status === "moving";
+  const incident = locomotive.activeIncidentCount > 0;
+  const emphasisColor = incident ? "#f59e0b" : statusColor;
   const zoomPulse = changed && !reducedMotion ? (Math.sin(time / 190) + 1) / 2 : 0;
   const isBothPlacement = track.placement === "both";
   const statusScale =
@@ -1045,11 +1138,23 @@ export function drawLocomotiveChip(
   ctx.translate(x, y);
   ctx.scale(scale, scale);
   ctx.translate(-x, -y);
-  ctx.shadowColor = statusColor;
-  ctx.shadowBlur = changed ? 22 + zoomPulse * 14 : glow * 32;
-  ctx.fillStyle = "rgba(255,255,255,.92)";
-  ctx.strokeStyle = statusColor;
-  ctx.lineWidth = changed ? 4.5 : 3;
+  if ((active || incident) && effect?.alpha === undefined) {
+    ctx.strokeStyle = emphasisColor;
+    ctx.lineWidth = incident ? 4.2 + glow * 1.5 : 3.2 + glow * 1.3;
+    ctx.globalAlpha = incident ? 0.34 + glow * 0.34 : 0.26 + glow * 0.30;
+    ctx.setLineDash(incident ? [8, 6] : []);
+    ctx.lineDashOffset = reducedMotion ? 0 : -time / 150;
+    ctx.beginPath();
+    ctx.roundRect(x - chipHalf - 8, y - 26, chipWidth + 16, 52, 14);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = effect?.alpha ?? 1;
+  }
+  ctx.shadowColor = emphasisColor;
+  ctx.shadowBlur = incident ? 24 + glow * 30 : changed ? 22 + zoomPulse * 14 : glow * 32;
+  ctx.fillStyle = alphaColor(colors.surface, 0.94, "rgba(255,255,255,.94)");
+  ctx.strokeStyle = emphasisColor;
+  ctx.lineWidth = incident ? 4.5 : changed ? 4.5 : active ? 3.6 : 3;
   ctx.beginPath();
   ctx.roundRect(x - chipHalf, y - 18, chipWidth, 36, 8);
   ctx.fill();
@@ -1080,12 +1185,16 @@ export function drawLocomotiveChip(
   ctx.fillText(placementIcon, x + chipHalf - 4, y - 26);
 
   ctx.shadowBlur = 0;
-  ctx.fillStyle = statusColor;
-  ctx.beginPath();
-  ctx.arc(x - chipHalf + 15, y, 6, 0, Math.PI * 2);
-  ctx.fill();
+  if (active && !incident) {
+    drawExecutionSpinner(ctx, x - chipHalf + 15, y, time, emphasisColor, reducedMotion, 5.5);
+  } else {
+    ctx.fillStyle = incident ? "#f59e0b" : statusColor;
+    ctx.beginPath();
+    ctx.arc(x - chipHalf + 15, y, 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
-  ctx.fillStyle = "#0f172a";
+  ctx.fillStyle = colors.text;
   ctx.font = "900 14px Inter, Arial, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -1099,7 +1208,7 @@ export function drawLocomotiveChip(
   ctx.font = "900 9px Inter, Arial, sans-serif";
   ctx.fillText(track.label, x, y + radius + 21);
 
-  if (locomotive.activeIncidentCount > 0) {
+  if (incident) {
     const attentionPulse = reducedMotion ? 0.35 : 0.25 + ((Math.sin(time / 360) + 1) / 2) * 0.35;
     ctx.shadowColor = "#f59e0b";
     ctx.shadowBlur = 10 + attentionPulse * 10;
