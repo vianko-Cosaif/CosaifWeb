@@ -5,17 +5,19 @@ import { getVerifiedSession } from "@/lib/server/session";
 export const dynamic = "force-dynamic";
 const MOVIMIENTOS_API_BASE = process.env.NEXT_PUBLIC_API_BASE || "/bff";
 
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: Promise<{ tipo?: string }> }) {
   const session = await getVerifiedSession();
   if (!session || session.role !== "COORDINADOR" || session.localidadId == null) redirect("/login");
+  const tipo = (await searchParams).tipo;
 
   return (
     <CoordinatorMovimientosPageClient
       apiBase={MOVIMIENTOS_API_BASE}
-          authorization={session.authorization}
+      authorization={session.authorization}
       rol="COORDINADOR"
       empresaIdUsuario={session.empresaId}
       localidadIdUsuario={session.localidadId}
+      initialTorreonView={tipo === "arrastres" ? "arrastres" : "naturales"}
     />
   );
 }

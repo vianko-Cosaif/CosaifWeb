@@ -1,33 +1,24 @@
 import { redirect } from "next/navigation";
-import { getPrimaryTorreonLocalidadId, isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 import { PERMISSIONS, hasPermission } from "@/lib/accessControl";
-import { getVerifiedSession } from "@/lib/server/session";
+import { requireTorreonArrastreClient } from "@/lib/server/torreonArrastreClient";
 import TorreonClientePanel from "../../../../features/torreon/cliente/TorreonClientePanel";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const session = await getVerifiedSession();
-  if (!session || session.authorization.capabilities.area !== "cliente")
-    redirect("/login?loc=cliente");
-  const role = session.role;
-  if (role !== "ARRASTRE_TORREON") redirect("/movimientos/crear");
-  const capabilities = session.authorization.capabilities;
-  const localidadId =
-    capabilities.canSwitchLocalidad && !isTorreonLocalidadId(session.localidadId)
-      ? getPrimaryTorreonLocalidadId()
-      : session.localidadId;
-  const empresaId = session.empresaId;
-
-  if (!localidadId || !isTorreonLocalidadId(localidadId)) {
-    redirect("/cliente");
-  }
+  const { session, localidadId, empresaId } =
+    await requireTorreonArrastreClient("/movimientos/crear");
 
   if (!hasPermission(session.authorization, PERMISSIONS.TORREON_CREATE)) {
     redirect("/movimientos/crear");
   }
 
   return (
-    <TorreonClientePanel localidadId={localidadId} empresaId={empresaId} role={role} view="crear" />
+    <TorreonClientePanel
+      localidadId={localidadId}
+      empresaId={empresaId}
+      role={session.role}
+      view="crear"
+    />
   );
 }

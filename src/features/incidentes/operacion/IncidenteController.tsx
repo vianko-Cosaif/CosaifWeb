@@ -41,7 +41,6 @@ import {
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { fetchJSON } from "@/lib/api";
-import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 import { isTrainingIncidentId } from "@/lib/routePolicy";
 import { SearchInput, ModuleHeader, DataEmptyState } from "@/components/ui";
 import { GuidedTarget } from "@/features/capacitacion";
@@ -52,17 +51,22 @@ import {
   type RealtimeMovementEvent,
 } from "@/features/movimientos/useRealtimeMovimientos";
 import { playOperationConfirmation } from "@/lib/notificationSound";
+import {
+  changeIncidentFilter,
+  enforceIncidentScope,
+  incidentApiUrl,
+  incidentScope,
+  initialIncidentFilters,
+  isTorreonFilter,
+  resetIncidentFilters,
+  type IncidentFilters,
+  type IncidentTab,
+} from "./incidentFilters";
 
 /** Incidentes son locality-aware: Torreon usa ms_torreon y el resto Cosaif normal. */
 const INCIDENTES = "/api/incidentes";
 const EMPRESAS = "/bff/empresas";
 const LOCALIDADES = "/bff/localidades";
-
-const getCookie = (name: string) => {
-  if (typeof document === "undefined") return null;
-  const m = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
-  return m ? decodeURIComponent(m[1]) : null;
-};
 
 /** El BFF same-origin agrega la credencial únicamente en servidor. */
 const withCreds = <T = any,>(url: string, init: RequestInit = {}) =>
@@ -74,17 +78,6 @@ const withCreds = <T = any,>(url: string, init: RequestInit = {}) =>
   });
 
 type DropdownOption = { id: number; nombre: string };
-type Tab = "Actuales" | "Pasados";
-type IncidentSource = "cosaif" | "torreon";
-type TorreonIncidentKind = "TODOS" | "NATURAL" | "ARRASTRE";
-
-type FilterState = {
-  source: IncidentSource;
-  torreonTipo: TorreonIncidentKind;
-  empresaId: number | null;
-  localidadId: number | null;
-  searchQuery: string;
-};
 
 type NotificationState = {
   show: boolean;
@@ -134,48 +127,6 @@ function torreonIncidentSubtitle(incident: any) {
   return [label, empresa, destino].filter(Boolean).join(" · ");
 }
 
-// Hook usuario (lee cookies primero)
-function useUserRole(authorization?: AuthorizationProfile): {
-  role: Role;
-  empresaId: number | null;
-  localidadId: number | null;
-} {
-  const [userInfo, setUserInfo] = useState<{
-    role: Role;
-    empresaId: number | null;
-    localidadId: number | null;
-  }>({
-    role: "CLIENTE",
-    empresaId: null,
-    localidadId: null,
-  });
-
-  useEffect(() => {
-    try {
-      const userString = typeof window !== "undefined" ? localStorage.getItem("user") : null;
-      const user = userString ? JSON.parse(userString) : {};
-      const roleCookie = String(getCookie("role") || user.rol || "CLIENTE").toUpperCase() as Role;
-      const locFromCookie = Number(getCookie("locId") || "") || null;
-
-      setUserInfo({
-        role: roleCookie,
-        empresaId: user.empresaId ?? null,
-        localidadId: locFromCookie ?? user.localidadId ?? null,
-      });
-    } catch (error) {
-      console.warn("Error parsing user data:", error);
-    }
-  }, []);
-
-  return authorization
-    ? {
-        role: authorization.role as Role,
-        empresaId: authorization.scope.empresaId,
-        localidadId: authorization.scope.localidadId,
-      }
-    : userInfo;
-}
-
 // Hook para notificaciones
 function useNotifications() {
   const [notification, setNotification] = useState<NotificationState>({
@@ -218,33 +169,22 @@ function useNotifications() {
 
 export default function IncidenteController({
   authorization,
-}: { authorization?: AuthorizationProfile } = {}) {
+}: {
+  authorization: AuthorizationProfile;
+}) {
   const trainingTour = useTrainingTour();
   const searchParams = useSearchParams();
-  const initialSource: IncidentSource =
-    String(searchParams.get("source") || "").toLowerCase() === "torreon" ? "torreon" : "cosaif";
-  const initialTipo = String(
-    searchParams.get("tipo") || searchParams.get("tipoIncidente") || "",
-  ).toUpperCase();
-  const initialTorreonTipo: TorreonIncidentKind =
-    initialTipo === "ARRASTRE" ? "ARRASTRE" : initialTipo === "NATURAL" ? "NATURAL" : "TODOS";
-  const {
-    role,
-    empresaId: userEmpresaId,
-    localidadId: userLocalidadId,
-  } = useUserRole(authorization);
+  const role = authorization.role as Role;
+  const userEmpresaId = authorization.scope.empresaId;
+  const userLocalidadId = authorization.scope.localidadId;
   const { notification, showNotification, hideNotification } = useNotifications();
   const clientIncidentKind = torreonClientKind(role);
 
-  const isLimitedClientView = authorization
-    ? ["COMPANY", "COMPANY_LOCALITY"].includes(authorization.scope.mode)
-    : ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "ARRASTRE_TORREON"].includes(role);
-  const isLocalityScopedView = authorization
-    ? ["LOCALITY", "COMPANY_LOCALITY"].includes(authorization.scope.mode)
-    : ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "COORDINADOR", "SUPERVISOR"].includes(role);
+  const { company: isLimitedClientView, locality: isLocalityScopedView } =
+    incidentScope(authorization);
 
-  const tabs: Tab[] = ["Actuales", "Pasados"];
-  const [activeTab, setActiveTab] = useState<Tab>("Actuales");
+  const tabs: IncidentTab[] = ["Actuales", "Pasados"];
+  const [activeTab, setActiveTab] = useState<IncidentTab>("Actuales");
 
   const [catalogues, setCatalogues] = useState<{
     empresas: DropdownOption[];
@@ -256,14 +196,11 @@ export default function IncidenteController({
     loading: false,
   });
 
-  const [filters, setFilters] = useState<FilterState>({
-    source: initialSource,
-    torreonTipo: initialTorreonTipo,
-    empresaId: isLimitedClientView ? userEmpresaId : null,
-    localidadId: isLocalityScopedView ? userLocalidadId : null,
-    searchQuery: "",
-  });
-  const isTorreonScope = filters.source === "torreon" || isTorreonLocalidadId(filters.localidadId);
+  const [filters, setFilters] = useState<IncidentFilters>(() =>
+    initialIncidentFilters(authorization, searchParams),
+  );
+  const isTorreonScope = isTorreonFilter(filters);
+  const { source, torreonTipo, empresaId, localidadId } = filters;
 
   const filtersPanelId = useId();
   const [filtersOpen, setFiltersOpen] = useState(false); // Collapsible on mobile
@@ -305,22 +242,10 @@ export default function IncidenteController({
   const requestRef = useRef<{ url: string; controller: AbortController } | null>(null);
   const detailAbortRef = useRef<AbortController | null>(null);
 
-  /** Fuerza la localidad de la sesión para cliente, coordinador y supervisor. */
+  /** Reaplica el alcance si cambia el perfil firmado durante la navegación. */
   useEffect(() => {
-    if (!isLocalityScopedView && !isLimitedClientView) return;
-    setFilters((prev) => ({
-      ...prev,
-      empresaId: isLimitedClientView ? (userEmpresaId ?? prev.empresaId) : prev.empresaId,
-      localidadId: isLocalityScopedView ? userLocalidadId : prev.localidadId,
-      source: isLocalityScopedView
-        ? isTorreonLocalidadId(userLocalidadId)
-          ? "torreon"
-          : "cosaif"
-        : prev.source,
-      torreonTipo:
-        isLocalityScopedView && !isTorreonLocalidadId(userLocalidadId) ? "TODOS" : prev.torreonTipo,
-    }));
-  }, [isLimitedClientView, isLocalityScopedView, userEmpresaId, userLocalidadId]);
+    setFilters((prev) => enforceIncidentScope(prev, authorization));
+  }, [authorization]);
 
   /** Carga catálogos de empresas y localidades */
   useEffect(() => {
@@ -373,33 +298,14 @@ export default function IncidenteController({
 
   /** Construye URL del API de incidentes */
   const buildApiUrl = useCallback(
-    (page = 1) => {
-      const estadoParam = activeTab === "Actuales" ? "ABIERTO" : "PASADOS";
-
-      const searchParams = new URLSearchParams({
-        page: String(page),
-        pageSize: "20",
-        estado: estadoParam,
-      });
-
-      if (filters.empresaId) searchParams.set("empresaId", String(filters.empresaId));
-      if (filters.localidadId) searchParams.set("localidadId", String(filters.localidadId));
-      if (isTorreonScope) {
-        searchParams.set("source", "torreon");
-        if (clientIncidentKind || filters.torreonTipo !== "TODOS")
-          searchParams.set("tipo", clientIncidentKind || filters.torreonTipo);
-      }
-
-      return `${INCIDENTES}?${searchParams.toString()}`;
-    },
-    [
-      activeTab,
-      filters.empresaId,
-      filters.localidadId,
-      filters.torreonTipo,
-      isTorreonScope,
-      clientIncidentKind,
-    ],
+    (page = 1) =>
+      incidentApiUrl(
+        { source, torreonTipo, empresaId, localidadId },
+        activeTab,
+        clientIncidentKind,
+        page,
+      ),
+    [source, torreonTipo, empresaId, localidadId, activeTab, clientIncidentKind],
   );
 
   const queryKey = buildApiUrl(1);
@@ -596,45 +502,18 @@ export default function IncidenteController({
     [fetchIncidents],
   );
 
-  const handleTabChange = useCallback((tab: Tab) => setActiveTab(tab), []);
+  const handleTabChange = useCallback((tab: IncidentTab) => setActiveTab(tab), []);
 
   const handleFilterChange = useCallback(
-    (filterKey: keyof FilterState, value: any) => {
-      setFilters((prev) => {
-        if (isLocalityScopedView && (filterKey === "localidadId" || filterKey === "source")) {
-          return prev;
-        }
-        if (isLimitedClientView && filterKey === "empresaId") return prev;
-        if (prev[filterKey] === value) return prev;
-        const next = { ...prev, [filterKey]: value };
-        if (filterKey === "localidadId" && isTorreonLocalidadId(value)) {
-          next.source = "torreon";
-        }
-        if (
-          filterKey === "source" &&
-          value === "cosaif" &&
-          isTorreonLocalidadId(prev.localidadId)
-        ) {
-          next.localidadId = null;
-          next.torreonTipo = "TODOS";
-        }
-        return next;
-      });
+    (filterKey: keyof IncidentFilters, value: string | number | null) => {
+      setFilters((prev) => changeIncidentFilter(prev, filterKey, value, authorization));
     },
-    [isLocalityScopedView, isLimitedClientView],
+    [authorization],
   );
 
   const handleClearFilters = useCallback(() => {
-    setFilters((prev) => ({
-      ...prev,
-      searchQuery: "",
-      empresaId: isLimitedClientView ? userEmpresaId : null,
-      localidadId: isLocalityScopedView ? userLocalidadId : null,
-      source: isLocalityScopedView && isTorreonLocalidadId(userLocalidadId) ? "torreon" : "cosaif",
-      torreonTipo:
-        isLocalityScopedView && isTorreonLocalidadId(userLocalidadId) ? prev.torreonTipo : "TODOS",
-    }));
-  }, [isLimitedClientView, isLocalityScopedView, userEmpresaId, userLocalidadId]);
+    setFilters((prev) => resetIncidentFilters(prev, authorization));
+  }, [authorization]);
 
   const handleIncidentSelect = useCallback(
     (incident: any) => {

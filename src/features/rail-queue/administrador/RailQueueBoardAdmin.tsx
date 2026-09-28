@@ -374,31 +374,31 @@ export default function RailQueueBoardAdmin({
       {/* TOASTS */}
       <ToastStack toasts={toasts} dismiss={dismiss} />
 
-      <header className={styles.header}>
-        <div className="flex items-center gap-3">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-900 text-emerald-300">
-            <TrainFront size={22} aria-hidden />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
-              Administración ferroviaria
-            </p>
-            <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
-              Control de operaciones
-            </h1>
+      {!activeIsTorreon ? (
+        <header className={styles.header}>
+          <div className="flex items-center gap-3">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-900 text-emerald-300">
+              <TrainFront size={22} aria-hidden />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
+                Administración ferroviaria
+              </p>
+              <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
+                Control de operaciones
+              </h1>
+            </div>
           </div>
-        </div>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--app-text-muted)]">
-          Rondas, prioridades y órdenes por localidad. Selecciona un patio para consultar su
-          operación.
-        </p>
-      </header>
+        </header>
+      ) : null}
       {/* TOOLBAR */}
       <div className={styles.toolbar}>
         <div>
           <div className={styles.toolbarInner}>
             {/* selector de localidad */}
-            <div className="flex min-w-0 max-w-full flex-wrap items-center gap-3 rounded-2xl border border-slate-200/70 bg-[var(--app-surface)] px-3 py-2 shadow-sm dark:border-slate-800/70">
+            <div
+              className={`flex min-w-0 max-w-full flex-wrap items-center gap-3 rounded-2xl border border-slate-200/70 bg-[var(--app-surface)] px-3 py-2 shadow-sm dark:border-slate-800/70 ${activeIsTorreon ? "flex-1 md:flex-none" : ""}`}
+            >
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--app-text-muted)]">
                 <MapPin className="h-4 w-4" /> Localidad
               </div>
@@ -415,7 +415,7 @@ export default function RailQueueBoardAdmin({
                   )}
                   {localidades.map((l) => (
                     <option key={l.id} value={l.id}>
-                      {l.nombre} (#{l.id})
+                      {l.nombre}
                     </option>
                   ))}
                 </select>
@@ -434,11 +434,7 @@ export default function RailQueueBoardAdmin({
 
             {/* status derecha */}
             <div className="flex flex-wrap items-center gap-2">
-              {activeIsTorreon ? (
-                <span className="inline-flex min-h-9 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
-                  <MapPin className="h-3.5 w-3.5" /> Naturales y arrastres de Torreón
-                </span>
-              ) : (
+              {!activeIsTorreon && (
                 <>
                   <LastUpdated live={polling && online} timestamp={lastOkAt} />
                   <Btn
@@ -516,7 +512,6 @@ export default function RailQueueBoardAdmin({
           <AdminTorreonDashboard
             key={`admin-torreon-${activeLocId}`}
             localidadId={activeLocId}
-            showBanner={false}
             rol="ADMINISTRADOR"
           />
         ) : activeLocId === 0 ? (
@@ -602,13 +597,13 @@ function QueueSummary({
           </div>
         ))}
       </div>
-      <p className="mt-2 text-[11px] text-[var(--app-text-muted)]">
-        {partial
-          ? "Totales no disponibles: hay localidades sin actualizar."
-          : pending
-            ? "Los totales estarán disponibles al completar la consulta."
-            : "Resumen de las rondas devueltas para la selección actual."}
-      </p>
+      {partial || pending ? (
+        <p className="mt-2 text-[11px] text-[var(--app-text-muted)]">
+          {partial
+            ? "Totales no disponibles: hay localidades sin actualizar."
+            : "Los totales estarán disponibles al completar la consulta."}
+        </p>
+      ) : null}
     </div>
   );
 }

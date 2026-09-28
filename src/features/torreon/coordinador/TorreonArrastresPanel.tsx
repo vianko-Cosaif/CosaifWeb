@@ -8,12 +8,12 @@ import { movementDateBoundary } from "@/lib/dateBoundary";
 import s from "../presentation/rail.module.scss";
 import ArrastreFocus from "../arrastres/components/ArrastreFocus";
 import { HISTORY_STATUSES, OPERATIONAL_STATUSES } from "../arrastres/constants";
-import { CalendarDays, ClipboardList, ArrowRight, Hash, RefreshCw, Search } from "lucide-react";
+import { CalendarDays, Hash, RefreshCw, Search } from "lucide-react";
 import Button from "@/components/ui/Button";
 import FieldShell from "@/components/ui/FieldShell";
 import FilterPanel from "@/components/ui/FilterPanel";
 import LoadingState from "@/components/ui/LoadingState";
-import ModuleHeader from "@/components/ui/ModuleHeader";
+import { TorreonModeIntro } from "@/features/torreon/components/TorreonModeIntro";
 import PaginationBar from "@/components/ui/PaginationBar";
 import SearchInput from "@/components/ui/SearchInput";
 import SegmentedControl from "@/components/ui/SegmentedControl";
@@ -26,11 +26,9 @@ import {
   VAGON_STATUS_OPTIONS,
   buildArrastreFolio,
   buildDailyCounters,
-  fmtDateKey,
   extractArray,
   isHistoryArrastre,
   isLiveArrastre,
-  localDateKey,
   normalizeStatus,
   toLocalDateTimeInput,
   type Arrastre,
@@ -51,17 +49,15 @@ import TorreonIncidentDetailModal, {
 
 type Props = {
   localidadId: number;
-  variant?: "summary" | "dashboard" | "movimientos";
+  variant?: "dashboard" | "movimientos";
   embedded?: boolean;
-  onOpen?: () => void;
-  rol?: "ADMINISTRADOR" | "COORDINADOR";
+  rol?: "ADMINISTRADOR" | "COORDINADOR" | "SUPERVISOR";
 };
 
 export default function TorreonArrastresPanel({
   localidadId,
   variant = "dashboard",
   embedded = false,
-  onOpen,
   rol = "COORDINADOR",
 }: Props) {
   const [scope, setScope] = useState<"actuales" | "pasados">("actuales");
@@ -163,7 +159,6 @@ export default function TorreonArrastresPanel({
   }, []);
   const periodStatuses = scope === "actuales" ? OPERATIONAL_STATUSES : HISTORY_STATUSES;
 
-  const todayKey = localDateKey(new Date());
   const dashboardArrastres = useMemo(() => arrastres.filter(isLiveArrastre), [arrastres]);
   const metricRows = variant === "movimientos" ? arrastres : dashboardArrastres;
   const dailyCounters = useMemo(() => buildDailyCounters(arrastres), [arrastres]);
@@ -191,7 +186,10 @@ export default function TorreonArrastresPanel({
 
       const controller = new AbortController();
       incidentDetailControllerRef.current = controller;
-      void fetchTorreonIncidentDetail({ incidentId, localidadId, tipo: "ARRASTRE" }, controller.signal)
+      void fetchTorreonIncidentDetail(
+        { incidentId, localidadId, tipo: "ARRASTRE" },
+        controller.signal,
+      )
         .then((detail) => {
           if (controller.signal.aborted) return;
           setSelectedIncident((current) => {
@@ -218,13 +216,17 @@ export default function TorreonArrastresPanel({
               ? {
                   ...current,
                   loadingEvidence: false,
-                  evidenceError: error instanceof Error ? error.message : "No se pudieron cargar las evidencias.",
+                  evidenceError:
+                    error instanceof Error
+                      ? error.message
+                      : "No se pudieron cargar las evidencias.",
                 }
               : current,
           );
         })
         .finally(() => {
-          if (incidentDetailControllerRef.current === controller) incidentDetailControllerRef.current = null;
+          if (incidentDetailControllerRef.current === controller)
+            incidentDetailControllerRef.current = null;
         });
     },
     [dailyCounters, localidadId],
@@ -475,81 +477,50 @@ export default function TorreonArrastresPanel({
     </div>
   );
 
-  if (variant === "summary") {
-    const attention = stats.detenidos + stats.incidentesAbiertos;
-    return (
-      <section className={s.summaryCard}>
-        <div className={s.summaryHeading}>
-          <div>
-            <p className={s.eyebrow}>
-              <ClipboardList size={16} aria-hidden />
-              Vagones
-            </p>
-            <h2 className="mt-2">Arrastres</h2>
-          </div>
-          <TorreonRealtimeBadge status={realtimeStatus} />
-        </div>
-        <p className={s.subtitle}>Solicitudes, composición del tren y avance por vagón.</p>
-        {loadFeedback}
-        <div className={s.summaryNumbers}>
-          <div>
-            <strong>{stats.solicitados}</strong>
-            <span>En espera</span>
-          </div>
-          <div>
-            <strong>{stats.proceso}</strong>
-            <span>En movimiento</span>
-          </div>
-          <div>
-            <strong>{attention}</strong>
-            <span>Alertas y pausas</span>
-          </div>
-        </div>
-        <button type="button" onClick={onOpen} className={s.primaryButton}>
-          Ver cola de arrastres
-          <ArrowRight size={16} aria-hidden />
-        </button>
-      </section>
-    );
-  }
-
   return (
-    <section className={embedded ? "min-w-0" : s.workspace}>
-      {!embedded ? (
-        <div className={s.pageHeader}>
-          <ModuleHeader
-            eyebrow="Torreón"
-            title={variant === "dashboard" ? "Cola de arrastres" : "Seguimiento de arrastres"}
-            subtitle={
-              variant === "dashboard"
-                ? `Operación actual · ${fmtDateKey(todayKey)}`
-                : "Solicitudes activas e historial"
-            }
-            icon={ClipboardList}
-            actions={
-              <>
-                <TorreonRealtimeBadge status={realtimeStatus} />
-                <span className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
-                  <Hash className="h-4 w-4 text-emerald-600" />
-                  {headerCount} solicitud{headerCount === 1 ? "" : "es"}
-                </span>
-                {realtimeStatus !== "connected" ? (
-                  <Button
-                    onClick={() => load(true)}
-                    loading={refreshing}
-                    leftIcon={<RefreshCw className="h-4 w-4" aria-hidden />}
-                  >
-                    Reintentar
-                  </Button>
-                ) : null}
-              </>
-            }
-          />
-        </div>
+    <section className={embedded ? "min-w-0" : s.workspace} data-mode="arrastres">
+      {!embedded && variant === "movimientos" ? (
+        <TorreonModeIntro
+          mode="arrastres"
+          title="Seguimiento de arrastres"
+          actions={
+            <>
+              <TorreonRealtimeBadge status={realtimeStatus} />
+              <span className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 text-sm font-semibold text-[var(--app-text)]">
+                <Hash className="h-4 w-4" aria-hidden />
+                {headerCount} solicitud{headerCount === 1 ? "" : "es"}
+              </span>
+              {realtimeStatus !== "connected" ? (
+                <Button
+                  onClick={() => load(true)}
+                  loading={refreshing}
+                  leftIcon={<RefreshCw className="h-4 w-4" aria-hidden />}
+                >
+                  Reintentar
+                </Button>
+              ) : null}
+            </>
+          }
+        />
       ) : null}
 
       <div className={s.workspace}>
         {loadFeedback}
+
+        {variant === "dashboard" ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <TorreonRealtimeBadge status={realtimeStatus} />
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => load(true)}
+              loading={refreshing}
+              leftIcon={<RefreshCw size={15} aria-hidden />}
+            >
+              Actualizar
+            </Button>
+          </div>
+        ) : null}
 
         {embedded && variant === "movimientos" ? (
           <div className="space-y-3">
@@ -752,21 +723,6 @@ export default function TorreonArrastresPanel({
         {embedded ? <ArrastreStatusStrip stats={stats} operational={false} /> : null}
 
         <div className="space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h3 className="text-sm font-black uppercase tracking-wide text-slate-700 dark:text-slate-200">
-                {selectedMode === "history" ? "Historial de arrastres" : "Cola operativa"}
-              </h3>
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                {selectedMode === "history"
-                  ? "Arrastres finalizados y cancelados."
-                  : "Arrastres en espera, en movimiento o pausados."}
-              </p>
-            </div>
-            <span className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-              {rows.length} registro{rows.length === 1 ? "" : "s"}
-            </span>
-          </div>
           {loading ? (
             <LoadingState className="h-48" />
           ) : variant === "dashboard" ? (
@@ -786,12 +742,12 @@ export default function TorreonArrastresPanel({
               onPrioritizeArrastre={selectedMode === "active" ? prioritizeArrastre : undefined}
               busyVagonKey={busyVagonKey}
               onStartVagon={
-                rol === "COORDINADOR" && selectedMode === "active"
+                rol !== "ADMINISTRADOR" && selectedMode === "active"
                   ? (arrastre, vagon) => operateVagon("INICIAR_VAGON", arrastre, vagon)
                   : undefined
               }
               onFinishVagon={
-                rol === "COORDINADOR" && selectedMode === "active"
+                rol !== "ADMINISTRADOR" && selectedMode === "active"
                   ? (arrastre, vagon) => operateVagon("FINALIZAR_VAGON", arrastre, vagon)
                   : undefined
               }

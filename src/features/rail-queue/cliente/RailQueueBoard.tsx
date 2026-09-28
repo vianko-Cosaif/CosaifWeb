@@ -48,6 +48,7 @@ import {
 } from "@/lib/notificationSound";
 import { PANEL_GRAFICO_ENABLED } from "@/features/panel-grafico/panelGrafico.config";
 import { isTornoModuleEnabled } from "@/lib/tornoFeature";
+import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 
 const fmtLoco = (value: unknown) => formatLoco(value, "—");
 
@@ -100,6 +101,7 @@ export default function RailQueueBoard({
   const sharedLocality = role === "CLIENTE";
   const trainingTour = useTrainingTour();
   const [activeEntity, setActiveEntity] = useState<QueueEntityKind>("movimientos");
+  const naturalTorreon = isTorreonLocalidadId(localidadId) && activeEntity === "movimientos";
   const [openEditor, setOpenEditor] = useState(false);
   const [polling, setPolling] = useLocalStorageBoolean("rail-queue:polling", true);
   const [soundOn, setSoundOn] = useLocalStorageBoolean("rail-queue:soundOn", false);
@@ -251,10 +253,12 @@ export default function RailQueueBoard({
   }, [info, trainingQueueItems]);
   const entityOptions = useMemo<QueueSegmentedFilterOption<QueueEntityKind>[]>(
     () =>
-      ENTITY_OPTIONS.filter((option) => isTornoModuleEnabled || option.value !== "torneados").map((option) => ({
-        ...option,
-        count: option.value === activeEntity ? entityItems.length : undefined,
-      })),
+      ENTITY_OPTIONS.filter((option) => isTornoModuleEnabled || option.value !== "torneados").map(
+        (option) => ({
+          ...option,
+          count: option.value === activeEntity ? entityItems.length : undefined,
+        }),
+      ),
     [activeEntity, entityItems.length],
   );
   const current = entityItems[0];
@@ -286,11 +290,26 @@ export default function RailQueueBoard({
         </div>
       ) : null}
       {/* ─── HEADER ─── */}
-      <GuidedTarget id="dashboard-rounds-header" as="header" className={S.Layout.header}>
+      <GuidedTarget
+        id="dashboard-rounds-header"
+        as="header"
+        className={`${S.Layout.header} ${naturalTorreon ? "border-l-[3px] border-l-teal-700 dark:border-l-teal-400" : ""}`}
+      >
         <div className={S.Header.left}>
-          <h1 className={S.Header.title}>
-            {sharedLocality ? "Ronda general de la localidad" : "Rondas actuales"}
-          </h1>
+          <div className="min-w-0">
+            {naturalTorreon ? (
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-teal-700 dark:text-teal-300">
+                Torreón · Operación natural
+              </p>
+            ) : null}
+            <h1 className={S.Header.title}>
+              {naturalTorreon
+                ? "Rondas naturales"
+                : sharedLocality
+                  ? "Ronda general de la localidad"
+                  : "Rondas actuales"}
+            </h1>
+          </div>
           <span className={S.Header.liveBadge}>
             {realtimeStatus === "connected" && polling ? (
               <>
@@ -312,16 +331,21 @@ export default function RailQueueBoard({
           <button
             onClick={() => setPolling(!polling)}
             className={S.Header.btn(polling)}
-            title="Auto-refresh"
+            title={
+              polling ? "Desactivar actualización automática" : "Activar actualización automática"
+            }
+            aria-label={
+              polling ? "Desactivar actualización automática" : "Activar actualización automática"
+            }
+            aria-pressed={polling}
           >
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${polling ? "bg-emerald-500 dark:bg-emerald-400 animate-pulse" : "bg-slate-300 dark:bg-slate-600"}`}
-            />
+            Auto
           </button>
           <button
             onClick={toggleSound}
             className={S.Header.btn(soundOn)}
             title={soundOn ? "Desactivar sonido" : "Activar sonido"}
+            aria-label={soundOn ? "Desactivar sonido" : "Activar sonido"}
             aria-pressed={soundOn}
           >
             {soundOn ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
@@ -339,7 +363,11 @@ export default function RailQueueBoard({
           </button>
           {activeEntity === "movimientos" && empresaId ? (
             <GuidedTarget id="dashboard-edit-rounds" className="inline-flex">
-              <button onClick={() => setOpenEditor(true)} className={S.Header.btnEdit}>
+              <button
+                onClick={() => setOpenEditor(true)}
+                className={S.Header.btnEdit}
+                aria-label="Editar mis rondas"
+              >
                 <Pencil className="w-3.5 h-3.5" />{" "}
                 <span className="hidden sm:inline">Editar mis rondas</span>
               </button>
@@ -350,12 +378,6 @@ export default function RailQueueBoard({
 
       {/* ─── CONTENT ─── */}
       <div className={S.Layout.main} aria-busy={loading || refreshing}>
-        <p className="text-xs leading-5 text-[var(--app-text-muted)] lg:col-span-12">
-          {sharedLocality
-            ? "Actuales de todas las empresas de tu localidad: pendientes, en movimiento y detenidos."
-            : "Rondas actuales de la localidad disponibles para tu perfil."}{" "}
-          Las acciones y las mediciones siguen limitadas a tu empresa.
-        </p>
         {error && (
           <div
             role="alert"
@@ -410,7 +432,7 @@ export default function RailQueueBoard({
               <div className={S.Layout.skeleton} />
             ) : error && !current ? null : !current ? (
               <div className="flex min-h-[360px] flex-col items-center justify-center rounded-lg border border-dashed border-[var(--app-border-strong)] bg-[var(--app-surface)] p-8 text-center shadow-[var(--app-shadow-sm)]">
-                <div className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
+                <div className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
                   Sin registros
                 </div>
                 <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">
@@ -419,7 +441,7 @@ export default function RailQueueBoard({
                 <button
                   type="button"
                   onClick={() => load(true)}
-                  className="mt-5 rounded-md bg-[var(--app-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--app-accent-hover)]"
+                  className="mt-5 rounded-md bg-[var(--app-accent)] px-4 py-2 text-sm font-semibold text-[var(--app-accent-contrast)] transition hover:bg-[var(--app-accent-hover)]"
                 >
                   Actualizar
                 </button>
@@ -485,7 +507,9 @@ export default function RailQueueBoard({
         </div>
       )}
 
-      {isTornoModuleEnabled ? <TornoMeasuresDialog state={measuresModal} onClose={closeMeasuresModal} /> : null}
+      {isTornoModuleEnabled ? (
+        <TornoMeasuresDialog state={measuresModal} onClose={closeMeasuresModal} />
+      ) : null}
 
       {/* ─── TOASTS ─── */}
       <div className={S.Toast.wrap}>
@@ -529,7 +553,9 @@ function HeroCard({
   const orig = info?.movimiento?.viaOrigen?.nombre || "—";
   const dest = info?.movimiento?.viaDestino?.nombre || "—";
   const movementId = movementIdFrom(item, info);
-  const canViewMeasures = Boolean(isTornoModuleEnabled && canAccessMeasures && info?.movimiento?.torno && movementId);
+  const canViewMeasures = Boolean(
+    isTornoModuleEnabled && canAccessMeasures && info?.movimiento?.torno && movementId,
+  );
 
   return (
     <GuidedTarget id="dashboard-current-movement">
@@ -684,7 +710,9 @@ function QueueCard({
   const newRound = idx === 0 || item.rondaNumero !== prev?.rondaNumero;
   const loco = fmtLoco(info?.movimiento?.locomotora || info?.movimiento?.locomotiveNumber);
   const movementId = movementIdFrom(item, info);
-  const canViewMeasures = Boolean(isTornoModuleEnabled && canAccessMeasures && info?.movimiento?.torno && movementId);
+  const canViewMeasures = Boolean(
+    isTornoModuleEnabled && canAccessMeasures && info?.movimiento?.torno && movementId,
+  );
 
   return (
     <Fragment>
@@ -764,7 +792,9 @@ function QueueCard({
         <div className={S.List.bottom}>
           <div className="flex gap-1">
             {info?.movimiento?.lavado && <span className={S.List.badge}>LAV</span>}
-            {isTornoModuleEnabled && info?.movimiento?.torno && <span className={S.List.badge}>TOR</span>}
+            {isTornoModuleEnabled && info?.movimiento?.torno && (
+              <span className={S.List.badge}>TOR</span>
+            )}
           </div>
           <span className={S.List.date}>{fmtDate(item.createdAt)}</span>
         </div>

@@ -204,7 +204,7 @@ const SUPERVISOR_CAPABILITIES: RoleCapabilities = {
   canViewCompanyWide: false,
   canSwitchLocalidad: false,
   canViewNaturalMovements: true,
-  canViewTorreonArrastres: false,
+  canViewTorreonArrastres: true,
   canCreateTorreonArrastres: false,
   canManageUsers: false,
   canViewReports: false,

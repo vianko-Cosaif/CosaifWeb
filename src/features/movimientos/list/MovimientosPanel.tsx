@@ -1,16 +1,10 @@
 "use client";
 import SavedViews from "./SavedViews";
 import AttentionSummary from "./AttentionSummary";
-import { parseAuthorizationProfile, hasPermission, PERMISSIONS, type AuthorizationProfile } from "@/lib/accessControl";
+import { hasPermission, PERMISSIONS, type AuthorizationProfile } from "@/lib/accessControl";
 // src/app/Components/movimientos/MovimientosPanel.tsx
 
-
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import React, { useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Flag } from "lucide-react";
@@ -25,36 +19,11 @@ import ModuleHeader from "@/components/ui/ModuleHeader";
 import LoadingState from "@/components/ui/LoadingState";
 import { canViewMovementDuration } from "@/features/movimientos/table";
 
-
 const Tabla = dynamic(() => import("./Tabla"), {
-  loading: () => <LoadingState label="Preparando tabla de movimientos" className="min-h-[320px] border-0" />,
+  loading: () => (
+    <LoadingState label="Preparando tabla de movimientos" className="min-h-[320px] border-0" />
+  ),
 });
-
-/* ================== HELPERS SESIÓN ================== */
-
-function getCookie(name: string): string {
-  if (typeof document === "undefined") return "";
-  const m = document.cookie.match(new RegExp("(^|; )" + name + "=([^;]*)"));
-  return m ? decodeURIComponent(m[2]) : "";
-}
-
-function getRoleFromSession(): Rol {
-  const c = (getCookie("role") || "").trim().toUpperCase();
-  if (c) return c as Rol;
-
-  try {
-    const raw =
-      typeof window !== "undefined" ? localStorage.getItem("user") : null;
-    if (raw) {
-      const u = JSON.parse(raw);
-      const r = String(u?.rol || u?.role || "").toUpperCase();
-      if (r) return r as Rol;
-    }
-  } catch {
-    // silencioso
-  }
-  return "CLIENTE";
-}
 
 function formatPanelDate(value?: string | null) {
   if (!value) return "—";
@@ -85,7 +54,12 @@ function formatPanelDuration(minutes?: number | null) {
   return rest ? `${hours} h ${rest} min` : `${hours} h`;
 }
 
-const FECHA_CAMPOS_MOVIMIENTO = ["solicitud", "inicio", "fin", "creacion"] as const satisfies readonly FechaCampo[];
+const FECHA_CAMPOS_MOVIMIENTO = [
+  "solicitud",
+  "inicio",
+  "fin",
+  "creacion",
+] as const satisfies readonly FechaCampo[];
 
 function isFechaCampoMovimiento(value: string | null): value is FechaCampo {
   return FECHA_CAMPOS_MOVIMIENTO.includes(value as FechaCampo);
@@ -118,8 +92,7 @@ function buildExecutionSummary(rows: Movement[]) {
 /* ================== PROPS ================== */
 
 interface MovimientosPanelProps {
-  rol?: Rol;
-  authorization?: AuthorizationProfile;
+  authorization: AuthorizationProfile;
   puedeCrear?: boolean;
   apiBase?: string;
   empresaIdUsuario?: number | null;
@@ -132,7 +105,6 @@ interface MovimientosPanelProps {
 
 export default function MovimientosPanel(props: MovimientosPanelProps) {
   const {
-    rol: rolProp,
     authorization,
     puedeCrear = false,
     apiBase,
@@ -143,76 +115,15 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
   } = props;
   const router = useRouter();
   const trainingTour = useTrainingTour();
-  const [storedCanEdit, setCanEdit] = useState(false);
-  const canEdit = authorization ? hasPermission(authorization, PERMISSIONS.MOVEMENTS_EDIT) : storedCanEdit;
-  useEffect(() => {
-    if (authorization) return;
-    const sync = () => {
-      try { setCanEdit(hasPermission(parseAuthorizationProfile(JSON.parse(localStorage.getItem("user") || "null")?.authorization), PERMISSIONS.MOVEMENTS_EDIT)); } catch { setCanEdit(false); }
-    };
-    sync(); window.addEventListener("storage", sync); window.addEventListener("cosaif:session-ended", sync);
-    return () => { window.removeEventListener("storage", sync); window.removeEventListener("cosaif:session-ended", sync); };
-  }, [authorization]);
-
-  const [rol, setRol] = useState<Rol>(() => authorization?.role ?? rolProp ?? getRoleFromSession());
-
-  const [userEmpresaId, setUserEmpresaId] = useState<number | null>(
-    () => authorization?.scope.empresaId ?? empresaIdUsuario ?? null
-  );
-  const [userLocalidadId, setUserLocalidadId] = useState<number | null>(
-    () => authorization?.scope.mode !== "GLOBAL" ? authorization?.scope.localidadId ?? localidadIdUsuario ?? null : localidadIdUsuario ?? null
-  );
+  const canEdit = hasPermission(authorization, PERMISSIONS.MOVEMENTS_EDIT);
+  const rol: Rol = authorization.role;
+  const userEmpresaId = authorization.scope.empresaId ?? empresaIdUsuario ?? null;
+  const userLocalidadId =
+    authorization.scope.mode === "GLOBAL"
+      ? (localidadIdUsuario ?? null)
+      : (authorization.scope.localidadId ?? localidadIdUsuario ?? null);
   const rolNormalizado = String(rol || "").toUpperCase();
   const puedeVerDuracionMovimiento = canViewMovementDuration(rolNormalizado);
-
-  /* ================== RESOLVER SESIÓN ================== */
-
-  useEffect(() => {
-    if (authorization?.role || rolProp) {
-      setRol(authorization?.role ?? rolProp!);
-      return;
-    }
-    setRol(getRoleFromSession());
-  }, [rolProp, authorization?.role]);
-
-  useEffect(() => {
-    if (empresaIdUsuario != null && Number.isFinite(empresaIdUsuario)) {
-      setUserEmpresaId(empresaIdUsuario);
-    }
-  }, [empresaIdUsuario]);
-
-  useEffect(() => {
-    if (localidadIdUsuario != null && Number.isFinite(localidadIdUsuario)) {
-      setUserLocalidadId(localidadIdUsuario);
-    }
-  }, [localidadIdUsuario]);
-
-  useEffect(() => {
-    try {
-      const raw =
-        typeof window !== "undefined" ? localStorage.getItem("user") : null;
-      if (raw) {
-        const u = JSON.parse(raw);
-        if (!authorization && userEmpresaId == null) {
-          const empId = Number(u?.empresaId ?? u?.empresa?.id ?? NaN);
-          if (Number.isFinite(empId)) setUserEmpresaId(empId);
-        }
-        if (!authorization && userLocalidadId == null) {
-          const locId = Number(u?.localidadId ?? u?.localidad?.id ?? NaN);
-          if (Number.isFinite(locId)) setUserLocalidadId(locId);
-        }
-      }
-    } catch {
-      // nada
-    }
-
-    if (!authorization && userLocalidadId == null) {
-      const locIdCookie = Number(
-        getCookie("locId") || getCookie("localidadId") || NaN
-      );
-      if (Number.isFinite(locIdCookie)) setUserLocalidadId(locIdCookie);
-    }
-  }, [authorization, userEmpresaId, userLocalidadId]);
 
   /* ================== DATOS (HOOK) ================== */
 
@@ -247,7 +158,11 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
   const trainingRows = useMemo(() => {
     if (!trainingTour.active) return [];
     return trainingTour.movements.filter((movement) => {
-      const isPast = movement.finalizado || ["CONCLUIDO", "CANCELADO", "RESUELTO"].includes(String(movement.estado || "").toUpperCase());
+      const isPast =
+        movement.finalizado ||
+        ["CONCLUIDO", "CANCELADO", "RESUELTO"].includes(
+          String(movement.estado || "").toUpperCase(),
+        );
       return ambito === "pasados" ? isPast : !isPast;
     });
   }, [ambito, trainingTour.active, trainingTour.movements]);
@@ -256,9 +171,8 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     const trainingIds = new Set(trainingRows.map((movement) => movement.id));
     return [...trainingRows, ...filas.filter((movement) => !trainingIds.has(movement.id))];
   }, [filas, trainingRows]);
-  const displayedTotal = total + trainingRows.filter(
-    (movement) => !filas.some((row) => row.id === movement.id)
-  ).length;
+  const displayedTotal =
+    total + trainingRows.filter((movement) => !filas.some((row) => row.id === movement.id)).length;
 
   /* ================== PERMISOS POR ROL ================== */
 
@@ -306,7 +220,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     (nuevoAmbito: typeof ambito) => {
       setAmbito(nuevoAmbito);
     },
-    [setAmbito]
+    [setAmbito],
   );
 
   const handleBuscar = useCallback(
@@ -317,7 +231,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
         busqueda: texto,
       }));
     },
-    [setFiltros]
+    [setFiltros],
   );
 
   const handleCambiarEmpresaId = useCallback(
@@ -329,7 +243,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
         empresaId: empresaId ?? undefined,
       }));
     },
-    [setFiltros, puedeVerTodasEmpresas]
+    [setFiltros, puedeVerTodasEmpresas],
   );
 
   const handleCambiarLocalidadId = useCallback(
@@ -341,7 +255,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
         localidadId: localidadId ?? undefined,
       }));
     },
-    [puedeElegirLocalidad, setFiltros]
+    [puedeElegirLocalidad, setFiltros],
   );
 
   const handleCambiarRangoFechas = useCallback(
@@ -353,7 +267,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
         hasta: hasta ?? undefined,
       }));
     },
-    [setFiltros]
+    [setFiltros],
   );
 
   const handleCambiarEstado = useCallback(
@@ -364,7 +278,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
         estado: estado ?? undefined,
       }));
     },
-    [setFiltros]
+    [setFiltros],
   );
 
   const handleCambiarPrioridad = useCallback(
@@ -375,7 +289,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
         prioridad: prioridad ?? undefined,
       }));
     },
-    [setFiltros]
+    [setFiltros],
   );
 
   const handleCambiarLocomotiveNumber = useCallback(
@@ -386,7 +300,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
         locomotiveNumber: value ?? undefined,
       }));
     },
-    [setFiltros]
+    [setFiltros],
   );
 
   const handleCambiarFechaCampo = useCallback(
@@ -397,7 +311,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
         fechaCampo: isFechaCampoMovimiento(value) ? value : undefined,
       }));
     },
-    [setFiltros]
+    [setFiltros],
   );
 
   const handleCambiarTamPagina = useCallback(
@@ -408,7 +322,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
         tamPagina,
       }));
     },
-    [setFiltros]
+    [setFiltros],
   );
 
   const handleLimpiarFiltros = useCallback(() => {
@@ -417,7 +331,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
       pagina: 1,
       empresaId: filterPolicy.forcedEmpresaId,
       localidadId: filterPolicy.forcedLocalidadId,
-      busqueda: '',
+      busqueda: "",
       locomotivePrefix: undefined,
       desde: undefined,
       hasta: undefined,
@@ -435,15 +349,19 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
         pagina,
       }));
     },
-    [setFiltros]
+    [setFiltros],
   );
 
-  const puedeEditarFila = useCallback((movement: Movement) => {
-    if (trainingTour.isTrainingMovement(movement.id)) return trainingTour.active;
-    if (!canEdit) return false;
-    if (rol === 'CLIENTE') return movement.empresaId === userEmpresaId && movement.localidadId === userLocalidadId;
-    return true;
-  }, [trainingTour, canEdit, rol, userEmpresaId, userLocalidadId]);
+  const puedeEditarFila = useCallback(
+    (movement: Movement) => {
+      if (trainingTour.isTrainingMovement(movement.id)) return trainingTour.active;
+      if (!canEdit) return false;
+      if (rol === "CLIENTE")
+        return movement.empresaId === userEmpresaId && movement.localidadId === userLocalidadId;
+      return true;
+    },
+    [trainingTour, canEdit, rol, userEmpresaId, userLocalidadId],
+  );
 
   const handleEditar = useCallback(
     (id: number) => {
@@ -452,10 +370,12 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
           router.push(`/cliente/editar?id=${id}&training=1`);
           return;
         }
-        window.alert("Durante la capacitación sólo puedes editar registros SIM. No se abrió ni modificó el movimiento real.");
+        window.alert(
+          "Durante la capacitación sólo puedes editar registros SIM. No se abrió ni modificó el movimiento real.",
+        );
         return;
       }
-      const row = filas.find(movement => (movement.idTecnico ?? movement.id) === id);
+      const row = filas.find((movement) => (movement.idTecnico ?? movement.id) === id);
       if (!row || !puedeEditarFila(row)) return;
       const BASE: Record<string, string> = {
         ADMINISTRADOR: "/administrador",
@@ -466,7 +386,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
       const base = BASE[String(rol).toUpperCase()] ?? "/cliente";
       router.push(`${base}/editar?id=${id}`);
     },
-    [router, rol, trainingTour, filas, puedeEditarFila]
+    [router, rol, trainingTour, filas, puedeEditarFila],
   );
 
   const handleNuevo = useCallback(() => {
@@ -490,8 +410,12 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     >
       <div className="flex min-w-0 flex-col gap-4 p-4 sm:gap-5 sm:p-5">
         {trainingTour.active ? (
-          <div className="rounded-xl border border-violet-300 bg-violet-50 px-4 py-3 text-sm font-bold text-violet-900 dark:border-violet-800 dark:bg-violet-950/35 dark:text-violet-100" role="status">
-            CAPACITACIÓN ACTIVA · Los registros SIM y todas sus acciones se guardan sólo en esta sesión.
+          <div
+            className="rounded-xl border border-violet-300 bg-violet-50 px-4 py-3 text-sm font-bold text-violet-900 dark:border-violet-800 dark:bg-violet-950/35 dark:text-violet-100"
+            role="status"
+          >
+            CAPACITACIÓN ACTIVA · Los registros SIM y todas sus acciones se guardan sólo en esta
+            sesión.
           </div>
         ) : null}
         <ModuleHeader
@@ -502,8 +426,14 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
           loading={cargando}
           actions={
             <div className="flex items-center gap-1.5 rounded-lg bg-[var(--app-surface-muted)] px-3 py-1.5 text-xs">
-              <span className="font-semibold tabular-nums text-[var(--app-accent)]">{(cargando || error) && displayedRows.length === 0 ? "—" : `${displayedTotal}${totalEstimado ? "+" : ""}`}</span>
-              <span className="text-slate-500 dark:text-slate-400">registro{displayedTotal === 1 ? "" : "s"}</span>
+              <span className="font-semibold tabular-nums text-[var(--app-accent)]">
+                {(cargando || error) && displayedRows.length === 0
+                  ? "—"
+                  : `${displayedTotal}${totalEstimado ? "+" : ""}`}
+              </span>
+              <span className="text-slate-500 dark:text-slate-400">
+                registro{displayedTotal === 1 ? "" : "s"}
+              </span>
             </div>
           }
         />
@@ -526,7 +456,10 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
             busqueda={filtros.busqueda}
             autoActualizacion={ambito === "actuales" && autoEnabled}
             estaCargando={cargando}
-            contadores={{ actuales: ambito === 'actuales' && !cargando && !error ? displayedTotal : undefined, pasados: ambito === 'pasados' && !cargando && !error ? displayedTotal : undefined }}
+            contadores={{
+              actuales: ambito === "actuales" && !cargando && !error ? displayedTotal : undefined,
+              pasados: ambito === "pasados" && !cargando && !error ? displayedTotal : undefined,
+            }}
             puedeCrear={puedeCrear}
             onCambiarAmbito={handleCambiarAmbito}
             onBuscar={handleBuscar}
@@ -538,7 +471,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
           <Filtros
             expandirPorCapacitacion={trainingTour.active}
             ambito={ambito}
-            actualesCompartidos={rol === 'CLIENTE' && ambito === 'actuales'}
+            actualesCompartidos={rol === "CLIENTE" && ambito === "actuales"}
             puedeElegirEmpresa={puedeVerTodasEmpresas}
             filtros={{
               empresaId: filtros.empresaId,
@@ -566,19 +499,58 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
             deshabilitado={false}
           />
 
-          {rol === 'CLIENTE' ? <p className="text-sm text-[var(--app-text-muted)]">{ambito === 'actuales' ? 'Rondas actuales de todas las empresas de tu localidad. Solo puedes editar movimientos de tu empresa.' : 'Historial de movimientos de tu empresa y tu localidad.'}</p> : null}
-          {!trainingTour.active ? <SavedViews filtros={filtros} ambito={ambito} onApply={applyView}/> : null}
-          {ambito === 'actuales' && displayedRows.length > 0 ? <AttentionSummary rows={displayedRows} onState={(estado) => {
-            if (estado === 'DETENIDO' && rol !== 'CLIENTE') setAmbito('pasados');
-            handleCambiarEstado(estado);
-          }}/> : null}
-          {error ? <div role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100">{error} <button type="button" className="ml-2 underline" onClick={recargar}>Reintentar</button></div> : null}
+          {rol === "CLIENTE" ? (
+            <p className="text-sm text-[var(--app-text-muted)]">
+              {ambito === "actuales"
+                ? "Rondas actuales de todas las empresas de tu localidad. Solo puedes editar movimientos de tu empresa."
+                : "Historial de movimientos de tu empresa y tu localidad."}
+            </p>
+          ) : null}
+          {!trainingTour.active ? (
+            <SavedViews filtros={filtros} ambito={ambito} onApply={applyView} />
+          ) : null}
+          {ambito === "actuales" && displayedRows.length > 0 ? (
+            <AttentionSummary
+              rows={displayedRows}
+              onState={(estado) => {
+                if (estado === "DETENIDO" && rol !== "CLIENTE") setAmbito("pasados");
+                handleCambiarEstado(estado);
+              }}
+            />
+          ) : null}
+          {error ? (
+            <div
+              role="alert"
+              className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100"
+            >
+              {error}{" "}
+              <button type="button" className="ml-2 underline" onClick={recargar}>
+                Reintentar
+              </button>
+            </div>
+          ) : null}
           <div className="grid grid-cols-2 gap-2 xl:grid-cols-5">
-            <ResumenChip label="Total filtrado" value={(cargando || error) && displayedRows.length === 0 ? "—" : `${displayedTotal}${totalEstimado ? "+" : ""}`} />
-            <ResumenChip label="Primer inicio visible" value={formatPanelDate(resumenEjecucion.firstStart)} />
-            <ResumenChip label="Último fin visible" value={formatPanelDate(resumenEjecucion.lastEnd)} />
+            <ResumenChip
+              label="Total filtrado"
+              value={
+                (cargando || error) && displayedRows.length === 0
+                  ? "—"
+                  : `${displayedTotal}${totalEstimado ? "+" : ""}`
+              }
+            />
+            <ResumenChip
+              label="Primer inicio visible"
+              value={formatPanelDate(resumenEjecucion.firstStart)}
+            />
+            <ResumenChip
+              label="Último fin visible"
+              value={formatPanelDate(resumenEjecucion.lastEnd)}
+            />
             {puedeVerDuracionMovimiento ? (
-              <ResumenChip label="Duración promedio visible" value={formatPanelDuration(resumenEjecucion.avg)} />
+              <ResumenChip
+                label="Duración promedio visible"
+                value={formatPanelDuration(resumenEjecucion.avg)}
+              />
             ) : null}
             <ResumenChip label="Orden actual" value={ordenActual} />
           </div>
@@ -599,39 +571,45 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
             "
           >
             {displayedRows.length === 0 ? (
-              cargando ? <LoadingState label="Cargando movimientos" className="min-h-[320px] border-0" /> : (
+              cargando ? (
+                <LoadingState label="Cargando movimientos" className="min-h-[320px] border-0" />
+              ) : (
                 <DataEmptyState
                   icon={Flag}
                   title={error ? "Listado no disponible" : emptyText}
-                  description={error ? "Reintenta la consulta para ver los movimientos." : "Prueba con otros filtros o consulta el otro periodo."}
+                  description={
+                    error
+                      ? "Reintenta la consulta para ver los movimientos."
+                      : "Prueba con otros filtros o consulta el otro periodo."
+                  }
                   className="min-h-[320px] border-0 bg-transparent"
                 />
               )
             ) : (
-            <div className="relative flex-1 min-h-0">
-              <Tabla
-                filas={displayedRows}
-                pagina={filtros.pagina}
-                tamPagina={filtros.tamPagina}
-                total={displayedTotal}
-                totalEstimado={totalEstimado}
-                campoOrden={filtros.campoOrden}
-                direccionOrden={filtros.direccionOrden}
-                cargando={cargando}
-                rol={rol}
-                onPagina={handlePagina}
-                onOrden={(campo, dir) =>
-                  setFiltros((prev) => ({
-                    ...prev,
-                    pagina: 1,
-                    campoOrden: campo,
-                    direccionOrden: dir,
-                  }))
-                }
-                onEditar={trainingTour.active || canEdit ? handleEditar : undefined}
-                puedeEditarFila={puedeEditarFila}
-              />
-            </div>
+              <div className="relative flex-1 min-h-0">
+                <Tabla
+                  filas={displayedRows}
+                  pagina={filtros.pagina}
+                  tamPagina={filtros.tamPagina}
+                  total={displayedTotal}
+                  totalEstimado={totalEstimado}
+                  campoOrden={filtros.campoOrden}
+                  direccionOrden={filtros.direccionOrden}
+                  cargando={cargando}
+                  rol={rol}
+                  onPagina={handlePagina}
+                  onOrden={(campo, dir) =>
+                    setFiltros((prev) => ({
+                      ...prev,
+                      pagina: 1,
+                      campoOrden: campo,
+                      direccionOrden: dir,
+                    }))
+                  }
+                  onEditar={trainingTour.active || canEdit ? handleEditar : undefined}
+                  puedeEditarFila={puedeEditarFila}
+                />
+              </div>
             )}
           </section>
         </GuidedTarget>
@@ -641,7 +619,5 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
 }
 
 function ResumenChip({ label, value }: { label: string; value: string }) {
-  return (
-    <KpiCard label={label} value={value} compact />
-  );
+  return <KpiCard label={label} value={value} compact />;
 }

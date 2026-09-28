@@ -60,6 +60,16 @@ El alcance se deriva de la sesión verificada: actuales compartidos en la locali
 
 Los layouts de administrador, coordinador, supervisor y cliente son Server Components que componen las fronteras interactivas existentes. `LocalityQueue` comparte la presentación de administrador y coordinador; cada controlador conserva sus consultas, permisos y suscripciones. `TornoMeasuresDialog` comparte carga y errores en cuatro vistas y descarga el visor bajo demanda. Su hook cancela solicitudes al cerrar, desmontar o seleccionar otra locomotora.
 
+Las cuatro rutas del cliente de arrastre resuelven sesión, rol y localidad con `requireTorreonArrastreClient`; cada página aplica después su permiso específico. La vista de incidentes consulta activos e historial en paralelo y limita las páginas adicionales a cuatro lecturas simultáneas. El resultado conserva el orden y se descarta si el usuario abandona la vista.
+
+La ruta general `/incidentes` verifica la sesión y el permiso de lectura en servidor y entrega el perfil firmado al controlador. `incidentFilters.ts` deriva el alcance antes de la primera consulta, impide cambiar empresa o localidad fijadas por el perfil y evita combinar una localidad de Torreón con la fuente Cosaif. La búsqueda de la página se aplica localmente y no dispara otra lectura de red.
+
+El panel de movimientos recibe siempre el perfil verificado de su ruta. Su rol, permiso de edición y alcance se derivan directamente de él; el administrador conserva su selección de localidad como filtro de la consulta. Las mutaciones del cliente de arrastre comparten transporte y errores en `arrastreMutationClient.ts`. La normalización de medidas de torno y los planes de copiado viven en módulos puros, separados de las llamadas HTTP y de la vista de captura.
+
+Al editar un incidente de torno, probar `PUT` tras `PATCH` sólo si el servicio responde que el método no está disponible (405 o 501). Un error de servidor, red o registro inexistente no debe repetir la escritura.
+
+La conexión realtime es compartida entre consumidores. Si falla y programa un reintento, montar otro consumidor o recuperar el foco no adelanta esa espera; el evento `online` sí puede reconectar de inmediato.
+
 ESLint impide que los módulos importen rutas y que los servicios del dominio dependan de UI o hooks. No importar un handler desde otro handler: ambos deben componer o exportar el mismo servicio.
 
 ## Persistencia y permisos
@@ -75,3 +85,5 @@ Usar `@/components/ui` para botones, modales, filtros, tablas y estados. El moda
 Separar modelos puros, transporte y presentación cuando un componente acumule responsabilidades. No dividir sólo por tamaño ni crear otra carpeta genérica `utils` cuando existe un dominio claro. Las rutas nuevas deben mantenerse pequeñas.
 
 `npm run check` es el control local y `.github/workflows/quality.yml` repite instalación reproducible, lint, tipos, pruebas, build y auditoría de dependencias. Las reglas de React Compiler se mantienen desactivadas mientras no se habilita ese compilador; las reglas de hooks y tipos siguen activas.
+
+Playwright mide login y la primera carga con datos de movimientos para administrador, coordinador, supervisor, cliente y cliente de arrastre. `performance-budget.json` limita tiempo hasta datos visibles, JavaScript cargado y número de llamadas API en el backend sintético; estas cifras sirven para detectar regresiones locales, no representan latencia de producción.

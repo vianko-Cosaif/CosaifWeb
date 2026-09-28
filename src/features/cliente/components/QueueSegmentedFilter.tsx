@@ -41,7 +41,7 @@ function QueueSegmentedFilter<T extends string>({
               "inline-flex items-center justify-center gap-2 whitespace-nowrap",
               active
                 ? "bg-white text-slate-950 shadow-sm dark:bg-[#161b22] dark:text-white"
-                : "text-slate-500 hover:bg-white/60 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/[0.05] dark:hover:text-slate-200",
+                : "text-slate-600 hover:bg-white/60 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/[0.05] dark:hover:text-slate-200",
             ].join(" ")}
           >
             <span>{option.label}</span>
@@ -65,4 +65,3 @@ function QueueSegmentedFilter<T extends string>({
 }
 
 export default React.memo(QueueSegmentedFilter) as typeof QueueSegmentedFilter;
-

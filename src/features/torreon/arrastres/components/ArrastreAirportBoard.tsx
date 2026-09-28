@@ -13,7 +13,6 @@ export default function ArrastreAirportBoard(props: Props) {
     <ArrastreTerminalTable
       {...props}
       title="Cola de arrastres"
-      subtitle="Solicitudes activas del patio"
       pageSize={Math.max(1, props.rows.length)}
       hidePagination
     />

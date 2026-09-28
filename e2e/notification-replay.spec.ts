@@ -25,6 +25,7 @@ test("un evento repetido no reabre la alerta al navegar; un evento nuevo sí avi
     movimientoId: 991,
     empresaId: 3,
     localidadId: 2,
+    recipientRoles: ["ARRASTRE_TORREON"],
     estado: "EN_PROCESO",
   };
   const emit = (detail: typeof event) =>
@@ -33,14 +34,15 @@ test("un evento repetido no reabre la alerta al navegar; un evento nuevo sí avi
       detail,
     );
   await emit(event);
-  const toast = page.getByRole("status").filter({ hasText: "Movimiento #991 iniciado" });
+  const toast = page.getByRole("status").filter({ hasText: "Movimiento iniciado" });
   await expect(toast).toBeVisible();
+  await expect(toast).toContainText("Movimiento #991");
   await toast.click();
   await expect(page.getByRole("complementary", { name: "Actividad reciente" })).toBeVisible();
   await emit(event);
   await emit(event);
   await expect(toast).toHaveCount(0);
-  await expect(page.getByText("Movimiento #991 iniciado", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("Movimiento iniciado", { exact: true })).toHaveCount(1);
   await page.goto("/cliente/torreon/movimientos");
   await expect(
     page.getByRole("heading", { name: "Seguimiento de arrastres", exact: true }),
@@ -48,8 +50,6 @@ test("un evento repetido no reabre la alerta al navegar; un evento nuevo sí avi
   await waitForActivity();
   await emit(event);
   await emit({ ...event, eventId: "browser-replay-two", estado: "CONCLUIDO" });
-  await expect(
-    page.getByRole("status").filter({ hasText: "Movimiento #991 finalizado" }),
-  ).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Movimiento finalizado" })).toBeVisible();
   await expect(toast).toHaveCount(0);
 });

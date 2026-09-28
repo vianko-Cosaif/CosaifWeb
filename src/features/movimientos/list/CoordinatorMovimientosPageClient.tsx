@@ -11,8 +11,12 @@ import {
 import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 import { cachedFetchJson } from "@/lib/http/client";
 
-const TorreonArrastresPanel = dynamic(() => import("../../torreon/coordinador/TorreonArrastresPanel"));
-const TorreonNaturalesPanel = dynamic(() => import("../../torreon/coordinador/TorreonNaturalesPanel"));
+const TorreonArrastresPanel = dynamic(
+  () => import("../../torreon/coordinador/TorreonArrastresPanel"),
+);
+const TorreonNaturalesPanel = dynamic(
+  () => import("../../torreon/coordinador/TorreonNaturalesPanel"),
+);
 
 type LocalidadOption = {
   id: number;
@@ -21,13 +25,12 @@ type LocalidadOption = {
 
 type Props = {
   apiBase: string;
-  authorization?: AuthorizationProfile;
+  authorization: AuthorizationProfile;
   empresaIdUsuario: number | null;
   localidadIdUsuario: number | null;
-  rol?: "ADMINISTRADOR" | "COORDINADOR";
+  rol?: "ADMINISTRADOR" | "COORDINADOR" | "SUPERVISOR";
+  initialTorreonView?: TorreonOperationView;
 };
-
-type TorreonMovimientoVista = Exclude<TorreonOperationView, "general">;
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/xapi";
 const ADMIN_LOCALIDAD_KEY = "administrador:movimientosLocalidadId";
@@ -38,11 +41,15 @@ function asPositiveId(value?: string | number | null) {
 }
 
 async function fetchLocalidades(): Promise<LocalidadOption[]> {
-  const data = await cachedFetchJson<unknown>(`${API_BASE}/localidades`, {
-    cache: "no-store",
-    credentials: "include",
-  }, { ttlMs: 5 * 60_000 }).catch(() => []);
-  const record = data && typeof data === "object" ? data as { data?: unknown } : {};
+  const data = await cachedFetchJson<unknown>(
+    `${API_BASE}/localidades`,
+    {
+      cache: "no-store",
+      credentials: "include",
+    },
+    { ttlMs: 5 * 60_000 },
+  ).catch(() => []);
+  const record = data && typeof data === "object" ? (data as { data?: unknown }) : {};
   const rows = Array.isArray(data) ? data : Array.isArray(record.data) ? record.data : [];
   return rows
     .map((item: Partial<LocalidadOption>) => ({
@@ -65,8 +72,12 @@ function LocalidadSwitch({
     <section className="mb-4 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/90">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Seguimiento</p>
-          <h1 className="mt-1 text-xl font-bold text-slate-950 dark:text-white">Localidad que deseas consultar</h1>
+          <p className="text-xs font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+            Seguimiento
+          </p>
+          <h1 className="mt-1 text-xl font-bold text-slate-950 dark:text-white">
+            Localidad que deseas consultar
+          </h1>
         </div>
         <div className="flex max-w-full flex-wrap gap-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
           <button
@@ -109,15 +120,16 @@ export default function CoordinatorMovimientosPageClient({
   empresaIdUsuario,
   localidadIdUsuario,
   rol = "COORDINADOR",
+  initialTorreonView = "naturales",
 }: Props) {
   const isAdmin = rol === "ADMINISTRADOR";
   const assignedLocalidadId = asPositiveId(localidadIdUsuario);
   const [activeLocalidadId, setActiveLocalidadId] = useState<number | null>(
-    isAdmin ? null : assignedLocalidadId
+    isAdmin ? null : assignedLocalidadId,
   );
   const [selectionReady, setSelectionReady] = useState(!isAdmin);
   const [localidades, setLocalidades] = useState<LocalidadOption[]>([]);
-  const [torreonView, setTorreonView] = useState<TorreonMovimientoVista>("naturales");
+  const [torreonView, setTorreonView] = useState<TorreonOperationView>(initialTorreonView);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -126,8 +138,10 @@ export default function CoordinatorMovimientosPageClient({
     }
     try {
       const persisted = window.localStorage.getItem(ADMIN_LOCALIDAD_KEY);
-      setActiveLocalidadId(persisted === 'todas' ? null : asPositiveId(persisted));
-    } catch { /* The selector remains usable without device storage. */ }
+      setActiveLocalidadId(persisted === "todas" ? null : asPositiveId(persisted));
+    } catch {
+      /* The selector remains usable without device storage. */
+    }
     setSelectionReady(true);
   }, [assignedLocalidadId, isAdmin]);
 
@@ -148,10 +162,14 @@ export default function CoordinatorMovimientosPageClient({
 
   useEffect(() => {
     if (!isAdmin || !selectionReady) return;
-    try { window.localStorage.setItem(
-      ADMIN_LOCALIDAD_KEY,
-      activeLocalidadId == null ? "todas" : String(activeLocalidadId)
-    ); } catch { /* The current selection remains in memory. */ }
+    try {
+      window.localStorage.setItem(
+        ADMIN_LOCALIDAD_KEY,
+        activeLocalidadId == null ? "todas" : String(activeLocalidadId),
+      );
+    } catch {
+      /* The current selection remains in memory. */
+    }
   }, [activeLocalidadId, isAdmin, selectionReady]);
 
   const selectorOptions = useMemo(() => {
@@ -163,14 +181,13 @@ export default function CoordinatorMovimientosPageClient({
     });
   }, [localidades]);
 
-  const activeIsTorreon = Boolean(
-    activeLocalidadId && isTorreonLocalidadId(activeLocalidadId)
-  );
+  const activeIsTorreon = Boolean(activeLocalidadId && isTorreonLocalidadId(activeLocalidadId));
 
   if (!isAdmin && !assignedLocalidadId) {
     return (
       <section className="mx-auto w-full max-w-[900px] rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm font-medium text-amber-900">
-        Tu usuario no tiene una localidad asignada. Vuelve a iniciar sesión o solicita que se configure tu localidad.
+        Tu usuario no tiene una localidad asignada. Vuelve a iniciar sesión o solicita que se
+        configure tu localidad.
       </section>
     );
   }
@@ -186,17 +203,12 @@ export default function CoordinatorMovimientosPageClient({
           />
         )}
 
-        {!selectionReady ? <p role="status">Preparando la consulta…</p> : activeIsTorreon && activeLocalidadId ? (
+        {!selectionReady ? (
+          <p role="status">Preparando la consulta…</p>
+        ) : activeIsTorreon && activeLocalidadId ? (
           <div className="space-y-3">
             <div className="flex justify-end">
-              <TorreonOperationTabs
-                value={torreonView}
-                includeGeneral={false}
-                compact
-                onChange={(next) => {
-                  if (next !== "general") setTorreonView(next);
-                }}
-              />
+              <TorreonOperationTabs value={torreonView} compact onChange={setTorreonView} />
             </div>
             {torreonView === "naturales" ? (
               <TorreonNaturalesPanel
@@ -216,12 +228,10 @@ export default function CoordinatorMovimientosPageClient({
           </div>
         ) : (
           <div className="mx-auto w-full max-w-screen-2xl">
-            {isAdmin && activeLocalidadId == null ? <p className="mb-3 text-sm text-[var(--app-text-muted)]">Para consultar movimientos naturales o arrastres de Torreón, selecciona esa localidad.</p> : null}
             <MovimientosPanel
               key={activeLocalidadId ?? "todas"}
               apiBase={apiBase}
               authorization={authorization}
-              rol={rol}
               empresaIdUsuario={empresaIdUsuario}
               localidadIdUsuario={activeLocalidadId}
               bloquearLocalidad={!isAdmin || activeLocalidadId != null}

@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from "react";
-import { TrainFront, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import type {
   Arrastre,
   DailyInfo,
@@ -12,6 +12,7 @@ import { isArrastreEditable, statusText } from "../utils";
 import type { TorreonPageMeta } from "../../useTorreonCollection";
 import s from "../../presentation/rail.module.scss";
 import PaginationBar from "@/components/ui/PaginationBar";
+import { TorreonModeIntro } from "@/features/torreon/components/TorreonModeIntro";
 
 type Props = {
   feedback: ReactNode;
@@ -87,21 +88,18 @@ export function MovimientosView({
     [manageableIds, visibleArrastres],
   );
   return (
-    <section className={s.workspace}>
-      <header className={s.pageHeader}>
-        <div>
-          <p className={s.eyebrow}>
-            <TrainFront size={15} aria-hidden />
-            Torreón · Arrastres
-          </p>
-          <h1 className={s.title}>Seguimiento de arrastres</h1>
-          <p className={s.subtitle}>Cada turno, recorrido y vagón en un solo lugar.</p>
-        </div>
-        <button type="button" className={s.primaryButton} onClick={onNuevo}>
-          <Plus size={16} aria-hidden />
-          Solicitar arrastre
-        </button>
-      </header>
+    <section className={s.workspace} data-mode="arrastres">
+      <TorreonModeIntro
+        mode="arrastres"
+        heading="h1"
+        title="Seguimiento de arrastres"
+        actions={
+          <button type="button" className={s.primaryButton} onClick={onNuevo}>
+            <Plus size={16} aria-hidden />
+            Solicitar arrastre
+          </button>
+        }
+      />
       {feedback}
       <MovimientoToolbar
         ambito={ambito}
@@ -127,7 +125,6 @@ export function MovimientosView({
           dailyCounters={dailyCounters}
           busyAction={busyAction}
           title={ambito === "actuales" ? "Solicitudes activas" : "Historial de arrastres"}
-          subtitle={ambito === "actuales" ? "Seguimiento" : "Operaciones anteriores"}
           pageSize={pagination?.pageSize ?? 8}
           hidePagination={Boolean(pagination)}
           editableSolicitudIds={editableSolicitudIds}

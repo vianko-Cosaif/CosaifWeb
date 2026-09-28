@@ -1,12 +1,18 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, LogIn } from "lucide-react";
 import RailQueueBoard from "../../features/rail-queue/supervisor/RailQueueBoard";
 import { getClientCookie } from "@/lib/cookies";
 import { syncFirebaseNotificationLocalidad } from "@/lib/firebase";
 import { clearAuthenticatedSession } from "@/lib/sessionLogout";
+import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
+
+const SupervisorTorreonDashboard = dynamic(
+  () => import("@/features/torreon/coordinador/CoordinatorTorreonDashboard"),
+);
 
 type LocalidadState = "checking" | "ready" | "missing";
 
@@ -30,7 +36,9 @@ const SupervisorPage: React.FC = () => {
 
     setLocalidadId(num);
     setLocalidadState("ready");
-    window.dispatchEvent(new CustomEvent("cosaif:localidad-change", { detail: { localidadId: num } }));
+    window.dispatchEvent(
+      new CustomEvent("cosaif:localidad-change", { detail: { localidadId: num } }),
+    );
     void syncFirebaseNotificationLocalidad(num).catch((error) => {
       console.warn("No se pudo sincronizar localidad FCM.", error);
     });
@@ -54,7 +62,11 @@ const SupervisorPage: React.FC = () => {
   return (
     <section className="w-full min-w-0">
       {localidadState === "checking" ? (
-        <div aria-live="polite" aria-busy="true" className="mx-auto w-full max-w-[1400px] space-y-4">
+        <div
+          aria-live="polite"
+          aria-busy="true"
+          className="mx-auto w-full max-w-[1400px] space-y-4"
+        >
           <span className="sr-only">Preparando operación</span>
           <div className="h-24 animate-pulse rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)]" />
           <div className="h-72 animate-pulse rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)]" />
@@ -67,9 +79,13 @@ const SupervisorPage: React.FC = () => {
             <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
               <AlertTriangle className="h-6 w-6" aria-hidden="true" />
             </span>
-            <h1 className="mt-4 text-xl font-bold text-[var(--app-text)]">Falta asignar una localidad</h1>
+            <h1 className="mt-4 text-xl font-bold text-[var(--app-text)]">
+              Falta asignar una localidad
+            </h1>
             <p className="mt-2 text-sm leading-6 text-[var(--app-text-muted)]">
-              Tu sesión no contiene la localidad necesaria para mostrar la operación. Vuelve a iniciar sesión; si el problema continúa, solicita al administrador que revise tu asignación.
+              Tu sesión no contiene la localidad necesaria para mostrar la operación. Vuelve a
+              iniciar sesión; si el problema continúa, solicita al administrador que revise tu
+              asignación.
             </p>
             {sessionError ? (
               <p role="alert" className="mt-4 text-sm text-rose-600 dark:text-rose-300">
@@ -92,7 +108,11 @@ const SupervisorPage: React.FC = () => {
 
       {localidadState === "ready" && localidadId ? (
         <div className="mx-auto w-full max-w-[1400px] space-y-6 sm:space-y-8 min-w-0">
-          <RailQueueBoard localidadId={localidadId} />
+          {isTorreonLocalidadId(localidadId) ? (
+            <SupervisorTorreonDashboard localidadId={localidadId} rol="SUPERVISOR" />
+          ) : (
+            <RailQueueBoard localidadId={localidadId} />
+          )}
         </div>
       ) : null}
     </section>

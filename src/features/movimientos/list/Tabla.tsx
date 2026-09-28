@@ -436,7 +436,7 @@ const MobileCard = memo(function MobileCard({
                 ) : null}
                 <BadgeTipoMovimiento tipo={movement.tipoMovimiento} compact />
                 {isPriorityHigh && (
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-rose-500 dark:text-rose-400">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-300">
                     Alta
                   </span>
                 )}

@@ -5,7 +5,7 @@ export const empresas = [
 ];
 export const localidades = [
   { id: 1, nombre: "Guadalajara" },
-  { id: 2, nombre: "Otra localidad" },
+  { id: 2, nombre: "Torreón" },
 ];
 const movement = (id, empresaId, localidadId, estado) => ({
   id,

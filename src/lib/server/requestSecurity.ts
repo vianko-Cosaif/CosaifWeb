@@ -7,12 +7,19 @@ const MAX_TRACKED_CLIENTS = 5_000;
 
 function requestOrigins(req: NextRequest) {
   const origins = new Set<string>();
-  try { origins.add(new URL(req.url).origin); } catch {}
+  let requestProtocol = process.env.NODE_ENV === "production" ? "https" : "http";
+  try {
+    const url = new URL(req.url);
+    origins.add(url.origin);
+    requestProtocol = url.protocol.replace(":", "");
+  } catch {}
   const forwardedHost = req.headers.get("x-forwarded-host") || req.headers.get("host");
   const forwardedProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
   if (forwardedHost) {
-    const proto = forwardedProto || (process.env.NODE_ENV === "production" ? "https" : "http");
-    try { origins.add(new URL(`${proto}://${forwardedHost.split(",")[0].trim()}`).origin); } catch {}
+    const proto = forwardedProto || requestProtocol;
+    try {
+      origins.add(new URL(`${proto}://${forwardedHost.split(",")[0].trim()}`).origin);
+    } catch {}
   }
   return origins;
 }
@@ -29,7 +36,9 @@ export function rejectCrossSiteMutation(req: NextRequest) {
   const origin = req.headers.get("origin");
   if (origin) {
     let normalized = "";
-    try { normalized = new URL(origin).origin; } catch {}
+    try {
+      normalized = new URL(origin).origin;
+    } catch {}
     if (!normalized || !requestOrigins(req).has(normalized)) {
       return NextResponse.json({ error: "Origen no permitido" }, { status: 403 });
     }
@@ -46,16 +55,21 @@ export function rejectOversizedBody(req: NextRequest, maxBytes = 32_768) {
 }
 
 export function clientAddress(req: NextRequest) {
-  return (req.headers.get("x-forwarded-for")?.split(",")[0] || req.headers.get("x-real-ip") || "unknown").trim();
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0] ||
+    req.headers.get("x-real-ip") ||
+    "unknown"
+  ).trim();
 }
 
 /** Límite local por instancia; el proxy/API debe mantener un segundo límite distribuido. */
 export function consumeRateLimit(key: string, limit: number, windowMs: number) {
   const now = Date.now();
   const previous = rateEntries.get(key);
-  const entry = !previous || previous.resetAt <= now
-    ? { count: 1, resetAt: now + windowMs }
-    : { count: previous.count + 1, resetAt: previous.resetAt };
+  const entry =
+    !previous || previous.resetAt <= now
+      ? { count: 1, resetAt: now + windowMs }
+      : { count: previous.count + 1, resetAt: previous.resetAt };
   rateEntries.set(key, entry);
 
   if (rateEntries.size > MAX_TRACKED_CLIENTS) {
@@ -72,4 +86,3 @@ export function consumeRateLimit(key: string, limit: number, windowMs: number) {
     { status: 429, headers: { "Retry-After": String(retryAfter), "Cache-Control": "no-store" } },
   );
 }
-

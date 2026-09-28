@@ -8,13 +8,36 @@ import Empty from "antd/es/empty";
 import Table from "antd/es/table";
 import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
 import type { SorterResult } from "antd/es/table/interface";
-import { BadgeEstado, BadgeTipoMovimiento, formatoDuracionMovimiento, formatoFecha } from "@/features/movimientos/table";
+import {
+  BadgeEstado,
+  BadgeTipoMovimiento,
+  formatoDuracionMovimiento,
+  formatoFecha,
+} from "@/features/movimientos/table";
 import { useTrainingTour } from "@/features/capacitacion/TrainingTourContext";
 import type { Movement, CampoOrden } from "./useMovimientos";
-import { getMovementFolio, getMovementRowKey, getMovementTechnicalId } from "./movementPresentation";
+import {
+  getMovementFolio,
+  getMovementRowKey,
+  getMovementTechnicalId,
+} from "./movementPresentation";
 import type { TablaProps } from "./table.types";
 
-type Props = Pick<TablaProps, "filas" | "pagina" | "tamPagina" | "total" | "totalEstimado" | "campoOrden" | "direccionOrden" | "cargando" | "onPagina" | "onOrden" | "onEditar" | "puedeEditarFila"> & {
+type Props = Pick<
+  TablaProps,
+  | "filas"
+  | "pagina"
+  | "tamPagina"
+  | "total"
+  | "totalEstimado"
+  | "campoOrden"
+  | "direccionOrden"
+  | "cargando"
+  | "onPagina"
+  | "onOrden"
+  | "onEditar"
+  | "puedeEditarFila"
+> & {
   clienteSoloIds: boolean;
   puedeVerDuracion: boolean;
   puedeEditarMovimiento: (estado?: string) => boolean;
@@ -26,13 +49,30 @@ type Props = Pick<TablaProps, "filas" | "pagina" | "tamPagina" | "total" | "tota
 };
 
 export default function DesktopMovementTable({
-  filas, pagina, tamPagina, total, totalEstimado, campoOrden, direccionOrden, cargando,
-  onPagina, onOrden, onEditar, puedeEditarFila, clienteSoloIds, puedeVerDuracion,
-  puedeEditarMovimiento, showEditColumn, startIndex, expanded, toggle, renderExpandedDetails,
+  filas,
+  pagina,
+  tamPagina,
+  total,
+  totalEstimado,
+  campoOrden,
+  direccionOrden,
+  cargando,
+  onPagina,
+  onOrden,
+  onEditar,
+  puedeEditarFila,
+  clienteSoloIds,
+  puedeVerDuracion,
+  puedeEditarMovimiento,
+  showEditColumn,
+  startIndex,
+  expanded,
+  toggle,
+  renderExpandedDetails,
 }: Props) {
   const trainingTour = useTrainingTour();
-  const [isDarkTheme, setIsDarkTheme] = useState(() =>
-    typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+  const [isDarkTheme, setIsDarkTheme] = useState(
+    () => typeof document !== "undefined" && document.documentElement.classList.contains("dark"),
   );
 
   useEffect(() => {
@@ -49,7 +89,7 @@ export default function DesktopMovementTable({
       if (campoOrden !== key) return null;
       return direccionOrden === "asc" ? "ascend" : "descend";
     },
-    [campoOrden, direccionOrden]
+    [campoOrden, direccionOrden],
   );
 
   const antColumns = useMemo<ColumnsType<Movement>>(() => {
@@ -74,15 +114,25 @@ export default function DesktopMovementTable({
         render: (_value: unknown, movement) => {
           return (
             <div className="min-w-0">
-              <button type="button"
+              <button
+                type="button"
                 onClick={() => toggle(getMovementRowKey(movement))}
                 aria-expanded={Boolean(expanded[getMovementRowKey(movement)])}
                 aria-label={`${expanded[getMovementRowKey(movement)] ? "Ocultar" : "Ver"} detalles del movimiento ${getMovementFolio(movement)}`}
-                className="inline-flex min-h-11 items-center gap-1 rounded-md bg-[var(--app-accent-soft)] px-2 py-1 font-mono text-xs font-semibold text-[var(--app-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]">
+                className="inline-flex min-h-11 items-center gap-1 rounded-md bg-[var(--app-accent-soft)] px-2 py-1 font-mono text-xs font-semibold text-[var(--app-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-focus)]"
+              >
                 {getMovementFolio(movement)}
-                <ChevronDown size={14} aria-hidden className={expanded[getMovementRowKey(movement)] ? "rotate-180" : ""} />
+                <ChevronDown
+                  size={14}
+                  aria-hidden
+                  className={expanded[getMovementRowKey(movement)] ? "rotate-180" : ""}
+                />
               </button>
-              {movement.rondaNumero != null ? <span className="mt-1 block text-xs text-[var(--app-text-muted)]">Ronda {movement.rondaNumero} · orden {movement.ordenEnRonda ?? "—"}</span> : null}
+              {movement.rondaNumero != null ? (
+                <span className="mt-1 block text-xs text-[var(--app-text-muted)]">
+                  Ronda {movement.rondaNumero} · orden {movement.ordenEnRonda ?? "—"}
+                </span>
+              ) : null}
             </div>
           );
         },
@@ -104,7 +154,7 @@ export default function DesktopMovementTable({
                 {movement.locomotora ?? "—"}
               </div>
               {movement.prioridad === "ALTA" && (
-                <div className="text-[10px] font-black uppercase tracking-wide text-rose-500">
+                <div className="text-[10px] font-black uppercase tracking-wide text-rose-700 dark:text-rose-300">
                   Prioridad alta
                 </div>
               )}
@@ -175,7 +225,7 @@ export default function DesktopMovementTable({
                 >
                   <span>{label}</span>
                   <strong className="truncate text-right text-slate-900 dark:text-slate-100">
-                    {clienteSoloIds ? ids[label] ?? "—" : value ?? "—"}
+                    {clienteSoloIds ? (ids[label] ?? "—") : (value ?? "—")}
                   </strong>
                 </span>
               ))}
@@ -211,7 +261,9 @@ export default function DesktopMovementTable({
       sorter: true,
       sortOrder: getSortOrder("solicitud"),
       render: (value: Movement["fechaSolicitud"]) => (
-        <span className="font-mono text-xs text-slate-600 dark:text-slate-300">{formatoFecha(value)}</span>
+        <span className="font-mono text-xs text-slate-600 dark:text-slate-300">
+          {formatoFecha(value)}
+        </span>
       ),
     });
     base.push({
@@ -222,7 +274,9 @@ export default function DesktopMovementTable({
       sorter: true,
       sortOrder: getSortOrder("inicio"),
       render: (value: Movement["fechaInicio"]) => (
-        <span className="font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-300">{formatoFecha(value)}</span>
+        <span className="font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+          {formatoFecha(value)}
+        </span>
       ),
     });
     base.push({
@@ -233,7 +287,9 @@ export default function DesktopMovementTable({
       sorter: true,
       sortOrder: getSortOrder("fin"),
       render: (value: Movement["fechaFin"]) => (
-        <span className="font-mono text-xs text-slate-600 dark:text-slate-300">{formatoFecha(value)}</span>
+        <span className="font-mono text-xs text-slate-600 dark:text-slate-300">
+          {formatoFecha(value)}
+        </span>
       ),
     });
     if (puedeVerDuracion) {
@@ -251,14 +307,14 @@ export default function DesktopMovementTable({
     }
 
     base.push({
-        title: "Estado",
-        dataIndex: "estado",
-        key: "estado",
-        width: 150,
-        align: "center",
-        sorter: true,
-        sortOrder: getSortOrder("estado"),
-        render: (value: Movement["estado"]) => <BadgeEstado estado={value} />,
+      title: "Estado",
+      dataIndex: "estado",
+      key: "estado",
+      width: 150,
+      align: "center",
+      sorter: true,
+      sortOrder: getSortOrder("estado"),
+      render: (value: Movement["estado"]) => <BadgeEstado estado={value} />,
     });
 
     if (showEditColumn) {
@@ -269,12 +325,16 @@ export default function DesktopMovementTable({
         fixed: "right",
         align: "center",
         render: (_value, movement) => {
-          const canEdit = puedeEditarMovimiento(movement.estado) && (!puedeEditarFila || puedeEditarFila(movement));
+          const canEdit =
+            puedeEditarMovimiento(movement.estado) &&
+            (!puedeEditarFila || puedeEditarFila(movement));
           const movementId = getMovementTechnicalId(movement);
           return canEdit ? (
             <Button
               size="small"
-              data-training-edit-movement={trainingTour.isTrainingMovement(movementId) ? String(movementId) : undefined}
+              data-training-edit-movement={
+                trainingTour.isTrainingMovement(movementId) ? String(movementId) : undefined
+              }
               onClick={(event) => {
                 event.stopPropagation();
                 onEditar?.(movementId);
@@ -291,14 +351,26 @@ export default function DesktopMovementTable({
     }
 
     return base;
-  }, [clienteSoloIds, expanded, getSortOrder, onEditar, puedeEditarFila, puedeEditarMovimiento, puedeVerDuracion, showEditColumn, startIndex, toggle, trainingTour]);
+  }, [
+    clienteSoloIds,
+    expanded,
+    getSortOrder,
+    onEditar,
+    puedeEditarFila,
+    puedeEditarMovimiento,
+    puedeVerDuracion,
+    showEditColumn,
+    startIndex,
+    toggle,
+    trainingTour,
+  ]);
 
   const handleAntTableChange = useCallback(
     (
       pagination: TablePaginationConfig,
       _filters: Record<string, unknown>,
       sorter: SorterResult<Movement> | SorterResult<Movement>[],
-      extra?: { action?: "paginate" | "sort" | "filter" }
+      extra?: { action?: "paginate" | "sort" | "filter" },
     ) => {
       const nextPage = Number(pagination.current || 1);
       if (nextPage !== pagina) {
@@ -313,83 +385,89 @@ export default function DesktopMovementTable({
         onOrden(key, activeSorter.order === "ascend" ? "asc" : "desc");
       }
     },
-    [onOrden, onPagina, pagina]
+    [onOrden, onPagina, pagina],
   );
 
   return (
-          <ConfigProvider
-            theme={{
-              token: {
-                colorPrimary: "#059669",
-                borderRadius: 10,
-                fontFamily: "inherit",
-                colorBgContainer: isDarkTheme ? "#141c23" : "#ffffff",
-                colorText: isDarkTheme ? "#e8edf1" : "#17212b",
-                colorTextSecondary: isDarkTheme ? "#a3afb9" : "#5f6f7d",
-                colorBorderSecondary: isDarkTheme ? "#293640" : "#d9e1e7",
-              },
-              components: {
-                Table: {
-                  headerBg: isDarkTheme ? "#182129" : "#f8fafb",
-                  headerColor: isDarkTheme ? "#e8edf1" : "#5f6f7d",
-                  rowHoverBg: isDarkTheme ? "#1d2932" : "#f3f6f8",
-                  borderColor: isDarkTheme ? "#293640" : "#d9e1e7",
-                  colorBgContainer: isDarkTheme ? "#141c23" : "#ffffff",
-                },
-              },
-            }}
-          >
-            <Table<Movement>
-              virtual={filas.length > 50}
-              rowKey={getMovementRowKey}
-              className="cosaif-ant-table"
-              columns={antColumns}
-              dataSource={filas}
-              loading={cargando ? { spinning: true, description: "Sincronizando..." } : false}
-              size="middle"
-              scroll={{ x: 1880, ...(filas.length > 50 ? { y: 640 } : {}) }}
-              onChange={handleAntTableChange}
-              onRow={(movement, rowIndex) => ({
-                onClick: (event) => {
-                  const target = event.target as HTMLElement | null;
-                  if (target?.closest("button,a,input,select,textarea,[role='button']")) return;
-                  toggle(getMovementRowKey(movement));
-                },
-                className: "cursor-pointer",
-                "data-guide-id": rowIndex === 0 ? "training-movement-row" : undefined,
-                "data-training-movement-id": trainingTour.isTrainingMovement(movement.id) ? String(movement.id) : undefined,
-              })}
-              expandable={{
-                expandedRowKeys: Object.entries(expanded)
-                  .filter(([, isOpen]) => isOpen)
-                  .map(([rowKey]) => rowKey),
-                showExpandColumn: false,
-                expandIcon: () => null,
-                onExpand: (_open, movement) => toggle(getMovementRowKey(movement)),
-                expandedRowRender: (movement) => (
-                  <div data-training-movement-details={trainingTour.isTrainingMovement(movement.id) ? String(movement.id) : undefined}>
-                  {renderExpandedDetails(movement)}
-                  </div>
-                ),
-              }}
-              pagination={{
-                current: pagina,
-                pageSize: tamPagina,
-                total,
-                showSizeChanger: false,
-                placement: ["bottomCenter"],
-                showTotal: (count, range) =>
-                  `Mostrando ${range[0]}-${range[1]} de ${count}${totalEstimado ? "+" : ""}`,
-              }}
-              locale={{
-                emptyText: (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="No hay movimientos registrados"
-                  />
-                ),
-              }}
+    <ConfigProvider
+      theme={{
+        token: {
+          colorPrimary: "#059669",
+          borderRadius: 10,
+          fontFamily: "inherit",
+          colorBgContainer: isDarkTheme ? "#141c23" : "#ffffff",
+          colorText: isDarkTheme ? "#e8edf1" : "#17212b",
+          colorTextSecondary: isDarkTheme ? "#a3afb9" : "#5f6f7d",
+          colorBorderSecondary: isDarkTheme ? "#293640" : "#d9e1e7",
+        },
+        components: {
+          Table: {
+            headerBg: isDarkTheme ? "#182129" : "#f8fafb",
+            headerColor: isDarkTheme ? "#e8edf1" : "#5f6f7d",
+            rowHoverBg: isDarkTheme ? "#1d2932" : "#f3f6f8",
+            borderColor: isDarkTheme ? "#293640" : "#d9e1e7",
+            colorBgContainer: isDarkTheme ? "#141c23" : "#ffffff",
+          },
+        },
+      }}
+    >
+      <Table<Movement>
+        virtual={filas.length > 50}
+        rowKey={getMovementRowKey}
+        className="cosaif-ant-table"
+        columns={antColumns}
+        dataSource={filas}
+        loading={cargando ? { spinning: true, description: "Sincronizando..." } : false}
+        size="middle"
+        scroll={{ x: 1880, ...(filas.length > 50 ? { y: 640 } : {}) }}
+        onChange={handleAntTableChange}
+        onRow={(movement, rowIndex) => ({
+          onClick: (event) => {
+            const target = event.target as HTMLElement | null;
+            if (target?.closest("button,a,input,select,textarea,[role='button']")) return;
+            toggle(getMovementRowKey(movement));
+          },
+          className: "cursor-pointer",
+          "data-guide-id": rowIndex === 0 ? "training-movement-row" : undefined,
+          "data-training-movement-id": trainingTour.isTrainingMovement(movement.id)
+            ? String(movement.id)
+            : undefined,
+        })}
+        expandable={{
+          expandedRowKeys: Object.entries(expanded)
+            .filter(([, isOpen]) => isOpen)
+            .map(([rowKey]) => rowKey),
+          showExpandColumn: false,
+          expandIcon: () => null,
+          onExpand: (_open, movement) => toggle(getMovementRowKey(movement)),
+          expandedRowRender: (movement) => (
+            <div
+              data-training-movement-details={
+                trainingTour.isTrainingMovement(movement.id) ? String(movement.id) : undefined
+              }
+            >
+              {renderExpandedDetails(movement)}
+            </div>
+          ),
+        }}
+        pagination={{
+          current: pagina,
+          pageSize: tamPagina,
+          total,
+          showSizeChanger: false,
+          placement: ["bottomCenter"],
+          showTotal: (count, range) =>
+            `Mostrando ${range[0]}-${range[1]} de ${count}${totalEstimado ? "+" : ""}`,
+        }}
+        locale={{
+          emptyText: (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="No hay movimientos registrados"
             />
-          </ConfigProvider>
+          ),
+        }}
+      />
+    </ConfigProvider>
   );
 }

@@ -1,5 +1,5 @@
 "use client";
-import { ListOrdered, RefreshCw, TrainFront } from "lucide-react";
+import { ListOrdered, TrainFront } from "lucide-react";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { fmtDate } from "../../arrastres/utils";
 import { RailRoute } from "../../presentation/RailPrimitives";
@@ -10,33 +10,12 @@ type Props = {
   rows: MovimientoNatural[];
   loading: boolean;
   error: string | null;
-  realtimeConnected?: boolean;
-  onRefresh: () => void;
 };
-export function TorreonNaturalRailBoard({
-  rows,
-  loading,
-  error,
-  realtimeConnected = false,
-  onRefresh,
-}: Props) {
+export function TorreonNaturalRailBoard({ rows, loading, error }: Props) {
   const current = rows.find((row) => row.estado === "EN_PROCESO") ?? rows[0];
   const next = rows.filter((row) => row.id !== current?.id);
   return (
-    <section className={s.workspace}>
-      <header className={s.pageHeader}>
-        <div>
-          <p className={s.eyebrow}>Torreón · Locomotoras</p>
-          <h2 className={s.title}>Rondas naturales</h2>
-          <p className={s.subtitle}>Recorridos y prioridades de las locomotoras del patio.</p>
-        </div>
-        {!realtimeConnected ? (
-          <button type="button" className={s.button} disabled={loading} onClick={onRefresh}>
-            <RefreshCw size={15} aria-hidden />
-            {loading ? "Actualizando…" : "Actualizar"}
-          </button>
-        ) : null}
-      </header>
+    <section className={s.workspace} data-mode="naturales">
       {error ? (
         <p role="alert" className={s.instructions}>
           {error}
@@ -53,12 +32,12 @@ export function TorreonNaturalRailBoard({
           <div className={s.focusGrid}>
             <article className={s.feature}>
               <header className={s.featureTop}>
-                <h3 className={s.featureTitle}>
+                <h2 className={s.featureTitle}>
                   <TrainFront size={18} aria-hidden />
                   {current.estado === "EN_PROCESO"
                     ? "Locomotora en movimiento"
                     : "Próxima locomotora"}
-                </h3>
+                </h2>
                 <StatusBadge status={current.estado} size="sm" />
               </header>
               <div className={s.featureBody}>
@@ -95,10 +74,10 @@ export function TorreonNaturalRailBoard({
             </article>
             <article className={s.feature}>
               <header className={s.featureTop}>
-                <h3 className={s.featureTitle}>
+                <h2 className={s.featureTitle}>
                   <ListOrdered size={18} aria-hidden />
                   Siguientes locomotoras
-                </h3>
+                </h2>
                 <span className={s.count}>{next.length}</span>
               </header>
               <div className={s.nextList}>
@@ -114,17 +93,12 @@ export function TorreonNaturalRailBoard({
                 ))}
               </div>
               {!next.length ? <p className={s.empty}>Sin más locomotoras en esta vista.</p> : null}
-              <p className={s.sideNote}>
-                Se muestran las primeras {rows.length} rondas cargadas. Consulta Movimientos para
-                ver el detalle completo.
-              </p>
             </article>
           </div>
           <section className={s.queue}>
             <header className={s.queueHeader}>
               <div>
                 <h2>Cola de locomotoras</h2>
-                <p>Orden, recorrido y estado de cada ronda</p>
               </div>
               <span className={s.count}>{rows.length} rondas</span>
             </header>

@@ -524,7 +524,7 @@ function bindLifecycleListeners() {
   const reconnectIfVisible = (reason: string) => {
     if (document.visibilityState === "hidden") return;
     // Returning to a tab does not require a new handshake if its channel is healthy.
-    if (streamState.connecting) return;
+    if (streamState.connecting || streamState.reconnectTimer != null) return;
     const hasConnection = streamState.webSocket || streamState.abortController;
     if (hasConnection && Date.now() - streamState.lastActivityAt < 90_000) return;
     forceRealtimeReconnect(reason);
@@ -532,7 +532,7 @@ function bindLifecycleListeners() {
 
   window.addEventListener("online", () => forceRealtimeReconnect("online"));
   window.addEventListener("focus", () => {
-    if (streamState.connecting) return;
+    if (streamState.connecting || streamState.reconnectTimer != null) return;
     const inactiveMs = Date.now() - streamState.lastActivityAt;
     if (!streamState.webSocket && !streamState.abortController) {
       forceRealtimeReconnect("focus");
@@ -572,6 +572,7 @@ function startRealtime(sseUrl: string, wsConfigUrl: string) {
     clearReconnectTimer();
   }
 
+  if (streamState.reconnectTimer != null) return;
   if (streamState.abortController || streamState.webSocket || streamState.connecting) return;
   setRealtimeStatus("connecting");
   void connectRealtime();

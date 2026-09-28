@@ -42,11 +42,6 @@ export default function ArrastreOperationalTable({
       rows={rows}
       dailyCounters={dailyCounters}
       title={mode === "history" ? "Historial de arrastres" : "Solicitudes activas"}
-      subtitle={
-        mode === "history"
-          ? "Recorridos y resultados de cada solicitud"
-          : "Turnos y avance de la operación"
-      }
       pageSize={Math.max(1, rows.length)}
       hidePagination
       busyAction={busyVagonKey ?? (busyArrastreId != null ? String(busyArrastreId) : null)}

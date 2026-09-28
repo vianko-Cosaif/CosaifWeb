@@ -33,7 +33,7 @@ type ActivityItem = {
 
 function activityScope() {
   const viewer = currentNotificationViewer();
-  return `cosaif:activity:v1:${viewer.id ?? 'session'}:${viewer.role}:${viewer.localidadId}:${viewer.empresaId}`;
+  return `cosaif:activity:v1:${viewer.id ?? "session"}:${viewer.role}:${viewer.localidadId}:${viewer.empresaId}`;
 }
 function realtimeSoundType(event: RealtimeMovementEvent) {
   const type = String(event.type ?? "");
@@ -42,6 +42,7 @@ function realtimeSoundType(event: RealtimeMovementEvent) {
 
 export default function RealtimeActivityCenter() {
   const pathname = usePathname();
+  const [ready, setReady] = useState(false);
   const [filter, setFilter] = useState("Todas");
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [open, setOpen] = useState(false);
@@ -51,12 +52,14 @@ export default function RealtimeActivityCenter() {
   const listRef = useRef<HTMLDivElement>(null);
   const closeActivity = useCallback(() => {
     const viewed = new Set(seen.current);
-    setItems(current => current.filter(item => !viewed.has(item.eventId)));
-    setToast(current => current && !viewed.has(current.eventId) ? current : null);
+    setItems((current) => current.filter((item) => !viewed.has(item.eventId)));
+    setToast((current) => (current && !viewed.has(current.eventId) ? current : null));
     seen.current.clear();
     setOpen(false);
   }, []);
   const [incidentStatus, setIncidentStatus] = useState({ activeCount: 0, connected: true });
+
+  useEffect(() => setReady(true), []);
 
   // Mantiene WebSocket/SSE activo en cualquier pantalla que use el shell,
   // aunque el tablero visible no tenga su propia suscripcion.
@@ -64,14 +67,29 @@ export default function RealtimeActivityCenter() {
 
   useEffect(() => {
     const scope = activityScope();
-    if (scopeRef.current !== scope) { setItems([]); setToast(null); setOpen(false); seen.current.clear(); scopeRef.current = scope; }
+    if (scopeRef.current !== scope) {
+      setItems([]);
+      setToast(null);
+      setOpen(false);
+      seen.current.clear();
+      scopeRef.current = scope;
+    }
     // Remove the old content history; delivery IDs remain solely for deduplication.
-    try { Object.keys(localStorage).filter(key => key.startsWith("cosaif:activity:v1:")).forEach(key => localStorage.removeItem(key)); } catch { /* restricted storage */ }
+    try {
+      Object.keys(localStorage)
+        .filter((key) => key.startsWith("cosaif:activity:v1:"))
+        .forEach((key) => localStorage.removeItem(key));
+    } catch {
+      /* restricted storage */
+    }
   }, [pathname]);
 
   const pushItem = useCallback((item: ActivityItem, showToast = false) => {
     setItems((current) => {
-      const updated = [item, ...current.filter(entry => entry.eventId !== item.eventId)].slice(0, 200);
+      const updated = [item, ...current.filter((entry) => entry.eventId !== item.eventId)].slice(
+        0,
+        200,
+      );
       return updated;
     });
     if (showToast) setToast(item);
@@ -120,7 +138,7 @@ export default function RealtimeActivityCenter() {
     const onRealtimeStatus = (raw: Event) => {
       const status = String((raw as CustomEvent<{ status?: string }>).detail?.status ?? "");
       if (!status) return;
-      setIncidentStatus(current => ({ ...current, connected: status === "connected" }));
+      setIncidentStatus((current) => ({ ...current, connected: status === "connected" }));
     };
 
     const onIncidentStatus = (raw: Event) => {
@@ -147,7 +165,8 @@ export default function RealtimeActivityCenter() {
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => {
-      if (document.visibilityState === "visible") setItems(current => current.filter(item => item.eventId !== toast.eventId));
+      if (document.visibilityState === "visible")
+        setItems((current) => current.filter((item) => item.eventId !== toast.eventId));
       setToast(null);
     }, 7_000);
     return () => window.clearTimeout(timer);
@@ -165,21 +184,38 @@ export default function RealtimeActivityCenter() {
   }, [open, closeActivity]);
 
   const unread = Math.min(items.length, 99);
-  const openActivity = () => { seen.current.clear(); setOpen(true); setToast(null); };
-  const markRead = () => { setItems([]); setToast(null); seen.current.clear(); };
-  const visibleItems = useMemo(() => items.filter(item => filter !== 'Incidentes' || /incidente/i.test(item.title)), [items, filter]);
+  const openActivity = () => {
+    seen.current.clear();
+    setOpen(true);
+    setToast(null);
+  };
+  const markRead = () => {
+    setItems([]);
+    setToast(null);
+    seen.current.clear();
+  };
+  const visibleItems = useMemo(
+    () => items.filter((item) => filter !== "Incidentes" || /incidente/i.test(item.title)),
+    [items, filter],
+  );
   useEffect(() => {
     if (!open || !listRef.current) return;
-    const elements = listRef.current.querySelectorAll<HTMLElement>('[data-notice-id]');
-    if (typeof IntersectionObserver === 'undefined') {
-      elements.forEach(element => seen.current.add(element.dataset.noticeId!));
+    const elements = listRef.current.querySelectorAll<HTMLElement>("[data-notice-id]");
+    if (typeof IntersectionObserver === "undefined") {
+      elements.forEach((element) => seen.current.add(element.dataset.noticeId!));
       return;
     }
-    const observer = new IntersectionObserver(entries => {
-      if (document.visibilityState !== 'visible') return;
-      entries.forEach(entry => { if (entry.isIntersecting) seen.current.add((entry.target as HTMLElement).dataset.noticeId!); });
-    }, { root: listRef.current, threshold: 0.75 });
-    elements.forEach(element => observer.observe(element));
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (document.visibilityState !== "visible") return;
+        entries.forEach((entry) => {
+          if (entry.isIntersecting)
+            seen.current.add((entry.target as HTMLElement).dataset.noticeId!);
+        });
+      },
+      { root: listRef.current, threshold: 0.75 },
+    );
+    elements.forEach((element) => observer.observe(element));
     return () => observer.disconnect();
   }, [open, visibleItems]);
 
@@ -212,6 +248,7 @@ export default function RealtimeActivityCenter() {
       <button
         type="button"
         onClick={() => (open ? closeActivity() : openActivity())}
+        disabled={!ready}
         className="fixed right-4 top-[calc(env(safe-area-inset-top)+1rem)] z-[55] inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text-muted)] shadow-[var(--app-shadow-sm)] transition hover:bg-[var(--app-surface-muted)]"
         aria-label={
           unread
@@ -273,8 +310,26 @@ export default function RealtimeActivityCenter() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 border-b border-[var(--app-border)] p-3">
-            {['Todas', 'Incidentes'].map(label => <button key={label} type="button" aria-pressed={filter === label} onClick={() => setFilter(label)} className={`min-h-10 rounded-lg px-3 text-sm font-semibold ${filter === label ? 'bg-[var(--app-accent)] text-white' : 'bg-[var(--app-surface-muted)] text-[var(--app-text)]'}`}>{label}</button>)}
-            {unread > 0 && <button type="button" onClick={markRead} className="min-h-10 text-xs font-semibold text-[var(--app-accent)]">Eliminar todos</button>}
+            {["Todas", "Incidentes"].map((label) => (
+              <button
+                key={label}
+                type="button"
+                aria-pressed={filter === label}
+                onClick={() => setFilter(label)}
+                className={`min-h-10 rounded-lg px-3 text-sm font-semibold ${filter === label ? "bg-[var(--app-accent)] text-white" : "bg-[var(--app-surface-muted)] text-[var(--app-text)]"}`}
+              >
+                {label}
+              </button>
+            ))}
+            {unread > 0 && (
+              <button
+                type="button"
+                onClick={markRead}
+                className="min-h-10 text-xs font-semibold text-[var(--app-accent)]"
+              >
+                Eliminar todos
+              </button>
+            )}
           </div>
           <div ref={listRef} className="max-h-[min(46vh,430px)] overflow-y-auto p-3">
             {visibleItems.length ? (
@@ -293,11 +348,14 @@ export default function RealtimeActivityCenter() {
                     ) : null}
                   </div>
                   {item.description ? (
-                    <p className="mt-2 text-sm leading-6 text-[var(--app-text-muted)]">{item.description}</p>
+                    <p className="mt-2 text-sm leading-6 text-[var(--app-text-muted)]">
+                      {item.description}
+                    </p>
                   ) : null}
                   <p className="mt-1 text-xs text-[var(--app-text-muted)]">
                     {new Date(item.receivedAt).toLocaleString("es-MX", {
-                      day: "2-digit", month: "short",
+                      day: "2-digit",
+                      month: "short",
                       hour: "2-digit",
                       minute: "2-digit",
                     })}
@@ -310,7 +368,9 @@ export default function RealtimeActivityCenter() {
               </p>
             )}
           </div>
-          <p className="border-t border-[var(--app-border)] p-3 text-xs text-[var(--app-text-muted)]">Los avisos que veas se eliminan al cerrar. No se guarda historial.</p>
+          <p className="border-t border-[var(--app-border)] p-3 text-xs text-[var(--app-text-muted)]">
+            Los avisos que veas se eliminan al cerrar. No se guarda historial.
+          </p>
         </aside>
       ) : null}
     </>

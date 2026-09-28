@@ -14,7 +14,11 @@ export default async function Page() {
   if (role === "ARRASTRE_TORREON") {
     redirect("/cliente/torreon/movimientos");
   }
-  if (session.empresaId == null || (session.authorization.scope.mode === "COMPANY_LOCALITY" && session.localidadId == null)) redirect("/login?loc=cliente");
+  if (
+    session.empresaId == null ||
+    (session.authorization.scope.mode === "COMPANY_LOCALITY" && session.localidadId == null)
+  )
+    redirect("/login?loc=cliente");
 
   return (
     <section
@@ -35,7 +39,6 @@ export default async function Page() {
         <MovimientosPanel
           apiBase={MOVIMIENTOS_API_BASE}
           authorization={session.authorization}
-          rol={role}
           empresaIdUsuario={session.empresaId}
           localidadIdUsuario={session.localidadId}
           bloquearLocalidad={session.authorization.scope.mode === "COMPANY_LOCALITY"}

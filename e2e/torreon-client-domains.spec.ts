@@ -57,6 +57,10 @@ test("cliente natural de Torreón conserva su inicio y crea sólo para su empres
   expect((await request(page, "/bff/torreon/arrastres", "POST", {})).status).toBe(403);
   await page.goto("/cliente/torreon/crear");
   await expect(page).toHaveURL(/\/movimientos\/crear$/);
+  await page.goto("/cliente/torreon/movimientos");
+  await expect(page).toHaveURL(/\/cliente\/movimientos$/);
+  await page.goto("/cliente/torreon/incidentes");
+  await expect(page).toHaveURL(/\/cliente\/incidentes$/);
 });
 
 test("cliente arrastre sólo accede a arrastres y no puede iniciar ni finalizar vagones", async ({
@@ -76,6 +80,8 @@ test("cliente arrastre sólo accede a arrastres y no puede iniciar ni finalizar 
     expect(
       (await request(page, `/bff/torreon/arrastres/1/vagones/1/${operation}`, "PATCH", {})).status,
     ).toBe(403);
+  await page.goto("/cliente/torreon/incidentes");
+  await expect(page.getByText("No hay incidentes abiertos")).toBeVisible();
   await page.goto("/movimientos/crear");
   await expect(page).toHaveURL(/\/cliente\/torreon\/crear$/);
 });

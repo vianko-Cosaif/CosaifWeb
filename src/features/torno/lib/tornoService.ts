@@ -12,8 +12,6 @@ import type {
   TornoIncidentPayload,
   TornoListResult,
   TornoLocalidadLite,
-  TornoMeasurePosition,
-  TornoMeasures,
   TornoNavajaChange,
   TornoNavajaStats,
   TornoPagination,
@@ -23,29 +21,22 @@ import type {
   TornoServiceStatus,
   TornoWheelSide,
   TornoWheelStatus,
-  TornoWheelCount,
   TornoWheelWork,
   TornoWorkSummary,
 } from "./types";
+import {
+  firstMeasureSource,
+  MEASURE_POSITIONS,
+  normalizeMeasures,
+  normalizeWheelCount,
+} from "./tornoMeasures";
+
+export { normalizeMeasures } from "./tornoMeasures";
 
 const API_BASE = "/bff";
 const DEFAULT_PAGE_SIZE = 25;
 const ACTIVE_STATUSES = new Set(["SOLICITADO", "EN_PROCESO", "DETENIDO"]);
 const DONE_STATUSES = new Set(["CONCLUIDO", "CANCELADO"]);
-const MEASURE_POSITIONS: TornoMeasurePosition[] = [
-  "L1",
-  "R1",
-  "L2",
-  "R2",
-  "L3",
-  "R3",
-  "L4",
-  "R4",
-  "L5",
-  "R5",
-  "L6",
-  "R6",
-];
 
 function withCreds<T>(url: string, init: RequestInit = {}) {
   return fetchJSON<T>(url, {
@@ -79,7 +70,11 @@ async function firstJson<T>(urls: string[], init: RequestInit = {}): Promise<T> 
   let lastError: unknown;
   for (const url of urls) {
     try {
-      return await cachedFetchJson<T>(url, { credentials: "include", ...init }, { ttlMs: init.cache === "force-cache" ? 5_000 : 0, force: init.cache !== "force-cache" });
+      return await cachedFetchJson<T>(
+        url,
+        { credentials: "include", ...init },
+        { ttlMs: init.cache === "force-cache" ? 5_000 : 0, force: init.cache !== "force-cache" },
+      );
     } catch (error) {
       if (init.signal?.aborted) throw error;
       lastError = error;
@@ -88,18 +83,17 @@ async function firstJson<T>(urls: string[], init: RequestInit = {}): Promise<T> 
   throw lastError instanceof Error ? lastError : new Error("No se pudo consultar Torno");
 }
 
-async function firstMutation<T>(
-  requests: Array<{ url: string; init: RequestInit }>,
-): Promise<T> {
-  let lastError: unknown;
-  for (const req of requests) {
+async function firstMutation<T>(requests: Array<{ url: string; init: RequestInit }>): Promise<T> {
+  for (const [index, req] of requests.entries()) {
     try {
       return await withCreds<T>(req.url, req.init);
     } catch (error) {
-      lastError = error;
+      const hasAlternative = index < requests.length - 1;
+      const unsupportedMethod = isHttpStatus(error, 405) || isHttpStatus(error, 501);
+      if (!hasAlternative || !unsupportedMethod) throw error;
     }
   }
-  throw lastError instanceof Error ? lastError : new Error("No se pudo guardar el cambio");
+  throw new Error("No se pudo guardar el cambio");
 }
 
 function unwrapArray(input: any): any[] {
@@ -113,9 +107,17 @@ function unwrapArray(input: any): any[] {
   return [];
 }
 
-function metaFrom(input: any, fallbackLength: number, page = 1, pageSize = DEFAULT_PAGE_SIZE): TornoPagination {
-  const raw = input?.meta ?? input?.pagination ?? input?.data?.meta ?? input?.data?.pagination ?? {};
-  const total = Number(input?.total ?? input?.count ?? raw.total ?? raw.count ?? fallbackLength) || fallbackLength;
+function metaFrom(
+  input: any,
+  fallbackLength: number,
+  page = 1,
+  pageSize = DEFAULT_PAGE_SIZE,
+): TornoPagination {
+  const raw =
+    input?.meta ?? input?.pagination ?? input?.data?.meta ?? input?.data?.pagination ?? {};
+  const total =
+    Number(input?.total ?? input?.count ?? raw.total ?? raw.count ?? fallbackLength) ||
+    fallbackLength;
   const finalPageSize = Number(raw.pageSize ?? raw.limit ?? pageSize) || pageSize;
   const finalPage = Number(raw.page ?? page) || page;
   const totalPages = Number(raw.totalPages ?? Math.max(1, Math.ceil(total / finalPageSize))) || 1;
@@ -136,7 +138,9 @@ function asText(value: any, fallback = "—"): string {
 }
 
 function upper(value: any): string {
-  return String(value ?? "").trim().toUpperCase();
+  return String(value ?? "")
+    .trim()
+    .toUpperCase();
 }
 
 function normalizeStatus(value: any): TornoServiceStatus {
@@ -183,64 +187,6 @@ function normalizeDate(value: any): string | null {
   return String(value);
 }
 
-function measureValue(input: any): string | number | null {
-  if (input == null || input === "") return null;
-  if (typeof input === "string" || typeof input === "number") return input;
-  return input.valor ?? input.value ?? input.medida ?? input.diametro ?? input.mm ?? null;
-}
-
-function normalizePosition(input: any): TornoMeasurePosition | null {
-  const raw = upper(input?.posicion ?? input?.position ?? input?.ubicacion ?? input?.key ?? input);
-  const direct = MEASURE_POSITIONS.find((pos) => pos === raw);
-  if (direct) return direct;
-  const side = upper(input?.lado ?? input?.side);
-  const idx = input?.eje ?? input?.axis ?? input?.numero ?? input?.index;
-  const composed = `${side}${idx}` as TornoMeasurePosition;
-  return MEASURE_POSITIONS.includes(composed) ? composed : null;
-}
-
-function normalizeWheelCount(input: any): TornoWheelCount | undefined {
-  const value = Number(input);
-  return value === 4 || value === 6 || value === 8 || value === 12 ? value : undefined;
-}
-
-export function normalizeMeasures(input: any): TornoMeasures {
-  const measures: TornoMeasures = {};
-  if (!input) return measures;
-
-  if (Array.isArray(input)) {
-    for (const item of input) {
-      const position = normalizePosition(item);
-      if (position) measures[position] = measureValue(item);
-    }
-    return measures;
-  }
-
-  if (typeof input === "object") {
-    const wheelCount = normalizeWheelCount(
-      input.wheelCount ?? input.cantidadRuedas ?? input.totalWheels ?? input.numeroRuedas
-    );
-    if (wheelCount) measures.wheelCount = wheelCount;
-
-    for (const position of MEASURE_POSITIONS) {
-      const lower = position.toLowerCase();
-      const raw = input[position] ?? input[lower] ?? input[position.replace("", "")];
-      if (raw != null) measures[position] = measureValue(raw);
-    }
-
-    for (const key of Object.keys(input)) {
-      const position = normalizePosition(key);
-      if (position && measures[position] == null) measures[position] = measureValue(input[key]);
-    }
-  }
-
-  return measures;
-}
-
-function firstMeasureSource(...sources: any[]) {
-  return sources.find((source) => Object.keys(normalizeMeasures(source)).length > 0);
-}
-
 function normalizeImages(input: any): TornoImageRef[] {
   const pieces = [
     ...(Array.isArray(input?.imagenes) ? input.imagenes : []),
@@ -257,8 +203,11 @@ function normalizeImages(input: any): TornoImageRef[] {
   return pieces
     .slice(0, 3)
     .map((image: any, index) => {
-      const url = typeof image === "string" ? image : image.url ?? image.ruta ?? image.path ?? image.src;
-      return url ? { id: image.id ?? index, url: String(url), name: image.nombre ?? image.name } : null;
+      const url =
+        typeof image === "string" ? image : (image.url ?? image.ruta ?? image.path ?? image.src);
+      return url
+        ? { id: image.id ?? index, url: String(url), name: image.nombre ?? image.name }
+        : null;
     })
     .filter(Boolean) as TornoImageRef[];
 }
@@ -288,7 +237,7 @@ function normalizeWorkSummary(input: any): TornoWorkSummary | null {
     input?.medidasSolicitadas?.wheelCount ??
       input?.ruedaSolicitud?.wheelCount ??
       input?.wheelCount ??
-      input?.cantidadRuedas
+      input?.cantidadRuedas,
   );
   const rawWheels = source.detalleRuedas ?? source.wheels ?? source.ruedas ?? [];
   const wheels = Array.isArray(rawWheels)
@@ -315,14 +264,27 @@ function normalizeWorkSummary(input: any): TornoWorkSummary | null {
 }
 
 function normalizeChildIncident(input: any, parentId?: string | number): TornoIncidentChild {
-  const resolved = input.resuelto === true || isResolvedStatus(input.estado ?? input.status ?? input.estatus);
+  const resolved =
+    input.resuelto === true || isResolvedStatus(input.estado ?? input.status ?? input.estatus);
   return {
     id: input.id ?? input.seguimientoId ?? cryptoSafeId(),
-    parentId: input.parentId ?? input.incidentePadreId ?? input.incidenteTornoId ?? input.incidenteId ?? parentId,
-    description: input.descripcion ?? input.description ?? input.comentario ?? input.comments ?? "Seguimiento",
-    status: resolved ? "RESUELTO" : upper(input.estado ?? input.status ?? input.estatus ?? "PENDIENTE"),
-    createdAt: normalizeDate(input.fechaCreacion ?? input.createdAt ?? input.fechaInicio ?? input.fecha),
-    resolvedAt: normalizeDate(input.fechaTerminacion ?? input.fechaResolucion ?? input.resolvedAt ?? input.fechaFin),
+    parentId:
+      input.parentId ??
+      input.incidentePadreId ??
+      input.incidenteTornoId ??
+      input.incidenteId ??
+      parentId,
+    description:
+      input.descripcion ?? input.description ?? input.comentario ?? input.comments ?? "Seguimiento",
+    status: resolved
+      ? "RESUELTO"
+      : upper(input.estado ?? input.status ?? input.estatus ?? "PENDIENTE"),
+    createdAt: normalizeDate(
+      input.fechaCreacion ?? input.createdAt ?? input.fechaInicio ?? input.fecha,
+    ),
+    resolvedAt: normalizeDate(
+      input.fechaTerminacion ?? input.fechaResolucion ?? input.resolvedAt ?? input.fechaFin,
+    ),
     user: asText(input.usuario ?? input.user ?? input.creadoPor, ""),
     comments: input.comentarioResolucion ?? input.comentarios ?? input.comments,
     images: normalizeImages(input),
@@ -331,22 +293,38 @@ function normalizeChildIncident(input: any, parentId?: string | number): TornoIn
 }
 
 function normalizeParentIncident(input: any): TornoIncidentParent {
-  const rawChildren = input.hijos ?? input.seguimientos ?? input.children ?? input.incidentesHijos ?? [];
-  const failureType = normalizeFailureType(input.tipoFalla ?? input.failureType ?? input.tipo ?? "FALLO_SISTEMA");
-  const resolved = input.resuelto === true || isResolvedStatus(input.estado ?? input.status ?? input.estatus);
+  const rawChildren =
+    input.hijos ?? input.seguimientos ?? input.children ?? input.incidentesHijos ?? [];
+  const failureType = normalizeFailureType(
+    input.tipoFalla ?? input.failureType ?? input.tipo ?? "FALLO_SISTEMA",
+  );
+  const resolved =
+    input.resuelto === true || isResolvedStatus(input.estado ?? input.status ?? input.estatus);
   return {
     id: input.id ?? input.incidenteId ?? cryptoSafeId(),
     title: input.titulo ?? input.title ?? humanFailureType(failureType),
     description: input.descripcion ?? input.description ?? input.comentario ?? "Sin descripcion",
     failureType,
-    status: resolved ? "RESUELTO" : upper(input.estado ?? input.status ?? input.estatus ?? "ABIERTO"),
-    createdAt: normalizeDate(input.fechaCreacion ?? input.createdAt ?? input.fechaInicio ?? input.fecha),
-    resolvedAt: normalizeDate(input.fechaTerminacion ?? input.fechaAtencion ?? input.fechaResolucion ?? input.resolvedAt ?? input.fechaFin),
+    status: resolved
+      ? "RESUELTO"
+      : upper(input.estado ?? input.status ?? input.estatus ?? "ABIERTO"),
+    createdAt: normalizeDate(
+      input.fechaCreacion ?? input.createdAt ?? input.fechaInicio ?? input.fecha,
+    ),
+    resolvedAt: normalizeDate(
+      input.fechaTerminacion ??
+        input.fechaAtencion ??
+        input.fechaResolucion ??
+        input.resolvedAt ??
+        input.fechaFin,
+    ),
     user: asText(input.usuario ?? input.user ?? input.creadoPor, ""),
     comments: input.comentarioResolucion ?? input.comentarios ?? input.comments,
     images: normalizeImages(input),
     children: Array.isArray(rawChildren)
-      ? rawChildren.map((child: any) => normalizeChildIncident(child, input.id ?? input.incidenteId))
+      ? rawChildren.map((child: any) =>
+          normalizeChildIncident(child, input.id ?? input.incidenteId),
+        )
       : [],
     original: input,
   };
@@ -357,7 +335,8 @@ function groupIncidents(input: any[]): TornoIncidentParent[] {
   const children: TornoIncidentChild[] = [];
 
   for (const item of input) {
-    const parentId = item.parentId ?? item.incidentePadreId ?? item.incidenteTornoId ?? item.padreId;
+    const parentId =
+      item.parentId ?? item.incidentePadreId ?? item.incidenteTornoId ?? item.padreId;
     const isChild = parentId != null || item.tipoRegistro === "HIJO" || item.esSeguimiento === true;
     if (isChild) {
       children.push(normalizeChildIncident(item, parentId));
@@ -398,11 +377,19 @@ function normalizeHistoryItem(input: any): TornoHistoryItem {
   const status = normalizeStatus(getTornoServiceStatus(input));
   const incidentSource = input.incidentesPadre ?? input.incidentes ?? input.incidents ?? [];
   const original = input?.original && typeof input.original === "object" ? input.original : input;
-  const movimiento = input.movimiento ?? input.ruedaSolicitud?.movimiento ?? input.ruedaSolicitud?.movimientoOriginal;
+  const movimiento =
+    input.movimiento ??
+    input.ruedaSolicitud?.movimiento ??
+    input.ruedaSolicitud?.movimientoOriginal;
   const work = normalizeWorkSummary(input);
 
   return {
-    id: input.rondaServicioId ?? input.servicioId ?? input.id ?? input.tornoId ?? input.servicioTornoId,
+    id:
+      input.rondaServicioId ??
+      input.servicioId ??
+      input.id ??
+      input.tornoId ??
+      input.servicioTornoId,
     servicioId: input.servicioId,
     rondaServicioId: input.rondaServicioId ?? input.id,
     ruedaSolicitudId: input.ruedaSolicitudId ?? input.ruedaSolicitud?.id ?? null,
@@ -414,36 +401,66 @@ function normalizeHistoryItem(input: any): TornoHistoryItem {
     locomotive: input.numeroLocomotora ?? input.locomotiveNumber ?? input.locomotora,
     numeroLocomotora: input.numeroLocomotora ?? input.locomotiveNumber ?? input.locomotora,
     service: input.servicio ?? input.service ?? "Torno",
-    companyName: asText(input.empresaNombre ?? input.companyName ?? input.empresa ?? movimiento?.empresa, ""),
-    localityName: asText(input.localidadNombre ?? input.localityName ?? input.localidad ?? movimiento?.localidad, ""),
-    originName: asText(input.origenNombre ?? input.originName ?? input.origen ?? movimiento?.viaOrigen, ""),
-    destinationName: asText(input.destinoNombre ?? input.destinationName ?? input.destino ?? movimiento?.viaDestino, ""),
+    companyName: asText(
+      input.empresaNombre ?? input.companyName ?? input.empresa ?? movimiento?.empresa,
+      "",
+    ),
+    localityName: asText(
+      input.localidadNombre ?? input.localityName ?? input.localidad ?? movimiento?.localidad,
+      "",
+    ),
+    originName: asText(
+      input.origenNombre ?? input.originName ?? input.origen ?? movimiento?.viaOrigen,
+      "",
+    ),
+    destinationName: asText(
+      input.destinoNombre ?? input.destinationName ?? input.destino ?? movimiento?.viaDestino,
+      "",
+    ),
     priority: input.prioridad ?? movimiento?.prioridad ?? null,
     rondaNumber: input.rondaNumero ?? input.ronda?.numero ?? input.rondaId ?? null,
     orderNumber: input.orden ?? input.numeroOrden ?? movimiento?.orden ?? null,
-    startAt: normalizeDate(input.inicio ?? input.fechaInicio ?? input.torno?.fechaInicio ?? input.tornoG?.fechaInicio),
-    endAt: normalizeDate(input.fin ?? input.fechaFin ?? input.torno?.fechaFin ?? input.tornoG?.fechaFin),
+    startAt: normalizeDate(
+      input.inicio ?? input.fechaInicio ?? input.torno?.fechaInicio ?? input.tornoG?.fechaInicio,
+    ),
+    endAt: normalizeDate(
+      input.fin ?? input.fechaFin ?? input.torno?.fechaFin ?? input.tornoG?.fechaFin,
+    ),
     date: normalizeDate(input.creadoEn ?? input.fecha ?? input.fechaSolicitud ?? input.createdAt),
     updatedAt: normalizeDate(input.actualizadoEn ?? input.updatedAt),
-    operator: asText(input.tornero ?? input.operador ?? input.usuario ?? input.user ?? input.torneroNombre ?? input.torneroId, ""),
+    operator: asText(
+      input.tornero ??
+        input.operador ??
+        input.usuario ??
+        input.user ??
+        input.torneroNombre ??
+        input.torneroId,
+      "",
+    ),
     operatorId: input.torneroId ?? input.operadorId ?? null,
-    measuresRequested: normalizeMeasures(firstMeasureSource(
-      input.medidasSolicitadas,
-      input.medidasInicio,
-      input.medidasIniciales,
-      input.ruedaSolicitud,
-    )),
-    measuresFinal: normalizeMeasures(firstMeasureSource(
-      input.medidasFinales,
-      input.medidasFin,
-      input.ruedasFinal,
-      input.ruedaSolicitud?.ruedasFinal,
-      input.torno?.ruedasFinal,
-      input.tornoG?.ruedasFinal,
-    )),
+    measuresRequested: normalizeMeasures(
+      firstMeasureSource(
+        input.medidasSolicitadas,
+        input.medidasInicio,
+        input.medidasIniciales,
+        input.ruedaSolicitud,
+      ),
+    ),
+    measuresFinal: normalizeMeasures(
+      firstMeasureSource(
+        input.medidasFinales,
+        input.medidasFin,
+        input.ruedasFinal,
+        input.ruedaSolicitud?.ruedasFinal,
+        input.torno?.ruedasFinal,
+        input.tornoG?.ruedasFinal,
+      ),
+    ),
     work,
     activeIncidents: Number(input.incidentesActivos ?? 0) || 0,
-    hasIncident: Boolean(input.tieneIncidente ?? (Array.isArray(incidentSource) && incidentSource.length > 0)),
+    hasIncident: Boolean(
+      input.tieneIncidente ?? (Array.isArray(incidentSource) && incidentSource.length > 0),
+    ),
     incidents: Array.isArray(incidentSource) ? groupIncidents(incidentSource) : [],
     original,
   };
@@ -473,8 +490,9 @@ function cryptoSafeId() {
 }
 
 function isHttpStatus(error: unknown, status: number) {
-  return error instanceof Error && (
-    ("status" in error && error.status === status) || error.message.startsWith(`HTTP ${status}:`)
+  return (
+    error instanceof Error &&
+    (("status" in error && error.status === status) || error.message.startsWith(`HTTP ${status}:`))
   );
 }
 
@@ -561,19 +579,26 @@ export async function listTornoHistory(
   };
 }
 
-export async function getTornoHistoryDetail(id: string | number, init: RequestInit = {}): Promise<TornoHistoryItem> {
-  const raw = await firstJson<any>([
-    `${API_BASE}/torno/rondas-servicio/historial?rondaServicioId=${encodeURIComponent(String(id))}`,
-    `${API_BASE}/torno/rondas-servicio/historial?servicioId=${encodeURIComponent(String(id))}`,
-  ], init);
-  const first = Array.isArray(raw) ? raw[0] : unwrapArray(raw)[0] ?? raw;
+export async function getTornoHistoryDetail(
+  id: string | number,
+  init: RequestInit = {},
+): Promise<TornoHistoryItem> {
+  const raw = await firstJson<any>(
+    [
+      `${API_BASE}/torno/rondas-servicio/historial?rondaServicioId=${encodeURIComponent(String(id))}`,
+      `${API_BASE}/torno/rondas-servicio/historial?servicioId=${encodeURIComponent(String(id))}`,
+    ],
+    init,
+  );
+  const first = Array.isArray(raw) ? raw[0] : (unwrapArray(raw)[0] ?? raw);
   if (!first) throw new Error("Servicio Torno no encontrado");
   let detail = normalizeHistoryItem(first);
   try {
     const serviceId = detail.rondaServicioId ?? detail.id;
-    const rawDetail = await firstJson<any>([
-      `${API_BASE}/torno/rondas-servicio/${encodeURIComponent(String(serviceId))}`,
-    ], init);
+    const rawDetail = await firstJson<any>(
+      [`${API_BASE}/torno/rondas-servicio/${encodeURIComponent(String(serviceId))}`],
+      init,
+    );
     const serviceDetail = normalizeHistoryItem(rawDetail);
     detail = {
       ...serviceDetail,
@@ -592,13 +617,16 @@ export async function getTornoHistoryDetail(id: string | number, init: RequestIn
     // Historial puede operar sin detalle crudo, salvo cierre con medidas finales.
   }
   try {
-    const incidentResult = await listTornoIncidents({
-      rondaServicioId: detail.rondaServicioId ?? id,
-      ruedaSolicitudId: detail.servicioId,
-      numeroLocomotora: detail.numeroLocomotora,
-      page: 1,
-      pageSize: DEFAULT_PAGE_SIZE,
-    }, init);
+    const incidentResult = await listTornoIncidents(
+      {
+        rondaServicioId: detail.rondaServicioId ?? id,
+        ruedaSolicitudId: detail.servicioId,
+        numeroLocomotora: detail.numeroLocomotora,
+        page: 1,
+        pageSize: DEFAULT_PAGE_SIZE,
+      },
+      init,
+    );
     detail.incidents = incidentResult.items;
   } catch (error) {
     if (init.signal?.aborted) throw error;
@@ -717,7 +745,9 @@ export async function createParentIncident(payload: TornoIncidentPayload) {
 
 export async function addIncidentChild(parentId: string | number, payload: TornoIncidentPayload) {
   const body = await childIncidentBody({ ...payload, parentId });
-  return firstMutation([{ url: `${API_BASE}/torno/incidentes/${parentId}/hijos`, init: jsonInit("POST", body) }]);
+  return firstMutation([
+    { url: `${API_BASE}/torno/incidentes/${parentId}/hijos`, init: jsonInit("POST", body) },
+  ]);
 }
 
 export async function updateParentIncident(
@@ -762,22 +792,31 @@ export async function resolveParentIncident(
     atendidoPorId: payload.atendidoPorId,
     fechaTerminacion: new Date().toISOString(),
   };
-  const result = await withCreds(`${API_BASE}/torno/incidentes/${incident.id}`, jsonInit("PATCH", body));
+  const result = await withCreds(
+    `${API_BASE}/torno/incidentes/${incident.id}`,
+    jsonInit("PATCH", body),
+  );
 
   const pendingChildren = incident.children.filter((child) => !isResolvedStatus(child.status));
   await Promise.all(
     pendingChildren.map((child) =>
-      withCreds(`${API_BASE}/torno/incidentes-hijos/${child.id}`, jsonInit("PATCH", {
-        status: "RESUELTO",
-        resuelto: true,
-      })),
+      withCreds(
+        `${API_BASE}/torno/incidentes-hijos/${child.id}`,
+        jsonInit("PATCH", {
+          status: "RESUELTO",
+          resuelto: true,
+        }),
+      ),
     ),
   );
 
   return result;
 }
 
-export async function resolveChildIncident(child: TornoIncidentChild, payload: TornoResolvePayload = {}) {
+export async function resolveChildIncident(
+  child: TornoIncidentChild,
+  payload: TornoResolvePayload = {},
+) {
   void payload;
   const body = {
     status: "RESUELTO",
@@ -799,7 +838,9 @@ export async function reopenParentIncident(
   return withCreds(`${API_BASE}/torno/incidentes/${incident.id}`, jsonInit("PATCH", body));
 }
 
-export async function listNavajaChanges(filters: TornoFilters = {}): Promise<TornoListResult<TornoNavajaChange>> {
+export async function listNavajaChanges(
+  filters: TornoFilters = {},
+): Promise<TornoListResult<TornoNavajaChange>> {
   const page = filters.page ?? 1;
   const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
   const query = buildQuery({ ...filters, page, pageSize });
@@ -808,7 +849,9 @@ export async function listNavajaChanges(filters: TornoFilters = {}): Promise<Tor
   return { items: rows, meta: metaFrom(raw, rows.length, page, pageSize) };
 }
 
-export async function getNavajaStats(filters: Pick<TornoFilters, "localidadId"> = {}): Promise<TornoNavajaStats> {
+export async function getNavajaStats(
+  filters: Pick<TornoFilters, "localidadId"> = {},
+): Promise<TornoNavajaStats> {
   const params = new URLSearchParams();
   if (filters.localidadId) params.set("localidadId", String(filters.localidadId));
   const query = params.toString();
@@ -849,7 +892,10 @@ export async function listLocalidadesLite(): Promise<TornoLocalidadLite[]> {
   }));
 }
 
-export async function configureNavajas(payload: { localidadId?: string | number; cantidad?: string | number }) {
+export async function configureNavajas(payload: {
+  localidadId?: string | number;
+  cantidad?: string | number;
+}) {
   return firstMutation([
     {
       url: `${API_BASE}/torno/navajas`,

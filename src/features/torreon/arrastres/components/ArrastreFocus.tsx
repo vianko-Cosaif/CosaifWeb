@@ -1,4 +1,4 @@
-import { ListOrdered, TrainFront, Info } from "lucide-react";
+import { ListOrdered, TrainFront } from "lucide-react";
 import StatusBadge from "@/components/ui/StatusBadge";
 import type { Arrastre } from "../types";
 import { buildArrastreFolio, normalizeStatus } from "../utils";
@@ -75,10 +75,6 @@ export default function ArrastreFocus({ rows }: { rows: Arrastre[] }) {
           ))}
         </div>
         {!next.length ? <p className={s.empty}>Sin más solicitudes en esta vista.</p> : null}
-        <p className={s.sideNote}>
-          <Info size={16} className="shrink-0" aria-hidden /> Vista de la cola cargada. Abre
-          seguimiento para consultar todos los turnos.
-        </p>
       </article>
     </section>
   );

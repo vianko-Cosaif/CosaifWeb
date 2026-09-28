@@ -1,5 +1,5 @@
 "use client";
-import { RefreshCw, X, Info } from "lucide-react";
+import { RefreshCw, X } from "lucide-react";
 import type { Ambito } from "../types";
 import s from "../../presentation/rail.module.scss";
 type Props = {
@@ -85,12 +85,6 @@ export function MovimientoToolbar({
           </button>
         ) : null}
       </div>
-      <p className={s.scopeNote}>
-        <Info size={14} aria-hidden />
-        {ambito === "actuales"
-          ? "Todas las empresas de tu localidad. Puedes gestionar únicamente las solicitudes de tu empresa."
-          : "Historial de tu empresa en esta localidad. Incluye solicitudes concluidas y canceladas."}
-      </p>
     </section>
   );
 }

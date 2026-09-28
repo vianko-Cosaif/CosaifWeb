@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { ArrowRight, Flag } from "lucide-react";
+import { Flag, RefreshCw } from "lucide-react";
 import s from "../presentation/rail.module.scss";
 import Nav from "@/features/movimientos/list/Nav";
 import Filtros from "@/features/movimientos/list/Filtros";
@@ -18,7 +18,7 @@ import {
 import { GuidedTarget } from "@/features/capacitacion";
 import DataEmptyState from "@/components/ui/DataEmptyState";
 import KpiCard from "@/components/ui/KpiCard";
-import ModuleHeader from "@/components/ui/ModuleHeader";
+import { TorreonModeIntro } from "@/features/torreon/components/TorreonModeIntro";
 import { useRealtimeBoardRefresh } from "@/features/rail-queue/useRealtimeBoardRefresh";
 import { isTorreonNaturalEvent } from "@/features/torreon/realtime";
 import { TorreonRealtimeBadge } from "@/features/torreon/components/TorreonRealtimeBadge";
@@ -38,9 +38,8 @@ const Tabla = dynamic(() => import("@/features/movimientos/list/Tabla"), {
 type Props = {
   localidadId: number;
   apiBase?: string;
-  variant?: "summary" | "dashboard" | "movimientos";
-  rol?: Extract<Rol, "ADMINISTRADOR" | "COORDINADOR">;
-  onOpen?: () => void;
+  variant?: "dashboard" | "movimientos";
+  rol?: Extract<Rol, "ADMINISTRADOR" | "COORDINADOR" | "SUPERVISOR">;
 };
 
 type ExtraFilters = {
@@ -140,7 +139,6 @@ export default function TorreonNaturalesPanel({
   apiBase,
   variant = "movimientos",
   rol = "COORDINADOR",
-  onOpen,
 }: Props) {
   const router = useRouter();
   const naturales = useTorreonNaturales(localidadId, apiBase);
@@ -234,64 +232,24 @@ export default function TorreonNaturalesPanel({
     setExtraFilters(INITIAL_EXTRA_FILTERS);
   }, [naturales]);
 
-  if (variant === "summary") {
-    const activeRows = naturales.filteredRows.filter(
-      (row) => !["CONCLUIDO", "CANCELADO"].includes(normalizeStatus(row.estado)),
-    );
-    const attention = activeRows.filter(
-      (row) =>
-        ["DETENIDO", "BLOQUEADO"].includes(normalizeStatus(row.estado)) ||
-        (row.incidentes || []).some((incident) => normalizeStatus(incident.estado) === "ABIERTO"),
-    ).length;
-    return (
-      <section className={s.summaryCard}>
-        <div className={s.summaryHeading}>
-          <div>
-            <p className={s.eyebrow}>
-              <Flag size={16} aria-hidden />
-              Locomotoras
-            </p>
-            <h2 className="mt-2">Rondas naturales</h2>
-          </div>
-          <TorreonRealtimeBadge status={realtimeStatus} />
-        </div>
-        <p className={s.subtitle}>Recorridos, turnos y atención de locomotoras en el patio.</p>
-        <div className={s.summaryNumbers}>
-          <div>
-            <strong>{activeRows.length}</strong>
-            <span>Rondas activas</span>
-          </div>
-          <div>
-            <strong>
-              {activeRows.filter((row) => normalizeStatus(row.estado) === "EN_PROCESO").length}
-            </strong>
-            <span>En movimiento</span>
-          </div>
-          <div>
-            <strong>{attention}</strong>
-            <span>Por atender</span>
-          </div>
-        </div>
-        <button type="button" onClick={onOpen} className={s.button}>
-          Ver rondas naturales
-          <ArrowRight size={16} aria-hidden />
-        </button>
-      </section>
-    );
-  }
-
   if (variant === "dashboard") {
     return (
       <div className="space-y-2">
-        <div className="flex justify-end">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <TorreonRealtimeBadge status={realtimeStatus} />
+          <button
+            type="button"
+            className={s.button}
+            disabled={naturales.loading}
+            onClick={() => naturales.load(true)}
+          >
+            <RefreshCw size={15} aria-hidden /> Actualizar
+          </button>
         </div>
         <TorreonNaturalRailBoard
           rows={naturales.filteredRows.slice(0, 8)}
           loading={naturales.loading}
           error={naturales.error}
-          realtimeConnected={realtimeStatus === "connected"}
-          onRefresh={() => naturales.load(true)}
         />
       </div>
     );
@@ -300,28 +258,25 @@ export default function TorreonNaturalesPanel({
   return (
     <section className="w-full overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 text-slate-900 shadow-xl shadow-slate-200/50 backdrop-blur-sm dark:border-slate-800/80 dark:bg-slate-950/95 dark:text-slate-100 dark:shadow-slate-900/50 sm:rounded-3xl">
       <div className="flex min-w-0 flex-col gap-3 px-2 py-3 sm:gap-5 sm:px-5 sm:py-6 lg:px-7 lg:py-8">
-        <ModuleHeader
-          icon={Flag}
+        <TorreonModeIntro
+          mode="naturales"
+          heading="h1"
           title="Rondas naturales"
-          subtitle="Seguimiento de locomotoras en Torreón"
-          badge={ambito === "actuales" ? "Activas" : "Historial"}
-          loading={naturales.loading}
           actions={
             <>
               <TorreonRealtimeBadge status={realtimeStatus} />
-              <div className="flex items-center gap-1.5 rounded-md bg-[var(--app-surface-muted)] px-3 py-1.5 text-xs">
+              <div className="flex items-center gap-1.5 rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs">
                 <span className="font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
                   {filteredRows.length}
                 </span>
                 <span className="text-[var(--app-text-muted)]">
-                  registro{filteredRows.length === 1 ? "" : "s"}
+                  registro{filteredRows.length === 1 ? "" : "s"} ·{" "}
+                  {ambito === "actuales" ? "Activas" : "Historial"}
                 </span>
               </div>
             </>
           }
         />
-
-        <div className="h-px bg-gradient-to-r from-transparent via-emerald-300/40 to-transparent dark:via-emerald-600/30" />
 
         {naturales.error && (
           <p

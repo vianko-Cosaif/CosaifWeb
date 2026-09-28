@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { arrastresPage } from "../e2e/fixtures/arrastres.mjs";
-import profiles from "../e2e/fixtures/authorization.json" with { type: "json" };
+import fixtureProfiles from "../e2e/fixtures/authorization.json" with { type: "json" };
 import {
   empresas,
   localidades,
@@ -9,6 +9,14 @@ import {
   inRequestedScope,
   commercialAnalytics,
 } from "../e2e/fixtures/operations.mjs";
+
+const profiles = {
+  ...fixtureProfiles,
+  supervisor_torreon: {
+    ...fixtureProfiles.supervisor,
+    scope: { ...fixtureProfiles.supervisor.scope, localidadId: 2 },
+  },
+};
 
 const json = (response, status, body) => {
   response.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });

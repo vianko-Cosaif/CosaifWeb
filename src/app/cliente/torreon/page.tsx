@@ -1,28 +1,12 @@
-import { redirect } from "next/navigation";
-import { getPrimaryTorreonLocalidadId, isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 import { PERMISSIONS, hasPermission } from "@/lib/accessControl";
-import { getVerifiedSession } from "@/lib/server/session";
+import { requireTorreonArrastreClient } from "@/lib/server/torreonArrastreClient";
 import ClientPageWrapper from "../../../features/cliente/ClientPageWrapper";
 import TorreonClientePanel from "../../../features/torreon/cliente/TorreonClientePanel";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const session = await getVerifiedSession();
-  if (!session || session.authorization.capabilities.area !== "cliente")
-    redirect("/login?loc=cliente");
-  const role = session.role;
-  if (role !== "ARRASTRE_TORREON") redirect("/cliente");
-  const capabilities = session.authorization.capabilities;
-  const localidadId =
-    capabilities.canSwitchLocalidad && !isTorreonLocalidadId(session.localidadId)
-      ? getPrimaryTorreonLocalidadId()
-      : session.localidadId;
-  const empresaId = session.empresaId;
-
-  if (!localidadId || !isTorreonLocalidadId(localidadId)) {
-    redirect("/cliente");
-  }
+  const { session, localidadId, empresaId } = await requireTorreonArrastreClient("/cliente");
 
   if (!hasPermission(session.authorization, PERMISSIONS.TORREON_READ)) {
     return <ClientPageWrapper localidadId={localidadId} empresaId={empresaId} />;
@@ -32,7 +16,7 @@ export default async function Page() {
     <TorreonClientePanel
       localidadId={localidadId}
       empresaId={empresaId}
-      role={role}
+      role={session.role}
       view="dashboard"
     />
   );

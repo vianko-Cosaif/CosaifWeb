@@ -2,12 +2,7 @@
 "use client";
 
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
-import type {
-  Ambito,
-  FiltrosMovimientos,
-  OpcionEmpresa,
-  OpcionLocalidad,
-} from "./useMovimientos";
+import type { Ambito, FiltrosMovimientos, OpcionEmpresa, OpcionLocalidad } from "./useMovimientos";
 import { CURRENT_QUEUE_STATES, MOVEMENT_STATES } from "./filterRules";
 import { Eraser, Calendar, ChevronDown, SlidersHorizontal, X } from "lucide-react";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -86,24 +81,34 @@ export default function Filtros({
       filtros.prioridad ||
       filtros.desde ||
       filtros.hasta ||
-      (filtros.tamPagina && filtros.tamPagina !== 25)
+      (filtros.tamPagina && filtros.tamPagina !== 25),
     );
   });
   const [showEstadoDropdown, setShowEstadoDropdown] = useState(false);
 
-  const estados = useMemo<readonly string[]>(() => estadosPermitidos ?? (ambito === "pasados"
-    ? MOVEMENT_STATES.pasados
-    : actualesCompartidos
-      ? CURRENT_QUEUE_STATES
-      : MOVEMENT_STATES.actuales), [ambito, actualesCompartidos, estadosPermitidos]);
+  const estados = useMemo<readonly string[]>(
+    () =>
+      estadosPermitidos ??
+      (ambito === "pasados"
+        ? MOVEMENT_STATES.pasados
+        : actualesCompartidos
+          ? CURRENT_QUEUE_STATES
+          : MOVEMENT_STATES.actuales),
+    [ambito, actualesCompartidos, estadosPermitidos],
+  );
   useEffect(() => {
     const raw = filtros.estado ?? "";
-    const next = raw.split(",").map(value => value.trim()).filter(value => estados.includes(value)).join(",");
+    const next = raw
+      .split(",")
+      .map((value) => value.trim())
+      .filter((value) => estados.includes(value))
+      .join(",");
     if (next !== raw) onCambiarEstado(next || null);
   }, [estados, filtros.estado, onCambiarEstado]);
   const desdeInput = toInputDateTime(filtros.desde);
   const hastaInput = toInputDateTime(filtros.hasta);
-  const rangoInvertido = mostrarFiltrosTiempo && Boolean(desdeInput && hastaInput && desdeInput > hastaInput);
+  const rangoInvertido =
+    mostrarFiltrosTiempo && Boolean(desdeInput && hastaInput && desdeInput > hastaInput);
 
   const handleEmpresaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!puedeElegirEmpresa || deshabilitado) return;
@@ -134,7 +139,7 @@ export default function Filtros({
       raw
         .split(",")
         .map((s) => s.trim())
-        .filter((value) => estados.includes(value))
+        .filter((value) => estados.includes(value)),
     );
     if (set.has(estado)) {
       set.delete(estado);
@@ -165,7 +170,11 @@ export default function Filtros({
     if (!Number.isNaN(n)) onCambiarTamPagina(n);
   };
 
-  const applyDatePreset = (field: "solicitud" | "inicio" | "fin" | "creacion", from: Date, to: Date) => {
+  const applyDatePreset = (
+    field: "solicitud" | "inicio" | "fin" | "creacion",
+    from: Date,
+    to: Date,
+  ) => {
     onCambiarFechaCampo(field);
     onCambiarRangoFechas(toLocalDateTimeInput(from), toLocalDateTimeInput(to));
   };
@@ -205,9 +214,7 @@ export default function Filtros({
         key: "localidad",
         label: `Localidad: ${loc?.nombre ?? filtros.localidadId}`,
         locked: !puedeElegirLocalidad,
-        onRemove: !puedeElegirLocalidad
-          ? undefined
-          : () => onCambiarLocalidadId(null),
+        onRemove: !puedeElegirLocalidad ? undefined : () => onCambiarLocalidadId(null),
       });
     }
     if (mostrarFiltrosTiempo && filtros.desde) {
@@ -270,10 +277,12 @@ export default function Filtros({
   ]);
 
   const cantidadActivos = activeFilters.filter((chip) => !chip.locked).length;
-  const tieneAjustesManuales = cantidadActivos > 0 || (filtros.tamPagina > 0 && filtros.tamPagina !== 25);
+  const tieneAjustesManuales =
+    cantidadActivos > 0 || (filtros.tamPagina > 0 && filtros.tamPagina !== 25);
   const abierto = abiertoManual ?? (isDesktop || tieneAjustesManuales || expandirPorCapacitacion);
 
-  const controlClass = "w-full min-w-0 min-h-11 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2.5 text-base text-[var(--app-text)] outline-none disabled:cursor-not-allowed disabled:bg-[var(--app-surface-muted)] disabled:text-[var(--app-text-muted)] focus:border-[var(--app-accent)] focus:ring-2 focus:ring-[var(--app-focus)] sm:text-sm";
+  const controlClass =
+    "w-full min-w-0 min-h-11 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2.5 text-base text-[var(--app-text)] outline-none disabled:cursor-not-allowed disabled:bg-[var(--app-surface-muted)] disabled:text-[var(--app-text-muted)] focus:border-[var(--app-accent)] focus:ring-2 focus:ring-[var(--app-focus)] sm:text-sm";
   const selectClass = controlClass;
   const inputClass = `${controlClass} pr-9`;
   const inputPlain = controlClass;
@@ -328,9 +337,7 @@ export default function Filtros({
                   <X size={10} aria-hidden />
                 </button>
               ) : (
-                <span className="ml-1 text-[9px] uppercase tracking-wider text-emerald-500/80">
-                  fijo
-                </span>
+                <span className="sr-only">fijo</span>
               )}
             </span>
           ))}
@@ -342,15 +349,19 @@ export default function Filtros({
         id={panelId}
         inert={!abierto}
         aria-hidden={!abierto}
-        className={`grid transition-[grid-template-rows,opacity] duration-200 motion-reduce:transition-none ease-[cubic-bezier(0.4,0,0.2,1)] ${abierto ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0"
-          }`}
+        className={`grid transition-[grid-template-rows,opacity] duration-200 motion-reduce:transition-none ease-[cubic-bezier(0.4,0,0.2,1)] ${
+          abierto ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0"
+        }`}
       >
         <div className={abierto ? "overflow-visible" : "overflow-hidden"}>
           <div className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-4 sm:p-5">
             <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-12 items-end">
               {/* Empresa */}
               <div className="min-w-0 xl:col-span-3">
-                <label htmlFor={`${filterId}-empresa`} className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                <label
+                  htmlFor={`${filterId}-empresa`}
+                  className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider"
+                >
                   Empresa
                 </label>
                 <select
@@ -361,11 +372,14 @@ export default function Filtros({
                   onChange={handleEmpresaChange}
                 >
                   {puedeElegirEmpresa && <option value="">Todas</option>}
-                  {!puedeElegirEmpresa && !listaEmpresas.some((empresa) => empresa.id === filtros.empresaId) && (
-                    <option value={stringOrVacio(filtros.empresaId)}>
-                      {filtros.empresaId == null ? "Empresa asignada" : `Empresa #${filtros.empresaId}`}
-                    </option>
-                  )}
+                  {!puedeElegirEmpresa &&
+                    !listaEmpresas.some((empresa) => empresa.id === filtros.empresaId) && (
+                      <option value={stringOrVacio(filtros.empresaId)}>
+                        {filtros.empresaId == null
+                          ? "Empresa asignada"
+                          : `Empresa #${filtros.empresaId}`}
+                      </option>
+                    )}
                   {listaEmpresas.map((e) => (
                     <option key={e.id} value={e.id}>
                       {e.nombre}
@@ -376,7 +390,10 @@ export default function Filtros({
 
               {/* Localidad */}
               <div className="min-w-0 xl:col-span-3">
-                <label htmlFor={`${filterId}-localidad`} className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                <label
+                  htmlFor={`${filterId}-localidad`}
+                  className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider"
+                >
                   Localidad
                 </label>
                 <select
@@ -397,7 +414,10 @@ export default function Filtros({
 
               {/* Locomotora exacta */}
               <div className="min-w-0 xl:col-span-3">
-                <label htmlFor={`${filterId}-locomotora`} className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                <label
+                  htmlFor={`${filterId}-locomotora`}
+                  className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider"
+                >
                   Locomotora
                 </label>
                 <input
@@ -412,13 +432,19 @@ export default function Filtros({
               </div>
 
               {/* Estado */}
-              <div className="min-w-0 xl:col-span-3 relative" onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  setShowEstadoDropdown(false);
-                  stateButtonRef.current?.focus();
-                }
-              }}>
-                <label htmlFor={`${filterId}-estado`} className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+              <div
+                className="min-w-0 xl:col-span-3 relative"
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    setShowEstadoDropdown(false);
+                    stateButtonRef.current?.focus();
+                  }
+                }}
+              >
+                <label
+                  htmlFor={`${filterId}-estado`}
+                  className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider"
+                >
                   Estado
                 </label>
                 <button
@@ -451,7 +477,12 @@ export default function Filtros({
                       onClick={() => setShowEstadoDropdown(false)}
                       className="fixed inset-0 z-[60] cursor-default focus:outline-none"
                     />
-                    <div id={stateOptionsId} role="group" aria-label="Estados de movimientos" className="absolute left-0 right-0 mt-1 z-[70] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 p-2 shadow-lg max-h-60 overflow-y-auto">
+                    <div
+                      id={stateOptionsId}
+                      role="group"
+                      aria-label="Estados de movimientos"
+                      className="absolute left-0 right-0 mt-1 z-[70] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 p-2 shadow-lg max-h-60 overflow-y-auto"
+                    >
                       <div className="flex flex-col gap-1">
                         {estados.map((estado) => {
                           const active = (filtros.estado ?? "")
@@ -483,11 +514,17 @@ export default function Filtros({
 
               {/* Filtros avanzados */}
               {mostrarAvanzados && (
-                <div id={advancedId} className="col-span-1 sm:col-span-2 xl:col-span-12 border-t border-slate-200/60 dark:border-slate-800/80 pt-4 mt-1">
+                <div
+                  id={advancedId}
+                  className="col-span-1 sm:col-span-2 xl:col-span-12 border-t border-slate-200/60 dark:border-slate-800/80 pt-4 mt-1"
+                >
                   <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-12 items-end">
                     {/* Prioridad */}
                     <div className="min-w-0 xl:col-span-2">
-                      <label htmlFor={`${filterId}-prioridad`} className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                      <label
+                        htmlFor={`${filterId}-prioridad`}
+                        className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider"
+                      >
                         Prioridad
                       </label>
                       <select
@@ -507,7 +544,10 @@ export default function Filtros({
                       <>
                         {/* Fecha campo */}
                         <div className="min-w-0 xl:col-span-2">
-                          <label htmlFor={`${filterId}-fecha-campo`} className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                          <label
+                            htmlFor={`${filterId}-fecha-campo`}
+                            className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider"
+                          >
                             Fecha de referencia
                           </label>
                           <select
@@ -526,7 +566,10 @@ export default function Filtros({
 
                         {/* Desde */}
                         <div className="min-w-0 xl:col-span-3">
-                          <label htmlFor={`${filterId}-desde`} className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                          <label
+                            htmlFor={`${filterId}-desde`}
+                            className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider"
+                          >
                             Desde (fecha/hora)
                           </label>
                           <div className="relative">
@@ -551,7 +594,10 @@ export default function Filtros({
 
                         {/* Hasta */}
                         <div className="min-w-0 xl:col-span-3">
-                          <label htmlFor={`${filterId}-hasta`} className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                          <label
+                            htmlFor={`${filterId}-hasta`}
+                            className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider"
+                          >
                             Hasta (fecha/hora)
                           </label>
                           <div className="relative">
@@ -578,7 +624,10 @@ export default function Filtros({
 
                     {/* Tamaño de página */}
                     <div className="min-w-0 xl:col-span-2">
-                      <label htmlFor={`${filterId}-page-size`} className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                      <label
+                        htmlFor={`${filterId}-page-size`}
+                        className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider"
+                      >
                         Por página
                       </label>
                       <select
@@ -664,7 +713,7 @@ export default function Filtros({
 
                 <button
                   type="button"
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 w-full sm:w-auto text-xs font-bold text-slate-600 dark:text-slate-300 hover:border-rose-300 hover:text-rose-600 dark:hover:border-rose-500 dark:hover:text-rose-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 active:scale-[0.97]"
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 w-full sm:w-auto text-xs font-bold text-slate-600 dark:text-slate-300 hover:border-rose-300 hover:text-rose-600 dark:hover:border-rose-500 dark:hover:text-rose-400 disabled:cursor-not-allowed transition-all duration-200 active:scale-[0.97]"
                   onClick={onLimpiarFiltros}
                   disabled={deshabilitado}
                 >
@@ -677,7 +726,11 @@ export default function Filtros({
         </div>
       </div>
       {rangoInvertido && (
-        <p id={dateErrorId} role="alert" className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">
+        <p
+          id={dateErrorId}
+          role="alert"
+          className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300"
+        >
           La fecha desde no puede ser posterior a la fecha hasta.
         </p>
       )}
@@ -689,7 +742,12 @@ export default function Filtros({
 function formatFilterDate(value: string) {
   const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
   const date = new Date(dateOnly ? `${value}T00:00:00` : value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("es-MX", { dateStyle: "short", timeStyle: dateOnly ? undefined : "short" });
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleString("es-MX", {
+        dateStyle: "short",
+        timeStyle: dateOnly ? undefined : "short",
+      });
 }
 
 function toInputDateTime(valor: string | null | undefined): string {

@@ -6,18 +6,20 @@ import { getVerifiedSession } from "@/lib/server/session";
 export const dynamic = "force-dynamic";
 const MOVIMIENTOS_API_BASE = process.env.NEXT_PUBLIC_API_BASE || "/bff";
 
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: Promise<{ tipo?: string }> }) {
   const session = await getVerifiedSession();
   if (!session || session.role !== "ADMINISTRADOR") redirect("/login?loc=admin");
+  const tipo = (await searchParams).tipo;
 
   return (
     <section className="mx-auto w-full max-w-[1500px] p-4 sm:p-6">
       <CoordinatorMovimientosPageClient
         apiBase={MOVIMIENTOS_API_BASE}
-          authorization={session.authorization}
+        authorization={session.authorization}
         rol="ADMINISTRADOR"
         empresaIdUsuario={null}
         localidadIdUsuario={null}
+        initialTorreonView={tipo === "arrastres" ? "arrastres" : "naturales"}
       />
     </section>
   );

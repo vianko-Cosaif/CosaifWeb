@@ -5,6 +5,97 @@
   gap: 24px;
   padding: 4px 0 24px;
 }
+.modeIntro,
+.operationTabs button[data-mode="naturales"] {
+  --mode-accent: #0f766e;
+  --mode-border: #a6dcd4;
+  --mode-soft: #e9f7f4;
+}
+.modeIntro[data-mode="arrastres"],
+.operationTabs button[data-mode="arrastres"] {
+  --mode-accent: #9a4d16;
+  --mode-border: #ecc795;
+  --mode-soft: #fff5e8;
+}
+.modeIntro {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  padding: 14px 18px;
+  border: 1px solid var(--mode-border);
+  border-left: 4px solid var(--mode-accent);
+  border-radius: 12px;
+  background: var(--app-surface);
+  box-shadow: var(--app-shadow-sm);
+}
+.modeIntroMain {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.modeIntroIcon {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--mode-accent);
+  background: var(--mode-soft);
+  border: 1px solid var(--mode-border);
+  border-radius: 10px;
+}
+.modeIntroCopy {
+  min-width: 0;
+}
+.modeIntroEyebrow {
+  color: var(--mode-accent);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.modeIntroTitle {
+  margin-top: 1px;
+  color: var(--app-text);
+  font-size: clamp(20px, 2vw, 24px);
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}
+.modeIntroActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.modeIntro[data-mode="arrastres"] .primaryButton {
+  background: #9a4d16;
+  border-color: #9a4d16;
+}
+.modeIntro[data-mode="arrastres"] .primaryButton:hover {
+  background: #7e3d10;
+}
+:global(.dark) .modeIntro,
+:global(.dark) .operationTabs button[data-mode="naturales"] {
+  --mode-accent: #6dd5c6;
+  --mode-border: #245d58;
+  --mode-soft: #12302e;
+}
+:global(.dark) .modeIntro[data-mode="arrastres"],
+:global(.dark) .operationTabs button[data-mode="arrastres"] {
+  --mode-accent: #ffc47d;
+  --mode-border: #78512a;
+  --mode-soft: #332619;
+}
+:global(.dark) .modeIntro[data-mode="arrastres"] .primaryButton {
+  background: #ffc47d;
+  border-color: #ffc47d;
+  color: #38200d;
+}
 .pageHeader {
   display: flex;
   align-items: center;
@@ -12,6 +103,9 @@
   flex-wrap: wrap;
   gap: 20px;
   padding: 4px 0;
+}
+.sectionSwitch {
+  width: min(100%, 480px);
 }
 .eyebrow {
   display: flex;
@@ -135,6 +229,30 @@
   border: 1px solid var(--app-border);
   border-radius: 18px;
   background: var(--app-surface);
+}
+.workspace[data-mode="naturales"] .feature:first-child {
+  border-top: 3px solid #0f766e;
+}
+.workspace[data-mode="arrastres"] .feature:first-child {
+  border-top: 3px solid #9a4d16;
+}
+.workspace[data-mode="arrastres"] .engine {
+  background: #9a4d16;
+}
+.workspace[data-mode="arrastres"] .metricTop svg {
+  color: #9a4d16;
+}
+:global(.dark) .workspace[data-mode="naturales"] .feature:first-child {
+  border-top-color: #6dd5c6;
+}
+:global(.dark) .workspace[data-mode="arrastres"] .feature:first-child {
+  border-top-color: #ffc47d;
+}
+:global(.dark) .workspace[data-mode="arrastres"] .engine {
+  background: #9a4d16;
+}
+:global(.dark) .workspace[data-mode="arrastres"] .metricTop svg {
+  color: #ffc47d;
 }
 .featureTop {
   display: flex;
@@ -686,39 +804,6 @@
   color: var(--app-text-muted);
   font-size: 13px;
 }
-.summaryCard {
-  border: 1px solid var(--app-border);
-  border-radius: 18px;
-  background: var(--app-surface);
-  padding: 24px;
-  display: grid;
-  gap: 20px;
-}
-.summaryHeading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.summaryHeading h2 {
-  font-size: 20px;
-  letter-spacing: -0.025em;
-  font-weight: 650;
-}
-.summaryNumbers {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-}
-.summaryNumbers strong {
-  display: block;
-  font-size: 28px;
-  font-weight: 600;
-}
-.summaryNumbers span {
-  font-size: 12px;
-  color: var(--app-text-muted);
-}
 :global(.dark) .primaryButton {
   background: #43c9ad;
   border-color: #43c9ad;
@@ -891,38 +976,56 @@
   }
 }
 .operationTabs {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  border-bottom: 1px solid var(--app-border);
-  padding-bottom: 16px;
-  flex-wrap: wrap;
+}
+.operationTabs[data-compact="true"] button {
+  min-height: 48px;
 }
 .operationTabs button {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 18px;
+  gap: 11px;
+  min-height: 54px;
+  padding: 9px 13px;
   text-align: left;
-  border: 1px solid transparent;
-  border-radius: 12px;
-  color: var(--app-text-muted);
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-surface);
+  color: var(--app-text);
   min-width: 0;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    transform 0.15s;
+}
+.operationTabs button:hover {
+  border-color: var(--mode-accent, var(--app-accent));
+  transform: translateY(-1px);
+}
+.operationTabIcon {
+  flex: none;
+  width: 37px;
+  height: 37px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--mode-soft, var(--app-surface-subtle));
+  color: var(--mode-accent, var(--app-text-muted));
 }
 .operationTabs strong {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   display: block;
-}
-.operationTabs small {
-  display: block;
-  font-size: 11px;
-  margin-top: 3px;
 }
 .operationTabs button[aria-pressed="true"] {
-  background: var(--app-surface);
-  border-color: var(--app-border);
-  color: var(--app-accent);
-  box-shadow: 0 2px 6px #00000006;
+  background: var(--mode-soft, var(--app-surface-subtle));
+  border-color: var(--mode-border, var(--app-border));
+  box-shadow: inset 0 3px var(--mode-accent, var(--app-accent));
+}
+.operationTabShort {
+  display: none;
 }
 .operationTabs button:focus-visible,
 .tabs button:focus-visible,
@@ -945,16 +1048,12 @@
 }
 @media (max-width: 600px) {
   .operationTabs {
-    gap: 4px;
+    gap: 6px;
   }
   .operationTabs button {
-    flex: 1;
-    padding: 10px 8px;
-    gap: 6px;
-    justify-content: center;
-  }
-  .operationTabs button small {
-    display: none;
+    min-height: 48px;
+    padding: 8px;
+    gap: 7px;
   }
   .operationTabs button strong {
     font-size: 11px;
@@ -962,6 +1061,29 @@
   .operationTabs button svg {
     width: 15px;
     flex-shrink: 0;
+  }
+  .operationTabIcon {
+    width: 24px;
+    height: 24px;
+  }
+  .operationTabLong {
+    display: none;
+  }
+  .operationTabShort {
+    display: inline;
+  }
+  .modeIntro {
+    padding: 12px;
+  }
+  .modeIntroMain {
+    gap: 10px;
+  }
+  .modeIntroIcon {
+    width: 39px;
+    height: 39px;
+  }
+  .modeIntroActions {
+    width: 100%;
   }
 }
 .naturalRoute {

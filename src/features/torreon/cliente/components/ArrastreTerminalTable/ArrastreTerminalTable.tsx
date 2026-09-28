@@ -34,7 +34,6 @@ type Props = {
   dailyCounters: Map<number, DailyInfo>;
   busyAction?: string | null;
   title: string;
-  subtitle: string;
   pageSize?: number;
   hidePagination?: boolean;
   emptyText?: string;
@@ -58,10 +57,9 @@ export function ArrastreTerminalTable({
   dailyCounters,
   busyAction = null,
   title,
-  subtitle,
   pageSize = 8,
   hidePagination = false,
-  emptyText = "No hay rondas para mostrar.",
+  emptyText = "No hay arrastres para mostrar.",
   editableSolicitudIds = [],
   manageableRowIds,
   canPrioritizeByIncident = false,
@@ -100,9 +98,8 @@ export function ArrastreTerminalTable({
       <header className={s.queueHeader}>
         <div>
           <h2>{title}</h2>
-          <p>{subtitle}</p>
         </div>
-        <span className={s.count}>{rows.length} rondas</span>
+        <span className={s.count}>{rows.length} solicitudes</span>
       </header>
       {pageRows.map((arrastre) => {
         const expanded = expandedIds.has(arrastre.id);

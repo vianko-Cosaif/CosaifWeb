@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { readTorreonJson, useTorreonCollection } from "../useTorreonCollection";
+import { readIncidentArrastres } from "./readIncidentArrastres";
+import { requestArrastreMutation } from "./arrastreMutationClient";
 import { arrastreListUrl, parseArrastrePage } from "../arrastres/listQuery";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { movementDateBoundary } from "@/lib/dateBoundary";
@@ -29,7 +31,6 @@ import {
   isClosed,
   makeVagonDraft,
   normalizeArray,
-  parseErrorMessage,
   isArrastreEditable,
   statusText,
   type ActionPayload,
@@ -85,7 +86,6 @@ export default function TorreonClientePanel({
 }: TorreonClientePanelProps) {
   const router = useRouter();
   const normalizedRole = normalizeRoleName(role);
-  const arrastreOnly = normalizedRole === "ARRASTRE_TORREON";
   const canViewArrastres = canViewTorreonArrastreRole(role);
 
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -146,24 +146,7 @@ export default function TorreonClientePanel({
     async (signal: AbortSignal, force: boolean) => {
       // The separate incident view still uses its own full incident projection.
       if (view === "incidentes") {
-        const rows: Arrastre[] = [];
-        for (const history of [false, true]) {
-          let page = 1,
-            totalPages = 1;
-          do {
-            const result = parseArrastrePage(
-              await readTorreonJson<unknown>(
-                arrastreListUrl({ localidadId, page, pageSize: 100, history, conIncidentes: true }),
-                signal,
-                force,
-              ),
-            );
-            rows.push(...result.data);
-            totalPages = result.meta.totalPages;
-            page++;
-          } while (page <= totalPages && !signal.aborted);
-        }
-        return rows;
+        return readIncidentArrastres(localidadId, signal, force);
       }
       return parseArrastrePage(await readTorreonJson<unknown>(listUrl, signal, force));
     },
@@ -545,20 +528,17 @@ export default function TorreonClientePanel({
     const actionKey = `edit-arrastre:${editingArrastre.arrastreId}`;
     setBusyAction(actionKey);
     try {
-      const response = await fetch("/api/cliente/torreon/arrastres/action", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await requestArrastreMutation(
+        "action",
+        {
           action: "EDITAR_ARRASTRE",
           arrastreId: editingArrastre.arrastreId,
           instrucciones: instruccionesEditadas,
           motivoEdicion: editingArrastre.motivoEdicion.trim() || undefined,
           vagones,
-        }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(parseErrorMessage(data, "No se pudo editar el movimiento"));
+        },
+        "No se pudo editar el movimiento",
+      );
 
       setEditingArrastre(null);
       setMessage({ type: "ok", text: "Movimiento actualizado correctamente." });
@@ -656,11 +636,9 @@ export default function TorreonClientePanel({
     setBusyAction(actionKey);
 
     try {
-      const response = await fetch("/api/cliente/torreon/arrastres/action", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await requestArrastreMutation(
+        "action",
+        {
           action: "EDITAR_VAGON",
           arrastreId: editingVagon.arrastreId,
           vagonId: editingVagon.vagonId,
@@ -670,10 +648,9 @@ export default function TorreonClientePanel({
           seccionOrigen,
           viaDestino,
           seccionDestino,
-        }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(parseErrorMessage(data, "No se pudo editar el vagon"));
+        },
+        "No se pudo editar el vagon",
+      );
 
       setEditingVagon(null);
       setMessage({ type: "ok", text: "Vagon actualizado" });
@@ -766,14 +743,11 @@ export default function TorreonClientePanel({
 
     setBusyAction("crear");
     try {
-      const response = await fetch("/api/cliente/torreon/arrastres", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ localidadId, instrucciones: movimiento, vagones }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(parseErrorMessage(data, "No se pudo crear el arrastre"));
+      await requestArrastreMutation(
+        "create",
+        { localidadId, instrucciones: movimiento, vagones },
+        "No se pudo crear el arrastre",
+      );
 
       setInstrucciones("");
       setDraftVagones([makeVagonDraft(1)]);
@@ -899,14 +873,7 @@ export default function TorreonClientePanel({
     if (optimistic) setArrastres(optimistic);
 
     try {
-      const response = await fetch("/api/cliente/torreon/arrastres/action", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(parseErrorMessage(data, "No se pudo operar el arrastre"));
+      await requestArrastreMutation("action", payload, "No se pudo operar el arrastre");
 
       setMessage({ type: "ok", text: "Operacion aplicada" });
       void playOperationConfirmation(String(payload.action));
@@ -965,19 +932,15 @@ export default function TorreonClientePanel({
     setBusyAction(actionKey);
     setCancelArrastreError(null);
     try {
-      const response = await fetch("/api/cliente/torreon/arrastres/action", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await requestArrastreMutation(
+        "action",
+        {
           action: "CANCELAR",
           arrastreId: cancelingArrastre.arrastreId,
           motivo,
-        }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok)
-        throw new Error(parseErrorMessage(data, "No se pudo cancelar el movimiento"));
+        },
+        "No se pudo cancelar el movimiento",
+      );
 
       const canceledId = cancelingArrastre.arrastreId;
       setCancelingArrastre(null);
@@ -1019,12 +982,13 @@ export default function TorreonClientePanel({
       (currentFotos === 0 || (incident.fotosCount ?? 0) > currentFotos);
     if (!shouldLoadDetail) return;
 
-    setSelectedIncident((current) =>
-      current ? { ...current, loadingEvidence: true } : current,
-    );
+    setSelectedIncident((current) => (current ? { ...current, loadingEvidence: true } : current));
     const controller = new AbortController();
     incidentDetailControllerRef.current = controller;
-    void fetchTorreonIncidentDetail({ incidentId, localidadId, tipo: "ARRASTRE" }, controller.signal)
+    void fetchTorreonIncidentDetail(
+      { incidentId, localidadId, tipo: "ARRASTRE" },
+      controller.signal,
+    )
       .then((record) => {
         if (controller.signal.aborted) return;
         setSelectedIncident((current) => {
@@ -1047,19 +1011,19 @@ export default function TorreonClientePanel({
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         setSelectedIncident((current) =>
-          current &&
-          current.arrastreId === arrastreId &&
-          Number(current.incident.id) === incidentId
+          current && current.arrastreId === arrastreId && Number(current.incident.id) === incidentId
             ? {
                 ...current,
                 loadingEvidence: false,
-                evidenceError: error instanceof Error ? error.message : "No se pudieron cargar las evidencias.",
+                evidenceError:
+                  error instanceof Error ? error.message : "No se pudieron cargar las evidencias.",
               }
             : current,
         );
       })
       .finally(() => {
-        if (incidentDetailControllerRef.current === controller) incidentDetailControllerRef.current = null;
+        if (incidentDetailControllerRef.current === controller)
+          incidentDetailControllerRef.current = null;
       });
   }
 
@@ -1069,20 +1033,16 @@ export default function TorreonClientePanel({
     setMessage(null);
 
     try {
-      const response = await fetch("/api/cliente/torreon/arrastres/action", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await requestArrastreMutation(
+        "action",
+        {
           action: "RESOLVER_INCIDENTE",
           arrastreId,
           incidenteId,
           solucion,
-        }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok)
-        throw new Error(parseErrorMessage(data, "No se pudo resolver el incidente"));
+        },
+        "No se pudo resolver el incidente",
+      );
 
       setSelectedIncident(null);
       setMessage({ type: "ok", text: "Incidente resuelto y bloqueo liberado" });
@@ -1139,7 +1099,6 @@ export default function TorreonClientePanel({
             dailyCounters={dailyCounters}
             loading={loading}
             refreshing={refreshing}
-            audience={arrastreOnly ? "arrastre" : "cliente"}
             canPrioritizeByIncident={hasOpenIncidentInQueue}
             empresaId={empresaId}
             onMovimientos={() => router.push("/cliente/torreon/movimientos")}
