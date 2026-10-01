@@ -468,6 +468,8 @@ export function hasPermission(
   profile: AuthorizationProfile | null | undefined,
   permission: Permission,
 ) {
+  if (profile && ["SUPERVISOR", "COORDINADOR"].includes(profile.role) &&
+      (permission === PERMISSIONS.MOVEMENTS_EDIT || permission === PERMISSIONS.ROUNDS_EDIT)) return false;
   return Boolean(profile?.permissions.includes(permission));
 }
 

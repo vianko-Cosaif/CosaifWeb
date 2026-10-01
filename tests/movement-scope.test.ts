@@ -1,11 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { MovementScopeError, recordMatchesMovementScope, resolveMovementReadScope, scopePrivateClientMovementRead } from "@/lib/auth/movementScope";
+import { clientOwnsMovement, isEditableMovementState, MovementScopeError, recordMatchesMovementScope, resolveMovementReadScope, scopePrivateClientMovementRead } from "@/lib/auth/movementScope";
 import { loginProfile } from "./fixtures/authorization";
 import type { VerifiedSession } from "@/lib/sessionToken";
 
 const session: VerifiedSession = { userId: 7, role: "CLIENTE", empresaId: 3, localidadId: 1, authorization: loginProfile() };
 
 describe("signed client movement scope", () => {
+  it.each(["EN_PROCESO", "DETENIDO", "CONCLUIDO", "CANCELADO", "", "DESCONOCIDO"])("never allows editing %s", state => {
+    expect(isEditableMovementState(state)).toBe(false);
+  });
+  it.each(["SOLICITADO", "ASIGNADO", "ESPERA", "MODIFICADO", "PENDIENTE", "BLOQUEADO"])("allows pending state %s", state => {
+    expect(isEditableMovementState(state)).toBe(true);
+  });
+  it.each(["CLIENTE_ADMIN", "CLIENTE_COOR"] as const)("allows %s to edit their company in another permitted locality", role => {
+    const authorization = loginProfile(role);
+    authorization.scope.mode = "COMPANY";
+    expect(clientOwnsMovement(authorization, { empresaId: 3, localidadId: 2 })).toBe(true);
+    expect(clientOwnsMovement(authorization, { empresaId: 4, localidadId: 2 })).toBe(false);
+    authorization.scope.mode = "COMPANY_LOCALITY";
+    expect(clientOwnsMovement(authorization, { empresaId: 3, localidadId: 2 })).toBe(false);
+  });
+  it("allows a local client to edit only their own company and locality", () => {
+    const authorization = loginProfile();
+    expect(clientOwnsMovement(authorization, { empresaId: 3, localidadId: 1 })).toBe(true);
+    expect(clientOwnsMovement(authorization, { empresaId: 4, localidadId: 1 })).toBe(false);
+    expect(clientOwnsMovement(authorization, { empresaId: 3, localidadId: 2 })).toBe(false);
+    expect(clientOwnsMovement(authorization, {})).toBe(false);
+  });
   it.each(["history-list", "detail"] as const)("keeps %s private even with a forged locality scope flag", (context) => {
     expect(resolveMovementReadScope(session, context, new URLSearchParams("alcance=localidad"))).toMatchObject({ empresaId: 3, localidadId: 1, sharedCurrentLocality: false });
   });

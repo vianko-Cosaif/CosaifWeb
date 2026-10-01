@@ -5,6 +5,7 @@ import { useRealtimeBoardRefresh } from './useRealtimeBoardRefresh';
 import { useEffect, useState, useCallback } from 'react';
 import { invalidateCachedJson } from '@/lib/http/client';
 import { isTrainingMovementId, isTrainingRoundId } from '@/lib/routePolicy';
+import { isEditableMovementState } from '@/lib/auth/movementScope';
 
 /* =======================
    CONFIG
@@ -328,6 +329,7 @@ export const useRondaData = (localidadId: number, onClose: () => void) => {
 
         const propias = (rondas || [])
           .map(normalizeRonda)
+          .filter((round) => !round.concluido && isEditableMovementState(round.movimiento.estado))
           .sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden);
 
         const extra: Record<number, InfoExtra> = {};

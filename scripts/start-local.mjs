@@ -5,6 +5,7 @@ import { constants } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
+import { prepareLocalBuild } from "./prepare-local-build.mjs";
 
 const require = createRequire(import.meta.url);
 const projectDirectory = fileURLToPath(new URL("../", import.meta.url));
@@ -90,5 +91,6 @@ export function startLocal({
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  startLocal();
+  if (prepareLocalBuild(projectDirectory)) startLocal();
+  else process.exitCode = 1;
 }

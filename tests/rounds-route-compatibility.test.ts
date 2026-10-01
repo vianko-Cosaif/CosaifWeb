@@ -57,7 +57,8 @@ describe.each([
     expect(upstream.fetch).not.toHaveBeenCalled();
   });
   it("keeps the compatibility order action and validates ownership before its write", async () => {
-    const operator = session(); operator.role = "COORDINADOR";
+    const operator = session(); operator.role = "ADMINISTRADOR";
+    operator.authorization = loginProfile("ADMINISTRADOR");
     operator.authorization.scope.mode = "LOCALITY";
     upstream.session.mockResolvedValue(operator);
     expect((await post({ action: "orden", id: 10, orden: 2 })).status).toBe(200);
@@ -134,6 +135,12 @@ describe.each([
     upstream.session.mockResolvedValue(viewer);
     expect((await post({ action: "orden", id: 10, orden: 2 })).status).toBe(403);
     expect(upstream.fetch).not.toHaveBeenCalled();
+  });
+  it.each(["SUPERVISOR", "COORDINADOR"] as const)("blocks %s editing with stale permissions", async role => {
+    upstream.session.mockResolvedValue({ ...session(), role, authorization: loginProfile(role) });
+    expect((await post({ action: "swap", rondaAId: 10, rondaBId: 11 })).status).toBe(403);
+    expect(upstream.fetch).not.toHaveBeenCalled();
+    expect(upstream.torreon).not.toHaveBeenCalled();
   });
   it.each([0, -1, 1.5])("rejects invalid order %i without requests", async (orden) => {
     expect((await post({ action: "orden", id: 10, orden })).status).toBe(400);
