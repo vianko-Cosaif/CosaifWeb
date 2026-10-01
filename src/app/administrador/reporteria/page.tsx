@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import ReporteriaAdminClient from "./reporteria-admin-client";
+import ReporteriaAdminClient from "../../../features/reporteria/administrador/reporteria-admin-client";
 
 export const dynamic = "force-dynamic";
 

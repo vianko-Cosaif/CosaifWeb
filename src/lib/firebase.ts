@@ -6,6 +6,7 @@ import {
   onMessage,
 } from "firebase/messaging";
 import type { Messaging, MessagePayload } from "firebase/messaging";
+import { getNotificationRuntimePolicy } from "@/lib/notificationRuntime";
 
 const FIREBASE_MESSAGING_SW_URL = "/firebase-messaging-sw.js";
 const FIREBASE_MESSAGING_SW_SCOPE = "/firebase-cloud-messaging-push-scope/";
@@ -28,8 +29,25 @@ const requiredFirebaseValues = [
   firebaseConfig.appId,
 ];
 
-let firebaseAppInstance: FirebaseApp | null = null;
-let messagingSupportPromise: Promise<boolean> | null = null;
+let firebaseAppInstance: FirebaseApp | undefined;
+let messagingSupportPromise: Promise<boolean> | undefined;
+let notificationTokenPromise: Promise<string | undefined> | undefined;
+let tokenRegistrationPromise: Promise<void> | undefined;
+let tokenRegistrationKey: string | undefined;
+let lastRegisteredTokenKey: string | undefined;
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} excedió el tiempo de espera`)), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
 
 function hasValue(value: string | undefined) {
   return Boolean(value && !value.startsWith("TU_"));
@@ -37,22 +55,22 @@ function hasValue(value: string | undefined) {
 
 function toPositiveInt(value: unknown) {
   const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : null;
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : undefined;
 }
 
 function readClientCookie(name: string) {
-  if (typeof document === "undefined") return null;
+  if (typeof document === "undefined") return undefined;
   const item = document.cookie
     .split(";")
     .map((part) => part.trim())
     .find((part) => part.startsWith(`${name}=`));
-  return item ? decodeURIComponent(item.slice(name.length + 1)) : null;
+  return item ? decodeURIComponent(item.slice(name.length + 1)) : undefined;
 }
 
-export function getActiveFirebaseLocalidadId(explicit?: number | string | null) {
+export function getActiveFirebaseLocalidadId(explicit?: number | string) {
   const explicitId = toPositiveInt(explicit);
   if (explicitId) return explicitId;
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined") return undefined;
 
   return (
     toPositiveInt(readClientCookie("locId")) ??
@@ -66,10 +84,10 @@ export function isFirebaseConfigured() {
   return requiredFirebaseValues.every(hasValue);
 }
 
-export function getFirebaseApp(): FirebaseApp | null {
+export function getFirebaseApp(): FirebaseApp | undefined {
   if (!isFirebaseConfigured()) {
     console.warn("Firebase no tiene configuracion completa.");
-    return null;
+    return undefined;
   }
 
   if (firebaseAppInstance) return firebaseAppInstance;
@@ -94,97 +112,195 @@ async function supportsFirebaseMessaging() {
 }
 
 async function getFirebaseMessagingServiceWorker() {
-  if (typeof window === "undefined") return null;
-  if (!("serviceWorker" in navigator)) return null;
+  if (typeof window === "undefined") return undefined;
+  if (!("serviceWorker" in navigator)) return undefined;
+  const policy = getNotificationRuntimePolicy();
+  const serviceWorkerUrl = `${FIREBASE_MESSAGING_SW_URL}?runtime=${encodeURIComponent(policy.runtimeEnv)}&appEnv=${encodeURIComponent(policy.appEnv)}`;
 
-  const existingRegistration = await navigator.serviceWorker.getRegistration(
-    FIREBASE_MESSAGING_SW_SCOPE
+  const existingRegistration = await withTimeout(
+    navigator.serviceWorker.getRegistration(FIREBASE_MESSAGING_SW_SCOPE),
+    6_000,
+    "Firebase Service Worker"
   );
 
-  if (existingRegistration) return existingRegistration;
+  if (existingRegistration?.active) {
+    void existingRegistration.update().catch(() => undefined);
+    return existingRegistration;
+  }
 
-  return navigator.serviceWorker.register(FIREBASE_MESSAGING_SW_URL, {
-    scope: FIREBASE_MESSAGING_SW_SCOPE,
-  });
+  if (existingRegistration) {
+    await existingRegistration.unregister().catch(() => false);
+  }
+
+  const registration = await withTimeout(
+    navigator.serviceWorker.register(serviceWorkerUrl, {
+      scope: FIREBASE_MESSAGING_SW_SCOPE,
+    }),
+    8_000,
+    "Registro de Firebase Service Worker"
+  );
+
+  if (registration.active) return registration;
+
+  return withTimeout(
+    new Promise<ServiceWorkerRegistration>((resolve) => {
+      const resolveWhenActive = () => {
+        if (registration.active) resolve(registration);
+      };
+      const watchWorker = (worker: ServiceWorker | null) => {
+        if (!worker) return;
+        if (worker.state === "activated") {
+          resolveWhenActive();
+          return;
+        }
+        worker.addEventListener("statechange", resolveWhenActive);
+      };
+
+      watchWorker(registration.installing);
+      watchWorker(registration.waiting);
+      registration.addEventListener("updatefound", () => watchWorker(registration.installing));
+      resolveWhenActive();
+    }),
+    10_000,
+    "Activacion de Firebase Service Worker"
+  );
 }
 
-export async function getFirebaseMessaging(): Promise<Messaging | null> {
+export async function getFirebaseMessaging(): Promise<Messaging | undefined> {
   const app = getFirebaseApp();
-  if (!app) return null;
+  if (!app) return undefined;
 
   const supported = await supportsFirebaseMessaging();
 
   if (!supported) {
     console.warn("Firebase Messaging no es compatible con este navegador.");
-    return null;
+    return undefined;
   }
 
   return getMessaging(app);
 }
 
-export async function requestFirebaseNotificationToken(): Promise<string | null> {
-  if (typeof window === "undefined") return null;
-  if (!("Notification" in window)) return null;
+async function createFirebaseNotificationToken(options: { requestPermission?: boolean }): Promise<string | undefined> {
+  if (typeof window === "undefined") return undefined;
+  if (!("Notification" in window)) return undefined;
+  const policy = getNotificationRuntimePolicy();
+  if (!policy.enabled) return undefined;
 
   let permission = Notification.permission;
 
   if (permission === "default") {
+    if (options.requestPermission === false) return undefined;
     permission = await Notification.requestPermission();
   }
 
   if (permission !== "granted") {
     console.warn("Permiso de notificaciones denegado.");
-    return null;
+    return undefined;
   }
 
   const messaging = await getFirebaseMessaging();
 
-  if (!messaging) return null;
+  if (!messaging) return undefined;
 
   const serviceWorkerRegistration = await getFirebaseMessagingServiceWorker();
-  if (!serviceWorkerRegistration) return null;
+  if (!serviceWorkerRegistration) return undefined;
 
   const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
   if (!hasValue(vapidKey)) {
     console.warn("Falta NEXT_PUBLIC_FIREBASE_VAPID_KEY.");
-    return null;
+    return undefined;
   }
 
-  const token = await getToken(messaging, {
-    vapidKey,
-    serviceWorkerRegistration,
-  });
+  const token = await withTimeout(
+    getToken(messaging, {
+      vapidKey,
+      serviceWorkerRegistration,
+    }),
+    12_000,
+    "Token de Firebase"
+  );
 
   return token;
+}
+
+export function requestFirebaseNotificationToken(options: { requestPermission?: boolean } = {}): Promise<string | undefined> {
+  if (notificationTokenPromise) return notificationTokenPromise;
+
+  const pending = createFirebaseNotificationToken(options).finally(() => {
+    if (notificationTokenPromise === pending) notificationTokenPromise = undefined;
+  });
+  notificationTokenPromise = pending;
+  return pending;
 }
 
 export async function registerFirebaseNotificationToken(
   token: string,
   accessToken?: string,
-  localidadId?: number | string | null
+  localidadId?: number | string
 ) {
   if (typeof window === "undefined") return;
   if (!token.trim()) return;
+  const policy = getNotificationRuntimePolicy();
+  if (!policy.enabled) return;
 
   const activeLocalidadId = getActiveFirebaseLocalidadId(localidadId);
-  const body: { token: string; accessToken?: string; localidadId?: number } = { token };
+  const body: {
+    token: string;
+    accessToken?: string;
+    localidadId?: number;
+    runtimeEnv: string;
+    appEnv: string;
+  } = {
+    token,
+    runtimeEnv: policy.runtimeEnv,
+    appEnv: policy.appEnv,
+  };
   if (accessToken) body.accessToken = accessToken;
   if (activeLocalidadId) body.localidadId = activeLocalidadId;
 
-  const response = await fetch(accessToken ? "/api/fcm/register" : "/xapi/fcm", {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+  let userId = '';
+  try { userId = String(JSON.parse(localStorage.getItem('user') || '{}').id ?? ''); } catch { /* registration still validates the session server-side */ }
+  const registrationKey = `${userId}:${token}:${activeLocalidadId ?? "global"}:${policy.runtimeEnv}:${policy.appEnv}`;
+  if (lastRegisteredTokenKey === registrationKey) return;
+  if (tokenRegistrationPromise && tokenRegistrationKey === registrationKey) {
+    return tokenRegistrationPromise;
+  }
+
+  tokenRegistrationKey = registrationKey;
+  const registration = (async () => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10_000);
+    let response: Response;
+
+    try {
+      response = await fetch("/api/fcm/register", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+
+    if (!response.ok) {
+      const details = await response.text().catch(() => "");
+      throw new Error(`No se pudo registrar token FCM (${response.status}) ${details}`);
+    }
+    lastRegisteredTokenKey = registrationKey;
+  })().finally(() => {
+    if (tokenRegistrationPromise === registration) {
+      tokenRegistrationPromise = undefined;
+      tokenRegistrationKey = undefined;
+    }
   });
 
-  if (!response.ok) {
-    const details = await response.text().catch(() => "");
-    throw new Error(`No se pudo registrar token FCM (${response.status}) ${details}`);
-  }
+  tokenRegistrationPromise = registration;
+  return registration;
 }
 
-export async function syncFirebaseNotificationLocalidad(localidadId?: number | string | null) {
+export async function syncFirebaseNotificationLocalidad(localidadId?: number | string) {
   if (typeof window === "undefined") return;
   if (!("Notification" in window) || Notification.permission !== "granted") return;
 

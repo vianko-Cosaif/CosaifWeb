@@ -1,15 +1,9 @@
-// src/app/login/page.tsx  (Server)
 import type { Metadata } from "next";
-import LoginScreen from "./LoginScreen";
+import LoginScreen from "@/features/auth/LoginScreen";
 
-export const metadata: Metadata = { title: "Login | Cosaif Logistics" };
+export const metadata: Metadata = { title: "Iniciar sesión", description: "Accede a COSAIF Logistics para coordinar rondas, movimientos y operación ferroviaria." };
 
 export default function Page() {
-  return (
-    <>
-   
-      <LoginScreen />
-    </>
-  );
+  return <LoginScreen />;
 }
- 
+

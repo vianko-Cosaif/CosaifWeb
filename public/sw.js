@@ -1,4 +1,4 @@
-const CACHE_VERSION = "cosaif-pwa-v2";
+const CACHE_VERSION = "cosaif-pwa-v3";
 const SHELL_CACHE = `${CACHE_VERSION}:shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}:runtime`;
 const APP_SHELL = [
@@ -16,6 +16,7 @@ const BYPASS_PREFIXES = [
   "/_next/webpack-hmr",
   "/_next/static/webpack/",
 ];
+const NAVIGATION_TIMEOUT_MS = 12000;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -75,11 +76,16 @@ function isStaticAsset(url) {
 }
 
 async function networkFirstNavigation(request) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), NAVIGATION_TIMEOUT_MS);
+
   try {
-    return await fetch(request);
+    return await fetch(request, { signal: controller.signal });
   } catch {
     const offline = await caches.match("/offline.html");
     return offline || new Response("Sin conexion", { status: 503, statusText: "Offline" });
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 

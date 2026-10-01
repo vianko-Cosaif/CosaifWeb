@@ -12,10 +12,15 @@
 
 # testing
 /coverage
+/playwright-report
+/test-results
 
 # next.js
 /.next/
+/.next-dev/
+/.next-quality/
 /out/
+/analyze/
 
 # production
 /build
@@ -40,6 +45,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-.env.local
 
 certificates
+
+# Configuración privada de cada entorno
+.env.*
+!.env.example

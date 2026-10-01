@@ -1,0 +1,89 @@
+# Arquitectura del frontend
+
+## Dirección de dependencias
+
+`app` compone módulos de `features`; los módulos usan `components`, `hooks` y `lib`. Los componentes UI no importan rutas ni reglas de negocio. `lib/server` sólo se usa en servidor y declara `server-only`. Los contratos entre módulos se importan con `import type` cuando corresponde.
+
+```text
+src/
+  app/                    rutas, layouts y handlers Next.js
+  features/
+    movimientos/
+      crear/              captura, validación, catálogos y envío
+      editar/             editor compartido por los roles autorizados
+      list/               tabla, filtros, vistas guardadas y atención del turno
+      offline/            IndexedDB, estados y sincronización
+      table/              reglas comunes de las tablas
+      torno/              mediciones asociadas al movimiento
+    panel-grafico/
+      PanelGrafico.tsx     composición y coordinación de actualizaciones
+      data.ts             normalización de respuestas y eventos
+      types.ts            contratos del módulo
+      styles.ts           colores y transiciones
+      patio/              modelo, geometría, canvas y dibujo
+      components/         vistas del tablero
+    comercial/            expedientes, contratos, cobranza y análisis
+    reporteria/           vistas y contratos por tipo de reporte
+    torno/                servicios, historial y herramientas
+    torno-measures/       selector y captura de ruedas
+    torreon/              naturales y arrastres
+    rail-queue/           rondas compartidas por rol
+    incidentes/           gestión, evidencia y avisos
+    capacitacion/         guías y datos SIM
+    usuarios/             administración de usuarios
+    actualizaciones/      avisos y banners
+  components/             UI y layout compartidos
+  hooks/                  hooks independientes de un módulo
+  lib/
+    auth/                 contexto local, retorno autorizado y utilidades
+    http/                 consultas cliente, errores y concurrencia
+    observability/        contratos y envío de métricas sin datos privados
+    server/               verificación de sesión y proxy
+  proxy.ts                protección de rutas de Next.js 16
+```
+
+## Consultas
+
+Usar `cachedFetchJson` para lecturas repetidas. Sólo comparte GET y mantiene hasta 150 respuestas; la clave incluye cuenta/empresa/localidad, URL normalizada, credenciales y cabeceras. El último consumidor que abandona cancela la petición. Las mutaciones mantienen su cuerpo y petición propios. Invalidar explícitamente los recursos afectados después de guardar. Nunca usar la caché cliente como decisión de autorización.
+
+Los datos cambiantes tienen TTL corto. Los catálogos pueden tener TTL mayor. `force` evita reutilizar respuestas almacenadas; peticiones idénticas ya activas se comparten. Un error no se almacena. Al cambiar filtros o desmontar una pantalla, cancelar consultas y descartar resultados antiguos.
+
+Comercial distingue `useCrmList` (una página de 25 registros) de `useCrmCatalog` (lista completa para selectores y conciliación, hasta tres páginas simultáneas). Los totales contractuales requieren `loadCompleteAnalytics`: el backend limita cada página de operaciones a 100. Si faltan datos o cambia el total durante la carga, se presenta error en lugar de devolver una suma parcial. Las consultas excesivas requieren reducir filtros.
+
+Los proxies comparten cabeceras, timeout, cancelación y errores en `lib/server/upstream.ts`. Conservar las reglas de alcance propias de cada adaptador. No reenviar cookies ni `Content-Length` de una respuesta que `fetch` pudo descomprimir. SSE usa cancelación del cliente, sin el timeout de una consulta ordinaria.
+
+## Rondas y límites de Next.js
+
+`/api/cliente/rondas` y la URL compatible `/cliente/rondas` exportan los mismos handlers desde `features/rail-queue/server`. Las rutas sólo declaran su configuración de Next; las consultas y acciones autorizadas viven en `read.ts` y `write.ts`. Los adaptadores de torno y Torreón conservan sus contratos. `mapping.ts` normaliza y proyecta datos, `transport.ts` comparte llamadas y errores del servicio, y `models.ts` reutiliza los contratos del tablero. Estos módulos declaran `server-only` para impedir su inclusión en el cliente.
+
+El alcance se deriva de la sesión verificada: actuales compartidos en la localidad del cliente; historial limitado a su empresa y localidad. Los cambios de orden e intercambios validan los registros antes de escribir. Los errores del servicio no se convierten en listas vacías. Las lecturas de detalles mantienen un máximo de cuatro solicitudes simultáneas y propagan cancelaciones.
+
+Los layouts de administrador, coordinador, supervisor y cliente son Server Components que componen las fronteras interactivas existentes. `LocalityQueue` comparte la presentación de administrador y coordinador; cada controlador conserva sus consultas, permisos y suscripciones. `TornoMeasuresDialog` comparte carga y errores en cuatro vistas y descarga el visor bajo demanda. Su hook cancela solicitudes al cerrar, desmontar o seleccionar otra locomotora.
+
+Las cuatro rutas del cliente de arrastre resuelven sesión, rol y localidad con `requireTorreonArrastreClient`; cada página aplica después su permiso específico. La vista de incidentes consulta activos e historial en paralelo y limita las páginas adicionales a cuatro lecturas simultáneas. El resultado conserva el orden y se descarta si el usuario abandona la vista.
+
+La ruta general `/incidentes` verifica la sesión y el permiso de lectura en servidor y entrega el perfil firmado al controlador. `incidentFilters.ts` deriva el alcance antes de la primera consulta, impide cambiar empresa o localidad fijadas por el perfil y evita combinar una localidad de Torreón con la fuente Cosaif. La búsqueda de la página se aplica localmente y no dispara otra lectura de red.
+
+El panel de movimientos recibe siempre el perfil verificado de su ruta. Su rol, permiso de edición y alcance se derivan directamente de él; el administrador conserva su selección de localidad como filtro de la consulta. Las mutaciones del cliente de arrastre comparten transporte y errores en `arrastreMutationClient.ts`. La normalización de medidas de torno y los planes de copiado viven en módulos puros, separados de las llamadas HTTP y de la vista de captura.
+
+Al editar un incidente de torno, probar `PUT` tras `PATCH` sólo si el servicio responde que el método no está disponible (405 o 501). Un error de servidor, red o registro inexistente no debe repetir la escritura.
+
+La conexión realtime es compartida entre consumidores. Si falla y programa un reintento, montar otro consumidor o recuperar el foco no adelanta esa espera; el evento `online` sí puede reconectar de inmediato.
+
+ESLint impide que los módulos importen rutas y que los servicios del dominio dependan de UI o hooks. No importar un handler desde otro handler: ambos deben componer o exportar el mismo servicio.
+
+## Persistencia y permisos
+
+La cola usa transacciones de IndexedDB y un propietario explícito. Sólo se elimina la solicitud confirmada. Un envío reclamado por otra pestaña no puede enviarse a la vez; una reclamación vencida pasa a revisión. Un resultado incierto requiere conciliación y confirmación antes de reintentar con la misma clave. El backend es la autoridad final de idempotencia y permisos.
+
+Borradores, vistas y caché están separados por cuenta y alcance. La sesión firmada se comprueba en servidor; los datos locales sólo controlan presentación. La interfaz de edición requiere permiso específico y las rutas de los roles comparten la página de autorización.
+
+## UI y calidad
+
+Usar `@/components/ui` para botones, modales, filtros, tablas y estados. El modal común administra foco, Escape, Tab, bloqueo del fondo y restauración incluso al cerrar modales anidados. No representar ausencia de mediciones como cero o como cumplimiento de un SLA.
+
+Separar modelos puros, transporte y presentación cuando un componente acumule responsabilidades. No dividir sólo por tamaño ni crear otra carpeta genérica `utils` cuando existe un dominio claro. Las rutas nuevas deben mantenerse pequeñas.
+
+`npm run check` es el control local y `.github/workflows/quality.yml` repite instalación reproducible, lint, tipos, pruebas, build y auditoría de dependencias. Las reglas de React Compiler se mantienen desactivadas mientras no se habilita ese compilador; las reglas de hooks y tipos siguen activas.
+
+Playwright mide login y la primera carga con datos de movimientos para administrador, coordinador, supervisor, cliente y cliente de arrastre. `performance-budget.json` limita tiempo hasta datos visibles, JavaScript cargado y número de llamadas API en el backend sintético; estas cifras sirven para detectar regresiones locales, no representan latencia de producción.

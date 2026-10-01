@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
+import { FIREBASE_CDN_VERSION, FIREBASE_WORKER_CSP } from "@/lib/firebaseMessagingWorker";
 
 export const dynamic = "force-dynamic";
-
-const FIREBASE_CDN_VERSION = "12.14.0";
 
 function serviceWorkerSource() {
   const firebaseConfig = {
@@ -14,9 +13,13 @@ function serviceWorkerSource() {
     appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID ?? "",
     measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID ?? "",
   };
+  const runtimeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
+  const appEnv =
+    process.env.NEXT_PUBLIC_APP_ENV || process.env.NEXT_PUBLIC_VERCEL_ENV || runtimeEnv;
 
   return `
 const firebaseConfig = ${JSON.stringify(firebaseConfig)};
+const notificationRuntime = ${JSON.stringify({ runtimeEnv, appEnv })};
 const requiredConfig = [
   firebaseConfig.apiKey,
   firebaseConfig.authDomain,
@@ -24,6 +27,14 @@ const requiredConfig = [
   firebaseConfig.messagingSenderId,
   firebaseConfig.appId,
 ];
+
+self.addEventListener("install", () => {
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim());
+});
 
 function hasValue(value) {
   return Boolean(value && !String(value).startsWith("TU_"));
@@ -38,20 +49,25 @@ if (requiredConfig.every(hasValue)) {
   const messaging = firebase.messaging();
 
   messaging.onBackgroundMessage((payload) => {
+    // Firebase ya muestra automáticamente los mensajes con notification.
+    if (payload.notification) return;
     const notification = payload.notification || {};
     const data = payload.data || {};
     const title = notification.title || data.title || "Nueva notificacion";
     const url = data.url || data.click_action || "/";
     const tag = data.tag || data.eventId || data.movimientoId || data.incidenteId || data.tipo || title;
 
-    self.registration.showNotification(title, {
+    // Devolver la promesa mantiene vivo el service worker hasta que el SO
+    // haya aceptado la notificación, incluso con la PWA cerrada.
+    return self.registration.showNotification(title, {
       body: notification.body || data.body || "",
       icon: notification.icon || data.icon || "/icons/cosaif-192.png",
       badge: data.badge || "/icons/cosaif-192.png",
-      data: { ...data, url },
-      tag,
-      renotify: true,
-      requireInteraction: true,
+      data: { ...data, url, runtimeEnv: notificationRuntime.runtimeEnv, appEnv: notificationRuntime.appEnv },
+      tag: notificationRuntime.runtimeEnv + ":" + tag,
+      renotify: false,
+      requireInteraction: false,
+      silent: false,
     });
   });
 } else {
@@ -91,6 +107,7 @@ export function GET() {
       "Cache-Control": "public, max-age=0, must-revalidate",
       "Content-Type": "application/javascript; charset=utf-8",
       "Service-Worker-Allowed": "/",
+      "Content-Security-Policy": FIREBASE_WORKER_CSP,
     },
   });
 }

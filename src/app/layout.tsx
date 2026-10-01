@@ -1,10 +1,14 @@
+import "antd/dist/reset.css";
+import "react-data-grid/lib/styles.css";
+import "driver.js/dist/driver.css";
 import "./globals.scss";
 import type { Metadata, Viewport } from "next";
 import { initThemeSSRScript } from "@/lib/theme";
-import AdaptiveMode from "@/app/Components/layout/AdaptiveMode";
-import PwaInstallPrompt from "@/app/Components/layout/PwaInstallPrompt";
-import FirebaseNotificationPrompt from "@/app/Components/layout/FirebaseNotificationPrompt";
-import { ClientMovementGuideProvider } from "@/app/Components/GuidedManualAtom/ClientMovementGuide";
+import AdaptiveMode from "@/components/layout/AdaptiveMode";
+import PwaInstallPrompt from "@/components/layout/PwaInstallPrompt";
+import FirebaseNotificationPrompt from "@/components/layout/FirebaseNotificationPrompt";
+import TrainingBoundary from "@/components/layout/TrainingBoundary";
+import WebVitalsReporter from "@/components/performance/WebVitalsReporter";
 
 export const metadata: Metadata = {
   title: {
@@ -44,23 +48,19 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   colorScheme: "light dark",
-  themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0B1220" },
-    { color: "#f8fafc" },
-  ],
+  themeColor: [{ media: "(prefers-color-scheme: dark)", color: "#0B1220" }, { color: "#f8fafc" }],
 };
-
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es-MX">
+    <html lang="es-MX" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
-        {/* Evita FOUC de tema antes de hidratar */}
         <script dangerouslySetInnerHTML={{ __html: initThemeSSRScript() }} />
       </head>
-      <body className="min-h-svh bg-white text-slate-900 antialiased selection:bg-sky-200/60 dark:bg-slate-950 dark:text-slate-100 dark:selection:bg-sky-600/40">
-        <ClientMovementGuideProvider>
+      <body className="min-h-svh antialiased">
+        <TrainingBoundary>
           <AdaptiveMode />
+          <WebVitalsReporter />
           <a
             href="#main"
             className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:shadow"
@@ -68,12 +68,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             Saltar al contenido
           </a>
 
-          {/* Theme Toggle global - solo se muestra fuera de rutas /cliente */}
-
-          <main id="main">{children}</main>
+          {children}
           <FirebaseNotificationPrompt />
           <PwaInstallPrompt />
-        </ClientMovementGuideProvider>
+        </TrainingBoundary>
       </body>
     </html>
   );
