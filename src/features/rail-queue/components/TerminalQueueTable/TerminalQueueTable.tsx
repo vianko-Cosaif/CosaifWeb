@@ -21,30 +21,19 @@ function formatBoardDateTime(iso?: string | null) {
   return formatDateTimeMX(iso, { fallback: "Sin fecha", dateStyle: "short" });
 }
 
-function getMovementFolio(mv?: Ronda["movimiento"] | RondaInfo["movimiento"] | null, fallbackId?: number | null) {
+function getMovementFolio(
+  mv?: Ronda["movimiento"] | RondaInfo["movimiento"] | null,
+  fallbackId?: number | null,
+) {
   if (mv?.folioLocalidadLabel) return mv.folioLocalidadLabel;
   if (mv?.folioLocalidad) return `#${mv.folioLocalidad}`;
   const id = mv?.id ?? fallbackId;
   return id ? `#${id}` : "—";
 }
 
-function TerminalServiceChip({
-  active,
-  icon,
-  text,
-}: {
-  active: boolean;
-  icon: string;
-  text: string;
-}) {
+function TerminalServiceChip({ icon, text }: { icon: string; text: string }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] border ${
-        active
-          ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-400/50 dark:bg-emerald-400/10 dark:text-emerald-200"
-          : "border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
-      }`}
-    >
+    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 py-1 text-[10px] text-emerald-700 dark:border-emerald-400/50 dark:bg-emerald-400/10 dark:text-emerald-200">
       {icon} {text}
     </span>
   );
@@ -88,7 +77,7 @@ export function TerminalQueueTable({
         },
       },
     }),
-    [isDarkTheme]
+    [isDarkTheme],
   );
 
   const columns = useMemo<ColumnsType<Ronda>>(
@@ -190,10 +179,13 @@ export function TerminalQueueTable({
         width: 170,
         render: (_value, ronda) => {
           const mv = info[ronda.id]?.movimiento ?? ronda.movimiento;
+          const lavado = Boolean(mv?.lavado);
+          const torno = Boolean(mv?.torno);
           return (
             <div className="flex flex-wrap gap-1 font-mono">
-              <TerminalServiceChip active={Boolean(mv?.lavado)} icon="💧" text="Lavado" />
-              <TerminalServiceChip active={Boolean(mv?.torno)} icon="⚙️" text="Torno" />
+              {lavado ? <TerminalServiceChip icon="💧" text="Lavado" /> : null}
+              {torno ? <TerminalServiceChip icon="⚙️" text="Torno" /> : null}
+              {!lavado && !torno ? "—" : null}
             </div>
           );
         },
@@ -218,7 +210,9 @@ export function TerminalQueueTable({
               <div className="mt-1 text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">
                 {mv?.estado || "—"}
               </div>
-              <RoundIncidentTimer incident={ronda.movimiento?.incidenteActivo ?? mv?.incidenteActivo} />
+              <RoundIncidentTimer
+                incident={ronda.movimiento?.incidenteActivo ?? mv?.incidenteActivo}
+              />
             </div>
           );
         },
@@ -232,7 +226,7 @@ export function TerminalQueueTable({
           return (
             <span className="font-mono text-xs text-slate-500 dark:text-slate-300">
               {formatBoardDateTime(
-                ronda.createdAt ?? mv?.fechaSolicitud ?? mv?.fechaInicio ?? mv?.fechaFin ?? null
+                ronda.createdAt ?? mv?.fechaSolicitud ?? mv?.fechaInicio ?? mv?.fechaFin ?? null,
               )}
             </span>
           );
@@ -251,12 +245,14 @@ export function TerminalQueueTable({
               Medidas
             </Button>
           ) : (
-            <span className="font-mono text-xs font-semibold text-slate-400 dark:text-slate-500">N/A</span>
+            <span className="font-mono text-xs font-semibold text-slate-400 dark:text-slate-500">
+              N/A
+            </span>
           );
         },
       },
     ],
-    [info, onViewMeasures]
+    [info, onViewMeasures],
   );
 
   return (
@@ -307,14 +303,19 @@ export function TerminalQueueTable({
                     <div className="text-xs font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
                       Prioridad
                     </div>
-                    <p className="mt-1 font-black text-slate-950 dark:text-slate-100">{mv?.prioridad || "—"}</p>
+                    <p className="mt-1 font-black text-slate-950 dark:text-slate-100">
+                      {mv?.prioridad || "—"}
+                    </p>
                   </div>
                   <div>
                     <div className="text-xs font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
                       Movimiento
                     </div>
                     <p className="mt-1 text-slate-700 dark:text-slate-200">
-                      {getMovementFolio(mv, info[ronda.id]?.movimientoId ?? ronda.movimientoId ?? null)}
+                      {getMovementFolio(
+                        mv,
+                        info[ronda.id]?.movimientoId ?? ronda.movimientoId ?? null,
+                      )}
                     </p>
                   </div>
                 </div>
