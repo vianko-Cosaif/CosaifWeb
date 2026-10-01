@@ -224,10 +224,14 @@ function FieldGrid({ fields }: { fields: Array<[string, ReactNode]> }) {
 }
 
 function Services({ movement }: { movement?: RondaMovement | null }) {
+  const lavado = Boolean(movement?.lavado);
+  const torno = Boolean(movement?.torno);
+
   return (
     <span className={styles.services}>
-      <span data-active={!!movement?.lavado}>Lavado</span>
-      <span data-active={!!movement?.torno}>Torno</span>
+      {lavado ? <span data-active="true">Lavado</span> : null}
+      {torno ? <span data-active="true">Torno</span> : null}
+      {!lavado && !torno ? "—" : null}
     </span>
   );
 }

@@ -29,21 +29,15 @@ function getMovementFolio(mv?: Ronda["movimiento"] | RondaInfo["movimiento"] | n
 }
 
 function TerminalServiceChip({
-  active,
   icon,
   text,
 }: {
-  active: boolean;
   icon: string;
   text: string;
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] border ${
-        active
-          ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-400/50 dark:bg-emerald-400/10 dark:text-emerald-200"
-          : "border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
-      }`}
+      className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 py-1 text-[10px] text-emerald-700 dark:border-emerald-400/50 dark:bg-emerald-400/10 dark:text-emerald-200"
     >
       {icon} {text}
     </span>
@@ -190,10 +184,13 @@ export function TerminalQueueTable({
         width: 170,
         render: (_value, ronda) => {
           const mv = info[ronda.id]?.movimiento ?? ronda.movimiento;
+          const lavado = Boolean(mv?.lavado);
+          const torno = Boolean(mv?.torno);
           return (
             <div className="flex flex-wrap gap-1 font-mono">
-              <TerminalServiceChip active={Boolean(mv?.lavado)} icon="💧" text="Lavado" />
-              <TerminalServiceChip active={Boolean(mv?.torno)} icon="⚙️" text="Torno" />
+              {lavado ? <TerminalServiceChip icon="💧" text="Lavado" /> : null}
+              {torno ? <TerminalServiceChip icon="⚙️" text="Torno" /> : null}
+              {!lavado && !torno ? "—" : null}
             </div>
           );
         },
