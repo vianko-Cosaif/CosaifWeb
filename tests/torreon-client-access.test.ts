@@ -93,6 +93,8 @@ describe.each(["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"] as const)(
     it("does not allow starting, finishing or crossing domains through generic proxies", () => {
       const auth = session(role);
       expect(canForwardApiRequest(auth, "/torreon/movimientos", "POST")).toBe(true);
+      expect(canForwardApiRequest(auth, "/torreon/movimientos/4/edicion", "GET")).toBe(true);
+      expect(canForwardApiRequest(auth, "/torreon/movimientos/4/edicion", "PATCH")).toBe(true);
       for (const [path, verb] of [
         ["/torreon/arrastres", "GET"],
         ["/torreon/arrastres", "POST"],

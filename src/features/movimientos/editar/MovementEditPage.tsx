@@ -14,6 +14,7 @@ export default async function MovementEditPage({ searchParams }: { searchParams:
   const simulation = isTrainingMovementId(id);
   if (training === '1' && !simulation) redirect(back + '?trainingError=invalid-sim-id');
   if (!simulation && !hasPermission(session.authorization, PERMISSIONS.MOVEMENTS_EDIT)) redirect(session.authorization.capabilities.home);
-  const movementSource = !simulation && (source === 'torreon' || isTorreonLocalidadId(session.localidadId)) ? 'torreon' : 'cosaif';
+  const movementSource = simulation ? 'cosaif' : source === 'torreon' || source === 'cosaif'
+    ? source : isTorreonLocalidadId(session.localidadId) ? 'torreon' : 'cosaif';
   return <section className="mx-auto w-full max-w-7xl px-2 py-4 sm:p-6"><EditarMovimiento movimientoId={id} initialRole={session.role} source={movementSource}/></section>;
 }

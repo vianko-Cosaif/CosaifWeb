@@ -1,4 +1,23 @@
 import type { VerifiedSession } from "@/lib/sessionToken";
+import type { AuthorizationProfile } from "@/lib/accessControl";
+
+const EDITABLE_MOVEMENT_STATES = new Set(["SOLICITADO", "ASIGNADO", "ESPERA", "MODIFICADO", "PENDIENTE", "BLOQUEADO"]);
+export function isEditableMovementState(state?: string | null) {
+  return EDITABLE_MOVEMENT_STATES.has(String(state ?? "").trim().toUpperCase());
+}
+
+/** Client admins/coordinators may manage their company across permitted localities. */
+export function clientOwnsMovement(
+  authorization: AuthorizationProfile,
+  movement: { empresaId?: unknown; localidadId?: unknown },
+) {
+  const { empresaId, localidadId, mode } = authorization.scope;
+  if (!empresaId || positiveId(movement.empresaId) !== empresaId) return false;
+  if (authorization.role === "CLIENTE" || mode === "COMPANY_LOCALITY" || mode === "LOCALITY") {
+    return Boolean(localidadId && positiveId(movement.localidadId) === localidadId);
+  }
+  return mode === "COMPANY" || mode === "GLOBAL";
+}
 
 export type MovementReadContext = "current-list" | "history-list" | "detail";
 export class MovementScopeError extends Error {

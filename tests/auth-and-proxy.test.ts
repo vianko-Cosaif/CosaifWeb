@@ -12,7 +12,14 @@ describe('authorization boundaries', () => {
     const operator = profile('COORDINADOR', [PERMISSIONS.MOVEMENTS_OPERATE]);
     expect(canForwardApiRequest(operator, '/movimientos/4/edicion', 'PATCH')).toBe(false);
     expect(canForwardApiRequest(operator, '/movimientos/4/cancelar', 'PATCH')).toBe(false);
-    expect(canForwardApiRequest(profile('COORDINADOR', [PERMISSIONS.MOVEMENTS_EDIT]), '/movimientos/4/edicion', 'PATCH')).toBe(true);
+    expect(canForwardApiRequest(profile('CLIENTE', [PERMISSIONS.MOVEMENTS_EDIT]), '/movimientos/4/edicion', 'PATCH')).toBe(true);
+  });
+  it.each(['COORDINADOR', 'SUPERVISOR'] as const)('rejects %s editing even with a stale session permission', role => {
+    const stale = profile(role, Object.values(PERMISSIONS));
+    for (const path of ['/movimientos/4/edicion', '/torreon/movimientos/4/edicion', '/rondas/intercambiar-movimientos', '/torreon/rondas/movimientos/orden']) {
+      expect(canForwardApiRequest(stale, path, 'PATCH')).toBe(false);
+    }
+    expect(canForwardApiRequest(stale, '/movimientos/4/iniciar', 'PATCH')).toBe(true);
   });
   it('denies unrecognized paths and access to commercial actions without the commercial role', () => {
     const client = profile('CLIENTE', Object.values(PERMISSIONS));

@@ -361,7 +361,7 @@ export default function RailQueueBoard({
           >
             <RefreshCw className={refreshing ? "w-4 h-4 animate-spin" : "w-4 h-4"} />
           </button>
-          {activeEntity === "movimientos" && empresaId ? (
+          {activeEntity === "movimientos" && empresaId && ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"].includes(String(role)) ? (
             <GuidedTarget id="dashboard-edit-rounds" className="inline-flex">
               <button
                 onClick={() => setOpenEditor(true)}

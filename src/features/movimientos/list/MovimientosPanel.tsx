@@ -19,6 +19,7 @@ import ModuleHeader from "@/components/ui/ModuleHeader";
 import LoadingState from "@/components/ui/LoadingState";
 import { canViewMovementDuration } from "@/features/movimientos/table";
 import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
+import { clientOwnsMovement, isEditableMovementState } from "@/lib/auth/movementScope";
 
 const Tabla = dynamic(() => import("./Tabla"), {
   loading: () => (
@@ -356,12 +357,12 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
   const puedeEditarFila = useCallback(
     (movement: Movement) => {
       if (trainingTour.isTrainingMovement(movement.id)) return trainingTour.active;
-      if (!canEdit) return false;
+      if (!canEdit || ambito !== "actuales" || movement.finalizado || !isEditableMovementState(movement.estado)) return false;
       if (["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"].includes(String(rol).toUpperCase()))
-        return movement.empresaId === userEmpresaId && movement.localidadId === userLocalidadId;
+        return clientOwnsMovement(authorization, movement);
       return true;
     },
-    [trainingTour, canEdit, rol, userEmpresaId, userLocalidadId],
+    [trainingTour, canEdit, rol, authorization, ambito],
   );
 
   const handleEditar = useCallback(
@@ -385,7 +386,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
         CLIENTE: "/cliente",
       };
       const base = BASE[String(rol).toUpperCase()] ?? "/cliente";
-      router.push(`${base}/editar?id=${id}${isTorreonLocalidadId(row.localidadId) ? '&source=torreon' : ''}`);
+      router.push(`${base}/editar?id=${id}&source=${isTorreonLocalidadId(row.localidadId) ? 'torreon' : 'cosaif'}`);
     },
     [router, rol, trainingTour, filas, puedeEditarFila],
   );

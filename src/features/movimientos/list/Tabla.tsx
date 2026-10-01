@@ -1,4 +1,5 @@
 "use client";
+import { isEditableMovementState } from "@/lib/auth/movementScope";
 import TornoMeasuresDialog from "@/features/torno-measures/TornoMeasuresDialog";
 
 import React, { useState, useMemo, useCallback, memo } from "react";
@@ -76,16 +77,7 @@ function TablaInner({
   const isDesktop = useMediaQuery("(min-width: 1152px)");
   const clienteSoloIds = isClientLikeRole(rol);
   const puedeVerDuracion = mostrarDuracion && canViewMovementDuration(rol);
-  const NO_EDIT_STATES = useMemo(() => new Set(["EN_PROCESO", "CONCLUIDO", "CANCELADO"]), []);
-  const puedeEditarMovimiento = useCallback(
-    (estado?: string) => {
-      const key = String(estado || "")
-        .trim()
-        .toUpperCase();
-      return key ? !NO_EDIT_STATES.has(key) : true;
-    },
-    [NO_EDIT_STATES],
-  );
+  const puedeEditarMovimiento = isEditableMovementState;
   const showEditColumn =
     Boolean(onEditar) &&
     filas.some((m) => puedeEditarMovimiento(m.estado) && (!puedeEditarFila || puedeEditarFila(m)));

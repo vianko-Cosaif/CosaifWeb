@@ -95,9 +95,9 @@ export function mapTorreonRondasToOut(
       const bloqueado =
         String(detail.estado ?? "").toUpperCase() === "BLOQUEADO" ||
         String(incidente?.estado ?? "").toUpperCase() === "ABIERTO";
-      const estado = bloqueado
-        ? "BLOQUEADO"
-        : String(movimiento.estado ?? (detail.estado === "ACTIVO" ? "EN_PROCESO" : "SOLICITADO")).toUpperCase();
+      const estadoMovimiento = String(movimiento.estado ?? (detail.estado === "ACTIVO" ? "EN_PROCESO" : "SOLICITADO")).toUpperCase();
+      const estado = bloqueado && ["SOLICITADO", "ASIGNADO"].includes(estadoMovimiento)
+        ? "BLOQUEADO" : estadoMovimiento;
       const locomotiveNumber = movimiento.locomotiveNumber ?? null;
       const empresaNombre =
         typeof movimiento.empresaNombreSnapshot === "string" &&
