@@ -1,55 +1,96 @@
+import { MovementScopeError, scopePrivateClientMovementRead } from "@/lib/auth/movementScope";
+import { buildUpstreamHeaders, fetchUpstream, getErrorStatus, upstreamResponseHeaders } from "@/lib/server/upstream";
 // app/api/passthrough/[...path]/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { normalizeHttpOrigin } from "@/lib/serverOrigin";
+import { containsTrainingReservedId } from "@/lib/routePolicy";
+import { getVerifiedSession } from "@/lib/server/session";
+import { rejectCrossSiteMutation } from "@/lib/server/requestSecurity";
+import { canForwardApiRequest } from "@/lib/server/requestAuthorization";
 
-const API_BASE = process.env.API_BASE || process.env.API_URL || "";
+const API_BASE = normalizeHttpOrigin(
+  process.env.API_BASE ||
+  process.env.API_URL ||
+  process.env.API_ORIGIN ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  ""
+);
 const JWT_NAME = process.env.JWT_COOKIE_NAME || "token";
+type RouteCtx = { params: Promise<{ path: string[] }> };
 
 function targetUrl(base: string, path: string[], search: string) {
-  const u = new URL(base);
+  const cleanBase = base.trim();
+  if (!cleanBase) throw new Error("Falta configurar API_ORIGIN, API_BASE o API_URL");
+  const u = new URL(cleanBase);
   u.pathname = `${u.pathname.replace(/\/$/, "")}/${path.join("/")}`;
   u.search = search;
   return u.toString();
 }
 
-async function forward(req: NextRequest, ctx: { params: { path: string[] } | Promise<{ path: string[] }> }) {
-  const { path } = await Promise.resolve(ctx.params); // <- clave
-  const url = targetUrl(API_BASE, path, req.nextUrl.search);
+async function forward(req: NextRequest, ctx: RouteCtx) {
+  const crossSite = rejectCrossSiteMutation(req);
+  if (crossSite) return crossSite;
+  const { path } = await ctx.params; // <- clave
+  if (!path.length || path.some((segment) => !segment || segment === "." || segment === ".." || segment.includes("/"))) {
+    return NextResponse.json({ message: "Ruta inválida" }, { status: 400 });
+  }
+  const hasBody = !["GET", "HEAD"].includes(req.method);
+  const isRealtimeStream = req.method === "GET" && path.join("/") === "realtime/events";
+  const jsonBody = hasBody && (req.headers.get("content-type") || "").includes("application/json")
+    ? await req.clone().json().catch(() => null)
+    : null;
+  if (containsTrainingReservedId(path) || containsTrainingReservedId(req.nextUrl.search) || containsTrainingReservedId(jsonBody)) {
+    return NextResponse.json(
+      { message: "Los registros SIM sólo existen dentro de la capacitación." },
+      { status: 409 }
+    );
+  }
+  let url: string;
+  try {
+    url = targetUrl(API_BASE, path, req.nextUrl.search);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "URL de API invalida";
+    return NextResponse.json({ message }, { status: 503 });
+  }
 
-  const headers = new Headers(req.headers);
-  headers.delete("host");
-  headers.delete("content-length");
-
-  // Levanta Bearer desde cookie si falta
+  const session = await getVerifiedSession();
   const token = req.cookies.get(JWT_NAME)?.value;
-  if (token && !headers.has("authorization")) headers.set("authorization", `Bearer ${token}`);
+  if (!session || !token) return NextResponse.json({ message: "No autenticado" }, { status: 401 });
+  if (!canForwardApiRequest(session.authorization, `/${path.join("/")}`, req.method)) {
+    return NextResponse.json({ message: "Esta acción no está habilitada para tu perfil." }, { status: 403 });
+  }
 
-  // Reenvía cookies del cliente al backend
-  const cookie = req.headers.get("cookie");
-  if (cookie) headers.set("cookie", cookie);
+  try {
+    const scopedUrl = new URL(url);
+    scopePrivateClientMovementRead(session, `/${path.join("/")}`, req.method, scopedUrl.searchParams);
+    url = scopedUrl.toString();
+  } catch (error) {
+    if (error instanceof MovementScopeError) return NextResponse.json({ message: error.message }, { status: error.status });
+    throw error;
+  }
+
+  const headers = buildUpstreamHeaders(req, token);
 
   const body = req.method === "GET" || req.method === "HEAD" ? undefined : Buffer.from(await req.arrayBuffer());
 
-  const upstream = await fetch(url, { method: req.method, headers, body, redirect: "manual" });
+  let upstream: Response;
+  try {
+    upstream = await fetchUpstream(url, { method: req.method, headers, body }, req.signal, isRealtimeStream);
+  } catch (error) {
+    return NextResponse.json({ message: "Servicio no disponible" }, { status: getErrorStatus(error) });
+  }
 
-  const resp = new NextResponse(upstream.body, { status: upstream.status });
-  upstream.headers.forEach((v, k) => {
-    if (k.toLowerCase() !== "content-encoding") resp.headers.set(k, v);
-  });
-
-  // Si el backend fija dominio en la cookie, quítalo para tu dominio actual
-  const setCookie = upstream.headers.get("set-cookie");
-  if (setCookie) resp.headers.set("set-cookie", setCookie.replace(/; *Domain=[^;]+/gi, ""));
-
-  return resp;
+  return new NextResponse(upstream.body, { status: upstream.status, headers: upstreamResponseHeaders(upstream, isRealtimeStream) });
 }
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 // Exporta todos los verbos usando el mismo forward
-export async function GET(req: NextRequest, ctx: { params: any })  { return forward(req, ctx); }
-export async function POST(req: NextRequest, ctx: { params: any }) { return forward(req, ctx); }
-export async function PUT(req: NextRequest, ctx: { params: any })  { return forward(req, ctx); }
-export async function PATCH(req: NextRequest, ctx: { params: any }){ return forward(req, ctx); }
-export async function DELETE(req: NextRequest, ctx: { params: any }){ return forward(req, ctx); }
-export async function OPTIONS(req: NextRequest, ctx: { params: any }){ return forward(req, ctx); }
-export async function HEAD(req: NextRequest, ctx: { params: any }) { return forward(req, ctx); }
+export async function GET(req: NextRequest, ctx: RouteCtx)  { return forward(req, ctx); }
+export async function POST(req: NextRequest, ctx: RouteCtx) { return forward(req, ctx); }
+export async function PUT(req: NextRequest, ctx: RouteCtx)  { return forward(req, ctx); }
+export async function PATCH(req: NextRequest, ctx: RouteCtx){ return forward(req, ctx); }
+export async function DELETE(req: NextRequest, ctx: RouteCtx){ return forward(req, ctx); }
+export async function OPTIONS() { return new NextResponse(null, { status: 204 }); }
+export async function HEAD(req: NextRequest, ctx: RouteCtx) { return forward(req, ctx); }

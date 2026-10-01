@@ -1,42 +1,77 @@
-// src/app/layout.tsx
+import "antd/dist/reset.css";
+import "react-data-grid/lib/styles.css";
+import "driver.js/dist/driver.css";
 import "./globals.scss";
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
 import { initThemeSSRScript } from "@/lib/theme";
+import AdaptiveMode from "@/components/layout/AdaptiveMode";
+import PwaInstallPrompt from "@/components/layout/PwaInstallPrompt";
+import FirebaseNotificationPrompt from "@/components/layout/FirebaseNotificationPrompt";
+import TrainingBoundary from "@/components/layout/TrainingBoundary";
+import WebVitalsReporter from "@/components/performance/WebVitalsReporter";
 
 export const metadata: Metadata = {
-  title: "Cosaif",
+  title: {
+    default: "Cosaif",
+    template: "%s | Cosaif",
+  },
   description: "Operación ferroviaria sin fricción",
+  applicationName: "Cosaif",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Cosaif",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  icons: {
+    icon: [
+      { url: "/icons/cosaif-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/cosaif-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-title": "COSAIF",
+    "apple-mobile-web-app-status-bar-style": "default",
+    "msapplication-TileColor": "#0f172a",
+    "msapplication-TileImage": "/icons/cosaif-192.png",
+  },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0B1220" },
-    { color: "#ffffff" },
-  ],
+  viewportFit: "cover",
+  colorScheme: "light dark",
+  themeColor: [{ media: "(prefers-color-scheme: dark)", color: "#0B1220" }, { color: "#f8fafc" }],
 };
-
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es" >
+    <html lang="es-MX" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
-        {/* Evita FOUC de tema antes de hidratar */}
         <script dangerouslySetInnerHTML={{ __html: initThemeSSRScript() }} />
       </head>
-      <body className="min-h-svh bg-white text-slate-900 antialiased selection:bg-sky-200/60 dark:bg-slate-950 dark:text-slate-100 dark:selection:bg-sky-600/40">
-        <a
-          href="#main"
-          className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:shadow"
-        >
-          Saltar al contenido
-        </a>
+      <body className="min-h-svh antialiased">
+        <TrainingBoundary>
+          <AdaptiveMode />
+          <WebVitalsReporter />
+          <a
+            href="#main"
+            className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:shadow"
+          >
+            Saltar al contenido
+          </a>
 
-        {/* Theme Toggle global - solo se muestra fuera de rutas /cliente */}
-
-        <main id="main">{children}</main>
+          {children}
+          <FirebaseNotificationPrompt />
+          <PwaInstallPrompt />
+        </TrainingBoundary>
       </body>
     </html>
   );

@@ -1,0 +1,281 @@
+{
+  "before": {
+    "createdAt": "2026-09-08T16:59:02.455Z",
+    "buildId": "hTi2cU6RzmjBDI3QdWBsx",
+    "measurement": "Production build client-reference entry chunks, uncompressed bytes and synthetic gzip. Shared chunks are present in several entries; not measured network transfer.",
+    "entries": [
+      {
+        "module": "features/capacitacion/ClientMovementGuide.tsx",
+        "chunks": [
+          {
+            "file": "static/chunks/2600-7e7e38e6e3c13e1f.js",
+            "bytes": 42642,
+            "gzipBytes": 13574
+          },
+          {
+            "file": "static/chunks/3494-ecb1344903147300.js",
+            "bytes": 10204,
+            "gzipBytes": 3684
+          },
+          {
+            "file": "static/chunks/app/layout-40799be27552640a.js",
+            "bytes": 69477,
+            "gzipBytes": 22171
+          }
+        ],
+        "bytes": 122323,
+        "gzipBytes": 39429
+      },
+      {
+        "module": "app/administrador/layout.tsx",
+        "chunks": [
+          {
+            "file": "static/chunks/1819-7355b14e98409118.js",
+            "bytes": 16861,
+            "gzipBytes": 6274
+          },
+          {
+            "file": "static/chunks/9500-bc05e823188571d2.js",
+            "bytes": 8047,
+            "gzipBytes": 2553
+          },
+          {
+            "file": "static/chunks/2600-7e7e38e6e3c13e1f.js",
+            "bytes": 42642,
+            "gzipBytes": 13574
+          },
+          {
+            "file": "static/chunks/8706-a9c891bcbd5e3358.js",
+            "bytes": 8361,
+            "gzipBytes": 3251
+          },
+          {
+            "file": "static/chunks/5409-16b7fa4872f91fd5.js",
+            "bytes": 16895,
+            "gzipBytes": 5885
+          },
+          {
+            "file": "static/chunks/8777-58cf0550b5e2501b.js",
+            "bytes": 25547,
+            "gzipBytes": 7768
+          },
+          {
+            "file": "static/chunks/4900-c04d38e8832a371d.js",
+            "bytes": 32120,
+            "gzipBytes": 10614
+          },
+          {
+            "file": "static/chunks/app/administrador/layout-353a56c69e4191b5.js",
+            "bytes": 5873,
+            "gzipBytes": 2256
+          }
+        ],
+        "bytes": 156346,
+        "gzipBytes": 52175
+      },
+      {
+        "module": "features/rail-queue/administrador/RailQueueBoardAdmin.tsx",
+        "chunks": [
+          {
+            "file": "static/chunks/5940-1ddb574ecd1b2d6f.js",
+            "bytes": 113570,
+            "gzipBytes": 37310
+          },
+          {
+            "file": "static/chunks/4702-12a7b8deffcffea7.js",
+            "bytes": 16376,
+            "gzipBytes": 5126
+          },
+          {
+            "file": "static/chunks/4892-cc12436b5ccdef6d.js",
+            "bytes": 576759,
+            "gzipBytes": 182786
+          },
+          {
+            "file": "static/chunks/7601-ba606f2b6225a358.js",
+            "bytes": 48090,
+            "gzipBytes": 14717
+          },
+          {
+            "file": "static/chunks/8706-a9c891bcbd5e3358.js",
+            "bytes": 8361,
+            "gzipBytes": 3251
+          },
+          {
+            "file": "static/chunks/3346-74feb9938c6bc066.js",
+            "bytes": 21979,
+            "gzipBytes": 6253
+          },
+          {
+            "file": "static/chunks/3895-4b0fff35f5b6c5e6.js",
+            "bytes": 13038,
+            "gzipBytes": 4649
+          },
+          {
+            "file": "static/chunks/5701-0d6f6ab7b55d6c65.js",
+            "bytes": 12037,
+            "gzipBytes": 4952
+          },
+          {
+            "file": "static/chunks/app/administrador/page-75ce2e3d79bf4db2.js",
+            "bytes": 50020,
+            "gzipBytes": 14579
+          }
+        ],
+        "bytes": 860230,
+        "gzipBytes": 273623
+      }
+    ]
+  },
+  "after": {
+    "createdAt": "2026-09-08T17:33:45.924Z",
+    "buildId": "PhZYnaC5r6S9jk8naXu1l",
+    "measurement": "Production build client-reference entry chunks, uncompressed bytes and synthetic gzip. Shared chunks are present in several entries; not measured network transfer.",
+    "comparison": "Same production client-reference entries and gzipSync settings. Files are unique within each entry; shared files across entries are intentionally not added into a combined total.",
+    "entries": [
+      {
+        "module": "features/capacitacion/ClientMovementGuide.tsx",
+        "chunks": [
+          {
+            "file": "static/chunks/832-31dfffe0a65901b1.js",
+            "bytes": 21465,
+            "gzipBytes": 7874
+          },
+          {
+            "file": "static/chunks/3494-ecb1344903147300.js",
+            "bytes": 10204,
+            "gzipBytes": 3684
+          },
+          {
+            "file": "static/chunks/app/layout-69b93e41bf8801ef.js",
+            "bytes": 39142,
+            "gzipBytes": 13113
+          }
+        ],
+        "bytes": 70811,
+        "gzipBytes": 24671,
+        "baseline": {
+          "bytes": 122323,
+          "gzipBytes": 39429
+        },
+        "reduction": {
+          "bytes": 51512,
+          "percent": 42.11,
+          "gzipBytes": 14758,
+          "gzipPercent": 37.43
+        }
+      },
+      {
+        "module": "app/administrador/layout.tsx",
+        "chunks": [
+          {
+            "file": "static/chunks/8500-01a63dafd809e317.js",
+            "bytes": 8665,
+            "gzipBytes": 3564
+          },
+          {
+            "file": "static/chunks/1819-64f33bf8dd7e2bff.js",
+            "bytes": 16110,
+            "gzipBytes": 6130
+          },
+          {
+            "file": "static/chunks/9500-bc05e823188571d2.js",
+            "bytes": 8047,
+            "gzipBytes": 2553
+          },
+          {
+            "file": "static/chunks/832-31dfffe0a65901b1.js",
+            "bytes": 21465,
+            "gzipBytes": 7874
+          },
+          {
+            "file": "static/chunks/8706-d7c07891f6f55a24.js",
+            "bytes": 8874,
+            "gzipBytes": 3376
+          },
+          {
+            "file": "static/chunks/5409-5cdf39e0a35b0417.js",
+            "bytes": 16900,
+            "gzipBytes": 5889
+          },
+          {
+            "file": "static/chunks/2669-b6cafa07df9ad268.js",
+            "bytes": 25982,
+            "gzipBytes": 7922
+          },
+          {
+            "file": "static/chunks/4900-0b2758d611300016.js",
+            "bytes": 31152,
+            "gzipBytes": 10419
+          },
+          {
+            "file": "static/chunks/app/administrador/layout-9bb675f41a74c47f.js",
+            "bytes": 5867,
+            "gzipBytes": 2254
+          }
+        ],
+        "bytes": 143062,
+        "gzipBytes": 49981,
+        "baseline": {
+          "bytes": 156346,
+          "gzipBytes": 52175
+        },
+        "reduction": {
+          "bytes": 13284,
+          "percent": 8.5,
+          "gzipBytes": 2194,
+          "gzipPercent": 4.21
+        }
+      },
+      {
+        "module": "features/rail-queue/administrador/RailQueueBoardAdmin.tsx",
+        "chunks": [
+          {
+            "file": "static/chunks/3982-8ccb60c07007dfd7.js",
+            "bytes": 7163,
+            "gzipBytes": 2763
+          },
+          {
+            "file": "static/chunks/8706-d7c07891f6f55a24.js",
+            "bytes": 8874,
+            "gzipBytes": 3376
+          },
+          {
+            "file": "static/chunks/app/administrador/page-9ece3ac24a6cb694.js",
+            "bytes": 58418,
+            "gzipBytes": 17191
+          }
+        ],
+        "bytes": 74455,
+        "gzipBytes": 23330,
+        "baseline": {
+          "bytes": 860230,
+          "gzipBytes": 273623
+        },
+        "reduction": {
+          "bytes": 785775,
+          "percent": 91.34,
+          "gzipBytes": 250293,
+          "gzipPercent": 91.47
+        }
+      }
+    ],
+    "administratorInitialBundleVerification": {
+      "chunkCount": 3,
+      "deferredMeasuresViewerFiles": [
+        "static/chunks/4702-12a7b8deffcffea7.js",
+        "static/chunks/3346-74feb9938c6bc066.js",
+        "static/chunks/6651.8d85d858dc395860.js"
+      ],
+      "measuresViewerFilesInInitialEntry": [],
+      "knownAntdRuntimeFiles": [
+        {
+          "file": "static/chunks/4892.cc12436b5ccdef6d.js",
+          "bytes": 576759,
+          "inInitialEntry": false
+        }
+      ],
+      "note": "The global layout still imports Ant Design reset CSS. This check concerns the Ant Design runtime chunk and the administrator component entry, not all assets used by the app."
+    }
+  }
+}

@@ -86,10 +86,11 @@ export function setTheme(mode: ThemeMode): void {
  */
 export function onThemeChange(cb: (mode: ThemeMode) => void): () => void {
   const handler = (e: StorageEvent) => {
-    if (e.key === THEME_STORAGE_KEY && e.newValue) {
-      const v = e.newValue === "dark" ? "dark" : "light";
-      cb(v);
-    }
+    if (e.key !== THEME_STORAGE_KEY && e.key !== null) return;
+    const mode = e.newValue === "dark" || e.newValue === "light"
+      ? e.newValue
+      : getPreferredThemeFromMedia();
+    cb(mode);
   };
   if (typeof window !== "undefined") window.addEventListener("storage", handler);
   return () => {
@@ -112,5 +113,7 @@ export function isDark(): boolean {
  * Úsalo en `<head>` con `dangerouslySetInnerHTML`.
  */
 export function initThemeSSRScript(storageKey = THEME_STORAGE_KEY): string {
-  return `(function(){try{var k='${storageKey}';var t=localStorage.getItem(k);var m=window.matchMedia&&window.matchMedia('${MEDIA_QUERY}').matches;var dark=t?t==='dark':m;document.documentElement.classList.toggle('dark',dark);}catch(e){}})();`;
+  // Match getInitialTheme: accept only known values, and fall back to the OS
+  // even when reading storage fails. A saved choice needs no media query.
+  return `(function(){var t=null;try{t=window.localStorage.getItem(${JSON.stringify(storageKey)});}catch(e){}var dark=t==='dark';if(t!=='dark'&&t!=='light'){try{dark=window.matchMedia(${JSON.stringify(MEDIA_QUERY)}).matches;}catch(e){}}try{document.documentElement.classList.toggle('dark',dark);}catch(e){}})();`;
 }

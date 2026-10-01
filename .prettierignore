@@ -1,0 +1,12 @@
+.next
+.next-dev
+.next-quality
+test-results
+playwright-report
+build
+coverage
+node_modules
+outputs
+package-lock.json
+public/sw.js
+src/features/capacitacion/GuidedManualAtom.shared.json

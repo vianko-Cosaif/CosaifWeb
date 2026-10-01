@@ -1,0 +1,408 @@
+{
+  "date": "2026-09-09",
+  "beforeCapturedAt": "2026-09-09T16:57:44.248681+00:00",
+  "afterCapturedAt": "2026-09-09T17:06:10.718431+00:00",
+  "method": "Production client-reference entry chunks, shared chunks included per entry; uncompressed and synthetic gzip bytes, not network latency.",
+  "limitations": [
+    "Entry chunks only, not total route bytes. Lazy modules may be requested later.",
+    "Shared files are included per entry; do not sum rows.",
+    "Gzip is synthetic. These reductions are not navigation speed percentages.",
+    "Production authenticated timing was not completed: upstream returned 401 for expired session."
+  ],
+  "validation": {
+    "command": "npm run check",
+    "testFiles": 44,
+    "testsPassed": 348,
+    "lintErrors": 0,
+    "lintWarnings": 7,
+    "typecheck": "passed",
+    "productionBuild": "passed",
+    "afterVisualAdjustment": [
+      "focused menu lint passed",
+      "production build passed"
+    ]
+  },
+  "developmentObservation": {
+    "path": "/cliente/incidentes",
+    "at": "2026-09-09T16:59:24.536Z",
+    "handleRequestMs": 4234.5,
+    "ensurePageMs": 3928.7,
+    "source": "Next development trace; server duration only, includes compilation"
+  },
+  "entries": [
+    {
+      "module": "src/app/coordinador/page.tsx",
+      "before": {
+        "bytes": 59574,
+        "gzipBytes": 19277,
+        "chunks": [
+          "static/chunks/7601-ba606f2b6225a358.js",
+          "static/chunks/app/coordinador/page-9fbc82f93a82eccc.js"
+        ]
+      },
+      "after": {
+        "bytes": 59574,
+        "gzipBytes": 19278,
+        "chunks": [
+          "static/chunks/7601-ba606f2b6225a358.js",
+          "static/chunks/app/coordinador/page-c90c386628f334bd.js"
+        ]
+      },
+      "reductionPercent": 0.0
+    },
+    {
+      "module": "src/features/comercial/components/CommercialDataProvider.tsx",
+      "before": {
+        "bytes": 140332,
+        "gzipBytes": 49137,
+        "chunks": [
+          "static/chunks/1819-64f33bf8dd7e2bff.js",
+          "static/chunks/2669-b6cafa07df9ad268.js",
+          "static/chunks/4900-a893ffe3a6e192cd.js",
+          "static/chunks/5409-5cdf39e0a35b0417.js",
+          "static/chunks/832-31dfffe0a65901b1.js",
+          "static/chunks/8500-01a63dafd809e317.js",
+          "static/chunks/8706-d7c07891f6f55a24.js",
+          "static/chunks/9500-bc05e823188571d2.js",
+          "static/chunks/app/comercial/layout-266b4b3b6ac6113a.js"
+        ]
+      },
+      "after": {
+        "bytes": 140212,
+        "gzipBytes": 49028,
+        "chunks": [
+          "static/chunks/1819-64f33bf8dd7e2bff.js",
+          "static/chunks/2669-50739d711a58d3f6.js",
+          "static/chunks/4900-338478aaa56ca0e5.js",
+          "static/chunks/5409-322da726152f3fe6.js",
+          "static/chunks/8026-2b0e0ccd3eef2ca7.js",
+          "static/chunks/832-31dfffe0a65901b1.js",
+          "static/chunks/8500-01a63dafd809e317.js",
+          "static/chunks/8706-d7c07891f6f55a24.js",
+          "static/chunks/app/comercial/layout-120bb3ac3ff3a6d8.js"
+        ]
+      },
+      "reductionPercent": 0.09
+    },
+    {
+      "module": "src/features/incidentes/operacion/IncidenteController.tsx",
+      "before": {
+        "bytes": 218200,
+        "gzipBytes": 69323,
+        "chunks": [
+          "static/chunks/1047-05866742eadd2a5b.js",
+          "static/chunks/1931-fa5c396f1695da6a.js",
+          "static/chunks/2196-c8f8453f33a1262a.js",
+          "static/chunks/3494-58a9c8b02ff47dcd.js",
+          "static/chunks/3975-3495320bbf215abb.js",
+          "static/chunks/4065-8dedd4204a0289c4.js",
+          "static/chunks/6718-2b4ce96570db1792.js",
+          "static/chunks/6882-46ad02289ec75abb.js",
+          "static/chunks/8070-7a00a26ba265432c.js",
+          "static/chunks/832-31dfffe0a65901b1.js",
+          "static/chunks/8500-01a63dafd809e317.js",
+          "static/chunks/8706-d7c07891f6f55a24.js",
+          "static/chunks/944-a972f6777ced81d0.js",
+          "static/chunks/app/coordinador/incidentes/page-72d455a3ef0d79d2.js"
+        ]
+      },
+      "after": {
+        "bytes": 185411,
+        "gzipBytes": 60936,
+        "chunks": [
+          "static/chunks/1931-fd4e3541710d9e62.js",
+          "static/chunks/3494-58a9c8b02ff47dcd.js",
+          "static/chunks/6718-9bd509440d5c07c3.js",
+          "static/chunks/781-ef86fb735fe46985.js",
+          "static/chunks/8070-7a00a26ba265432c.js",
+          "static/chunks/832-31dfffe0a65901b1.js",
+          "static/chunks/8500-01a63dafd809e317.js",
+          "static/chunks/8706-d7c07891f6f55a24.js",
+          "static/chunks/9077-c8377f53c267069a.js",
+          "static/chunks/944-a972f6777ced81d0.js",
+          "static/chunks/app/coordinador/incidentes/page-05c245c2ac365863.js"
+        ]
+      },
+      "reductionPercent": 15.03
+    },
+    {
+      "module": "src/app/supervisor/page.tsx",
+      "before": {
+        "bytes": 286144,
+        "gzipBytes": 95179,
+        "chunks": [
+          "static/chunks/2386-833492f8afa3df49.js",
+          "static/chunks/3494-58a9c8b02ff47dcd.js",
+          "static/chunks/5409-5cdf39e0a35b0417.js",
+          "static/chunks/5940-1ddb574ecd1b2d6f.js",
+          "static/chunks/7601-ba606f2b6225a358.js",
+          "static/chunks/832-31dfffe0a65901b1.js",
+          "static/chunks/8500-01a63dafd809e317.js",
+          "static/chunks/8706-d7c07891f6f55a24.js",
+          "static/chunks/app/supervisor/page-c99595c781127812.js"
+        ]
+      },
+      "after": {
+        "bytes": 286451,
+        "gzipBytes": 95208,
+        "chunks": [
+          "static/chunks/2386-a16cfef428afa974.js",
+          "static/chunks/3494-58a9c8b02ff47dcd.js",
+          "static/chunks/5409-322da726152f3fe6.js",
+          "static/chunks/7601-ba606f2b6225a358.js",
+          "static/chunks/7900-a053eca0cf0c996b.js",
+          "static/chunks/832-31dfffe0a65901b1.js",
+          "static/chunks/8500-01a63dafd809e317.js",
+          "static/chunks/8706-d7c07891f6f55a24.js",
+          "static/chunks/app/supervisor/page-24819e1d8db6c3ad.js"
+        ]
+      },
+      "reductionPercent": -0.11
+    },
+    {
+      "module": "src/features/torno/components/TornoModule.tsx",
+      "before": {
+        "bytes": 194020,
+        "gzipBytes": 48095,
+        "chunks": [
+          "static/chunks/423-53c580faaf9d2e3b.js",
+          "static/chunks/5513-9b196b8800d7273b.js",
+          "static/chunks/832-31dfffe0a65901b1.js",
+          "static/chunks/9481-ccefc23ae2b0cf59.js",
+          "static/chunks/app/coordinador/torno/page-d1c5af865e30e344.js"
+        ]
+      },
+      "after": {
+        "bytes": 88221,
+        "gzipBytes": 27630,
+        "chunks": [
+          "static/chunks/5513-d20d0ef873925d65.js",
+          "static/chunks/781-ef86fb735fe46985.js",
+          "static/chunks/832-31dfffe0a65901b1.js",
+          "static/chunks/app/coordinador/torno/page-950fafb204bf6b04.js"
+        ]
+      },
+      "reductionPercent": 54.53
+    },
+    {
+      "module": "src/features/comercial/pages/reporteria.tsx",
+      "before": {
+        "bytes": 115920,
+        "gzipBytes": 35572,
+        "chunks": [
+          "static/chunks/5890-5b46389eecd5a711.js",
+          "static/chunks/944-a972f6777ced81d0.js",
+          "static/chunks/9724-40af4a4d4bbc1ae7.js",
+          "static/chunks/app/comercial/reporteria/page-d588daf6979e1de5.js"
+        ]
+      },
+      "after": {
+        "bytes": 115910,
+        "gzipBytes": 35614,
+        "chunks": [
+          "static/chunks/5890-29b54b06eb074983.js",
+          "static/chunks/944-a972f6777ced81d0.js",
+          "static/chunks/9724-06aa3e12dd06e107.js",
+          "static/chunks/app/comercial/reporteria/page-672c84a02f9ac4f7.js"
+        ]
+      },
+      "reductionPercent": 0.01
+    },
+    {
+      "module": "src/features/comercial/pages/reporte-general.tsx",
+      "before": {
+        "bytes": 435237,
+        "gzipBytes": 122202,
+        "chunks": [
+          "static/chunks/5890-5b46389eecd5a711.js",
+          "static/chunks/8562-d8f7020c5feb9262.js",
+          "static/chunks/944-a972f6777ced81d0.js",
+          "static/chunks/9724-40af4a4d4bbc1ae7.js",
+          "static/chunks/app/comercial/reporte-general/page-8f7103e3d799a6dd.js"
+        ]
+      },
+      "after": {
+        "bytes": 435117,
+        "gzipBytes": 122193,
+        "chunks": [
+          "static/chunks/5890-29b54b06eb074983.js",
+          "static/chunks/8562-d8f7020c5feb9262.js",
+          "static/chunks/944-a972f6777ced81d0.js",
+          "static/chunks/9724-06aa3e12dd06e107.js",
+          "static/chunks/app/comercial/reporte-general/page-8f7103e3d799a6dd.js"
+        ]
+      },
+      "reductionPercent": 0.03
+    },
+    {
+      "module": "src/features/comercial/pages/cobranza.tsx",
+      "before": {
+        "bytes": 109054,
+        "gzipBytes": 32677,
+        "chunks": [
+          "static/chunks/1628-b9275b7fff138895.js",
+          "static/chunks/944-a972f6777ced81d0.js",
+          "static/chunks/9724-40af4a4d4bbc1ae7.js",
+          "static/chunks/app/comercial/cobranza/page-721a6eef8881893c.js"
+        ]
+      },
+      "after": {
+        "bytes": 109078,
+        "gzipBytes": 32721,
+        "chunks": [
+          "static/chunks/1628-b9275b7fff138895.js",
+          "static/chunks/944-a972f6777ced81d0.js",
+          "static/chunks/9724-06aa3e12dd06e107.js",
+          "static/chunks/app/comercial/cobranza/page-cbcb4a14cef49eb0.js"
+        ]
+      },
+      "reductionPercent": -0.02
+    },
+    {
+      "module": "src/features/comercial/pages/contratos.tsx",
+      "before": {
+        "bytes": 72209,
+        "gzipBytes": 22124,
+        "chunks": [
+          "static/chunks/944-a972f6777ced81d0.js",
+          "static/chunks/9724-40af4a4d4bbc1ae7.js",
+          "static/chunks/app/comercial/contratos/page-abbe983508a3ee17.js"
+        ]
+      },
+      "after": {
+        "bytes": 72233,
+        "gzipBytes": 22164,
+        "chunks": [
+          "static/chunks/944-a972f6777ced81d0.js",
+          "static/chunks/9724-06aa3e12dd06e107.js",
+          "static/chunks/app/comercial/contratos/page-0bdb25b4f372da86.js"
+        ]
+      },
+      "reductionPercent": -0.03
+    },
+    {
+      "module": "src/features/comercial/pages/clientes.tsx",
+      "before": {
+        "bytes": 54408,
+        "gzipBytes": 18839,
+        "chunks": [
+          "static/chunks/944-a972f6777ced81d0.js",
+          "static/chunks/9724-40af4a4d4bbc1ae7.js",
+          "static/chunks/app/comercial/clientes/page-264cbf2381c32875.js"
+        ]
+      },
+      "after": {
+        "bytes": 54432,
+        "gzipBytes": 18882,
+        "chunks": [
+          "static/chunks/944-a972f6777ced81d0.js",
+          "static/chunks/9724-06aa3e12dd06e107.js",
+          "static/chunks/app/comercial/clientes/page-b7417e98c7ae6e77.js"
+        ]
+      },
+      "reductionPercent": -0.04
+    },
+    {
+      "module": "src/features/comercial/pages/paquetes.tsx",
+      "before": {
+        "bytes": 75861,
+        "gzipBytes": 24467,
+        "chunks": [
+          "static/chunks/944-a972f6777ced81d0.js",
+          "static/chunks/9724-40af4a4d4bbc1ae7.js",
+          "static/chunks/app/comercial/paquetes/page-9758b76be4edb7aa.js"
+        ]
+      },
+      "after": {
+        "bytes": 75885,
+        "gzipBytes": 24505,
+        "chunks": [
+          "static/chunks/944-a972f6777ced81d0.js",
+          "static/chunks/9724-06aa3e12dd06e107.js",
+          "static/chunks/app/comercial/paquetes/page-d22adffba0d876de.js"
+        ]
+      },
+      "reductionPercent": -0.03
+    },
+    {
+      "module": "src/features/torreon/cliente/TorreonClientePanel.tsx",
+      "before": {
+        "bytes": 218661,
+        "gzipBytes": 54014,
+        "chunks": [
+          "static/chunks/1047-05866742eadd2a5b.js",
+          "static/chunks/1456-3042e9498ddf76f3.js",
+          "static/chunks/2281-629ebc7bca081129.js",
+          "static/chunks/7219-364472e04af75c77.js",
+          "static/chunks/8706-d7c07891f6f55a24.js",
+          "static/chunks/944-a972f6777ced81d0.js",
+          "static/chunks/app/cliente/torreon/incidentes/page-019f71ca8398183d.js"
+        ]
+      },
+      "after": {
+        "bytes": 225696,
+        "gzipBytes": 56946,
+        "chunks": [
+          "static/chunks/1047-05866742eadd2a5b.js",
+          "static/chunks/6075-4255638d906984ea.js",
+          "static/chunks/7219-364472e04af75c77.js",
+          "static/chunks/7241-3419b8578a9df633.js",
+          "static/chunks/8706-d7c07891f6f55a24.js",
+          "static/chunks/944-a972f6777ced81d0.js",
+          "static/chunks/app/cliente/torreon/incidentes/page-1f551c41eb5e9c94.js"
+        ]
+      },
+      "reductionPercent": -3.22
+    },
+    {
+      "module": "src/features/reporteria/coordinador/reporteria-coor-client.tsx",
+      "before": {
+        "bytes": 485398,
+        "gzipBytes": 130746,
+        "chunks": [
+          "static/chunks/1837-bcf0bc047ebf8aab.js",
+          "static/chunks/8562-d8f7020c5feb9262.js",
+          "static/chunks/9332-08711a20b139709c.js",
+          "static/chunks/app/coordinador/reporteria/page-e8da2f72d2e64a66.js"
+        ]
+      },
+      "after": {
+        "bytes": 470665,
+        "gzipBytes": 128535,
+        "chunks": [
+          "static/chunks/1837-bcf0bc047ebf8aab.js",
+          "static/chunks/8562-d8f7020c5feb9262.js",
+          "static/chunks/8915-cbfbfe7057557b6d.js",
+          "static/chunks/app/coordinador/reporteria/page-3061dc3f587b22bf.js"
+        ]
+      },
+      "reductionPercent": 3.04
+    },
+    {
+      "module": "src/features/reporteria/administrador/reporteria-admin-client.tsx",
+      "before": {
+        "bytes": 556965,
+        "gzipBytes": 143584,
+        "chunks": [
+          "static/chunks/1837-bcf0bc047ebf8aab.js",
+          "static/chunks/3252-9b2d82dd888f55fd.js",
+          "static/chunks/8562-d8f7020c5feb9262.js",
+          "static/chunks/9332-08711a20b139709c.js",
+          "static/chunks/app/administrador/reporteria/page-03a10375ed85a84e.js"
+        ]
+      },
+      "after": {
+        "bytes": 526880,
+        "gzipBytes": 142135,
+        "chunks": [
+          "static/chunks/1837-bcf0bc047ebf8aab.js",
+          "static/chunks/8132-677fd54511a4dac5.js",
+          "static/chunks/8562-d8f7020c5feb9262.js",
+          "static/chunks/8915-cbfbfe7057557b6d.js",
+          "static/chunks/app/administrador/reporteria/page-0a862cf66e6a030d.js"
+        ]
+      },
+      "reductionPercent": 5.4
+    }
+  ]
+}

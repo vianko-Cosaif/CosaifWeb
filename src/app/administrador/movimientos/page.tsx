@@ -1,23 +1,25 @@
 // src/app/administrador/movimientos/page.tsx
-import MovimientosPanel from "@/app/Components/movimientos/MovimientosPanel";
-import { cookies } from "next/headers";
+import CoordinatorMovimientosPageClient from "@/features/movimientos/list/CoordinatorMovimientosPageClient";
 import { redirect } from "next/navigation";
+import { getVerifiedSession } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
+const MOVIMIENTOS_API_BASE = process.env.NEXT_PUBLIC_API_BASE || "/bff";
 
-export default async function Page() {
-  const c = await cookies();
-  const token = c.get(process.env.JWT_COOKIE_NAME ?? "token")?.value;
-  if (!token) redirect("/login?loc=admin");
+export default async function Page({ searchParams }: { searchParams: Promise<{ tipo?: string }> }) {
+  const session = await getVerifiedSession();
+  if (!session || session.role !== "ADMINISTRADOR") redirect("/login?loc=admin");
+  const tipo = (await searchParams).tipo;
 
   return (
-    <section className="mx-auto w-full max-w-7xl p-4 sm:p-6">
-      <MovimientosPanel
-        apiBase="/bff"
+    <section className="mx-auto w-full max-w-[1500px] p-4 sm:p-6">
+      <CoordinatorMovimientosPageClient
+        apiBase={MOVIMIENTOS_API_BASE}
+        authorization={session.authorization}
         rol="ADMINISTRADOR"
-        empresaIdUsuario={null}      // <— front NO limita por empresa
-        puedeCrear
-        intervaloAutoMs={15000}
+        empresaIdUsuario={null}
+        localidadIdUsuario={null}
+        initialTorreonView={tipo === "arrastres" ? "arrastres" : "naturales"}
       />
     </section>
   );

@@ -1,35 +1,12 @@
-import "server-only";
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-const JWT  = process.env.JWT_COOKIE_NAME  ?? "token";
-const ROLE = process.env.ROLE_COOKIE_NAME ?? "role";
-const MAX  = Number(process.env.COOKIE_MAX_AGE ?? 60 * 60 * 8); // 8h
-
-export async function POST(req: Request) {
-  const { token, role } = await req.json().catch(() => ({}));
-  if (!token || !role) {
-    return NextResponse.json({ error: "bad_payload" }, { status: 400 });
-  }
-
-  const res = NextResponse.json({ ok: true });
-
-  const base = {
-    httpOnly: true,
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: MAX,
-    secure: process.env.NODE_ENV === "production",
-  };
-
-  res.cookies.set(JWT, String(token), base);
-  res.cookies.set(ROLE, String(role).toUpperCase(), base);
-
-  return res;
-}
-
-// Ejemplo de lectura (solo lectura)
-export async function GET() {
-  const c = await cookies();
-  return NextResponse.json({ token: c.get(JWT)?.value ?? null });
+/**
+ * La sesión se crea exclusivamente en /bff/login después de que el backend
+ * valida las credenciales. Este endpoint ya no acepta roles o tokens del cliente.
+ */
+export async function POST() {
+  return NextResponse.json(
+    { error: "Usa el inicio de sesión seguro" },
+    { status: 410, headers: { "Cache-Control": "no-store" } },
+  );
 }

@@ -1,6 +1,10 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { containsTrainingReservedId } from "@/lib/routePolicy";
+import { PERMISSIONS, hasPermission } from "@/lib/accessControl";
+import { getVerifiedSession } from "@/lib/server/session";
+import { MovementScopeError, resolveMovementReadScope } from "@/lib/auth/movementScope";
 
 const API_URL = process.env.API_URL!;
 const JWT_COOKIE_NAME = process.env.JWT_COOKIE_NAME ?? "token";
@@ -9,13 +13,32 @@ export async function POST(req: Request) {
   try {
     const c = await cookies(); // solo lectura en Next 15
     const token = c.get(JWT_COOKIE_NAME)?.value;
-    if (!token) {
+    const session = await getVerifiedSession();
+    if (!token || !session) {
       return NextResponse.json({ message: "No autenticado" }, { status: 401 });
+    }
+    if (!hasPermission(session.authorization, PERMISSIONS.MOVEMENTS_CREATE)) {
+      return NextResponse.json({ message: "No autorizado para crear movimientos" }, { status: 403 });
     }
 
     const payload: unknown = await req.json().catch(() => null);
     if (payload == null) {
       return NextResponse.json({ message: "Payload inválido" }, { status: 400 });
+    }
+    if (containsTrainingReservedId(payload)) {
+      return NextResponse.json(
+        { message: "Los datos SIM de capacitación no se envían al sistema productivo." },
+        { status: 409 },
+      );
+    }
+
+    let scopedPayload = payload;
+    if (session.role === "CLIENTE") {
+      if (typeof payload !== "object" || Array.isArray(payload)) {
+        return NextResponse.json({ message: "Payload inválido" }, { status: 400 });
+      }
+      const scope = resolveMovementReadScope(session, "detail", new URLSearchParams());
+      scopedPayload = { ...payload, empresaId: scope.empresaId, localidadId: scope.localidadId };
     }
 
     const r = await fetch(`${API_URL}/movimientos`, {
@@ -26,7 +49,7 @@ export async function POST(req: Request) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(scopedPayload),
     });
 
     const text = await r.text();
@@ -34,7 +57,8 @@ export async function POST(req: Request) {
     const data: unknown = text ? (isJSON ? JSON.parse(text) : { message: text }) : null;
 
     return NextResponse.json(data ?? {}, { status: r.status });
-  } catch {
+  } catch (error) {
+    if (error instanceof MovementScopeError) return NextResponse.json({ message: error.message }, { status: error.status });
     return NextResponse.json(
       { message: "Fallo al contactar el API externo" },
       { status: 502 }

@@ -1,0 +1,44 @@
+{
+  "routes": {
+    "login": {
+      "maximumJavaScriptBytes": 570000,
+      "maximumJavaScriptRequests": 14,
+      "maximumDocumentBytes": 65000
+    }
+  },
+  "movementRoutes": {
+    "administrador": {
+      "maximumDataReadyMs": 4000,
+      "maximumJavaScriptBytes": 1650000,
+      "maximumApiRequests": 12
+    },
+    "coordinador": {
+      "maximumDataReadyMs": 4000,
+      "maximumJavaScriptBytes": 1700000,
+      "maximumApiRequests": 10
+    },
+    "supervisor": {
+      "maximumDataReadyMs": 4000,
+      "maximumJavaScriptBytes": 1850000,
+      "maximumApiRequests": 11
+    },
+    "cliente": {
+      "maximumDataReadyMs": 4000,
+      "maximumJavaScriptBytes": 1650000,
+      "maximumApiRequests": 12
+    },
+    "arrastre": {
+      "maximumDataReadyMs": 4000,
+      "maximumJavaScriptBytes": 1000000,
+      "maximumApiRequests": 6
+    }
+  },
+  "clientJavaScript": {
+    "maximumTotalBytes": 5100000,
+    "maximumSingleFileBytes": 590000
+  },
+  "clientCss": {
+    "maximumTotalBytes": 300000,
+    "maximumSingleFileBytes": 205000
+  }
+}
