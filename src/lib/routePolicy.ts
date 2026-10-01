@@ -3,7 +3,7 @@
 /** =========================
  *  Roles soportados
  *  ========================= */
-export const ALL_ROLES = ["CLIENTE", "ADMINISTRADOR", "COORDINADOR"] as const;
+export const ALL_ROLES = ["CLIENTE", "ADMINISTRADOR", "SUPERVISOR", "COORDINADOR"] as const;
 export type Role = (typeof ALL_ROLES)[number];
 
 export const DEFAULT_HOME = "/cliente";
@@ -11,14 +11,16 @@ export const DEFAULT_HOME = "/cliente";
 /** Áreas por rol (regex de guard) */
 export const AREAS_REGEX: Record<Role, RegExp> = {
   CLIENTE: /^\/cliente(\/|$)/i,
-  ADMINISTRADOR: /^\/admin(\/|$)/i,
+  ADMINISTRADOR: /^\/administrador(\/|$)/i,
+  SUPERVISOR: /^\/supervisor(\/|$)/i,
   COORDINADOR: /^\/coordinador(\/|$)/i,
 };
 
 /** Home por rol */
 export const HOME_BY_ROLE: Record<Role, string> = {
   CLIENTE: "/cliente",
-  ADMINISTRADOR: "/admin",
+  ADMINISTRADOR: "/administrador",
+  SUPERVISOR: "/supervisor",
   COORDINADOR: "/coordinador",
 };
 
@@ -188,11 +190,11 @@ export function getFilterPolicy(user: UserMeta): FilterPolicy {
   };
 }
 
-export function applyFilterLocks<T extends Record<string, any>>(
+export function applyFilterLocks<T extends Record<string, unknown>>(
   input: T,
   policy: FilterPolicy,
 ): T {
-  const out: Record<string, any> = { ...input };
+  const out: Record<string, unknown> = { ...input };
   if (policy.forcedEmpresaId != null) out.empresaId = policy.forcedEmpresaId;
   if (policy.forcedLocalidadId != null)
     out.localidadId = policy.forcedLocalidadId;

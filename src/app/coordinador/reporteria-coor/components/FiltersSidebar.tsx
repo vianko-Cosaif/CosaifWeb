@@ -13,6 +13,7 @@ const periodOptions: Array<{ id: PeriodoUI; label: string }> = [
 ];
 
 export default function FiltersSidebar({
+  variant = "sidebar",
   periodo,
   setPeriodo,
   diaISO,
@@ -40,6 +41,7 @@ export default function FiltersSidebar({
   empresas,
   localidades,
 }: {
+  variant?: "sidebar" | "inline";
   periodo: PeriodoUI;
   setPeriodo: (v: PeriodoUI) => void;
   diaISO: string;
@@ -67,18 +69,25 @@ export default function FiltersSidebar({
   empresas: Array<{ id: number; nombre: string }>;
   localidades: Array<{ id: number; nombre: string }>;
 }) {
+  const wrapperClass =
+    variant === "inline"
+      ? "grid gap-4 lg:grid-cols-[1.15fr_1fr]"
+      : "space-y-4";
+
   return (
-    <aside className="space-y-4">
-      <div className="rounded-2xl border border-[var(--stroke)] bg-[var(--panel)] p-4 shadow-[var(--shadow)]">
-        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Periodo</div>
-        <div className="mt-3 grid grid-cols-2 gap-2">
+    <section className={wrapperClass}>
+      <div className="min-w-0 rounded-3xl border border-slate-200/70 bg-white/90 p-5 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Periodo</p>
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
           {periodOptions.map((p) => (
             <button
               key={p.id}
               type="button"
               onClick={() => setPeriodo(p.id)}
-              className={`rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] ${
-                periodo === p.id ? "bg-slate-900 text-white" : "bg-[var(--panel-2)] text-[var(--muted)]"
+              className={`rounded-full px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] transition ${
+                periodo === p.id
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
               }`}
             >
               {p.label}
@@ -87,58 +96,106 @@ export default function FiltersSidebar({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-[var(--stroke)] bg-[var(--panel)] p-4 shadow-[var(--shadow)]">
-        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Parámetros</div>
+      <div className="min-w-0 rounded-3xl border border-slate-200/70 bg-white/90 p-5 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Parámetros</p>
         <div className="mt-4 space-y-3 text-sm">
           {periodo === "dia" && (
-            <input className="w-full rounded-xl border border-[var(--stroke)] bg-transparent px-3 py-2" type="date" value={diaISO} onChange={(e) => setDiaISO(e.target.value)} />
+            <input
+              className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+              type="date"
+              value={diaISO}
+              onChange={(e) => setDiaISO(e.target.value)}
+            />
           )}
           {periodo === "semana" && (
-            <input className="w-full rounded-xl border border-[var(--stroke)] bg-transparent px-3 py-2" type="date" value={semanaISO} onChange={(e) => setSemanaISO(e.target.value)} />
+            <input
+              className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+              type="date"
+              value={semanaISO}
+              onChange={(e) => setSemanaISO(e.target.value)}
+            />
           )}
           {periodo === "mes" && (
-            <input className="w-full rounded-xl border border-[var(--stroke)] bg-transparent px-3 py-2" type="month" value={mesYM} onChange={(e) => setMesYM(e.target.value)} />
+            <input
+              className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+              type="month"
+              value={mesYM}
+              onChange={(e) => setMesYM(e.target.value)}
+            />
           )}
           {periodo === "bimestre" && (
-            <div className="flex gap-2">
-              <input className="w-1/2 rounded-xl border border-[var(--stroke)] bg-transparent px-3 py-2" type="number" value={bimYear} onChange={(e) => setBimYear(Number(e.target.value))} />
-              <input className="w-1/2 rounded-xl border border-[var(--stroke)] bg-transparent px-3 py-2" type="number" value={bimIndex} min={1} max={6} onChange={(e) => setBimIndex(Number(e.target.value))} />
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                type="number"
+                value={bimYear}
+                onChange={(e) => setBimYear(Number(e.target.value))}
+              />
+              <input
+                className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                type="number"
+                value={bimIndex}
+                min={1}
+                max={6}
+                onChange={(e) => setBimIndex(Number(e.target.value))}
+              />
             </div>
           )}
           {periodo === "semestre" && (
-            <div className="flex gap-2">
-              <input className="w-1/2 rounded-xl border border-[var(--stroke)] bg-transparent px-3 py-2" type="number" value={semYear} onChange={(e) => setSemYear(Number(e.target.value))} />
-              <input className="w-1/2 rounded-xl border border-[var(--stroke)] bg-transparent px-3 py-2" type="number" value={semIndex} min={1} max={2} onChange={(e) => setSemIndex(Number(e.target.value))} />
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                type="number"
+                value={semYear}
+                onChange={(e) => setSemYear(Number(e.target.value))}
+              />
+              <input
+                className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                type="number"
+                value={semIndex}
+                min={1}
+                max={2}
+                onChange={(e) => setSemIndex(Number(e.target.value))}
+              />
             </div>
           )}
           {periodo === "anual" && (
-            <input className="w-full rounded-xl border border-[var(--stroke)] bg-transparent px-3 py-2" type="number" value={anio} onChange={(e) => setAnio(Number(e.target.value))} />
+            <input
+              className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+              type="number"
+              value={anio}
+              onChange={(e) => setAnio(Number(e.target.value))}
+            />
           )}
 
           <select
-            className="w-full rounded-xl border border-[var(--stroke)] bg-transparent px-3 py-2"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
             value={empresaId}
             onChange={(e) => setEmpresaId(e.target.value)}
             disabled={lockEmpresa}
           >
             <option value="">Todas las empresas</option>
             {empresas.map((e) => (
-              <option key={e.id} value={String(e.id)}>{e.nombre}</option>
+              <option key={e.id} value={String(e.id)}>
+                {e.nombre}
+              </option>
             ))}
           </select>
           <select
-            className="w-full rounded-xl border border-[var(--stroke)] bg-transparent px-3 py-2"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
             value={localidadId}
             onChange={(e) => setLocalidadId(e.target.value)}
             disabled={lockLocalidad}
           >
             <option value="">Todas las localidades</option>
             {localidades.map((l) => (
-              <option key={l.id} value={String(l.id)}>{l.nombre}</option>
+              <option key={l.id} value={String(l.id)}>
+                {l.nombre}
+              </option>
             ))}
           </select>
         </div>
       </div>
-    </aside>
+    </section>
   );
 }

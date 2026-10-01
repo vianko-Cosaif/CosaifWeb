@@ -2,7 +2,7 @@
 'use client';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeftRight, MapPin, Save, X, CheckCircle, XCircle, Train, Info, Ban, LayoutList, GripVertical
+  ArrowLeftRight, X, CheckCircle, XCircle, Info, Ban, LayoutList, GripVertical
 } from 'lucide-react';
 import {
   DndContext,
@@ -12,12 +12,10 @@ import {
   useSensor,
   useSensors,
   DragOverlay,
-  defaultDropAnimationSideEffects,
   DragStartEvent,
   DragEndEvent
 } from '@dnd-kit/core';
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
@@ -55,6 +53,10 @@ function priorityBadge(p?: string | null) {
     baja: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
   };
   return map[key] || 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
 }
 
 function Toast({ show, message, onClose }: { show: boolean; message: string; onClose: () => void }) {
@@ -145,10 +147,10 @@ function RondaCardContent({
   onSwapRequest?: () => void;
   onCancelRequest?: () => void;
   isCancelling?: boolean;
-  dragHandleProps?: any;
+  dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
 }) {
   const [open, setOpen] = useState(false);
-  const badgeClass = priorityBadge(ronda.movimiento?.prioridad as any);
+  const badgeClass = priorityBadge(ronda.movimiento?.prioridad);
 
   return (
     <div className={`group relative rounded-lg border ${THEME.border} ${THEME.surface} p-3 mb-2 transition-all hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600`}>
@@ -242,7 +244,7 @@ function RondaCardContent({
                 }`}
             >
               {isCancelling ? <span className="animate-spin">⏳</span> : <Ban size={14} />}
-              Remover
+              Cancelar
             </button>
             <button
               onClick={onSwapRequest}
@@ -369,9 +371,9 @@ type Props = {
   onSaved?: () => void;
 };
 
-const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
+const EditRondas: React.FC<Props> = ({ localidadId, onClose }) => {
   const {
-    user, list, infoMap, loading, groupedByRonda, setGroupedByRonda, setList, persistOrden
+    user, infoMap, loading, groupedByRonda, setGroupedByRonda, setList
   } = useRondaData(Number(localidadId), onClose);
 
   const [originalState, setOriginalState] = useState<Record<number, Ronda[]>>({});
@@ -397,7 +399,6 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
   const [themeKey, setThemeKey] = useState(0);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [activeDragId, setActiveDragId] = useState<number | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
 
   const showToast = (m: string) => setToast({ show: true, message: m });
 
@@ -434,14 +435,14 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
       setList((prev) => prev.map((r) => (r.id === swappedA.id ? swappedA : r.id === swappedB.id ? swappedB : r)));
       showToast('Intercambio realizado exitosamente');
       setSwapModal({ visible: false, base: null });
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      alert(e?.message || 'Error al intercambiar');
+      alert(errorMessage(e, 'Error al intercambiar'));
     }
   }, [swapModal.base, setGroupedByRonda, setList, user]);
 
   const handleCancelRequest = useCallback(async (item: Ronda) => {
-    if (!confirm('¿Quitar este movimiento de la ronda? Se marcará como cancelado.')) return;
+    if (!confirm('¿Cancelar este movimiento? Solo se permite si pertenece a tu empresa.')) return;
     try {
       const mid = item.movimiento?.id;
       if (!mid) throw new Error('ID inválido');
@@ -455,9 +456,9 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
         return copy;
       });
       setList(prev => prev.filter(r => r.id !== item.id));
-      showToast('Movimiento removido');
-    } catch (e: any) {
-      alert(e?.message || 'Error al cancelar');
+      showToast('Movimiento cancelado');
+    } catch (e: unknown) {
+      alert(errorMessage(e, 'Error al cancelar'));
     } finally {
       setCancellingId(null);
     }
@@ -538,9 +539,9 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
       });
 
       showToast('Cambio realizado');
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      alert('Error al mover: ' + (e?.message || 'Error desconocido'));
+      alert('Error al mover: ' + errorMessage(e, 'Error desconocido'));
       // Ideally refresh from server here if failed
       onClose(); // Close to force refresh? Or trigger refresh.
     }

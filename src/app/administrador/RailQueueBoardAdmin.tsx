@@ -2,7 +2,12 @@
 import { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { MapPin, Sparkles } from "lucide-react";
-import { getClientCookie } from "@/lib/cookies";
+import { getClientCookie, setClientCookie } from "@/lib/cookies";
+import { syncFirebaseNotificationLocalidad } from "@/lib/firebase";
+import TornoMeasuresViewerModal from "../movimientos/torno/TornoMeasuresViewerModal";
+import { parseTornoMedicionFromApi } from "../movimientos/torno/tornoMeasureParser";
+import { DEFAULT_TORNO_MEDICION_STATE, type TornoMedicionState } from "../movimientos/crear/tornoMedicion.types";
+import { useRealtimeBoardRefresh } from "../hooks/useRealtimeBoardRefresh";
 
 /* ===== Tipos ===== */
 type Ronda = {
@@ -55,9 +60,18 @@ type Localidad = { id: number; nombre: string; estado?: string | null };
 
 type ToastKind = "move" | "new" | "done" | "warning" | "ok" | "error";
 type Toast = { id: number; text: string; kind: ToastKind };
+type MeasuresModalState = {
+  open: boolean;
+  loading: boolean;
+  error: string | null;
+  tornoMedicion: TornoMedicionState;
+  locomotiveLabel?: string;
+  companyName?: string;
+};
 
 /* ===== Utils ===== */
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? "/bff").replace(/\/+$/, "");
+const API_MEASURES = process.env.NEXT_PUBLIC_API_URL || "/xapi";
 const fmtList = new Intl.ListFormat("es", { style: "short", type: "conjunction" });
 const codeFrom = (inf?: RondaInfo, fallbackId?: number) =>
   String(inf?.movimientoId ?? inf?.movimiento?.id ?? fallbackId ?? "—");
@@ -201,6 +215,12 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
   const bellRef = useRef<HTMLAudioElement | null>(null);
 
   const { toasts, push: pushToast, dismiss } = useToasts();
+  const [measuresModal, setMeasuresModal] = useState<MeasuresModalState>({
+    open: false,
+    loading: false,
+    error: null,
+    tornoMedicion: DEFAULT_TORNO_MEDICION_STATE,
+  });
 
   const prevIdsRef = useRef<number[]>([]);
   const lastCurrentId = useRef<number | null>(null);
@@ -219,6 +239,22 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
     return Number.isFinite(n) && n > 0 ? n : 0; // 0 = TODAS
   });
   const activeLoc = useMemo(() => localidades.find(l => l.id === activeLocId) || null, [localidades, activeLocId]);
+
+  useEffect(() => {
+    if (activeLocId <= 0) return;
+    try {
+      localStorage.setItem("locId", String(activeLocId));
+    } catch {}
+    setClientCookie("locId", String(activeLocId), {
+      path: "/",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 365,
+    });
+    window.dispatchEvent(new CustomEvent("cosaif:localidad-change", { detail: { localidadId: activeLocId } }));
+    void syncFirebaseNotificationLocalidad(activeLocId).catch((error) => {
+      console.warn("No se pudo sincronizar localidad FCM.", error);
+    });
+  }, [activeLocId]);
 
   async function loadLocalidades() {
     try {
@@ -352,6 +388,16 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
     }
   }
 
+  useRealtimeBoardRefresh({
+    enabled: true,
+    realtimeLocalidadId: null,
+    scopeLocalidadId: activeLocId > 0 ? activeLocId : null,
+    onRefresh: () => {
+      if (activeLocId === 0 && localidades.length === 0) return;
+      return load(true);
+    },
+  });
+
   // init
   useEffect(() => { loadLocalidades(); }, []);
   useEffect(() => {
@@ -392,6 +438,48 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
   const instruccionesText = curMov?.instrucciones?.trim()
     ? curMov.instrucciones.trim()
     : "Sin comentarios del coordinador.";
+
+  const closeMeasuresModal = () => {
+    setMeasuresModal((prev) => ({ ...prev, open: false, error: null }));
+  };
+
+  const openMeasuresModal = async (args: {
+    movementId?: number | null;
+    locomotiveLabel?: string;
+    companyName?: string;
+  }) => {
+    const movementId = Number(args.movementId);
+    if (!Number.isFinite(movementId) || movementId <= 0) return;
+
+    setMeasuresModal({
+      open: true,
+      loading: true,
+      error: null,
+      tornoMedicion: DEFAULT_TORNO_MEDICION_STATE,
+      locomotiveLabel: args.locomotiveLabel,
+      companyName: args.companyName,
+    });
+
+    try {
+      const response = await fetch(`${API_MEASURES}/movimientos/${movementId}/edicion`, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(`No se pudo cargar medidas (${response.status}).`);
+      const payload = await response.json();
+      setMeasuresModal((prev) => ({
+        ...prev,
+        loading: false,
+        tornoMedicion: parseTornoMedicionFromApi(payload),
+        locomotiveLabel: String(payload?.movimiento?.locomotiveNumber ?? args.locomotiveLabel ?? ""),
+        companyName: payload?.movimiento?.empresa?.nombre ?? args.companyName,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudieron cargar las medidas.";
+      setMeasuresModal((prev) => ({ ...prev, loading: false, error: message }));
+    }
+  };
 
   // fullscreen
   useEffect(() => {
@@ -478,6 +566,7 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
             info={info}
             loading={loading}
             prefersReduced={prefersReduced ?? false}
+            onViewMeasures={openMeasuresModal}
           />
         ) : (
           <SingleLocalidadBoard
@@ -500,6 +589,7 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
               info,
               next,
               load,
+              onViewMeasures: openMeasuresModal,
             }}
           />
         )}
@@ -509,6 +599,34 @@ export default function RailQueueBoardAdmin({ autoMs = 120_000, nextCount = 5 }:
       <audio ref={bellRef} preload="auto" aria-hidden="true">
         <source src="/sounds/notification.mp3" type="audio/mp3" />
       </audio>
+
+      <TornoMeasuresViewerModal
+        open={measuresModal.open && !measuresModal.loading && !measuresModal.error}
+        onClose={closeMeasuresModal}
+        tornoMedicion={measuresModal.tornoMedicion}
+        locomotiveLabel={measuresModal.locomotiveLabel}
+        companyName={measuresModal.companyName}
+      />
+      {measuresModal.open && (measuresModal.loading || measuresModal.error) ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/35 p-4">
+          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            {measuresModal.loading ? (
+              <p className="text-sm text-slate-600 dark:text-slate-300">Cargando medidas de torno...</p>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-rose-600 dark:text-rose-300">{measuresModal.error}</p>
+                <button
+                  type="button"
+                  onClick={closeMeasuresModal}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200"
+                >
+                  Cerrar
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
@@ -604,6 +722,7 @@ function SingleLocalidadBoard(props: {
   info: Record<number, RondaInfo>;
   next: Ronda[];
   load: (show?: boolean) => void;
+  onViewMeasures: (args: { movementId?: number | null; locomotiveLabel?: string; companyName?: string }) => void;
 }) {
   const {
     prefersReduced,
@@ -624,6 +743,7 @@ function SingleLocalidadBoard(props: {
     info,
     next,
     load,
+    onViewMeasures,
   } = props;
 
   return (
@@ -733,6 +853,7 @@ function SingleLocalidadBoard(props: {
                 <div className="mt-3">
                   <DateBox label="Creado" value={creadoText} />
                 </div>
+                {null}
               </motion.div>
             </>
           ) : (
@@ -767,7 +888,7 @@ function SingleLocalidadBoard(props: {
                     transition={{ duration: prefersReduced ? 0 : 0.25, delay: prefersReduced ? 0 : index * 0.04 }}
                     className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 transition-all duration-200 hover:bg-white hover:shadow-md hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:bg-slate-800"
                   >
-                    <CardNext n={n} inf={inf} loco={loco} />
+                    <CardNext n={n} inf={inf} loco={loco} onViewMeasures={onViewMeasures} />
                   </motion.div>
                 );
               })
@@ -796,7 +917,17 @@ function KV({ title, value, prefix }: { title: string; value: string; prefix: st
   );
 }
 
-function CardNext({ n, inf, loco }: { n: Ronda; inf?: RondaInfo; loco: string }) {
+function CardNext({
+  n,
+  inf,
+  loco,
+  onViewMeasures,
+}: {
+  n: Ronda;
+  inf?: RondaInfo;
+  loco: string;
+  onViewMeasures: (args: { movementId?: number | null; locomotiveLabel?: string; companyName?: string }) => void;
+}) {
   const mv = inf?.movimiento;
   const solicitudText = formatDateTimeMX(mv?.fechaSolicitud ?? null);
   const inicioText = formatDateTimeMX(mv?.fechaInicio ?? null);
@@ -842,6 +973,7 @@ function CardNext({ n, inf, loco }: { n: Ronda; inf?: RondaInfo; loco: string })
           <DateBox label="Fin" value={finText} />
         </div>
       </div>
+      {null}
     </>
   );
 }
@@ -856,13 +988,14 @@ function Cell({ title, value, solid }: { title: string; value: string; solid?: b
 }
 
 function AllLocalidadesGrid({
-  localidades, itemsByLoc, info, loading, prefersReduced,
+  localidades, itemsByLoc, info, loading, prefersReduced, onViewMeasures,
 }: {
   localidades: Localidad[];
   itemsByLoc: Map<number, Ronda[]> | null;
   info: Record<number, RondaInfo>;
   loading: boolean;
   prefersReduced: boolean;
+  onViewMeasures: (args: { movementId?: number | null; locomotiveLabel?: string; companyName?: string }) => void;
 }) {
   return (
     <div className="grid gap-4 md:gap-6 lg:gap-8 lg:grid-cols-3">
@@ -916,6 +1049,7 @@ function AllLocalidadesGrid({
                     <DateBox label="Inicio" value={inicioText} />
                     <DateBox label="Fin" value={finText} />
                   </div>
+                  {null}
                 </>
               ) : (
                 <div className="text-sm text-slate-500 dark:text-slate-400">Sin órdenes</div>

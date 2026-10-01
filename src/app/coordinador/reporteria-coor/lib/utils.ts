@@ -31,6 +31,34 @@ export function todayISO() {
   return `${y}-${m}-${day}`;
 }
 
+export function weekMondayISO(input?: string | Date) {
+  let d: Date;
+  if (input instanceof Date) {
+    d = new Date(input);
+  } else if (typeof input === "string") {
+    d = new Date(`${input}T00:00:00`);
+  } else {
+    d = new Date();
+  }
+  if (Number.isNaN(d.getTime())) return todayISO();
+  const day = d.getDay(); // 0 domingo, 1 lunes, ...
+  const diff = (day + 6) % 7; // lunes = 0
+  d.setDate(d.getDate() - diff);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+export function daysAgoISO(days: number) {
+  const d = new Date();
+  d.setDate(d.getDate() - Math.max(0, Math.floor(days)));
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function isYYYYMMDD(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }

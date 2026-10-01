@@ -46,15 +46,20 @@ export default function Bar3DShape({
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) return null;
   if (width <= 0 || height <= 0) return null;
 
+  const x0 = x as number;
+  const y0 = y as number;
+  const w0 = width as number;
+  const h0 = height as number;
+
   const base = normalizeHex(color ?? "") ?? normalizeHex(fill ?? "") ?? DEFAULT_COLOR;
   const top = shadeColor(base, 0.18);
   const side = shadeColor(base, -0.18);
   const dx = depth;
   const dy = Math.max(2, Math.round(depth * 0.55));
 
-  const front = `M ${x} ${y} L ${x + width} ${y} L ${x + width} ${y + height} L ${x} ${y + height} Z`;
-  const topPath = `M ${x} ${y} L ${x + dx} ${y - dy} L ${x + width + dx} ${y - dy} L ${x + width} ${y} Z`;
-  const sidePath = `M ${x + width} ${y} L ${x + width + dx} ${y - dy} L ${x + width + dx} ${y + height - dy} L ${x + width} ${y + height} Z`;
+  const front = `M ${x0} ${y0} L ${x0 + w0} ${y0} L ${x0 + w0} ${y0 + h0} L ${x0} ${y0 + h0} Z`;
+  const topPath = `M ${x0} ${y0} L ${x0 + dx} ${y0 - dy} L ${x0 + w0 + dx} ${y0 - dy} L ${x0 + w0} ${y0} Z`;
+  const sidePath = `M ${x0 + w0} ${y0} L ${x0 + w0 + dx} ${y0 - dy} L ${x0 + w0 + dx} ${y0 + h0 - dy} L ${x0 + w0} ${y0 + h0} Z`;
 
   return (
     <g>

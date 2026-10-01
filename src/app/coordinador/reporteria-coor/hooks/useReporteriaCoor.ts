@@ -20,7 +20,7 @@ import {
   EMPRESAS_ENDPOINT,
   LOCALIDADES_ENDPOINT,
 } from "../lib/constants";
-import { buildAnchorFecha, clampInt, isYYYYMM, isYYYYMMDD, n, todayISO } from "../lib/utils";
+import { buildAnchorFecha, clampInt, isYYYYMM, isYYYYMMDD, n, todayISO, weekMondayISO } from "../lib/utils";
 import { getEmpresaIdClient, getLocIdClient, getRoleClient } from "@/lib/cookies";
 
 const PERIOD_BACK: Record<PeriodoUI, PeriodoBack> = {
@@ -41,7 +41,7 @@ export function useReporteriaCoor() {
 
   const [periodo, setPeriodo] = useState<PeriodoUI>("dia");
   const [diaISO, setDiaISO] = useState<string>(todayISO());
-  const [semanaISO, setSemanaISO] = useState<string>(todayISO());
+  const [semanaISO, setSemanaISORaw] = useState<string>(weekMondayISO());
   const [mesYM, setMesYM] = useState<string>(`${thisYear}-${String(thisMonth).padStart(2, "0")}`);
   const [bimYear, setBimYear] = useState<number>(thisYear);
   const [bimIndex, setBimIndex] = useState<number>(currentBim);
@@ -63,6 +63,7 @@ export function useReporteriaCoor() {
   const [report, setReport] = useState<Reporte | null>(null);
   const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
   const inFlightRef = useRef(false);
+  const didInitRoleRef = useRef(false);
 
   const periodoBack = PERIOD_BACK[periodo];
 
@@ -80,17 +81,38 @@ export function useReporteriaCoor() {
     });
   }, [periodo, diaISO, semanaISO, mesYM, bimYear, bimIndex, semYear, semIndex, anio]);
 
+  const setSemanaISO = useCallback((value: string) => {
+    setSemanaISORaw(weekMondayISO(value));
+  }, []);
+
   useEffect(() => {
+    if (didInitRoleRef.current) return;
     const role = getRoleClient();
-    const defaultEmpresa = getEmpresaIdClient();
-    const defaultLoc = getLocIdClient();
-    if (defaultEmpresa && !empresaId) setEmpresaId(String(defaultEmpresa));
-    if (defaultLoc && !localidadId) setLocalidadId(String(defaultLoc));
     if (role === "CLIENTE") {
       setLockEmpresa(true);
       setLockLocalidad(true);
+      const defaultEmp = getEmpresaIdClient();
+      if (defaultEmp) setEmpresaId(String(defaultEmp));
+    } else if (role === "COORDINADOR") {
+      setLockEmpresa(true);
+      setEmpresaId("");
+      setLockLocalidad(false);
+    } else {
+      setLockEmpresa(false);
+      setLockLocalidad(false);
     }
-  }, [empresaId, localidadId]);
+    didInitRoleRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    const defaultLoc = getLocIdClient();
+    if (!defaultLoc || localidadId) return;
+    if (!localidades.length) return;
+    const match = localidades.find((l) => String(l.id) === String(defaultLoc));
+    if (!match) return;
+    if (empresaId && String(match.empresaId ?? "") !== String(empresaId)) return;
+    setLocalidadId(String(defaultLoc));
+  }, [localidades, localidadId, empresaId]);
 
   useEffect(() => {
     let active = true;
@@ -127,9 +149,10 @@ export function useReporteriaCoor() {
 
   useEffect(() => {
     if (!localidadId) return;
+    if (!localidades.length) return;
     const stillExists = filteredLocalidades.some((l) => String(l.id) === String(localidadId));
     if (!stillExists) setLocalidadId("");
-  }, [filteredLocalidades, localidadId]);
+  }, [filteredLocalidades, localidadId, localidades.length]);
 
   const validate = useCallback(() => {
     setError(null);
@@ -320,6 +343,8 @@ export function useReporteriaCoor() {
     estadosGeneral: report?.estadosGeneral ?? {},
     topEmpresas: report?.topEmpresas ?? [],
     topLocomotoras: report?.topLocomotoras ?? [],
+    movimientosDetalle: report?.movimientosDetalle ?? [],
+    cronologiaMovimientos: report?.cronologiaMovimientos ?? [],
     meanHora,
     meanDia,
     meanIncHora,

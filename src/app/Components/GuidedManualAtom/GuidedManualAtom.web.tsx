@@ -1,0 +1,1244 @@
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import guidedShared from './GuidedManualAtom.shared.json';
+import { createGuidedManualWebStyles, getGuidedManualAtomWebJsx0Style, getGuidedManualAtomWebJsx1Style } from './GuidedManualAtom.web.styles';
+import {
+  clampGuidedManualValue,
+  createGuidedManualRegistry,
+  normalizeGuidedManualSteps,
+  type GuidedManualAction,
+  type GuidedManualActionRunner,
+  type GuidedManualAppearance,
+  type GuidedManualCondition,
+  type GuidedManualDefinition,
+  type GuidedManualStep,
+  type GuidedManualTrackingOptions,
+  type GuidedManualTransitionOptions,
+} from './GuidedManualAtom.core';
+
+type GuidedManualStateContextValue = {
+  steps: GuidedManualStep[];
+  isOpen: boolean;
+  currentIndex: number;
+  currentStep: GuidedManualStep | null;
+  totalSteps: number;
+  targetsVersion: number;
+  isTransitioning: boolean;
+};
+
+type GuidedManualApiContextValue = {
+  start: (index?: number) => void;
+  startManual: (id: string, index?: number) => void;
+  startWithSteps: (steps: GuidedManualStep[], index?: number) => void;
+  close: () => void;
+  next: () => void;
+  prev: () => void;
+  registerTarget: (id: string, node: HTMLElement | null) => void;
+  unregisterTarget: (id: string) => void;
+  getTarget: (id: string) => HTMLElement | null;
+};
+
+const GuidedManualStateContext = createContext<GuidedManualStateContextValue | null>(null);
+const GuidedManualApiContext = createContext<GuidedManualApiContextValue | null>(null);
+
+export type GuidedManualButtonTone = 'primary' | 'neutral';
+
+export type GuidedManualWebButtonProps = {
+  children?: React.ReactNode;
+  icon?: React.ReactNode;
+  iconOnly?: boolean;
+  tone?: GuidedManualButtonTone;
+  size?: 'sm' | 'icon';
+  type?: 'button' | 'submit' | 'reset';
+  className?: string;
+  style?: React.CSSProperties;
+  disabled?: boolean;
+  onPress?: () => void;
+  ariaLabel?: string;
+  title?: string;
+};
+
+export type GuidedManualWebSlots = {
+  Button?: React.ComponentType<GuidedManualWebButtonProps>;
+};
+
+export type GuidedManualCopy = Partial<typeof guidedShared.copy>;
+export type GuidedManualIcons = Partial<typeof guidedShared.icons>;
+
+type GuidedManualConfigContextValue = {
+  slots: Required<GuidedManualWebSlots>;
+  copy: typeof guidedShared.copy;
+  icons: typeof guidedShared.icons;
+  appearance?: GuidedManualAppearance;
+  tracking: Required<GuidedManualTrackingOptions>;
+  transition: Required<GuidedManualTransitionOptions>;
+};
+
+const defaultGuidedManualTracking: Required<GuidedManualTrackingOptions> = {
+  mutations: true,
+  resize: true,
+  transitions: true,
+  autoScrollWhenHidden: true,
+  mutationDebounceMs: 40,
+};
+
+const defaultGuidedManualTransition: Required<GuidedManualTransitionOptions> = {
+  waitForTarget: true,
+  targetStableMs: 120,
+  targetTimeoutMs: 10_000,
+};
+
+const BasicGuidedManualWebButton = ({
+  children,
+  icon,
+  iconOnly,
+  tone = 'neutral',
+  size = 'sm',
+  type = 'button',
+  className,
+  style,
+  disabled,
+  onPress,
+  ariaLabel,
+  title,
+}: GuidedManualWebButtonProps) => {
+  const isPrimary = tone === 'primary';
+  const isIcon = size === 'icon' || iconOnly;
+  return (
+    <button
+      type={type}
+      className={className}
+      disabled={disabled}
+      onClick={onPress}
+      aria-label={ariaLabel}
+      title={title}
+      style={{
+        minWidth: isIcon ? 34 : 40,
+        minHeight: 34,
+        padding: isIcon ? 0 : '0 12px',
+        borderRadius: 999,
+        border: '1px solid rgba(148, 163, 184, 0.35)',
+        background: isPrimary ? 'rgba(34, 211, 238, 0.22)' : 'rgba(255, 255, 255, 0.08)',
+        color: 'inherit',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        fontWeight: 800,
+        lineHeight: 1,
+        ...style,
+      }}
+    >
+      {icon ?? children}
+    </button>
+  );
+};
+
+const defaultGuidedManualWebSlots: Required<GuidedManualWebSlots> = {
+  Button: BasicGuidedManualWebButton,
+};
+
+const GuidedManualConfigContext = createContext<GuidedManualConfigContextValue>({
+  slots: defaultGuidedManualWebSlots,
+  copy: guidedShared.copy,
+  icons: guidedShared.icons,
+  appearance: undefined,
+  tracking: defaultGuidedManualTracking,
+  transition: defaultGuidedManualTransition,
+});
+
+const useGuidedManualConfig = () => useContext(GuidedManualConfigContext);
+
+type GuidedManualProviderProps = {
+  steps?: GuidedManualStep[];
+  manuals?: GuidedManualDefinition[];
+  defaultManualId?: string;
+  children: React.ReactNode;
+  startOpen?: boolean;
+  initialStep?: number;
+  actionRunner?: GuidedManualActionRunner;
+  slots?: GuidedManualWebSlots;
+  copy?: GuidedManualCopy;
+  icons?: GuidedManualIcons;
+  appearance?: GuidedManualAppearance;
+  tracking?: GuidedManualTrackingOptions;
+  transition?: GuidedManualTransitionOptions;
+};
+
+export const GuidedManualProvider = ({
+  steps = [],
+  manuals = [],
+  defaultManualId,
+  children,
+  startOpen = false,
+  initialStep = 0,
+  actionRunner,
+  slots,
+  copy,
+  icons,
+  appearance,
+  tracking,
+  transition,
+}: GuidedManualProviderProps) => {
+  const manualRegistry = useMemo(() => createGuidedManualRegistry(manuals), [manuals]);
+  const configuredDefaultSteps = useMemo(() => {
+    if (steps.length) return normalizeGuidedManualSteps(steps);
+    const selectedManual = defaultManualId
+      ? manualRegistry.get(defaultManualId)
+      : manualRegistry.list()[0] ?? null;
+    return selectedManual?.steps ?? [];
+  }, [defaultManualId, manualRegistry, steps]);
+  const [manualSteps, setManualSteps] = useState<GuidedManualStep[]>(configuredDefaultSteps);
+  const defaultStepsRef = useRef<GuidedManualStep[]>(configuredDefaultSteps);
+  const [isCustomSteps, setIsCustomSteps] = useState(false);
+  const [isOpen, setIsOpen] = useState(startOpen);
+  const [currentIndex, setCurrentIndex] = useState(initialStep);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const targetsRef = useRef<Map<string, HTMLElement>>(new Map());
+  const [targetsVersion, setTargetsVersion] = useState(0);
+  const transitionRequestRef = useRef(0);
+  const resolvedTransition = useMemo(
+    () => ({ ...defaultGuidedManualTransition, ...(transition || {}) }),
+    [transition]
+  );
+
+  const runAction = useCallback((action?: GuidedManualAction | null) => {
+    if (!action) return 0;
+    const delayMs = Math.max(0, Number(action.delayMs || 0));
+    const customDelay = actionRunner?.(action);
+    if (typeof customDelay === 'number') return Math.max(0, customDelay);
+    if (actionRunner || typeof window === 'undefined') return delayMs;
+    const execute = () => {
+      if (action.type === 'event' && action.eventName) {
+        window.dispatchEvent(new CustomEvent(action.eventName, { detail: action.detail || {} }));
+      }
+      if (action.type === 'click' && action.selector) {
+        const node = document.querySelector(action.selector) as HTMLElement | null;
+        node?.click();
+      }
+    };
+    if (delayMs > 0) {
+      window.setTimeout(execute, delayMs);
+      return delayMs;
+    }
+    execute();
+    return 0;
+  }, [actionRunner]);
+
+  useEffect(() => {
+    defaultStepsRef.current = configuredDefaultSteps;
+    // Avoid overriding a custom manual while it is running.
+    if (!isCustomSteps && !isOpen) {
+      setManualSteps(configuredDefaultSteps);
+    }
+  }, [configuredDefaultSteps, isCustomSteps, isOpen]);
+
+  const totalSteps = manualSteps.length;
+  const currentStep = useMemo(
+    () => (totalSteps > 0 ? manualSteps[Math.min(currentIndex, totalSteps - 1)] : null),
+    [manualSteps, currentIndex, totalSteps]
+  );
+  const evaluateCondition = useCallback((condition?: GuidedManualCondition): boolean => {
+    if (!condition) return true;
+    try {
+      if (typeof condition === 'function') return Boolean(condition());
+      if (condition.type === 'selector') {
+        const exists = typeof document !== 'undefined' && Boolean(document.querySelector(condition.selector));
+        return condition.exists === false ? !exists : exists;
+      }
+      if (condition.type === 'target') {
+        const exists = Boolean(targetsRef.current.get(condition.targetId)?.isConnected);
+        return condition.exists === false ? !exists : exists;
+      }
+      if (condition.type === 'not') return !evaluateCondition(condition.condition);
+      const values = condition.conditions.map(evaluateCondition);
+      return condition.type === 'all' ? values.every(Boolean) : values.some(Boolean);
+    } catch {
+      return false;
+    }
+  }, []);
+  const isStepApplicable = useCallback(
+    (step?: GuidedManualStep | null) => evaluateCondition(step?.when),
+    [evaluateCondition]
+  );
+  const applicableIndexes = useMemo(
+    () => {
+      void targetsVersion;
+      return manualSteps
+        .map((step, index) => ({ step, index }))
+        .filter(({ step, index }) => index === currentIndex || isStepApplicable(step))
+        .map(({ index }) => index);
+    },
+    [currentIndex, isStepApplicable, manualSteps, targetsVersion]
+  );
+  const visibleStepIndex = Math.max(0, applicableIndexes.indexOf(currentIndex));
+  const visibleTotalSteps = Math.max(1, applicableIndexes.length);
+
+  const start = useCallback(
+    (index = 0) => {
+      if (!manualSteps.length) return;
+      transitionRequestRef.current += 1;
+      setIsTransitioning(false);
+      setCurrentIndex(Math.min(Math.max(index, 0), manualSteps.length - 1));
+      setIsOpen(true);
+    },
+    [manualSteps]
+  );
+
+  const startWithSteps = useCallback(
+    (nextSteps: GuidedManualStep[], index = 0) => {
+      const safeSteps = normalizeGuidedManualSteps(nextSteps);
+      if (!safeSteps.length) return;
+      transitionRequestRef.current += 1;
+      setIsTransitioning(false);
+      setIsCustomSteps(true);
+      setManualSteps(safeSteps);
+      setCurrentIndex(Math.min(Math.max(index, 0), safeSteps.length - 1));
+      setIsOpen(true);
+    },
+    []
+  );
+
+  const close = useCallback(() => {
+    transitionRequestRef.current += 1;
+    setIsTransitioning(false);
+    setIsOpen(false);
+    if (isCustomSteps) {
+      setIsCustomSteps(false);
+      setManualSteps(defaultStepsRef.current);
+      setCurrentIndex(0);
+    }
+  }, [isCustomSteps]);
+
+  const resolveStepNode = useCallback((step?: GuidedManualStep | null) => {
+    if (!step || typeof document === 'undefined') return null;
+    if (step.selector) {
+      const selected = document.querySelector(step.selector);
+      if (selected instanceof HTMLElement) return selected;
+    }
+    return step.targetId ? targetsRef.current.get(step.targetId) ?? null : null;
+  }, []);
+
+  const waitForStepTarget = useCallback(
+    (step?: GuidedManualStep | null, requestId?: number) => {
+      if (!step?.selector && !step?.targetId) return Promise.resolve(true);
+      if (!resolvedTransition.waitForTarget || typeof window === 'undefined') return Promise.resolve(true);
+
+      return new Promise<boolean>((resolve) => {
+        const startedAt = performance.now();
+        let stableSince = 0;
+        let previousRect: DOMRect | null = null;
+        let frameId = 0;
+
+        const finish = (ready: boolean) => {
+          window.cancelAnimationFrame(frameId);
+          resolve(ready);
+        };
+
+        const check = (timestamp: number) => {
+          if (requestId !== undefined && requestId !== transitionRequestRef.current) {
+            finish(false);
+            return;
+          }
+          const node = resolveStepNode(step);
+          if (node?.isConnected) {
+            const styles = window.getComputedStyle(node);
+            const rect = node.getBoundingClientRect();
+            const visible =
+              styles.display !== 'none' &&
+              styles.visibility !== 'hidden' &&
+              Number(styles.opacity || 1) > 0 &&
+              rect.width > 0 &&
+              rect.height > 0;
+
+            if (visible) {
+              const stable =
+                previousRect !== null &&
+                Math.abs(previousRect.top - rect.top) <= 0.5 &&
+                Math.abs(previousRect.left - rect.left) <= 0.5 &&
+                Math.abs(previousRect.width - rect.width) <= 0.5 &&
+                Math.abs(previousRect.height - rect.height) <= 0.5;
+              previousRect = rect;
+              stableSince = stable ? stableSince || timestamp : timestamp;
+              if (timestamp - stableSince >= resolvedTransition.targetStableMs) {
+                finish(true);
+                return;
+              }
+            } else {
+              previousRect = null;
+              stableSince = 0;
+            }
+          }
+
+          if (timestamp - startedAt >= resolvedTransition.targetTimeoutMs) {
+            finish(false);
+            return;
+          }
+          frameId = window.requestAnimationFrame(check);
+        };
+
+        frameId = window.requestAnimationFrame(check);
+      });
+    },
+    [resolveStepNode, resolvedTransition]
+  );
+
+  const startManual = useCallback(
+    (id: string, index = 0) => {
+      const manual = manualRegistry.get(id);
+      if (!manual) return;
+      startWithSteps(manual.steps, index);
+    },
+    [manualRegistry, startWithSteps]
+  );
+
+  const next = useCallback(
+    async () => {
+      if (isTransitioning) return;
+      const currentStep = manualSteps[currentIndex];
+
+      const requestId = ++transitionRequestRef.current;
+      setIsTransitioning(true);
+      const legacyDelayMs = runAction(currentStep?.actionOnNext);
+      if (legacyDelayMs > 0 && typeof window !== 'undefined') {
+        await new Promise((resolve) => window.setTimeout(resolve, legacyDelayMs));
+      }
+      if (typeof window !== 'undefined') {
+        await new Promise<void>((resolve) => {
+          window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve()));
+        });
+      }
+
+      const nextIndex = manualSteps.findIndex(
+        (step, index) => index > currentIndex && isStepApplicable(step)
+      );
+      const nextStep = nextIndex >= 0 ? manualSteps[nextIndex] : null;
+      if (!nextStep) {
+        if (requestId === transitionRequestRef.current) setIsTransitioning(false);
+        return;
+      }
+      const ready = await waitForStepTarget(nextStep, requestId);
+      if (requestId !== transitionRequestRef.current) return;
+      setIsTransitioning(false);
+      if (ready) setCurrentIndex(nextIndex);
+    },
+    [currentIndex, isStepApplicable, isTransitioning, manualSteps, runAction, waitForStepTarget]
+  );
+  const prev = useCallback(async () => {
+    if (isTransitioning) return;
+    const previousIndex = [...manualSteps]
+      .map((step, index) => ({ step, index }))
+      .reverse()
+      .find(({ step, index }) => index < currentIndex && isStepApplicable(step))?.index;
+    if (previousIndex === undefined) return;
+
+    const requestId = ++transitionRequestRef.current;
+    setIsTransitioning(true);
+    const legacyDelayMs = runAction(manualSteps[currentIndex]?.actionOnPrevious);
+    if (legacyDelayMs > 0 && typeof window !== 'undefined') {
+      await new Promise((resolve) => window.setTimeout(resolve, legacyDelayMs));
+    }
+    if (typeof window !== 'undefined') {
+      await new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve()));
+      });
+    }
+
+    const ready = await waitForStepTarget(manualSteps[previousIndex], requestId);
+    if (requestId !== transitionRequestRef.current) return;
+    setIsTransitioning(false);
+    if (ready) setCurrentIndex(previousIndex);
+  }, [
+    currentIndex,
+    isStepApplicable,
+    isTransitioning,
+    manualSteps,
+    runAction,
+    waitForStepTarget,
+  ]);
+
+  const registerTarget = useCallback((id: string, node: HTMLElement | null) => {
+    if (!node) return;
+    targetsRef.current.set(id, node);
+    setTargetsVersion((prevValue) => prevValue + 1);
+  }, []);
+
+  const unregisterTarget = useCallback((id: string) => {
+    if (targetsRef.current.delete(id)) {
+      setTargetsVersion((prevValue) => prevValue + 1);
+    }
+  }, []);
+
+  const getTarget = useCallback((id: string) => targetsRef.current.get(id) ?? null, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = currentStep?.mode === 'wizard' ? previous : 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [currentStep?.mode, isOpen]);
+
+  useEffect(() => {
+    if (currentIndex >= manualSteps.length && manualSteps.length > 0) {
+      setCurrentIndex(manualSteps.length - 1);
+    }
+  }, [currentIndex, manualSteps.length]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    runAction(currentStep?.actionOnEnter);
+  }, [currentStep?.id, currentStep?.actionOnEnter, isOpen, runAction]);
+
+  const stateValue = useMemo(
+    () => ({
+      steps: manualSteps,
+      isOpen,
+      currentIndex: visibleStepIndex,
+      currentStep,
+      totalSteps: visibleTotalSteps,
+      targetsVersion,
+      isTransitioning,
+    }),
+    [manualSteps, isOpen, currentStep, visibleTotalSteps, targetsVersion, isTransitioning, visibleStepIndex]
+  );
+
+  const apiValue = useMemo(
+    () => ({
+      start,
+      startManual,
+      startWithSteps,
+      close,
+      next,
+      prev,
+      registerTarget,
+      unregisterTarget,
+      getTarget,
+    }),
+    [start, startManual, startWithSteps, close, next, prev, registerTarget, unregisterTarget, getTarget]
+  );
+
+  const configValue = useMemo(
+    () => ({
+      slots: {
+        ...defaultGuidedManualWebSlots,
+        ...(slots || {}),
+      },
+      copy: {
+        ...guidedShared.copy,
+        ...(copy || {}),
+      },
+      icons: {
+        ...guidedShared.icons,
+        ...(icons || {}),
+      },
+      appearance,
+      tracking: {
+        ...defaultGuidedManualTracking,
+        ...(tracking || {}),
+      },
+      transition: resolvedTransition,
+    }),
+    [appearance, copy, icons, slots, resolvedTransition, tracking]
+  );
+
+  return (
+    <GuidedManualApiContext.Provider value={apiValue}>
+      <GuidedManualStateContext.Provider value={stateValue}>
+        <GuidedManualConfigContext.Provider value={configValue}>
+          {children}
+          <GuidedManualOverlay />
+        </GuidedManualConfigContext.Provider>
+      </GuidedManualStateContext.Provider>
+    </GuidedManualApiContext.Provider>
+  );
+};
+
+export const useGuidedManualState = () => {
+  return useContext(GuidedManualStateContext);
+};
+
+export const useGuidedManualApi = () => {
+  return useContext(GuidedManualApiContext);
+};
+
+// Legacy hook for components that might need both (or just rename to state if appropriate)
+export const useGuidedManual = () => {
+  const state = useContext(GuidedManualStateContext);
+  const api = useContext(GuidedManualApiContext);
+  
+  if (!state || !api) return null;
+  return { ...state, ...api };
+};
+
+type GuidedTargetProps = {
+  id: string;
+  as?: keyof React.JSX.IntrinsicElements;
+  className?: string;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+};
+
+export const GuidedTarget = ({
+  id,
+  as = 'div',
+  className,
+  style,
+  children,
+}: GuidedTargetProps) => {
+  const api = useGuidedManualApi();
+  const registerTarget = api?.registerTarget;
+  const unregisterTarget = api?.unregisterTarget;
+  const ref = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (registerTarget && unregisterTarget && ref.current) {
+      registerTarget(id, ref.current);
+      return () => unregisterTarget(id);
+    }
+    return undefined;
+  }, [id, registerTarget, unregisterTarget]);
+
+  return React.createElement(
+    as as string,
+    {
+      ref,
+      className,
+      style,
+      'data-guide-id': id,
+    },
+    children
+  );
+};
+
+type GuidedManualStartProps = {
+  label?: string;
+  className?: string;
+  startIndex?: number;
+};
+
+export const GuidedManualStart = ({
+  label,
+  className,
+  startIndex = 0,
+}: GuidedManualStartProps) => {
+  const api = useGuidedManualApi();
+  const { copy, icons, slots } = useGuidedManualConfig();
+  const { start: startCopy } = copy;
+  const startIcon = icons?.start ?? 'i';
+  const Button = slots.Button;
+  const { appearance } = useGuidedManualConfig();
+  const s = useMemo(() => createGuidedManualWebStyles(appearance), [appearance]);
+
+  if (!api) return null;
+  const { start } = api;
+
+  return (
+    <Button
+      type="button"
+      className={className}
+      onPress={() => start(startIndex)}
+      ariaLabel={startCopy}
+      title={startCopy}
+      size="sm"
+      tone="neutral"
+      style={s.startButton}
+    >
+      {label ?? startIcon}
+    </Button>
+  );
+};
+
+const GUIDE_Z_INDEX = 100000;
+const GUIDE_TARGET_Z_INDEX = GUIDE_Z_INDEX + 2;
+
+const resolveStepTargetNode = (
+  step: GuidedManualStep | null,
+  getTarget: (id: string) => HTMLElement | null
+) => {
+  if (!step) return null;
+  if (step.selector) {
+    const node = document.querySelector(step.selector) as HTMLElement | null;
+    if (node) return node;
+  }
+  if (step.targetId) return getTarget(step.targetId);
+  return null;
+};
+
+const findScrollableElementAtPoint = (x: number, y: number) => {
+  const nodes = document.elementsFromPoint(x, y);
+  for (const node of nodes) {
+    if (!(node instanceof HTMLElement) || node.closest('[data-guided-manual-overlay="true"]')) continue;
+    let candidate: HTMLElement | null = node;
+    while (candidate && candidate !== document.body) {
+      const styles = window.getComputedStyle(candidate);
+      const canScrollY =
+        /(auto|scroll|overlay)/.test(styles.overflowY) &&
+        candidate.scrollHeight > candidate.clientHeight;
+      const canScrollX =
+        /(auto|scroll|overlay)/.test(styles.overflowX) &&
+        candidate.scrollWidth > candidate.clientWidth;
+      if (canScrollY || canScrollX) return candidate;
+      candidate = candidate.parentElement;
+    }
+  }
+  return document.scrollingElement;
+};
+
+const scrollElementAtPoint = (x: number, y: number, deltaX: number, deltaY: number) => {
+  const scrollable = findScrollableElementAtPoint(x, y);
+  scrollable?.scrollBy({ left: deltaX, top: deltaY, behavior: 'auto' });
+};
+
+type GuidedManualContext = NonNullable<ReturnType<typeof useGuidedManual>>;
+
+const GuidedManualOverlay = () => {
+  const context = useGuidedManual();
+
+  if (!context) return null;
+
+  return <GuidedManualOverlayContent context={context} />;
+};
+
+const GuidedManualOverlayContent = ({ context }: { context: GuidedManualContext }) => {
+  const { copy, icons, slots, appearance, tracking } = useGuidedManualConfig();
+  const s = useMemo(() => createGuidedManualWebStyles(appearance), [appearance]);
+
+  const {
+    isOpen,
+    currentIndex,
+    currentStep,
+    totalSteps,
+    next,
+    prev,
+    close,
+    getTarget,
+    targetsVersion,
+    isTransitioning,
+  } = context;
+  const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
+  const [targetNode, setTargetNode] = useState<HTMLElement | null>(null);
+  const [panelSize, setPanelSize] = useState({ width: 320, height: 160 });
+  const [panelOffset, setPanelOffset] = useState({ x: 0, y: 0 });
+  const [isDraggingPanel, setIsDraggingPanel] = useState(false);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const targetNodeRef = useRef<HTMLElement | null>(null);
+  const targetRectRef = useRef<DOMRect | null>(null);
+  const updateFrameRef = useRef<number | null>(null);
+  const mutationTimerRef = useRef<number | null>(null);
+  const pendingScrollRef = useRef(false);
+  const dragRef = useRef({ pointerId: -1, startX: 0, startY: 0, originX: 0, originY: 0 });
+  const touchScrollRef = useRef({ x: 0, y: 0 });
+  const Button = slots.Button;
+  const { prev: prevCopy, next: nextCopy, finish: finishCopy } = copy;
+  const prevIcon = icons?.prev ?? '<';
+  const nextIcon = icons?.next ?? '>';
+  const finishIcon = icons?.finish ?? 'x';
+  const spotlightPadding = s.spotlightPadding;
+  const isWizardStep = currentStep?.mode === 'wizard';
+
+  const handlePanelPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: panelOffset.x,
+      originY: panelOffset.y,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setIsDraggingPanel(true);
+    event.preventDefault();
+  }, [panelOffset]);
+
+  const handlePanelPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingPanel || dragRef.current.pointerId !== event.pointerId) return;
+    setPanelOffset({
+      x: dragRef.current.originX + event.clientX - dragRef.current.startX,
+      y: dragRef.current.originY + event.clientY - dragRef.current.startY,
+    });
+  }, [isDraggingPanel]);
+
+  const handlePanelPointerEnd = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (dragRef.current.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    dragRef.current.pointerId = -1;
+    setIsDraggingPanel(false);
+  }, []);
+
+  const handlePanelKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    const movement: Record<string, { x: number; y: number }> = {
+      ArrowUp: { x: 0, y: -16 },
+      ArrowDown: { x: 0, y: 16 },
+      ArrowLeft: { x: -16, y: 0 },
+      ArrowRight: { x: 16, y: 0 },
+    };
+    const delta = movement[event.key];
+    if (!delta) return;
+    setPanelOffset((current) => ({ x: current.x + delta.x, y: current.y + delta.y }));
+    event.preventDefault();
+  }, []);
+
+  const handleBlockedWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    scrollElementAtPoint(event.clientX, event.clientY, event.deltaX, event.deltaY);
+  }, []);
+
+  const handleBlockedTouchStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    const touch = event.touches[0];
+    if (!touch) return;
+    touchScrollRef.current = { x: touch.clientX, y: touch.clientY };
+  }, []);
+
+  const handleBlockedTouchMove = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    const touch = event.touches[0];
+    if (!touch) return;
+    const previous = touchScrollRef.current;
+    scrollElementAtPoint(touch.clientX, touch.clientY, previous.x - touch.clientX, previous.y - touch.clientY);
+    touchScrollRef.current = { x: touch.clientX, y: touch.clientY };
+    event.preventDefault();
+  }, []);
+
+  const updateTrackedTarget = useCallback(
+    (scrollToTarget: boolean) => {
+      if (!currentStep) {
+        targetNodeRef.current = null;
+        targetRectRef.current = null;
+        setTargetNode(null);
+        setTargetRect(null);
+        return;
+      }
+
+      const node = resolveStepTargetNode(currentStep, getTarget);
+      if (!node) {
+        targetNodeRef.current = null;
+        targetRectRef.current = null;
+        setTargetNode(null);
+        setTargetRect(null);
+        return;
+      }
+
+      const rect = node.getBoundingClientRect();
+      const isOutsideViewport =
+        rect.bottom < 0 ||
+        rect.top > window.innerHeight ||
+        rect.right < 0 ||
+        rect.left > window.innerWidth;
+      if (scrollToTarget || (tracking.autoScrollWhenHidden && isOutsideViewport)) {
+        node.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+      }
+      const nextRect = rect.width > 0 || rect.height > 0 ? rect : null;
+      const previousRect = targetRectRef.current;
+      const nodeChanged = targetNodeRef.current !== node;
+      const rectChanged =
+        previousRect !== nextRect &&
+        (!previousRect ||
+          !nextRect ||
+          Math.abs(previousRect.top - nextRect.top) > 0.5 ||
+          Math.abs(previousRect.left - nextRect.left) > 0.5 ||
+          Math.abs(previousRect.width - nextRect.width) > 0.5 ||
+          Math.abs(previousRect.height - nextRect.height) > 0.5);
+
+      if (nodeChanged) {
+        targetNodeRef.current = node;
+        setTargetNode(node);
+      }
+      if (rectChanged) {
+        targetRectRef.current = nextRect;
+        setTargetRect(nextRect);
+      }
+    },
+    [currentStep, getTarget, tracking.autoScrollWhenHidden]
+  );
+
+  const scheduleTargetUpdate = useCallback(
+    (scrollToTarget = false) => {
+      pendingScrollRef.current = pendingScrollRef.current || scrollToTarget;
+      if (updateFrameRef.current !== null) {
+        window.cancelAnimationFrame(updateFrameRef.current);
+      }
+      updateFrameRef.current = window.requestAnimationFrame(() => {
+        updateFrameRef.current = null;
+        const shouldScroll = pendingScrollRef.current;
+        pendingScrollRef.current = false;
+        updateTrackedTarget(shouldScroll);
+      });
+    },
+    [updateTrackedTarget]
+  );
+
+  const resolveTargetRect = useCallback(
+    (scrollToTarget: boolean) => {
+      scheduleTargetUpdate(scrollToTarget);
+    },
+    [scheduleTargetUpdate]
+  );
+
+  useEffect(() => {
+    if (!isOpen || !isWizardStep || !targetNode) return;
+
+    const previousPosition = targetNode.style.position;
+    const previousZIndex = targetNode.style.zIndex;
+    const previousIsolation = targetNode.style.isolation;
+    const computedPosition = window.getComputedStyle(targetNode).position;
+
+    if (computedPosition === 'static') {
+      targetNode.style.position = 'relative';
+    }
+    targetNode.style.zIndex = String(GUIDE_TARGET_Z_INDEX);
+    targetNode.style.isolation = 'isolate';
+    targetNode.setAttribute('data-guide-wizard-active', 'true');
+
+    return () => {
+      targetNode.style.position = previousPosition;
+      targetNode.style.zIndex = previousZIndex;
+      targetNode.style.isolation = previousIsolation;
+      targetNode.removeAttribute('data-guide-wizard-active');
+    };
+  }, [isOpen, isWizardStep, targetNode]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    resolveTargetRect(true);
+  }, [isOpen, currentStep?.id, resolveTargetRect]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleUpdate = () => resolveTargetRect(false);
+    window.addEventListener('resize', handleUpdate);
+    window.addEventListener('scroll', handleUpdate, true);
+    return () => {
+      window.removeEventListener('resize', handleUpdate);
+      window.removeEventListener('scroll', handleUpdate, true);
+    };
+  }, [isOpen, resolveTargetRect]);
+
+  useEffect(() => {
+    if (!isOpen || !currentStep) return;
+
+    const scheduleMutationUpdate = () => {
+      if (mutationTimerRef.current !== null) {
+        window.clearTimeout(mutationTimerRef.current);
+      }
+      mutationTimerRef.current = window.setTimeout(() => {
+        mutationTimerRef.current = null;
+        scheduleTargetUpdate(false);
+      }, tracking.mutationDebounceMs);
+    };
+
+    const mutationObserver = tracking.mutations
+      ? new MutationObserver((mutations) => {
+          const hasRelevantMutation = mutations.some((mutation) => {
+            const element = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
+            return !element?.closest('[data-guided-manual-overlay="true"]');
+          });
+          if (hasRelevantMutation) scheduleMutationUpdate();
+        })
+      : null;
+
+    mutationObserver?.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      characterData: true,
+    });
+
+    const resizeObserver = tracking.resize && typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => scheduleTargetUpdate(false))
+      : null;
+    if (resizeObserver && targetNode) {
+      resizeObserver.observe(targetNode);
+      let ancestor = targetNode.parentElement;
+      let observedAncestors = 0;
+      while (ancestor && ancestor !== document.body && observedAncestors < 8) {
+        resizeObserver.observe(ancestor);
+        ancestor = ancestor.parentElement;
+        observedAncestors += 1;
+      }
+    }
+
+    const handleVisualTransition = () => scheduleTargetUpdate(false);
+    if (tracking.transitions) {
+      document.addEventListener('transitionrun', handleVisualTransition, true);
+      document.addEventListener('transitionend', handleVisualTransition, true);
+      document.addEventListener('animationstart', handleVisualTransition, true);
+      document.addEventListener('animationiteration', handleVisualTransition, true);
+      document.addEventListener('animationend', handleVisualTransition, true);
+    }
+
+    return () => {
+      mutationObserver?.disconnect();
+      resizeObserver?.disconnect();
+      if (mutationTimerRef.current !== null) {
+        window.clearTimeout(mutationTimerRef.current);
+        mutationTimerRef.current = null;
+      }
+      if (tracking.transitions) {
+        document.removeEventListener('transitionrun', handleVisualTransition, true);
+        document.removeEventListener('transitionend', handleVisualTransition, true);
+        document.removeEventListener('animationstart', handleVisualTransition, true);
+        document.removeEventListener('animationiteration', handleVisualTransition, true);
+        document.removeEventListener('animationend', handleVisualTransition, true);
+      }
+    };
+  }, [currentStep, isOpen, scheduleTargetUpdate, targetNode, tracking]);
+
+  useEffect(() => {
+    return () => {
+      if (updateFrameRef.current !== null) {
+        window.cancelAnimationFrame(updateFrameRef.current);
+      }
+      if (mutationTimerRef.current !== null) {
+        window.clearTimeout(mutationTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    // A target can register after a route or wizard step finishes rendering.
+    // Center it when it becomes available instead of keeping the panel detached.
+    resolveTargetRect(true);
+  }, [isOpen, targetsVersion, resolveTargetRect]);
+
+  useLayoutEffect(() => {
+    if (!panelRef.current || !isOpen) return;
+    const rect = panelRef.current.getBoundingClientRect();
+    if (rect.width && rect.height) {
+      setPanelSize({ width: rect.width, height: rect.height });
+    }
+  }, [isOpen, currentIndex, currentStep?.description]);
+
+  if (!isOpen || !currentStep) return null;
+
+  const windowWidth = window.innerWidth;
+  const windowHeight = window.innerHeight;
+  const margin = 16;
+
+  let panelStyle: React.CSSProperties = {
+    top: windowHeight / 2 - panelSize.height / 2,
+    left: windowWidth / 2 - panelSize.width / 2,
+  };
+
+  if (targetRect) {
+    const spaceBelow = windowHeight - targetRect.bottom - margin;
+    const spaceAbove = targetRect.top - margin;
+    const placeBelow = spaceBelow >= panelSize.height || spaceBelow >= spaceAbove;
+    const top = placeBelow
+      ? targetRect.bottom + margin
+      : targetRect.top - panelSize.height - margin;
+    const left = clampGuidedManualValue(targetRect.left, margin, windowWidth - panelSize.width - margin);
+    panelStyle = {
+      top: clampGuidedManualValue(top, margin, windowHeight - panelSize.height - margin),
+      left,
+    };
+  }
+
+  panelStyle = {
+    ...panelStyle,
+    top: clampGuidedManualValue(
+      Number(panelStyle.top ?? margin) + panelOffset.y,
+      margin,
+      Math.max(margin, windowHeight - panelSize.height - margin)
+    ),
+    left: clampGuidedManualValue(
+      Number(panelStyle.left ?? margin) + panelOffset.x,
+      margin,
+      Math.max(margin, windowWidth - panelSize.width - margin)
+    ),
+    zIndex: GUIDE_Z_INDEX + 4,
+    pointerEvents: 'auto',
+    transition: isDraggingPanel ? 'none' : s.panel.transition,
+  };
+
+  const highlightStyle = targetRect
+    ? (() => {
+      let x = targetRect.left - spotlightPadding;
+      let y = targetRect.top - spotlightPadding;
+      let width = targetRect.width + spotlightPadding * 2;
+      let height = targetRect.height + spotlightPadding * 2;
+      const maxWidth = Math.max(0, windowWidth - margin * 2);
+      const maxHeight = Math.max(0, windowHeight - margin * 2);
+      width = Math.min(width, maxWidth);
+      height = Math.min(height, maxHeight);
+      const maxX = windowWidth - margin - width;
+      const maxY = windowHeight - margin - height;
+      x = clampGuidedManualValue(x, margin, maxX);
+      y = clampGuidedManualValue(y, margin, maxY);
+      return { top: y, left: x, width, height };
+    })()
+    : undefined;
+
+  const isLast = currentIndex >= totalSteps - 1;
+  const showFinish = !isLast;
+  const progressPercent = totalSteps > 0 ? ((currentIndex + 1) / totalSteps) * 100 : 0;
+  const stepTone = currentStep.tone ?? 'default';
+  const tone = s.stepTones[stepTone] ?? s.stepTones.default;
+
+  const overlayStyle = targetRect
+    ? {
+        ...s.overlay,
+        pointerEvents: isWizardStep ? 'none' : s.overlay.pointerEvents,
+      }
+    : { ...s.overlay, ...s.overlayDim };
+
+  const blockerStyle = (style: React.CSSProperties): React.CSSProperties => ({
+    position: 'fixed',
+    zIndex: GUIDE_Z_INDEX,
+    pointerEvents: 'auto',
+    touchAction: 'none',
+    ...style,
+  });
+  const blockerEvents = {
+    onWheel: handleBlockedWheel,
+    onTouchStart: handleBlockedTouchStart,
+    onTouchMove: handleBlockedTouchMove,
+  };
+
+  const wizardBlockers = targetRect && highlightStyle && isWizardStep
+    ? (
+      <>
+        <div {...blockerEvents} style={blockerStyle({ top: 0, left: 0, right: 0, height: highlightStyle.top })} />
+        <div
+          {...blockerEvents}
+          style={blockerStyle({
+            top: highlightStyle.top + highlightStyle.height,
+            left: 0,
+            right: 0,
+            bottom: 0,
+          })}
+        />
+        <div
+          {...blockerEvents}
+          style={blockerStyle({
+            top: highlightStyle.top,
+            left: 0,
+            width: highlightStyle.left,
+            height: highlightStyle.height,
+          })}
+        />
+        <div
+          {...blockerEvents}
+          style={blockerStyle({
+            top: highlightStyle.top,
+            left: highlightStyle.left + highlightStyle.width,
+            right: 0,
+            height: highlightStyle.height,
+          })}
+        />
+      </>
+    )
+    : null;
+
+  return (
+    <div data-guided-manual-overlay="true" style={overlayStyle}>
+      {wizardBlockers}
+      {targetRect && <div style={getGuidedManualAtomWebJsx0Style(s, highlightStyle)} />}
+      <div
+        ref={panelRef}
+        onWheel={handleBlockedWheel}
+        style={getGuidedManualAtomWebJsx1Style(s, {
+          ...panelStyle,
+          background: tone.panelBg,
+          borderColor: tone.panelBorder,
+          color: tone.textMain,
+          boxShadow: `${s.panel.boxShadow}, 0 0 0 1px ${tone.panelBorder}`,
+        })}
+      >
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Mover panel de ayuda"
+          title="Mover panel"
+          onPointerDown={handlePanelPointerDown}
+          onPointerMove={handlePanelPointerMove}
+          onPointerUp={handlePanelPointerEnd}
+          onPointerCancel={handlePanelPointerEnd}
+          onKeyDown={handlePanelKeyDown}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: 18,
+            margin: '-8px -4px 6px',
+            cursor: isDraggingPanel ? 'grabbing' : 'grab',
+            touchAction: 'none',
+            userSelect: 'none',
+            color: s.description.color,
+          }}
+        >
+          <span aria-hidden style={{ letterSpacing: 3, fontSize: 13 }}>....</span>
+        </div>
+        {currentStep.mode === 'wizard' ? (
+          <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase', opacity: 0.72, marginBottom: 6 }}>
+            Wizard paso a paso
+          </div>
+        ) : null}
+        <h3 style={{ ...s.title, color: tone.textMain }}>{currentStep.title}</h3>
+        <p style={{ ...s.description, color: tone.textMuted }}>{currentStep.description}</p>
+        <div
+          aria-label={`Progreso ${Math.round(progressPercent)}%`}
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(progressPercent)}
+          style={{ ...s.progressTrack, borderColor: tone.panelBorder }}
+        >
+          <div style={{ ...s.progressFill, width: `${progressPercent}%`, background: tone.accent }} />
+        </div>
+        <div style={s.controls}>
+          <div style={{ ...s.progress, color: tone.textMuted }}>{currentStep.title}</div>
+          <div style={s.actions}>
+            {showFinish && (
+              <Button
+                size="icon"
+                tone="neutral"
+                style={{ ...s.buttonBase, ...s.buttonSecondary }}
+                onPress={close}
+                ariaLabel={finishCopy}
+                title={finishCopy}
+                icon={finishIcon}
+                iconOnly
+              />
+            )}
+            <Button
+              size="icon"
+              tone="neutral"
+              style={{ ...s.buttonBase, ...s.buttonSecondary }}
+              onPress={prev}
+              disabled={currentIndex === 0 || isTransitioning}
+              ariaLabel={prevCopy}
+              title={prevCopy}
+              icon={prevIcon}
+              iconOnly
+            />
+            <Button
+              size="icon"
+              tone="primary"
+                style={{ ...s.buttonBase, ...s.buttonPrimary, background: tone.buttonPrimaryBg, borderColor: tone.panelBorder }}
+              onPress={isLast ? close : next}
+              disabled={!isLast && isTransitioning}
+              ariaLabel={isLast ? finishCopy : nextCopy}
+              title={isLast ? finishCopy : nextCopy}
+              icon={isLast ? finishIcon : nextIcon}
+              iconOnly
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};

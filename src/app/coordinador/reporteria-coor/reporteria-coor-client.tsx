@@ -1,7 +1,7 @@
 "use client";
 
-import React from "react";
-import { BarChart3, Flame, Layers, TrendingUp } from "lucide-react";
+import React, { useState } from "react";
+import { BarChart3, Flame, Layers, TrendingUp, Train } from "lucide-react";
 import Layout from "./components/Layout";
 import OverviewSection from "./sections/OverviewSection";
 import OperacionesSection from "./sections/OperacionesSection";
@@ -9,6 +9,7 @@ import IncidentesSection from "./sections/IncidentesSection";
 import RankingsSection from "./sections/RankingsSection";
 import type { Tab } from "./lib/types";
 import { useReporteriaCoor } from "./hooks/useReporteriaCoor";
+import EmpresaLocomotorasReport from "./reports/empresa-locomotoras/EmpresaLocomotorasReport";
 
 const tabs: Array<{ id: Tab; label: string; icon: React.ElementType }> = [
   { id: "overview", label: "Overview", icon: Layers },
@@ -17,7 +18,32 @@ const tabs: Array<{ id: Tab; label: string; icon: React.ElementType }> = [
   { id: "rankings", label: "Rankings", icon: BarChart3 },
 ];
 
-export default function ReporteriaCoorClient() {
+type ReportKey = "general" | "empresaLocomotoras";
+
+const reportOptions: Array<{
+  id: ReportKey;
+  label: string;
+  desc: string;
+  icon: React.ElementType;
+  tone: string;
+}> = [
+  {
+    id: "general",
+    label: "Reporte Coordinador",
+    desc: "KPIs, incidentes, estados y rankings.",
+    icon: Layers,
+    tone: "#6366f1",
+  },
+  {
+    id: "empresaLocomotoras",
+    label: "Alstom - Locomotoras",
+    desc: "Concentrado de movimientos.",
+    icon: Train,
+    tone: "#0ea5e9",
+  },
+];
+
+function GeneralReport() {
   const report = useReporteriaCoor();
 
   return (
@@ -97,8 +123,57 @@ export default function ReporteriaCoorClient() {
         <RankingsSection
           topEmpresas={report.topEmpresas}
           topLocomotoras={report.topLocomotoras}
+          movimientosDetalle={report.movimientosDetalle}
+          cronologiaMovimientos={report.cronologiaMovimientos}
         />
       )}
     </Layout>
+  );
+}
+
+export default function ReporteriaCoorClient() {
+  const [reportKey, setReportKey] = useState<ReportKey>("general");
+
+  return (
+    <div className="reporteria-coor-root w-full max-w-[1600px] mx-auto space-y-6 overflow-x-hidden">
+      <section className="grid gap-4 md:grid-cols-2">
+        {reportOptions.map((opt) => {
+          const active = opt.id === reportKey;
+          const Icon = opt.icon;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setReportKey(opt.id)}
+              className={`flex w-full items-start gap-3 rounded-3xl border p-5 text-left shadow-sm transition ${
+                active
+                  ? "border-slate-900 bg-white"
+                  : "border-slate-200/70 bg-white/80 hover:border-slate-300"
+              }`}
+            >
+              <span
+                className="grid h-12 w-12 place-items-center rounded-2xl"
+                style={{ background: `${opt.tone}22`, color: opt.tone }}
+              >
+                <Icon className="h-5 w-5" />
+              </span>
+              <span className="space-y-1">
+                <span className="block text-base font-semibold text-slate-900">{opt.label}</span>
+                <span className="block text-sm text-slate-500">{opt.desc}</span>
+              </span>
+            </button>
+          );
+        })}
+      </section>
+
+      {reportKey === "general" ? <GeneralReport /> : <EmpresaLocomotorasReport />}
+
+      <style jsx global>{`
+        .reporteria-coor-root,
+        .reporteria-coor-root * {
+          min-width: 0;
+        }
+      `}</style>
+    </div>
   );
 }

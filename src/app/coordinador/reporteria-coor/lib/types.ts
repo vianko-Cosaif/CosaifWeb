@@ -25,6 +25,52 @@ export type TopLocomotora = {
   estados?: Record<string, number>;
 };
 
+export type PersonaRef = { id?: number | string; nombre?: string };
+
+export type IncidenteDetalle = {
+  id?: number | string;
+  estado?: string;
+  descripcion?: string;
+  fechaInicioMX?: string;
+  fechaFinMX?: string;
+  usuario?: PersonaRef;
+  imagenes?: string[];
+  imagenUrls?: string[];
+};
+
+export type MovimientoDetalle = {
+  ordenDia?: number;
+  id?: number | string;
+  locomotiveNumber?: string | number;
+  estado?: string;
+  empresa?: string;
+  localidad?: string;
+  solicitadoPor?: PersonaRef;
+  operador?: PersonaRef;
+  cliente?: PersonaRef;
+  supervisor?: PersonaRef;
+  coordinador?: PersonaRef;
+  fechaSolicitudMX?: string;
+  fechaInicioMX?: string;
+  fechaFinMX?: string;
+  fechaCreacionMX?: string;
+  fechaActualizacionMX?: string;
+  minSolicitudAInicio?: number;
+  minInicioAFin?: number;
+  minSolicitudAFin?: number;
+  viaOrigen?: string;
+  viaDestino?: string;
+  tipoMovimiento?: string;
+  prioridad?: string;
+  comentarios?: string;
+  incidentes?: IncidenteDetalle[];
+};
+
+export type CronologiaCierre = {
+  fecha?: string;
+  movimientos?: MovimientoDetalle[];
+};
+
 export type Reporte = Partial<{
   kpis: Kpis;
   movimientosPorHora: HourBucket[];
@@ -34,6 +80,9 @@ export type Reporte = Partial<{
   estadosGeneral: Record<string, number>;
   topEmpresas: TopEmpresa[];
   topLocomotoras: TopLocomotora[];
+  movimientosDetalle: MovimientoDetalle[];
+  cronologiaMovimientos: CronologiaCierre[];
+  cronologiaCierres: CronologiaCierre[];
 }>;
 
 export type Tab = "overview" | "operaciones" | "incidentes" | "rankings";

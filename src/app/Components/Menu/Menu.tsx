@@ -17,8 +17,12 @@ import {
   ChevronRight,
   Settings,
   BarChart3,
+  Wrench,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import ThemeToggle from "@/app/Components/ui/ThemeToggle";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
+import { ClientMovementGuideButton } from "@/app/Components/GuidedManualAtom/ClientMovementGuide";
 
 /* ==========================================================================
    INTERFACES & TYPES
@@ -36,11 +40,19 @@ interface UserSession {
   };
 }
 
+type NavigationItem = {
+  id: string;
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  hide?: boolean;
+};
+
 // PREMIUM COLOR CONFIGURATION
 const ROLE_CONFIG: Record<
   Rol,
   {
-    icon: any;
+    icon: LucideIcon;
     label: string;
     // Tailwind classes
     text: string;           // Text color
@@ -123,6 +135,36 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
     if (window.innerWidth < 1024) setIsOpen(false);
   }, []);
 
+  useEffect(() => {
+    if (!mounted) return;
+
+    const updateSidebarWidth = () => {
+      const width = window.innerWidth < 768 ? "0px" : isOpen ? "280px" : "80px";
+      document.documentElement.style.setProperty("--cosaif-sidebar-width", width);
+    };
+
+    updateSidebarWidth();
+    window.addEventListener("resize", updateSidebarWidth);
+    return () => window.removeEventListener("resize", updateSidebarWidth);
+  }, [isOpen, mounted]);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileOpen(false);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [mobileOpen]);
+
   const normRol = useMemo<Rol>(() => {
     const r = String(session?.rol || "").toUpperCase();
     if (r.includes("ADMIN")) return "ADMINISTRADOR";
@@ -134,10 +176,11 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
   const base = useMemo(() => `/${normRol.toLowerCase()}`, [normRol]);
   const roleConfig = ROLE_CONFIG[normRol] || ROLE_CONFIG.CLIENTE;
 
-  const navigation = useMemo(() => {
+  const navigation = useMemo<NavigationItem[]>(() => {
     return [
       { id: "dash", label: "Dashboard", href: base, icon: LayoutDashboard },
       { id: "movs", label: "Movimientos", href: `${base}/movimientos`, icon: Train },
+      { id: "torno", label: normRol === "CLIENTE" ? "Historial Torno" : "Torno", href: `${base}/torno`, icon: Wrench },
       {
         id: "users",
         label: "Gestión Usuarios",
@@ -153,7 +196,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
         hide: !["ADMINISTRADOR", "COORDINADOR"].includes(normRol),
         icon: BarChart3,
       },
-    ].filter((i: any) => !i.hide);
+    ].filter((item) => !item.hide);
   }, [normRol, base]);
 
   const handleLogout = () => {
@@ -167,8 +210,9 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
   if (!mounted) return null;
 
   // NavItem Component
-  const NavItem = ({ item, isActive }: { item: any, isActive: boolean }) => (
-    <button
+  const NavItem = ({ item, isActive }: { item: NavigationItem, isActive: boolean }) => {
+    const button = (
+      <button
       onClick={() => {
         router.push(item.href);
         setMobileOpen(false);
@@ -182,7 +226,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
         !isOpen && !mobileOpen ? "justify-center px-2" : ""
       )}
       title={!isOpen ? item.label : undefined}
-    >
+      >
       <item.icon
         className={cn(
           "h-5 w-5 shrink-0 transition-transform duration-300",
@@ -206,15 +250,29 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
           {item.label}
         </div>
       )}
-    </button>
-  );
+      </button>
+    );
+
+    if (normRol === "CLIENTE" && item.id === "movs") {
+      return (
+        <GuidedTarget id="client-nav-movements" className="w-full">
+          {button}
+        </GuidedTarget>
+      );
+    }
+
+    return button;
+  };
 
   return (
     <>
       {/* MOBILE TRIGGER */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="fixed left-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 shadow-sm backdrop-blur-md md:hidden dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 transition-transform hover:scale-105 active:scale-95"
+        className="fixed left-4 top-[calc(env(safe-area-inset-top)+1rem)] z-40 flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white/80 shadow-sm backdrop-blur-md transition-transform hover:scale-105 active:scale-95 md:hidden dark:border-slate-800 dark:bg-slate-900/80"
+        aria-label="Abrir menú"
+        aria-expanded={mobileOpen}
+        aria-controls="cosaif-sidebar"
       >
         <MenuIcon className="h-5 w-5 text-slate-700 dark:text-slate-300" />
       </button>
@@ -230,6 +288,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
 
       {/* SIDEBAR CONTAINER */}
       <aside
+        id="cosaif-sidebar"
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-200 bg-white/95 backdrop-blur-xl dark:border-zinc-800 dark:bg-black/90 transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]",
           mobileOpen ? "translate-x-0 w-[280px] shadow-2xl" : "-translate-x-full md:translate-x-0",
@@ -268,6 +327,7 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
             <button
               onClick={() => setMobileOpen(false)}
               className="absolute right-4 top-1/2 -translate-y-1/2 md:hidden"
+              aria-label="Cerrar menú"
             >
               <X className="h-5 w-5 text-slate-500" />
             </button>
@@ -329,17 +389,28 @@ export default function SidebarMenu({ version = "v2.0.0" }: { version?: string }
         {/* FOOTER */}
         <div className="mt-auto border-t border-slate-100 bg-slate-50/50 p-4 dark:border-zinc-800 dark:bg-zinc-900/30 backdrop-blur-sm">
           {/* THEME TOGGLE */}
-          <div className={cn("mb-3 flex items-center", (isOpen || mobileOpen) ? "justify-between" : "justify-center")}>
+          <div className={cn("mb-3 flex items-center gap-2", (isOpen || mobileOpen) ? "justify-between" : "justify-center")}>
             {(isOpen || mobileOpen) && (
               <span className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-zinc-600">
                 Tema
               </span>
             )}
-            <ThemeToggle
-              size="sm"
-              withLabel={isOpen || mobileOpen}
-              className={cn(!(isOpen || mobileOpen) && "h-9 w-9")}
-            />
+            <div className="flex items-center gap-2">
+              {normRol === "CLIENTE" && (
+                <ClientMovementGuideButton
+                  compact={!(isOpen || mobileOpen)}
+                  className={cn(
+                    "inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50",
+                    !(isOpen || mobileOpen) && "w-9 px-0"
+                  )}
+                />
+              )}
+              <ThemeToggle
+                size="sm"
+                withLabel={isOpen || mobileOpen}
+                className={cn(!(isOpen || mobileOpen) && "h-9 w-9")}
+              />
+            </div>
           </div>
           {/* LOGOUT + VERSION */}
           <div className={cn("flex items-center", isOpen ? "justify-between" : "flex-col gap-3 justify-center")}>

@@ -13,7 +13,7 @@ export default async function Page() {
   if (role !== "COORDINADOR") redirect("/");
 
   return (
-    <section className="mx-auto w-full max-w-screen-2xl">
+    <section className="mx-auto w-full max-w-none min-w-0 overflow-x-hidden px-4 xl:px-8">
       <ReporteriaCoorClient />
     </section>
   );

@@ -12,6 +12,7 @@ import Nav from "./Nav";
 import Filtros from "./Filtros";
 import Tabla from "./Tabla";
 import { useMovimientos, Rol } from "./useMovimientos";
+import { GuidedTarget } from "@/app/Components/GuidedManualAtom";
 
 /* ================== HELPERS SESIÓN ================== */
 
@@ -473,19 +474,20 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
         </section>
 
         {/* Card: Tabla */}
-        <section
-          className="
-            flex-1 
-            rounded-xl sm:rounded-2xl 
-            border border-slate-100 dark:border-slate-800/60 
-            bg-white dark:bg-slate-950/80 
-            px-1 py-1.5 sm:px-3 sm:py-3 lg:px-4 lg:py-4 
-            flex flex-col
-            overflow-hidden
-            shadow-sm
-          "
-        >
-          {filas.length === 0 && !cargando ? (
+        <GuidedTarget id="client-movements-list" className="flex min-h-0 flex-1 flex-col">
+          <section
+            className="
+              flex-1
+              rounded-xl sm:rounded-2xl
+              border border-slate-100 dark:border-slate-800/60
+              bg-white dark:bg-slate-950/80
+              px-1 py-1.5 sm:px-3 sm:py-3 lg:px-4 lg:py-4
+              flex flex-col
+              overflow-hidden
+              shadow-sm
+            "
+          >
+            {filas.length === 0 && !cargando ? (
             <div className="flex-1 flex flex-col items-center justify-center py-10 sm:py-16 gap-4">
               <div className="rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 p-6">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300 dark:text-slate-600">
@@ -502,7 +504,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
                 </p>
               </div>
             </div>
-          ) : (
+            ) : (
             <div className="relative flex-1 min-h-0">
               <Tabla
                 filas={filas}
@@ -525,8 +527,9 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
                 onEditar={handleEditar}
               />
             </div>
-          )}
-        </section>
+            )}
+          </section>
+        </GuidedTarget>
       </div>
     </section>
   );

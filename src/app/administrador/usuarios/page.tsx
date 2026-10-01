@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 
 /** ================== CONFIG ================== */
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "/api";
+const API_BASE = "/bff";
 const FETCH_TIMEOUT_MS = 12000;
 
 /** ================== TIPOS ================== */
@@ -22,6 +22,7 @@ export interface UserData {
   email: string;
   rol: Rol;
   empresaId: ID;
+  localidadId?: ID | null;
   empresa?: { id?: ID; nombre: string } | null;
   localidad?: { id?: ID; nombre: string; estado?: string } | null;
   usuario?: string | null;   // se mantiene por compatibilidad con backend
@@ -76,9 +77,10 @@ async function fetchJSON<T>(url: string, init: RequestInit = {}): Promise<T> {
   const txt = await res.text().catch(() => "");
   const body = ct.includes("application/json") ? parseJsonSafe<T>(txt) : null;
   if (!res.ok) {
+    const errorBody = body && typeof body === "object" ? (body as { message?: unknown; error?: unknown }) : null;
     const msg =
-      (body && typeof body === "object" && "message" in (body as object) ? (body as any).message : undefined) ??
-      (body && typeof body === "object" && "error" in (body as object) ? (body as any).error : undefined) ??
+      (typeof errorBody?.message === "string" ? errorBody.message : undefined) ??
+      (typeof errorBody?.error === "string" ? errorBody.error : undefined) ??
       txt ?? `HTTP ${res.status}`;
     throw new Error(String(msg));
   }
@@ -214,24 +216,21 @@ export default function Usuarios() {
     });
   }, [usuarios, q, filterRol, filterActivo]);
 
-  async function saveEdit(u: UserData & { localidadId?: number | null }) {
+  async function saveEdit(u: UserData & { password?: string }) {
     try {
-      // En edición mantenemos compatibilidad: enviamos nombre y también usuario = nombre
-      const body: any = {
+      const nextPassword = String(u.password || "").trim();
+      const body: { nombre: string; email: string; contrasena?: string } = {
         nombre: String(u.nombre || "").trim(),
-        usuario: String(u.nombre || "").trim(),
         email: String(u.email || "").trim(),
-        rol: u.rol,
-        empresaId: Number(u.empresaId),
-        localidadId: u.localidad?.id ?? u.localidadId ?? null,
-        // NO tocamos 'activo' aquí para no sobrescribir desde UI
       };
+      if (nextPassword) body.contrasena = nextPassword;
+
       await fetchJSON<unknown>(`${API_BASE}/usuarios/${u.id}`, {
-        method: "PATCH",
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      addToast("success", "Usuario actualizado correctamente");
+      addToast("success", nextPassword ? "Usuario y contraseña actualizados correctamente" : "Usuario actualizado correctamente");
     } catch (e) {
       addToast("error", e instanceof Error ? e.message : "Error al actualizar");
       throw e;
@@ -247,17 +246,16 @@ export default function Usuarios() {
     password: string;
   }) {
     try {
-  // createUser(...)
-const body = {
-  nombre: String(u.nombre || "").trim(),
-  usuario: String(u.nombre || "").trim(),  // opcional pero útil si lo usas como username
-  email: String(u.email || "").trim(),
-  contrasena: u.password,
-  empresaId: Number(u.empresaId),
-  rol: u.rol,
-  localidadId: u.localidadId,
-  activo: true
-};
+      const body = {
+        nombre: String(u.nombre || "").trim(),
+        usuario: String(u.nombre || "").trim(),
+        email: String(u.email || "").trim(),
+        contrasena: u.password,
+        empresaId: Number(u.empresaId),
+        rol: u.rol,
+        localidadId: u.localidadId,
+        activo: true,
+      };
 
       await fetchJSON<unknown>(`${API_BASE}/usuarios`, {
         method: "POST",
@@ -498,7 +496,7 @@ const body = {
             empresas={empresas}
             localidades={localidades}
             onSubmit={async (values) => {
-              await createUser(values as any);
+              await createUser(values);
               setCreating(false);
               await load();
             }}
@@ -515,7 +513,7 @@ const body = {
             localidades={localidades}
             initial={editing}
             onSubmit={async (values) => {
-              await saveEdit({ ...editing, ...values, id: editing.id } as any);
+              await saveEdit({ ...editing, ...values, id: editing.id });
               setEditing(null);
               await load();
             }}
@@ -623,7 +621,7 @@ function UserForm({
     email: initial?.email ?? "",
     rol: initial?.rol ?? "CLIENTE",
     empresaId: initial?.empresaId ?? (empresas[0]?.id ?? ""),
-    localidadId: initial?.localidad?.id ?? (localidades[0]?.id ?? ""),
+    localidadId: initial?.localidad?.id ?? initial?.localidadId ?? (localidades[0]?.id ?? ""),
     password: "",
     confirm: "",
   }));
@@ -633,6 +631,18 @@ function UserForm({
   const [showConfirm, setShowConfirm] = useState(false);
   const [touched, setTouched] = useState({ nombre: false, email: false, password: false, confirm: false });
 
+  const passwordDraft = form.password || "";
+  const confirmDraft = form.confirm || "";
+  const wantsPasswordChange = mode === "edit" && (passwordDraft.length > 0 || confirmDraft.length > 0);
+  const passwordRequired = mode === "create";
+  const shouldValidatePassword = passwordRequired || wantsPasswordChange;
+  const passwordReady = !shouldValidatePassword || (passwordDraft.length >= 8 && passwordDraft === confirmDraft);
+  const passwordStatusMessage =
+    shouldValidatePassword && passwordDraft.length > 0 && passwordDraft.length < 8
+      ? "La contraseña debe tener mínimo 8 caracteres."
+      : shouldValidatePassword && passwordDraft.length >= 8 && passwordDraft !== confirmDraft
+      ? "Confirma la misma contraseña para poder guardar."
+      : "";
   const pScore = passwordScore(form.password || "");
   const accent = roleAccent(form.rol);
 
@@ -640,25 +650,24 @@ function UserForm({
     nombre: touched.nombre && !form.nombre.trim() ? "El nombre es obligatorio" : "",
     email: touched.email && !form.email.trim() ? "El email es obligatorio" : "",
     password:
-      touched.password && mode === "create" && !(form.password || "").trim()
+      touched.password && passwordRequired && !passwordDraft.trim()
         ? "La contraseña es obligatoria"
-        : touched.password && mode === "create" && (form.password || "").length < 8
+        : touched.password && shouldValidatePassword && passwordDraft.length < 8
         ? "Mínimo 8 caracteres"
         : "",
     confirm:
-      touched.confirm && mode === "create" && (form.password || "") !== (form.confirm || "")
+      touched.confirm && shouldValidatePassword && passwordDraft !== confirmDraft
         ? "Las contraseñas no coinciden"
         : "",
-    empresa: !form.empresaId ? "Selecciona una empresa" : "",
-    localidad: !form.localidadId ? "Selecciona una localidad" : "",
+    empresa: mode === "create" && !form.empresaId ? "Selecciona una empresa" : "",
+    localidad: mode === "create" && !form.localidadId ? "Selecciona una localidad" : "",
   };
 
   const canSubmit =
     form.nombre.trim() &&
     form.email.trim() &&
-    !!form.empresaId &&
-    !!form.localidadId &&
-    (mode === "edit" || ((form.password || "").length >= 8 && form.password === form.confirm)) &&
+    (mode === "edit" || (!!form.empresaId && !!form.localidadId)) &&
+    passwordReady &&
     !saving;
 
   const submit = async () => {
@@ -671,7 +680,7 @@ function UserForm({
         rol: form.rol,
         empresaId: Number(form.empresaId),
         localidadId: form.localidadId ? Number(form.localidadId) : null,
-        password: form.password, // se mapea a 'contrasena' en createUser
+        password: passwordDraft.trim(),
       });
     } finally { setSaving(false); }
   };
@@ -686,42 +695,70 @@ function UserForm({
         <div className={clsx("inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold dark:bg-slate-800", accent.text)}>
           <UserIcon className="h-4 w-4" /> {mode === "create" ? "Crear Nuevo Usuario" : "Editar Usuario"}
         </div>
-        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">Mismos campos y flujo que la app móvil.</p>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+          {mode === "create"
+            ? "Define los datos de acceso y la ubicación del nuevo usuario."
+            : "Actualiza nombre, correo o asigna una nueva contraseña. Si dejas la contraseña vacía, se conserva la actual."}
+        </p>
       </div>
 
       {/* Nombre */}
-      <div className="relative">
-        <UserIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input
-          type="text"
-          value={form.nombre}
-          onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
-          onBlur={() => setTouched((t) => ({ ...t, nombre: true }))}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
-          className={clsx(baseInput, errors.nombre ? errCls : okCls)}
-          placeholder="Nombre"
-        />
+      <div>
+        <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+          Usuario / nombre de acceso
+        </label>
+        <div className="relative">
+          <UserIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={form.nombre}
+            onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
+            onBlur={() => setTouched((t) => ({ ...t, nombre: true }))}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            className={clsx(baseInput, errors.nombre ? errCls : okCls)}
+            placeholder="Usuario"
+            autoComplete="username"
+          />
+        </div>
         {errors.nombre && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.nombre}</p>}
       </div>
 
       {/* Email */}
-      <div className="relative">
-        <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input
-          type="email"
-          value={form.email}
-          onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-          onBlur={() => setTouched((t) => ({ ...t, email: true }))}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
-          className={clsx(baseInput, errors.email ? errCls : okCls)}
-          placeholder="Correo electrónico"
-        />
+      <div>
+        <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+          Correo electrónico
+        </label>
+        <div className="relative">
+          <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            onBlur={() => setTouched((t) => ({ ...t, email: true }))}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            className={clsx(baseInput, errors.email ? errCls : okCls)}
+            placeholder="correo@empresa.com"
+            autoComplete="email"
+          />
+        </div>
         {errors.email && <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.email}</p>}
       </div>
 
-      {/* Passwords solo en create */}
-      {mode === "create" && (
+      {/* Passwords */}
+      {(mode === "create" || mode === "edit") && (
         <>
+          {mode === "edit" && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+              <div className="flex gap-3">
+                <KeyRound className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <p className="font-semibold">Cambio de contraseña opcional</p>
+                  <p className="mt-0.5 text-xs opacity-80">Escribe una contraseña nueva solo cuando necesites reemplazar la actual.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="relative">
               <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -731,7 +768,7 @@ function UserForm({
                 onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                 onBlur={() => setTouched((t) => ({ ...t, password: true }))}
                 className={clsx(baseInput, errors.password ? errCls : okCls, "pr-12")}
-                placeholder="Contraseña (mínimo 8)"
+                placeholder={mode === "create" ? "Contraseña (mínimo 8)" : "Nueva contraseña (opcional)"}
               />
               <button
                 type="button"
@@ -766,33 +803,42 @@ function UserForm({
             </div>
           </div>
 
-          {/* Indicador de fuerza */}
-          <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
-            <span>Seguridad de la contraseña</span>
-            <span className={clsx(passwordScore(form.password) < 40 ? "text-rose-600" : passwordScore(form.password) < 70 ? "text-amber-600" : "text-emerald-600")}>
-              {passwordScore(form.password)}%
-            </span>
-          </div>
-          <div className="h-2 w-full rounded bg-slate-200">
-            <div
-              className={clsx("h-2 rounded", pScore < 40 ? "bg-rose-500" : pScore < 70 ? "bg-amber-500" : "bg-emerald-500")}
-              style={{ width: `${pScore}%` }}
-            />
-          </div>
+          {(mode === "create" || wantsPasswordChange) && (
+            <>
+              {passwordStatusMessage && (
+                <p className="text-xs font-medium text-amber-700 dark:text-amber-300">{passwordStatusMessage}</p>
+              )}
+              <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
+                <span>Seguridad de la contraseña</span>
+                <span className={clsx(pScore < 40 ? "text-rose-600" : pScore < 70 ? "text-amber-600" : "text-emerald-600")}>
+                  {pScore}%
+                </span>
+              </div>
+              <div className="h-2 w-full rounded bg-slate-200 dark:bg-slate-800">
+                <div
+                  className={clsx("h-2 rounded", pScore < 40 ? "bg-rose-500" : pScore < 70 ? "bg-amber-500" : "bg-emerald-500")}
+                  style={{ width: `${pScore}%` }}
+                />
+              </div>
+            </>
+          )}
         </>
       )}
 
       {/* Rol */}
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Rol</label>
+        <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+          {mode === "edit" ? "Rol actual" : "Rol"}
+        </label>
         <div className="grid grid-cols-2 gap-2">
           {(["CLIENTE", "SUPERVISOR", "COORDINADOR", "ADMINISTRADOR"] as Rol[]).map((r) => (
             <button
               key={r}
               type="button"
+              disabled={mode === "edit"}
               onClick={() => setForm((f) => ({ ...f, rol: r }))}
               className={clsx(
-                "rounded-xl border px-3 py-2.5 text-sm font-medium transition-all",
+                "rounded-xl border px-3 py-2.5 text-sm font-medium transition-all disabled:cursor-not-allowed disabled:opacity-70",
                 form.rol === r
                   ? "border-sky-500 bg-sky-50 text-sky-700 shadow-sm ring-2 ring-sky-500/20 dark:bg-sky-950/50 dark:text-sky-300"
                   : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
@@ -802,6 +848,11 @@ function UserForm({
             </button>
           ))}
         </div>
+        {mode === "edit" && (
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            Rol, empresa y localidad se conservan en este flujo.
+          </p>
+        )}
       </div>
 
       {/* Empresa y Localidad */}
@@ -811,12 +862,13 @@ function UserForm({
           <select
             value={form.empresaId}
             onChange={(e) => setForm((f) => ({ ...f, empresaId: Number(e.target.value) }))}
-            className={clsx(baseInput, !form.empresaId ? errCls : okCls, "appearance-none")}
+            disabled={mode === "edit"}
+            className={clsx(baseInput, errors.empresa ? errCls : okCls, "appearance-none", mode === "edit" && "cursor-not-allowed bg-slate-50 text-slate-500 dark:bg-slate-900/60")}
           >
             <option value="">Selecciona una empresa</option>
             {empresas.map((e) => (<option key={e.id} value={e.id}>{e.nombre}</option>))}
           </select>
-          {!form.empresaId && <p className="mt-1 text-xs text-rose-600">{errors.empresa}</p>}
+          {errors.empresa && <p className="mt-1 text-xs text-rose-600">{errors.empresa}</p>}
         </div>
 
         <div className="relative">
@@ -824,12 +876,13 @@ function UserForm({
           <select
             value={form.localidadId}
             onChange={(e) => setForm((f) => ({ ...f, localidadId: Number(e.target.value) }))}
-            className={clsx(baseInput, !form.localidadId ? errCls : okCls, "appearance-none")}
+            disabled={mode === "edit"}
+            className={clsx(baseInput, errors.localidad ? errCls : okCls, "appearance-none", mode === "edit" && "cursor-not-allowed bg-slate-50 text-slate-500 dark:bg-slate-900/60")}
           >
             <option value="">Selecciona una localidad</option>
             {localidades.map((l) => (<option key={l.id} value={l.id}>{l.nombre}{l.estado ? `, ${l.estado}` : ""}</option>))}
           </select>
-          {!form.localidadId && <p className="mt-1 text-xs text-rose-600">{errors.localidad}</p>}
+          {errors.localidad && <p className="mt-1 text-xs text-rose-600">{errors.localidad}</p>}
         </div>
       </div>
 

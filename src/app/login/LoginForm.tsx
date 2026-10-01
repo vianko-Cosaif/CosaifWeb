@@ -1,6 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { User, Lock, Eye, EyeOff, LogIn, AlertCircle } from "lucide-react";
+import {
+  isFirebaseConfigured,
+  registerFirebaseNotificationToken,
+  requestFirebaseNotificationToken,
+} from "@/lib/firebase";
 
 const DEST: Record<string, string> = {
   CLIENTE: "/cliente",
@@ -14,10 +19,95 @@ const DEST: Record<string, string> = {
 const API_BASE = "/bff";
 const LOGIN_PATH = "/login";
 
+type NotificationGateState = "checking" | "required" | "requesting" | "ready" | "denied" | "unsupported" | "error";
+
+function notificationPermission() {
+  if (typeof window === "undefined" || !("Notification" in window)) return null;
+  return Notification.permission;
+}
+
 export default function LoginForm() {
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [notificationGate, setNotificationGate] = useState<NotificationGateState>("checking");
+  const [notificationToken, setNotificationToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (!("Notification" in window) || !("serviceWorker" in navigator) || !window.isSecureContext) {
+      setNotificationGate("unsupported");
+      return;
+    }
+
+    const permission = Notification.permission;
+    if (permission === "granted") {
+      setNotificationGate("ready");
+      return;
+    }
+    if (permission === "denied") {
+      setNotificationGate("denied");
+      return;
+    }
+
+    setNotificationGate("required");
+  }, []);
+
+  async function requireNotificationToken() {
+    if (!isFirebaseConfigured()) {
+      setNotificationGate("error");
+      setErr("Firebase no esta configurado para notificaciones.");
+      return null;
+    }
+
+    if (typeof window === "undefined") return null;
+
+    if (!("Notification" in window) || !("serviceWorker" in navigator) || !window.isSecureContext) {
+      setNotificationGate("unsupported");
+      setErr("Este navegador no permite notificaciones en esta pagina.");
+      return null;
+    }
+
+    if (Notification.permission === "denied") {
+      setNotificationGate("denied");
+      setErr("Activa las notificaciones en permisos del sitio para poder iniciar sesion.");
+      return null;
+    }
+
+    if (notificationToken && Notification.permission === "granted") {
+      setNotificationGate("ready");
+      return notificationToken;
+    }
+
+    setNotificationGate("requesting");
+
+    try {
+      const token = await requestFirebaseNotificationToken();
+      const permission = notificationPermission();
+
+      if (token && permission === "granted") {
+        setNotificationToken(token);
+        setNotificationGate("ready");
+        return token;
+      }
+
+      if (permission === "denied") {
+        setNotificationGate("denied");
+        setErr("Activa las notificaciones en permisos del sitio para poder iniciar sesion.");
+        return null;
+      }
+
+      setNotificationGate("error");
+      setErr("Debes aceptar las notificaciones para poder iniciar sesion.");
+      return null;
+    } catch (error) {
+      console.warn("No se pudo preparar Firebase Messaging antes del login.", error);
+      setNotificationGate("error");
+      setErr("No se pudieron activar las notificaciones. Revisa Firebase y la llave VAPID.");
+      return null;
+    }
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -32,6 +122,9 @@ export default function LoginForm() {
       setErr("Completa usuario y contraseña");
       return;
     }
+
+    const fcmToken = await requireNotificationToken();
+    if (!fcmToken) return;
 
     setLoading(true);
     const trace = Math.random().toString(36).slice(2);
@@ -80,6 +173,18 @@ export default function LoginForm() {
         return;
       }
 
+      try {
+        await registerFirebaseNotificationToken(
+          fcmToken,
+          token,
+          Number.isFinite(localidadId) ? localidadId : undefined
+        );
+      } catch (error) {
+        console.warn("No se pudo registrar token FCM despues del login.", error);
+        setErr("No se pudo registrar este dispositivo para notificaciones.");
+        return;
+      }
+
       // 2) Set cookies HttpOnly en Next (token/role) + locId (no HttpOnly)
       const setCookie = await fetch("/api/auth/login", {
         method: "POST",
@@ -117,6 +222,7 @@ export default function LoginForm() {
             nombre: payload?.user?.nombre || "",
             empresaId: Number.isFinite(empresaId) ? empresaId : null,
             empresa: Number.isFinite(empresaId) ? { id: empresaId, nombre: empresaNombre } : null,
+            localidadId: Number.isFinite(localidadId) ? localidadId : null,
           })
         );
       } catch {}
@@ -202,9 +308,29 @@ export default function LoginForm() {
         )}
       </div>
 
-      <button type="submit" disabled={loading} className="btn-primary mt-6" aria-busy={loading}>
+      {notificationGate !== "ready" && (
+        <p className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            {notificationGate === "denied"
+              ? "Las notificaciones estan bloqueadas. Cambia el permiso del sitio a Permitir para entrar."
+              : notificationGate === "unsupported"
+                ? "Este navegador no permite notificaciones aqui."
+                : notificationGate === "requesting"
+                  ? "Activando notificaciones..."
+                  : "Debes aceptar las notificaciones antes de entrar."}
+          </span>
+        </p>
+      )}
+
+      <button
+        type="submit"
+        disabled={loading || notificationGate === "requesting"}
+        className="btn-primary mt-6"
+        aria-busy={loading || notificationGate === "requesting"}
+      >
         <span className="inline-flex items-center justify-center gap-2">
-          <LogIn className="h-5 w-5" /> {loading ? "Verificando…" : "Entrar"}
+          <LogIn className="h-5 w-5" /> {loading ? "Verificando..." : "Entrar"}
         </span>
       </button>
     </form>

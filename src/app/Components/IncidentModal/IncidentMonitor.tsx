@@ -4,9 +4,13 @@
 import React, { useCallback, useEffect, useState, useRef } from "react";
 import { useAuthErrorHandler } from '@/app/hooks/useAuthErrorHandler';
 import { useIncidentMonitor, type IncidenteEmergente } from "@/app/hooks/useIncidentMonitor";
+import {
+  useRealtimeMovimientos,
+  type RealtimeMovementEvent,
+} from "@/app/hooks/useRealtimeMovimientos";
 import IncidentModal from "./IncidentModal";
 import { motion, AnimatePresence } from "framer-motion";
-import { Maximize2, Minimize2, GripHorizontal, Activity } from "lucide-react";
+import { Maximize2, Minimize2, GripHorizontal, Activity, AlertTriangle } from "lucide-react";
 
 /* ========== Helpers cookies/auth ========== */
 const getCookie = (name: string) => {
@@ -38,6 +42,134 @@ const getIncidentEmpresaId = (inc: any): number | null =>
     NaN
   ) || null;
 
+const eventMatchesScope = (
+  event: RealtimeMovementEvent,
+  empresaId: number | null,
+  localidadId: number | null
+) => {
+  const eventEmpresaId = Number(event.empresaId ?? NaN);
+  const eventLocalidadId = Number(event.localidadId ?? NaN);
+
+  if (empresaId && Number.isFinite(eventEmpresaId) && eventEmpresaId !== empresaId) return false;
+  if (localidadId && Number.isFinite(eventLocalidadId) && eventLocalidadId !== localidadId) return false;
+  return true;
+};
+
+const realtimeNoticeForEvent = (event: RealtimeMovementEvent) => {
+  const estado = String(event.estado ?? "").toUpperCase();
+  const movementId = event.movimientoId ? `#${event.movimientoId}` : "movimiento";
+  const incidentId = event.incidenteId ? `Incidente #${event.incidenteId}` : "Incidente";
+  const loco = event.locomotiveNumber ? ` · Loco ${event.locomotiveNumber}` : "";
+
+  if (event.type === "movimiento.creado") {
+    return {
+      title: "Movimiento creado",
+      description: `${movementId}${loco}`,
+      tone: "sky" as const,
+      icon: "movement" as const,
+    };
+  }
+
+  if (event.type === "movimiento.incidente") {
+    return {
+      title: "Incidente reportado",
+      description: `${incidentId} en ${movementId}${loco}`,
+      tone: "rose" as const,
+      icon: "incident" as const,
+    };
+  }
+
+  if (event.type === "incidente.estado") {
+    if (estado === "RESUELTO" || estado === "CERRADO") {
+      return {
+        title: estado === "RESUELTO" ? "Incidente resuelto" : "Incidente cerrado",
+        description: `${incidentId} en ${movementId}${loco}`,
+        tone: "emerald" as const,
+        icon: "incident" as const,
+      };
+    }
+
+    return {
+      title: "Incidente actualizado",
+      description: `${incidentId} en ${movementId}${loco}`,
+      tone: "amber" as const,
+      icon: "incident" as const,
+    };
+  }
+
+  if (estado === "EN_PROCESO") {
+    return {
+      title: "Movimiento en proceso",
+      description: `${movementId}${loco}`,
+      tone: "emerald" as const,
+      icon: "movement" as const,
+    };
+  }
+
+  if (estado === "CONCLUIDO") {
+    return {
+      title: "Movimiento concluido",
+      description: `${movementId}${loco}`,
+      tone: "sky" as const,
+      icon: "movement" as const,
+    };
+  }
+
+  if (estado === "CANCELADO") {
+    return {
+      title: "Movimiento cancelado",
+      description: `${movementId}${loco}`,
+      tone: "rose" as const,
+      icon: "movement" as const,
+    };
+  }
+
+  return null;
+};
+
+const realtimeNoticeToneClass = (tone: "emerald" | "sky" | "rose" | "amber") => {
+  if (tone === "emerald") {
+    return "border-emerald-200 text-emerald-800 dark:border-emerald-800 dark:text-emerald-200";
+  }
+  if (tone === "sky") {
+    return "border-sky-200 text-sky-800 dark:border-sky-800 dark:text-sky-200";
+  }
+  if (tone === "amber") {
+    return "border-amber-200 text-amber-800 dark:border-amber-800 dark:text-amber-200";
+  }
+  return "border-rose-200 text-rose-800 dark:border-rose-800 dark:text-rose-200";
+};
+
+function showBrowserRealtimeNotification(params: {
+  id: string;
+  title: string;
+  body: string;
+  url?: string;
+}) {
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+
+  try {
+    const options: NotificationOptions & Record<string, unknown> = {
+      body: params.body,
+      icon: "/icons/cosaif-192.png",
+      badge: "/icons/cosaif-192.png",
+      tag: params.id,
+      renotify: true,
+      requireInteraction: true,
+      data: { url: params.url ?? "/" },
+    };
+    const notification = new Notification(params.title, options);
+    notification.onclick = (event) => {
+      event.preventDefault();
+      window.focus();
+      window.location.assign(params.url ?? "/");
+    };
+  } catch (error) {
+    console.warn("No se pudo mostrar notificacion del navegador.", error);
+  }
+}
+
 /* ========== Tipos ========== */
 interface IncidentMonitorProps {
   apiBase?: string;
@@ -49,6 +181,7 @@ interface IncidentMonitorProps {
   onIncidentSkipped?: (incident: IncidenteEmergente) => void;
   onIncidentContinued?: (incident: IncidenteEmergente) => void;
   mobileMaxWidth?: number;
+  autoOpenNewIncidents?: boolean;
 }
 
 /* ========== Componente ========== */
@@ -62,8 +195,10 @@ export default function IncidentMonitor({
   onIncidentSkipped,
   onIncidentContinued,
   mobileMaxWidth = 768,
+  autoOpenNewIncidents = true,
 }: IncidentMonitorProps) {
-  const empresaId = empresaIdProp ?? getEmpresaIdFromCookie();
+  // Keep first client render identical to SSR; resolve cookie-based fallback after mount.
+  const [empresaId, setEmpresaId] = useState<number | null>(empresaIdProp ?? null);
 
   const { handleFetchRequest } = useAuthErrorHandler();
 
@@ -72,10 +207,23 @@ export default function IncidentMonitor({
   const [processedIncidents, setProcessedIncidents] = useState<Set<number>>(new Set());
   const [isMobile, setIsMobile] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [realtimeNotice, setRealtimeNotice] = useState<{
+    id: string;
+    title: string;
+    description: string;
+    tone: "emerald" | "sky" | "rose" | "amber";
+    icon: "movement" | "incident";
+  } | null>(null);
 
   // Floating widget state
   const [isMinimized, setIsMinimized] = useState(false);
   const constraintsRef = useRef(null);
+  const realtimeCheckTimerRef = useRef<number | null>(null);
+  const browserNoticeIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    setEmpresaId(empresaIdProp ?? getEmpresaIdFromCookie());
+  }, [empresaIdProp]);
 
   useEffect(() => {
     const check = () => setIsMobile(typeof window !== "undefined" && window.innerWidth <= mobileMaxWidth);
@@ -99,14 +247,16 @@ export default function IncidentMonitor({
         return;
       }
       if (!processedIncidents.has(incident.id)) {
-        setCurrentIncident(incident);
-        setIsModalOpen(true);
+        if (autoOpenNewIncidents) {
+          setCurrentIncident(incident);
+          setIsModalOpen(true);
+        }
       }
     },
-    [processedIncidents, empresaId]
+    [processedIncidents, empresaId, autoOpenNewIncidents]
   );
 
-  const { isMonitoring, lastCheck, error, activeIncidents } = useIncidentMonitor({
+  const { isMonitoring, lastCheck, error, activeIncidents, checkNow } = useIncidentMonitor({
     apiBase,
     intervalMs,
     enabled,
@@ -116,6 +266,86 @@ export default function IncidentMonitor({
   });
 
   const activeCount = Array.isArray(activeIncidents) ? activeIncidents.length : 0;
+
+  const scheduleRealtimeIncidentCheck = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (realtimeCheckTimerRef.current != null) return;
+
+    const jitterMs = 500 + Math.floor(Math.random() * 1_500);
+    realtimeCheckTimerRef.current = window.setTimeout(() => {
+      realtimeCheckTimerRef.current = null;
+      checkNow();
+    }, jitterMs);
+  }, [checkNow]);
+
+  useRealtimeMovimientos({
+    enabled,
+    localidadId,
+    onEvent: (event) => {
+      if (!eventMatchesScope(event, empresaId, localidadId)) return;
+
+      if (event.type === "realtime.ready" || event.type === "realtime.resume") {
+        scheduleRealtimeIncidentCheck();
+        return;
+      }
+
+      if (event.type === "movimiento.incidente" || event.type === "incidente.estado") {
+        const notice = realtimeNoticeForEvent(event);
+        if (notice) {
+          const id = event.eventId ?? `${event.type}:${event.movimientoId}:${event.incidenteId}:${event.estado}:${Date.now()}`;
+          setRealtimeNotice({
+            ...notice,
+            id,
+          });
+          if (!browserNoticeIdsRef.current.has(id)) {
+            browserNoticeIdsRef.current.add(id);
+            showBrowserRealtimeNotification({
+              id,
+              title: notice.title,
+              body: notice.description,
+              url: "/incidentes",
+            });
+          }
+        }
+        scheduleRealtimeIncidentCheck();
+        return;
+      }
+
+      if (event.type === "movimiento.creado" || event.type === "movimiento.estado") {
+        const notice = realtimeNoticeForEvent(event);
+        if (notice) {
+          const id = event.eventId ?? `${event.type}:${event.movimientoId}:${event.estado}:${Date.now()}`;
+          setRealtimeNotice({
+            ...notice,
+            id,
+          });
+          if (!browserNoticeIdsRef.current.has(id)) {
+            browserNoticeIdsRef.current.add(id);
+            showBrowserRealtimeNotification({
+              id,
+              title: notice.title,
+              body: notice.description,
+              url: "/movimientos",
+            });
+          }
+        }
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (!realtimeNotice) return;
+    const timer = window.setTimeout(() => setRealtimeNotice(null), 6000);
+    return () => clearTimeout(timer);
+  }, [realtimeNotice]);
+
+  useEffect(() => {
+    return () => {
+      if (realtimeCheckTimerRef.current != null) {
+        clearTimeout(realtimeCheckTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleResolve = useCallback(
     async (incident: IncidenteEmergente, comments?: string) => {
@@ -181,6 +411,30 @@ export default function IncidentMonitor({
 
   return (
     <>
+      <AnimatePresence>
+        {realtimeNotice ? (
+          <motion.div
+            key={realtimeNotice.id}
+            initial={{ opacity: 0, y: -12, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12, scale: 0.98 }}
+            className={`fixed right-4 top-4 z-[1060] w-[min(92vw,360px)] rounded-xl border bg-white/95 p-3 shadow-xl backdrop-blur dark:bg-zinc-900/95 ${realtimeNoticeToneClass(realtimeNotice.tone)}`}
+          >
+            <div className="flex items-start gap-2">
+              {realtimeNotice.icon === "incident" ? (
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              ) : (
+                <Activity className="mt-0.5 h-4 w-4 shrink-0" />
+              )}
+              <div className="min-w-0">
+                <div className="text-sm font-bold">{realtimeNotice.title}</div>
+                <div className="truncate text-xs opacity-80">{realtimeNotice.description}</div>
+              </div>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
       {currentIncident && (
         <IncidentModal
           incident={currentIncident}
@@ -339,8 +593,8 @@ export default function IncidentMonitor({
                     <div className="mt-4 space-y-3">
                       <div className="text-xs font-bold uppercase tracking-wider text-zinc-400">Incidentes ({activeIncidents.length})</div>
                       <ul className="space-y-2">
-                        {activeIncidents.map((it: any) => (
-                          <li key={it.id ?? Math.random()} className="p-3 rounded-xl bg-zinc-50 border border-zinc-100 dark:bg-zinc-800/50 dark:border-zinc-800/50">
+                        {activeIncidents.map((it: any, idx: number) => (
+                          <li key={it.id ?? `${it?.titulo ?? it?.nombre ?? it?.tipo ?? "incidente"}-${idx}`} className="p-3 rounded-xl bg-zinc-50 border border-zinc-100 dark:bg-zinc-800/50 dark:border-zinc-800/50">
                             <div className="font-semibold text-zinc-900 dark:text-zinc-100">#{it.id ?? "—"} {it.titulo ?? it.nombre ?? it.tipo ?? "Incidente"}</div>
                             {it.descripcion && <div className="text-zinc-500 dark:text-zinc-400 text-xs mt-1 line-clamp-2">{it.descripcion}</div>}
                           </li>

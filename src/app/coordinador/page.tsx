@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import RailQueueBoard from "./RailQueueBoard";
 import { DynamicBanner } from "@/app/Components/DynamicBanner";
 import { getClientCookie, setClientCookie } from "@/lib/cookies";
+import { syncFirebaseNotificationLocalidad } from "@/lib/firebase";
 
 const CoordinadorPage: React.FC = () => {
   const [localidadId, setLocalidadId] = useState<number | null>(null);
@@ -29,6 +30,10 @@ const CoordinadorPage: React.FC = () => {
     }
 
     setLocalidadId(num);
+    window.dispatchEvent(new CustomEvent("cosaif:localidad-change", { detail: { localidadId: num } }));
+    void syncFirebaseNotificationLocalidad(num).catch((error) => {
+      console.warn("No se pudo sincronizar localidad FCM.", error);
+    });
   }, []);
 
   return (

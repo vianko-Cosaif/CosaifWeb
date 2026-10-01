@@ -1,0 +1,29 @@
+{
+  "design": {
+    "common": {
+      "spotlightPadding": 4,
+      "spotlightRadius": 16,
+      "spotlightBorderWidth": 2,
+      "panelWidth": 320,
+      "panelPadding": 16,
+      "panelRadius": 16,
+      "panelGap": 14,
+      "controlHeight": 34
+    }
+  },
+  "copy": {
+    "start": "Iniciar manual",
+    "prev": "Anterior",
+    "next": "Siguiente",
+    "finish": "Terminar",
+    "close": "Cerrar"
+  },
+  "icons": {
+    "start": "i",
+    "prev": "<",
+    "next": ">",
+    "finish": "x",
+    "close": "x"
+  }
+}
+

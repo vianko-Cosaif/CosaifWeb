@@ -18,8 +18,26 @@ type RondaOut = RondaBase & {
     prioridad?: "BAJA" | "ALTA" | null;
     locomotiveNumber?: number | string | null;
     locomotora?: string | null;
+    fechaSolicitud?: string | null;
+    fechaInicio?: string | null;
+    fechaFin?: string | null;
+    createdAt?: string | null;
+    instrucciones?: string | null;
   } | null;
   movimientoId?: number | null;
+  createdAt?: string | null;
+};
+
+type TornoServiceRecord = {
+  servicioId?: number | string | null;
+  rondaServicioId?: number | string | null;
+  movimientoId?: number | string | null;
+  status?: string | null;
+  historialStatus?: string | null;
+  inicio?: string | null;
+  fin?: string | null;
+  creadoEn?: string | null;
+  actualizadoEn?: string | null;
 };
 
 function normalize(input: unknown): RondaBase[] {
@@ -47,6 +65,25 @@ function normalize(input: unknown): RondaBase[] {
   return mapped.filter((r: RondaBase) => Number.isFinite(r.id));
 }
 
+function extractArray(input: unknown): any[] {
+  const anyInput = input as any;
+  return Array.isArray(input)
+    ? input as any[]
+    : Array.isArray(anyInput?.data)
+    ? anyInput.data
+    : Array.isArray(anyInput?.items)
+    ? anyInput.items
+    : Array.isArray(anyInput?.rows)
+    ? anyInput.rows
+    : Array.isArray(anyInput?.value)
+    ? anyInput.value
+    : [];
+}
+
+function isTornoConcluido(status?: string | null) {
+  return ["CONCLUIDO", "CANCELADO"].includes(String(status ?? "").toUpperCase());
+}
+
 async function readTextAsJsonSafe(r: Response): Promise<unknown> {
   const t = await r.text();
   try {
@@ -56,21 +93,133 @@ async function readTextAsJsonSafe(r: Response): Promise<unknown> {
   }
 }
 
+function getTornoQueueCreatedTime(item: RondaOut): number {
+  const candidates = [
+    item.createdAt,
+    item.movimiento?.fechaSolicitud,
+    item.movimiento?.createdAt
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const timestamp = Date.parse(String(candidate));
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+
+  const numericId = Math.abs(Number(item.id));
+  return Number.isFinite(numericId) ? numericId : Number.MAX_SAFE_INTEGER;
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams, origin } = new URL(req.url);
     const loc = searchParams.get("localidadId");
     if (!loc) return NextResponse.json<RondaOut[]>([], { status: 200 });
+    const entity = String(searchParams.get("entity") ?? "movimientos").toLowerCase();
+    const estado = String(searchParams.get("estado") ?? searchParams.get("tab") ?? "pendientes").toLowerCase();
+    const concluido = estado === "terminados" || estado === "finalizados" || estado === "true";
 
     const c = await cookies();
     const token = c.get(process.env.JWT_COOKIE_NAME ?? "token")?.value ?? "";
     const empresaId = Number(c.get("empresaId")?.value) || null;
 
     const base = process.env.NEXT_PUBLIC_API_URL || `${origin}/bff`;
+
+    if (entity === "torneados") {
+      const statusParam = concluido ? "CONCLUIDO,CANCELADO" : "SOLICITADO,EN_PROCESO,DETENIDO";
+      const r = await fetch(`${base}/torno/rondas-servicio/historial?status=${encodeURIComponent(statusParam)}`, {
+        cache: "no-store",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!r.ok) return NextResponse.json<RondaOut[]>([], { status: 200 });
+      const raw = await readTextAsJsonSafe(r);
+      const records = extractArray(raw) as TornoServiceRecord[];
+
+      const out = await Promise.all(records.map(async (record, index): Promise<RondaOut | null> => {
+        const status = String(record.historialStatus ?? record.status ?? "SOLICITADO").toUpperCase();
+        const movimientoId = Number(record.movimientoId);
+        const servicioId = Number(record.servicioId ?? record.rondaServicioId ?? index + 1);
+        if (!Number.isFinite(movimientoId) || !Number.isFinite(servicioId)) return null;
+
+        let movimiento: RondaOut["movimiento"] = {
+          id: movimientoId,
+          torno: true,
+          estado: status,
+          fechaSolicitud: record.creadoEn ?? null,
+          fechaInicio: record.inicio ?? null,
+          fechaFin: record.fin ?? null,
+        };
+        let empresa: RondaOut["empresa"] = null;
+
+        try {
+          const rr = await fetch(`${base}/movimientos/${encodeURIComponent(String(movimientoId))}/edicion`, {
+            cache: "no-store",
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          });
+          if (rr.ok) {
+            const detail = (await readTextAsJsonSafe(rr)) as any;
+            const mv = detail?.movimiento ?? detail;
+            empresa = mv?.empresa ? { id: Number(mv.empresa.id ?? 0), nombre: String(mv.empresa.nombre ?? "—") } : null;
+            movimiento = {
+              id: mv?.id ?? movimientoId,
+              viaOrigen: mv?.viaOrigen ?? null,
+              viaDestino: mv?.viaDestino ?? null,
+              lavado: Boolean(mv?.lavado),
+              torno: true,
+              estado: status,
+              prioridad: mv?.prioridad ?? null,
+              locomotiveNumber: mv?.locomotiveNumber ?? mv?.locomotora ?? null,
+              locomotora: mv?.locomotora ?? null,
+              fechaSolicitud: mv?.fechaSolicitud ?? record.creadoEn ?? null,
+              fechaInicio: record.inicio ?? mv?.fechaInicio ?? null,
+              fechaFin: record.fin ?? mv?.fechaFin ?? null,
+            };
+          }
+        } catch {
+          // El servicio de torno puede listarse aun si el detalle del movimiento no responde.
+        }
+
+        return {
+          id: -Math.abs(servicioId),
+          rondaNumero: 1,
+          orden: index + 1,
+          concluido: isTornoConcluido(status),
+          empresa,
+          movimiento,
+          movimientoId,
+          createdAt: record.creadoEn ?? record.inicio ?? null,
+        };
+      }));
+
+      let filtered = out.filter((item): item is RondaOut => Boolean(item));
+      if (empresaId) filtered = filtered.filter((item) => !item.empresa || item.empresa.id === empresaId);
+
+      if (concluido) {
+        // Concluidos: más recientes primero (updatedAt desc o createdAt desc)
+        filtered.sort((a, b) => getTornoQueueCreatedTime(b) - getTornoQueueCreatedTime(a));
+      } else {
+        // Activos/pendientes: FIFO (oldest first), igual a CosaifLogistcs
+        filtered.sort((a, b) => {
+          const diff = getTornoQueueCreatedTime(a) - getTornoQueueCreatedTime(b);
+          if (diff !== 0) return diff;
+          return a.id - b.id; // Desempate por ID (que son negativos)
+        });
+      }
+
+      // Re-asignar orden secuencialmente para que el frontend lo ordene de forma estable
+      const finalized = filtered.map((item, idx) => ({
+        ...item,
+        orden: idx + 1,
+      }));
+
+      return NextResponse.json<RondaOut[]>(finalized, { status: 200 });
+    }
+
+    const concluidoParam = concluido ? "true" : "false";
     const candidates = [
-      `${base}/rondas/localidad/${encodeURIComponent(loc)}/estado/false`,
-      `${base}/rondas?localidadId=${encodeURIComponent(loc)}&concluido=false`,
-      `${base}/movimientos/rondas?localidadId=${encodeURIComponent(loc)}&concluido=false`,
+      `${base}/rondas/localidad/${encodeURIComponent(loc)}/estado/${concluidoParam}`,
+      `${base}/rondas?localidadId=${encodeURIComponent(loc)}&concluido=${concluidoParam}`,
+      `${base}/movimientos/rondas?localidadId=${encodeURIComponent(loc)}&concluido=${concluidoParam}`,
     ];
 
     // 1) Lista base
@@ -123,6 +272,10 @@ export async function GET(req: Request) {
               prioridad: mv.prioridad ?? null,
               locomotiveNumber: mv.locomotiveNumber ?? mv.locomotora ?? null,
               locomotora: mv.locomotora ?? null,
+              fechaSolicitud: mv.fechaSolicitud ?? null,
+              fechaInicio: mv.fechaInicio ?? null,
+              fechaFin: mv.fechaFin ?? null,
+              instrucciones: mv.instrucciones ?? null,
             }
           : null,
         movimientoId: inf?.movimientoId ?? mv?.id ?? null,
