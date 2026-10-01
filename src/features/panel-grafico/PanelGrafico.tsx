@@ -11,9 +11,12 @@ import { ArrowLeft, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { type PanelGraficoProps, type PanelData, type PanelLoadingState, type ChangeKind, type HeaderEvent, type PatioTrackCatalogItem, type PanelRow, type MovementRow, type IncidentRow } from "./types";
 import { EMPTY_DATA, RIGHT_PANEL_ROTATION_MS, panelMotion } from "./styles";
 import { clampNumber } from "./patio/geometry";
-import { buildPanelSnapshots, buildRealtimeHeaderEvents, dedupeRowsByKey, buildHeaderEvents, annotateRowsWithIncidents, extractArray, mapMovement, filterRecentIncidents, sortIncidentsByState, mapIncident, dedupePatioTrackCatalog, mapViaToPatioTrack } from "./data";
+import { asRecord, buildPanelSnapshots, buildRealtimeHeaderEvents, dedupeRowsByKey, buildHeaderEvents, annotateRowsWithIncidents, extractArray, mapMovement, filterRecentIncidents, sortIncidentsByState, mapIncident, dedupePatioTrackCatalog, mapViaToPatioTrack } from "./data";
 import { LiveEventTicker, IncidentColumn, WorkArea, RightOperationsPanel } from "./components/StatusPanels";
 import { isTornoModuleEnabled } from "@/lib/tornoFeature";
+
+type PanelLoadSection = keyof PanelLoadingState;
+const ALL_PANEL_LOAD_SECTIONS: PanelLoadSection[] = ["movements", "torneados", "incidents", "tracks"];
 
 export default function PanelGrafico({
   backHref = "/coordinador",
@@ -46,6 +49,7 @@ export default function PanelGrafico({
   const previousRowsRef = useRef<Map<string, PanelRow>>(new Map());
   const firstLoadRef = useRef(true);
   const requestRef = useRef<AbortController | null>(null);
+  const activeSectionsRef = useRef<PanelLoadSection[]>([]);
   const changeTimerRef = useRef<number | null>(null);
   const loading = sectionLoading.movements || (isTornoModuleEnabled && sectionLoading.torneados) || sectionLoading.incidents || sectionLoading.tracks;
 
@@ -112,22 +116,29 @@ export default function PanelGrafico({
     firstLoadRef.current = false;
   }, []);
 
-  const load = useCallback(async (showRefreshing = false) => {
+  const load = useCallback(async (showRefreshing = false, sections?: readonly PanelLoadSection[]) => {
+    const requestedSections = sections ?? ALL_PANEL_LOAD_SECTIONS;
+    const selectedSections = [...new Set([...activeSectionsRef.current, ...requestedSections])];
+    activeSectionsRef.current = selectedSections;
+    const shouldLoad = (section: PanelLoadSection) => selectedSections.includes(section);
     requestRef.current?.abort();
     const controller = new AbortController(); requestRef.current = controller;
     const queryJson = (url: string, ttlMs = 1000) => cachedFetchJson<unknown>(url, { credentials: "include", signal: controller.signal }, { ttlMs, force: showRefreshing && ttlMs < 2000 });
-    if (showRefreshing) setRefreshing(true);
-    setSectionLoading({ movements: true, torneados: isTornoModuleEnabled, incidents: true, tracks: true });
+    setRefreshing(showRefreshing);
+    setSectionLoading({
+      movements: shouldLoad("movements"),
+      torneados: shouldLoad("torneados") && isTornoModuleEnabled,
+      incidents: shouldLoad("incidents"),
+      tracks: shouldLoad("tracks"),
+    });
     setError("");
 
     const query = new URLSearchParams();
     if (localidadId) query.set("localidadId", String(localidadId));
     if (empresaId) query.set("empresaId", String(empresaId));
 
-    const movementQuery = new URLSearchParams(query);
-    movementQuery.set("estado", "pendientes");
-    movementQuery.set("entity", "movimientos");
-    movementQuery.set("alcance", "localidad");
+    const movementQuery = new URLSearchParams();
+    if (localidadId) movementQuery.set("localidadId", String(localidadId));
 
     const torneadoQuery = new URLSearchParams(query);
     torneadoQuery.set("estado", "pendientes");
@@ -165,21 +176,39 @@ export default function PanelGrafico({
       });
     };
 
-    const tasks = [
+    const tasks: Promise<unknown>[] = [];
+    if (shouldLoad("movements")) tasks.push(
       queryJson(`/api/cliente/rondas?${movementQuery.toString()}`)
         .then((result) => {
-          nextMovementsRaw = (extractArray(result).map(mapMovement).filter(Boolean).slice(0, 30) as MovementRow[]);
+          const orderedRows = extractArray(result)
+            .filter((row) => {
+              const source = asRecord(row);
+              const itemLocalidadId = source.localidadId ?? asRecord(source.localidad).id;
+              return (!itemLocalidadId || itemLocalidadId === localidadId) && !source.concluido;
+            })
+            .sort((left, right) => {
+              const a = asRecord(left);
+              const b = asRecord(right);
+              return Number(a.rondaNumero) - Number(b.rondaNumero)
+                || Number(a.orden) - Number(b.orden)
+                || Number(a.id) - Number(b.id);
+            });
+          nextMovementsRaw = orderedRows.map(mapMovement).filter(Boolean) as MovementRow[];
           commitRows();
         })
         .catch((loadError) => { if (!controller.signal.aborted) setError(loadError instanceof Error ? loadError.message : "No se pudieron cargar movimientos."); })
-        .finally(() => { if (!controller.signal.aborted) setSectionLoading((current) => ({ ...current, movements: false })); }),
-      ...(isTornoModuleEnabled ? [queryJson(`/api/cliente/rondas?${torneadoQuery.toString()}`)
+        .finally(() => { if (!controller.signal.aborted) setSectionLoading((current) => ({ ...current, movements: false })); })
+    );
+    if (shouldLoad("torneados") && isTornoModuleEnabled) tasks.push(
+      queryJson(`/api/cliente/rondas?${torneadoQuery.toString()}`)
         .then((result) => {
           nextTorneadosRaw = (extractArray(result).map(mapMovement).filter(Boolean).slice(0, 30) as MovementRow[]);
           commitRows();
         })
         .catch((loadError) => { if (!controller.signal.aborted) setError(loadError instanceof Error ? loadError.message : "No se pudieron cargar torneados."); })
-        .finally(() => { if (!controller.signal.aborted) setSectionLoading((current) => ({ ...current, torneados: false })); })] : []),
+        .finally(() => { if (!controller.signal.aborted) setSectionLoading((current) => ({ ...current, torneados: false })); })
+    );
+    if (shouldLoad("incidents")) tasks.push(
       Promise.all([
         queryJson(`/api/incidentes?${incidentQuery.toString()}`),
         queryJson(`/api/incidentes?${inactiveIncidentQuery.toString()}`),
@@ -191,18 +220,23 @@ export default function PanelGrafico({
           commitRows();
         })
         .catch((loadError) => { if (!controller.signal.aborted) setError(loadError instanceof Error ? loadError.message : "No se pudieron cargar incidentes."); })
-        .finally(() => { if (!controller.signal.aborted) setSectionLoading((current) => ({ ...current, incidents: false })); }),
+        .finally(() => { if (!controller.signal.aborted) setSectionLoading((current) => ({ ...current, incidents: false })); })
+    );
+    if (shouldLoad("tracks")) tasks.push(
       queryJson(tracksUrl, 60_000)
         .then((result) => {
           if (controller.signal.aborted) return;
           setPatioTrackCatalog(dedupePatioTrackCatalog(extractArray(result).map(mapViaToPatioTrack).filter(Boolean) as PatioTrackCatalogItem[]));
         })
         .catch((loadError) => { if (!controller.signal.aborted) setError(loadError instanceof Error ? loadError.message : "No se pudieron cargar vias."); })
-        .finally(() => { if (!controller.signal.aborted) setSectionLoading((current) => ({ ...current, tracks: false })); }),
-    ];
+        .finally(() => { if (!controller.signal.aborted) setSectionLoading((current) => ({ ...current, tracks: false })); })
+    );
 
     await Promise.allSettled(tasks);
-    if (!controller.signal.aborted) setRefreshing(false);
+    if (!controller.signal.aborted) {
+      setRefreshing(false);
+      if (requestRef.current === controller) activeSectionsRef.current = [];
+    }
   }, [empresaId, localidadId, reconcilePanelData]);
 
   useEffect(() => {
@@ -226,7 +260,28 @@ export default function PanelGrafico({
       const type = String(event.type ?? "");
       return type === "ronda.reordenada" || type.startsWith("movimiento.") || type.startsWith("torno.") || type.includes("incidente") || type.startsWith("torreon.");
     },
-    onRefresh: () => load(true),
+    onRefresh: ({ event, events }) => {
+      const eventBatch = events?.length ? events : [event];
+      const types = eventBatch.map((item) => String(item.type ?? ""));
+      if (types.some((type) => type === "realtime.ready" || type === "realtime.resume")) {
+        return load(true);
+      }
+      const sections = new Set<PanelLoadSection>();
+      for (const type of types) {
+        if (type.includes("incidente")) {
+          sections.add("movements");
+          sections.add("incidents");
+        } else if (type.startsWith("movimiento.") || type.startsWith("ronda.")) {
+          sections.add("movements");
+        } else if (type.startsWith("torno.")) {
+          sections.add("torneados");
+        } else if (type.startsWith("torreon.")) {
+          sections.add("movements");
+          sections.add("incidents");
+        }
+      }
+      if (sections.size) return load(true, [...sections]);
+    },
   });
 
   useVisibleInterval(
@@ -266,7 +321,7 @@ export default function PanelGrafico({
   }, [data.incidents, data.movements]);
 
   const content = (
-    <main className="fixed inset-0 z-[2147483647] isolate h-dvh w-screen overflow-hidden bg-[var(--app-bg)] text-[var(--app-text)]">
+    <main className="fixed inset-0 z-[2147483000] isolate h-dvh w-screen overflow-hidden bg-[var(--app-bg)] text-[var(--app-text)]">
       <motion.div
         aria-hidden
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,.16),transparent_34%),linear-gradient(135deg,var(--app-bg),var(--app-surface-subtle))]"

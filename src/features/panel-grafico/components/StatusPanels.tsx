@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Activity, AlertTriangle, Clock3, Droplet, Gauge, GitBranch, LoaderCircle, MapPinned, PauseCircle, Route, TrainFront, Wrench, type LucideIcon } from "lucide-react";
+import { Activity, AlertTriangle, ArrowRight, Clock3, Droplet, Eye, EyeOff, Gauge, GitBranch, LoaderCircle, MapPinned, PauseCircle, Route, TrainFront, Wrench, type LucideIcon } from "lucide-react";
 import { type HeaderEvent, type HeaderEventTone, type IncidentRow, type ChangeKind, type MovementRow, type PatioTrackCatalogItem } from "../types";
 import { tickerTone, panelClass, listContainerMotion, listItemMotion, panelEase, KPI_PANEL_ROTATION_MS, activeServiceTone, rowTypeTone, rowTypeAccentTone, movementTypeTone, statusTone } from "../styles";
 import { incidentSeverityRail } from "../data";
@@ -47,7 +47,7 @@ function RouteWithServiceIcon({ row }: { row: MovementRow }) {
         const Icon = serviceType ? movementTypeIcons[serviceType] : null;
         return (
           <span key={`${segment}-${index}`} className="inline-flex min-w-0 items-center gap-1">
-            {index > 0 ? <span className="shrink-0 text-blue-700 dark:text-blue-200">-&gt;</span> : null}
+            {index > 0 ? <ArrowRight className="h-3.5 w-3.5 shrink-0 text-blue-700 dark:text-blue-200" aria-hidden="true" /> : null}
             {Icon && serviceType ? (
               <span
                 className={`inline-flex h-6 w-7 shrink-0 items-center justify-center rounded-md border ${movementTypeTone[serviceType]}`}
@@ -265,6 +265,13 @@ export function WorkArea({
 }) {
   const hasChanges = changedKeys.size > 0;
   const [viewMode, setViewMode] = useState<WorkAreaViewMode>("circuit");
+  const [showRequestedInWorkArea, setShowRequestedInWorkArea] = useState(true);
+  const visibleMovements = showRequestedInWorkArea
+    ? movements
+    : movements.filter((row) => row.status !== "SOLICITADO");
+  const visibleTorneados = showRequestedInWorkArea
+    ? torneados
+    : torneados.filter((row) => row.status !== "SOLICITADO");
   return (
     <section className="flex h-full min-h-0 flex-col gap-1">
       <AnimatePresence initial={false}>
@@ -314,6 +321,16 @@ export function WorkArea({
                   Flujo
                 </button>
               </div>
+              <button
+                type="button"
+                onClick={() => setShowRequestedInWorkArea((visible) => !visible)}
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border transition ${showRequestedInWorkArea ? "border-[var(--app-border)] bg-[var(--app-surface-subtle)] text-[var(--app-text-muted)] hover:text-[var(--app-text)]" : "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950/45 dark:text-blue-200"}`}
+                aria-label={showRequestedInWorkArea ? "Ocultar servicios solicitados del area de trabajo" : "Mostrar servicios solicitados del area de trabajo"}
+                aria-pressed={showRequestedInWorkArea}
+                title={showRequestedInWorkArea ? "Ocultar servicios solicitados del area de trabajo" : "Mostrar servicios solicitados del area de trabajo"}
+              >
+                {showRequestedInWorkArea ? <Eye className="h-3.5 w-3.5" aria-hidden="true" /> : <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />}
+              </button>
               {viewMode === "circuit" ? (
                 <>
                   <LegendDot color="bg-emerald-500" label="Operando" />
@@ -343,7 +360,7 @@ export function WorkArea({
                   exit={{ opacity: 0, scale: 0.985 }}
                   transition={{ duration: 0.2, ease: "easeOut" }}
                 >
-                  <PatioFerroviarioCanvas movements={movements} torneados={torneados} trackCatalog={trackCatalog} changedKeys={changedKeys} />
+                  <PatioFerroviarioCanvas movements={visibleMovements} torneados={visibleTorneados} trackCatalog={trackCatalog} changedKeys={changedKeys} />
                 </motion.div>
               ) : (
                 <motion.div
@@ -354,7 +371,7 @@ export function WorkArea({
                   exit={{ opacity: 0, y: -10 }}
                   transition={{ duration: 0.2, ease: "easeOut" }}
                 >
-                  <WorkFlowView movements={movements} torneados={torneados} changedKeys={changedKeys} />
+                  <WorkFlowView movements={visibleMovements} torneados={visibleTorneados} changedKeys={changedKeys} />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -396,7 +413,8 @@ function WorkFlowView({
 }) {
   const preEntry = movements.filter(isPreEntryMovement);
   const stopped = [...movements, ...torneados].filter((row) => row.status === "DETENIDO");
-  const inCircuit = movements.filter((row) => !isPreEntryMovement(row) && row.status !== "DETENIDO");
+  const inProgress = movements.filter((row) => !isPreEntryMovement(row) && row.status === "EN PROCESO");
+  const inCircuit = movements.filter((row) => !isPreEntryMovement(row) && row.status !== "DETENIDO" && row.status !== "EN PROCESO");
   const services = torneados.filter((row) => row.status !== "DETENIDO");
   const stages = [
     {
@@ -406,6 +424,14 @@ function WorkFlowView({
       tone: "sky",
       rows: preEntry,
       getMeta: (row: MovementRow) => row.route || `Para via ${preEntryDestination(row)}`,
+    },
+    {
+      key: "movement",
+      title: "Movimiento",
+      count: inProgress.length,
+      tone: "blue",
+      rows: inProgress,
+      getMeta: (row: MovementRow) => row.route,
     },
     {
       key: "circuit",
@@ -434,8 +460,8 @@ function WorkFlowView({
   ] as const;
 
   return (
-    <div className="grid h-full min-h-0 gap-2 overflow-hidden p-2 lg:grid-cols-4">
-      {stages.map((stage, stageIndex) => (
+    <div className="grid h-full min-h-0 gap-2 overflow-hidden p-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+      {stages.map((stage) => (
         <section
           key={stage.key}
           className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border bg-white/82 shadow-sm dark:bg-slate-950/64 ${
@@ -443,6 +469,8 @@ function WorkFlowView({
               ? "border-sky-200 dark:border-sky-900/60"
               : stage.tone === "emerald"
                 ? "border-emerald-200 dark:border-emerald-900/60"
+                : stage.tone === "blue"
+                  ? "border-blue-200 dark:border-blue-900/60"
                 : stage.tone === "rose"
                   ? "border-rose-200 dark:border-rose-900/60"
                   : "border-amber-200 dark:border-amber-900/60"
@@ -453,16 +481,26 @@ function WorkFlowView({
               stage.tone === "sky"
                 ? "border-sky-100 bg-sky-50/85 dark:border-sky-900/55 dark:bg-sky-950/25"
                 : stage.tone === "emerald"
-                  ? "border-emerald-100 bg-emerald-50/85 dark:border-emerald-900/55 dark:bg-emerald-950/25"
-                  : stage.tone === "rose"
-                    ? "border-rose-100 bg-rose-50/85 dark:border-rose-900/55 dark:bg-rose-950/25"
-                    : "border-amber-100 bg-amber-50/85 dark:border-amber-900/55 dark:bg-amber-950/25"
+                ? "border-emerald-100 bg-emerald-50/85 dark:border-emerald-900/55 dark:bg-emerald-950/25"
+                : stage.tone === "blue"
+                  ? "border-blue-100 bg-blue-50/85 dark:border-blue-900/55 dark:bg-blue-950/25"
+                : stage.tone === "rose"
+                  ? "border-rose-100 bg-rose-50/85 dark:border-rose-900/55 dark:bg-rose-950/25"
+                  : "border-amber-100 bg-amber-50/85 dark:border-amber-900/55 dark:bg-amber-950/25"
             }`}
           >
             <div className="min-w-0">
               <h3 className="truncate text-xs font-black text-slate-950 dark:text-white">{stage.title}</h3>
               <p className="truncate text-[9px] font-bold text-[var(--app-text-muted)]">
-                {stageIndex === 0 ? "Fuera del area" : stageIndex === 1 ? "Dentro del patio" : stageIndex === 2 ? "Trabajo activo" : "Requiere atencion"}
+                {stage.key === "pre-entry"
+                  ? "Fuera del area"
+                  : stage.key === "movement"
+                    ? "En progreso"
+                    : stage.key === "circuit"
+                      ? "Dentro del patio"
+                      : stage.key === "services"
+                        ? "Trabajo activo"
+                        : "Requiere atencion"}
               </p>
             </div>
             <span
@@ -470,10 +508,12 @@ function WorkFlowView({
                 stage.tone === "sky"
                   ? "bg-sky-500 text-white"
                   : stage.tone === "emerald"
-                    ? "bg-emerald-600 text-white"
-                    : stage.tone === "rose"
-                      ? "bg-rose-600 text-white"
-                      : "bg-amber-500 text-white"
+                  ? "bg-emerald-600 text-white"
+                  : stage.tone === "blue"
+                    ? "bg-blue-600 text-white"
+                  : stage.tone === "rose"
+                    ? "bg-rose-600 text-white"
+                    : "bg-amber-500 text-white"
               }`}
             >
               {stage.count}
@@ -667,6 +707,8 @@ export function RightOperationsPanel({
 }) {
   const effectiveMode = showTorneados ? mode : "movimientos";
   const rows = effectiveMode === "movimientos" ? movements : torneados;
+  const [showRequestedServices, setShowRequestedServices] = useState(true);
+  const visibleRows = showRequestedServices ? rows : rows.filter((row) => row.status !== "SOLICITADO");
   const localMetrics = useMemo(() => {
     if (effectiveMode === "movimientos") return metrics;
     const totalMovements = torneados.length;
@@ -682,9 +724,23 @@ export function RightOperationsPanel({
     effectiveMode === "movimientos"
       ? "bg-[linear-gradient(180deg,rgba(236,253,245,.96),rgba(255,255,255,.92)_34%,rgba(240,253,244,.82))] dark:bg-[linear-gradient(180deg,rgba(6,78,59,.34),rgba(9,9,11,.94)_34%,rgba(6,95,70,.18))]"
       : "bg-[linear-gradient(180deg,rgba(255,241,242,.96),rgba(255,255,255,.92)_34%,rgba(254,226,226,.78))] dark:bg-[linear-gradient(180deg,rgba(76,5,25,.40),rgba(9,9,11,.94)_34%,rgba(127,29,29,.20))]";
+  const panelRef = useRef<HTMLElement | null>(null);
+  const [columnCount, setColumnCount] = useState(1);
+
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const observer = new ResizeObserver(([entry]) => {
+      const width = entry.contentRect.width;
+      setColumnCount(width >= 980 ? 3 : width >= 600 ? 2 : 1);
+    });
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, []);
 
   return (
-    <aside className={`${panelClass(panelBackground)} flex min-h-0 min-w-0 flex-col overflow-hidden`}>
+    <aside ref={(element) => { panelRef.current = element; }} className={`${panelClass(panelBackground)} flex min-h-0 min-w-0 flex-col overflow-hidden`}>
       <div className="h-1 w-full overflow-hidden bg-[var(--app-surface-muted)]" aria-label={`Cambio automatico en ${Math.round(rotationMs / 1000)} segundos`}>
         <motion.div
           key={`${effectiveMode}-${timerKey}`}
@@ -726,24 +782,36 @@ export function RightOperationsPanel({
             <span className="mx-2 text-[var(--app-text-muted)]">-</span>
             <span className="text-slate-700 dark:text-slate-200">{localMetrics.enCola} en cola</span>
           </p>
-          <div className="hidden shrink-0 items-center gap-1.5 md:flex">
-            <div className="rounded-full border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0.5 text-[9px] font-black">
-              <button
-                type="button"
-                onClick={() => onModeChange("movimientos")}
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-1 transition ${effectiveMode === "movimientos" ? "bg-emerald-600 text-white shadow-sm" : "text-[var(--app-text-muted)] hover:text-[var(--app-text)]"}`}
-              >
-                <TrainFront className="h-3 w-3 shrink-0" aria-hidden="true" />
-                Mov.
-              </button>
-              {showTorneados ? <button
-                type="button"
-                onClick={() => onModeChange("torneados")}
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-1 transition ${effectiveMode === "torneados" ? "bg-rose-600 text-white shadow-sm" : "text-[var(--app-text-muted)] hover:text-[var(--app-text)]"}`}
-              >
-                <Wrench className="h-3 w-3 shrink-0" aria-hidden="true" />
-                Tor.
-              </button> : null}
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setShowRequestedServices((visible) => !visible)}
+              className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border transition ${showRequestedServices ? "border-[var(--app-border)] bg-[var(--app-surface-subtle)] text-[var(--app-text-muted)] hover:text-[var(--app-text)]" : "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950/45 dark:text-blue-200"}`}
+              aria-label={showRequestedServices ? "Ocultar servicios solicitados" : "Mostrar servicios solicitados"}
+              aria-pressed={showRequestedServices}
+              title={showRequestedServices ? "Ocultar servicios solicitados" : "Mostrar servicios solicitados"}
+            >
+              {showRequestedServices ? <Eye className="h-3.5 w-3.5" aria-hidden="true" /> : <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />}
+            </button>
+            <div className="hidden shrink-0 items-center gap-1.5 md:flex">
+              <div className="rounded-full border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0.5 text-[9px] font-black">
+                <button
+                  type="button"
+                  onClick={() => onModeChange("movimientos")}
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-1 transition ${effectiveMode === "movimientos" ? "bg-emerald-600 text-white shadow-sm" : "text-[var(--app-text-muted)] hover:text-[var(--app-text)]"}`}
+                >
+                  <TrainFront className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  Mov.
+                </button>
+                {showTorneados ? <button
+                  type="button"
+                  onClick={() => onModeChange("torneados")}
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-1 transition ${effectiveMode === "torneados" ? "bg-rose-600 text-white shadow-sm" : "text-[var(--app-text-muted)] hover:text-[var(--app-text)]"}`}
+                >
+                  <Wrench className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  Tor.
+                </button> : null}
+              </div>
             </div>
           </div>
         </div>
@@ -757,11 +825,60 @@ export function RightOperationsPanel({
           transition={{ duration: 0.34, ease: panelEase }}
           className="flex min-h-0 flex-1 flex-col"
         >
-          <OperationsTable rows={rows} loading={loading} emptyText={emptyText} changedKeys={changedKeys} showRoundDividers={effectiveMode === "movimientos"} />
+          <OperationsTable
+            rows={visibleRows}
+            loading={loading}
+            emptyText={rows.length > 0 && visibleRows.length === 0 ? "Los servicios solicitados están ocultos." : emptyText}
+            changedKeys={changedKeys}
+            showRoundDividers={effectiveMode === "movimientos"}
+            columns={columnCount}
+          />
         </motion.div>
       </AnimatePresence>
     </aside>
   );
+}
+
+function splitOperationsRows(rows: MovementRow[], columnCount: number, groupByRound: boolean) {
+  const count = Math.min(Math.max(1, columnCount), Math.max(1, rows.length));
+  if (count === 1) return [rows];
+
+  const groups: MovementRow[][] = [];
+  rows.forEach((row) => {
+    const previousGroup = groups[groups.length - 1];
+    if (groupByRound && previousGroup?.[0]?.rondaNumero === row.rondaNumero) {
+      previousGroup.push(row);
+    } else {
+      groups.push([row]);
+    }
+  });
+
+  if (!groupByRound || groups.length < count) {
+    return Array.from({ length: count }, (_, index) => {
+      const start = Math.floor((rows.length * index) / count);
+      const end = Math.floor((rows.length * (index + 1)) / count);
+      return rows.slice(start, end);
+    });
+  }
+
+  const columns: MovementRow[][] = [];
+  let groupIndex = 0;
+  for (let columnIndex = 0; columnIndex < count; columnIndex += 1) {
+    const remainingColumns = count - columnIndex;
+    const remainingRows = groups.slice(groupIndex).reduce((total, group) => total + group.length, 0);
+    const targetRows = Math.ceil(remainingRows / remainingColumns);
+    const columnRows: MovementRow[] = [];
+    while (
+      groupIndex < groups.length &&
+      (columnRows.length < targetRows || columnRows.length === 0) &&
+      groups.length - groupIndex > remainingColumns - 1
+    ) {
+      columnRows.push(...groups[groupIndex]);
+      groupIndex += 1;
+    }
+    columns.push(columnRows);
+  }
+  return columns;
 }
 
 export function OperationsTable({
@@ -770,34 +887,47 @@ export function OperationsTable({
   emptyText,
   changedKeys,
   showRoundDividers,
+  columns = 1,
 }: {
   rows: MovementRow[];
   loading: boolean;
   emptyText: string;
   changedKeys: Map<string, ChangeKind>;
   showRoundDividers?: boolean;
+  columns?: number;
 }) {
   const prefersReducedMotion = useReducedMotion();
+  const rowColumns = splitOperationsRows(rows, columns, Boolean(showRoundDividers));
+  const rowPositions = new Map(rows.map((row, index) => [row.key, index]));
+  const headerClassName = "sticky top-0 z-10 grid shrink-0 grid-cols-[minmax(70px,1.05fr)_minmax(56px,.68fr)_minmax(46px,.5fr)_minmax(64px,.68fr)_minmax(42px,.42fr)] gap-1 border-b border-[var(--app-border)] bg-[var(--app-surface)]/95 px-1.5 py-1 text-center text-[8px] font-black text-blue-900 backdrop-blur dark:text-blue-200 2xl:grid-cols-[minmax(88px,1.12fr)_minmax(70px,.78fr)_minmax(56px,.58fr)_minmax(78px,.78fr)_minmax(52px,.48fr)] 2xl:px-2 2xl:text-[9px]";
+
   return (
-    <>
-      <div className="sticky top-0 z-10 grid shrink-0 grid-cols-[minmax(70px,1.05fr)_minmax(56px,.68fr)_minmax(46px,.5fr)_minmax(64px,.68fr)_minmax(42px,.42fr)] gap-1 border-b border-[var(--app-border)] bg-[var(--app-surface)]/95 px-1.5 py-1 text-center text-[8px] font-black text-blue-900 backdrop-blur dark:text-blue-200 2xl:grid-cols-[minmax(88px,1.12fr)_minmax(70px,.78fr)_minmax(56px,.58fr)_minmax(78px,.78fr)_minmax(52px,.48fr)] 2xl:px-2 2xl:text-[9px]">
-        <span className="rounded-md bg-slate-100/80 px-1.5 py-0.5 dark:bg-slate-800/70">Equipo</span>
-        <span className="rounded-md bg-blue-50 px-1.5 py-0.5 dark:bg-blue-950/35">Ruta</span>
-        <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 dark:bg-emerald-950/35">Tipo</span>
-        <span className="rounded-md bg-violet-50 px-1.5 py-0.5 dark:bg-violet-950/35">Estado</span>
-        <span className="rounded-md bg-amber-50 px-1.5 py-0.5 dark:bg-amber-950/35">Tiempo</span>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {loading ? <LoadingRows /> : null}
-        {!loading && rows.length === 0 ? <EmptyRows text={emptyText} /> : null}
-        <motion.div variants={listContainerMotion} initial="hidden" animate="show">
-        <AnimatePresence initial={false}>
-        {!loading && rows.map((movement, index) => {
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      {loading ? <LoadingRows /> : null}
+      {!loading && rows.length === 0 ? <EmptyRows text={emptyText} /> : null}
+      {!loading && rows.length > 0 ? (
+        <div
+          className={`grid items-start gap-2 ${columns > 1 ? "p-1.5" : ""}`}
+          style={{ gridTemplateColumns: `repeat(${rowColumns.length}, minmax(0, 1fr))` }}
+        >
+          {rowColumns.map((columnRows, columnIndex) => (
+            <div key={`movement-column-${columnIndex}`} className="min-w-0">
+              <div className={headerClassName}>
+                <span className="rounded-md bg-slate-100/80 px-1.5 py-0.5 dark:bg-slate-800/70">Equipo</span>
+                <span className="rounded-md bg-blue-50 px-1.5 py-0.5 dark:bg-blue-950/35">Ruta</span>
+                <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 dark:bg-emerald-950/35">Tipo</span>
+                <span className="rounded-md bg-violet-50 px-1.5 py-0.5 dark:bg-violet-950/35">Estado</span>
+                <span className="rounded-md bg-amber-50 px-1.5 py-0.5 dark:bg-amber-950/35">Tiempo</span>
+              </div>
+              <motion.div variants={listContainerMotion} initial="hidden" animate="show">
+                <AnimatePresence initial={false}>
+                {columnRows.map((movement, index) => {
           const rowKey = movement.key;
           const changeKind = changedKeys.get(rowKey);
-          const previous = rows[index - 1];
+          const previous = columnRows[index - 1];
           const showDivider = showRoundDividers && (!previous || previous.rondaNumero !== movement.rondaNumero);
-          const proximity = rows.length <= 1 ? 1 : 1 - index / Math.max(rows.length - 1, 1);
+          const globalIndex = rowPositions.get(rowKey) ?? 0;
+          const proximity = rows.length <= 1 ? 1 : 1 - globalIndex / Math.max(rows.length - 1, 1);
           const isActiveService = movement.status === "EN PROCESO";
           const hasIncident = movement.activeIncidentCount > 0;
           const activeTone = activeServiceTone(movement.type);
@@ -855,7 +985,7 @@ export function OperationsTable({
                 stiffness: 420,
                 damping: 34,
                 mass: 0.8,
-                delay: Math.min(index * 0.035, 0.28),
+                delay: Math.min(globalIndex * 0.035, 0.28),
                 boxShadow: { duration: hasIncident || isActiveService ? 2.2 : 0.35, repeat: hasIncident || isActiveService ? Infinity : 0, ease: "easeInOut" },
               }}
               style={{ minHeight: rowMinHeight, paddingTop: rowPaddingY, paddingBottom: rowPaddingY }}
@@ -908,10 +1038,13 @@ export function OperationsTable({
           </div>
         );
         })}
-        </AnimatePresence>
-        </motion.div>
-      </div>
-    </>
+                </AnimatePresence>
+              </motion.div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

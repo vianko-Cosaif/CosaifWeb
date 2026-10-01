@@ -8,6 +8,7 @@ import {
 
 type RefreshReason = {
   event: RealtimeMovementEvent;
+  events?: RealtimeMovementEvent[];
   forced?: boolean;
 };
 
@@ -73,6 +74,7 @@ export function useRealtimeBoardRefresh({
   const timerRef = useRef<number | null>(null);
   const inFlightRef = useRef(false);
   const pendingEventRef = useRef<RealtimeMovementEvent | null>(null);
+  const pendingEventsRef = useRef<Map<string, RealtimeMovementEvent>>(new Map());
   const lastEventKeyRef = useRef<string | null>(null);
   const lastEventAtRef = useRef(0);
   const generationRef = useRef(0);
@@ -89,6 +91,12 @@ export function useRealtimeBoardRefresh({
     if (!enabled || typeof window === 'undefined' || document.visibilityState === 'hidden') return;
     const generation = generationRef.current;
     pendingEventRef.current = event;
+    const key = String(event.type ?? eventKey(event));
+    if (pendingEventsRef.current.size >= 32 && !pendingEventsRef.current.has(key)) {
+      const oldestKey = pendingEventsRef.current.keys().next().value;
+      if (oldestKey) pendingEventsRef.current.delete(oldestKey);
+    }
+    pendingEventsRef.current.set(key, event);
 
     if (timerRef.current != null || inFlightRef.current) return;
 
@@ -100,10 +108,12 @@ export function useRealtimeBoardRefresh({
       timerRef.current = null;
       if (generation !== generationRef.current || document.visibilityState === 'hidden') return;
       const nextEvent = pendingEventRef.current ?? event;
+      const events = [...pendingEventsRef.current.values()];
       pendingEventRef.current = null;
+      pendingEventsRef.current.clear();
       inFlightRef.current = true;
 
-      Promise.resolve().then(() => generation === generationRef.current ? refreshRef.current({ event: nextEvent, forced }) : undefined)
+      Promise.resolve().then(() => generation === generationRef.current ? refreshRef.current({ event: nextEvent, events, forced }) : undefined)
         .catch((error) => {
           if (generation === generationRef.current) console.error("[realtime-board] refresh error", error);
         })
@@ -123,6 +133,7 @@ export function useRealtimeBoardRefresh({
       if (timerRef.current != null) window.clearTimeout(timerRef.current);
       timerRef.current = null;
       pendingEventRef.current = null;
+      pendingEventsRef.current.clear();
       inFlightRef.current = false;
       lastEventKeyRef.current = null;
       lastEventAtRef.current = 0;

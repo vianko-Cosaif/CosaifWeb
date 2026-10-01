@@ -262,7 +262,7 @@ export default function IncidentModal({
     <div
       ref={overlayRef}
       data-guide-id="incident-alert-dialog"
-      className="fixed inset-0 z-[150] flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      className="fixed inset-0 z-[2147483647] flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm sm:items-center sm:p-4"
     >
       <div
         ref={dialogRef}
