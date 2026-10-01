@@ -171,7 +171,9 @@ function QueueCard({
         ]}
       />
       <FieldGrid fields={statusFields} />
-      <RoundIncidentTimer incident={item.movimiento?.incidenteActivo ?? movement?.incidenteActivo} />
+      <RoundIncidentTimer
+        incident={item.movimiento?.incidenteActivo ?? movement?.incidenteActivo}
+      />
       <FieldGrid fields={dateFields} />
       <div className={styles.instructions}>
         <span>Comentarios / Instrucciones</span>
