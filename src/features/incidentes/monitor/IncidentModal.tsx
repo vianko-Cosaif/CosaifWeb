@@ -16,7 +16,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import type { IncidenteEmergente } from "@/features/incidentes/useIncidentMonitor";
-import { shouldUseIncidentCountdown } from "@/lib/incidentCountdownPolicy";
+import { shouldUseIncidentCountdown, isTorreonIncidentContext } from "@/lib/incidentCountdownPolicy";
 import { registerDialog } from "@/components/ui/Modal/dialogStack";
 import ConfirmationModal from "../../../components/ConfirmationModal";
 import { ImageGallery } from "./ImageGallery";
@@ -151,7 +151,7 @@ export default function IncidentModal({
   const leftMs = Math.max(0, WINDOW_DURATION_MS - (now - startMs));
   const pct = Math.round(((WINDOW_DURATION_MS - leftMs) / WINDOW_DURATION_MS) * 100);
   const canActOnIncident = incident.estado === "ABIERTO" && (!countdownAllowed || leftMs > 0);
-  const showTimer = countdownAllowed && canActOnIncident;
+  const showTimer = countdownAllowed && incident.estado === "ABIERTO";
 
   // Obtener imágenes
   const images = useMemo(() => {
@@ -309,6 +309,7 @@ export default function IncidentModal({
             </button>
           </div>
           {showTimer && <TimerBar leftMs={leftMs} pct={pct} />}
+            {showTimer && leftMs === 0 && isTorreonIncidentContext(incident) && <p role="status" className="text-sm font-semibold text-amber-600">Tiempo vencido. El servidor está cerrando el incidente y actualizando la ronda…</p>}
         </header>
 
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--app-border)] bg-[var(--app-surface)] px-4 py-3 sm:px-7">

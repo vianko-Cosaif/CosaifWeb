@@ -175,7 +175,6 @@ function RondaCardContent({
 }) {
   const [open, setOpen] = useState(false);
   const badgeClass = priorityBadge(ronda.movimiento?.prioridad);
-  const isTorreon = ronda.source === 'torreon';
 
   return (
     <div className={`group relative rounded-lg border ${THEME.border} ${THEME.surface} p-3 mb-2 transition-all hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600`}>
@@ -293,12 +292,10 @@ function RondaCardContent({
               data-guide-id="round-cancel-movement"
               type="button"
               onClick={onCancelRequest}
-              disabled={isCancelling || isTorreon}
-              title={isTorreon ? 'Movimiento de Torreon en solo lectura' : undefined}
+              disabled={isCancelling}
               className={`px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 transition-colors ${isCancelling
                 ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                : isTorreon
-                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-500'
+
                 : 'text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/10'
                 }`}
             >
@@ -309,12 +306,7 @@ function RondaCardContent({
               data-guide-id="round-change-position"
               type="button"
               onClick={onSwapRequest}
-              disabled={isTorreon}
-              title={isTorreon ? 'Ronda de Torreon en solo lectura' : undefined}
-              className={`px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 transition-colors ${isTorreon
-                ? 'bg-slate-100 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-500'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200'
-              }`}
+              className="px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 transition-colors bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200"
             >
               <ArrowLeftRight size={14} /> Cambiar posición
             </button>
@@ -568,7 +560,7 @@ type Props = {
 const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
   const trainingTour = useTrainingTour();
   const {
-    infoMap, loading, groupedByRonda, setGroupedByRonda, setList
+    infoMap, loading, groupedByRonda, setGroupedByRonda, setList, refetch
   } = useRondaData(Number(localidadId), onClose);
 
   const todasLasRondas = useMemo(() =>
@@ -678,10 +670,6 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
       alert('En capacitación sólo puedes seleccionar registros SIM.');
       return;
     }
-    if (ronda.source === 'torreon') {
-      alert('En esta ronda usa las flechas o arrastra el movimiento a su nueva posición.');
-      return;
-    }
     setSwapModal({ visible: true, base: ronda });
   }, [trainingTour]);
 
@@ -696,7 +684,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
       setSwapModal({ visible: false, base: null });
       return;
     }
-    if (otra.source === 'torreon') {
+    if ((base.source === 'torreon') !== (otra.source === 'torreon')) {
       alert('No se puede intercambiar una ronda normal con una ronda de Torreón.');
       return;
     }
@@ -723,7 +711,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
     setPendingRoundEdit({
       active: item,
       target,
-      kind: item.source === 'torreon' ? 'torreon-order' : 'swap',
+      kind: 'swap',
       targetOrder: targetIndex + 1,
     });
   }, [groupedByRonda, trainingTour]);
@@ -783,6 +771,9 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
         showToast('Orden de la ronda actualizado');
       } else {
         await apiSwapMovimientos(active.id, target.id, localidadId, { sandbox: trainingTour.active });
+        if (active.source === 'torreon') {
+          refetch(); setDidSave(true); setPendingRoundEdit(null); showToast('Posiciones actualizadas'); return;
+        }
         const swapMovement = (item: Ronda): Ronda => {
           if (item.id === active.id) {
             return {
@@ -819,7 +810,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
       roundEditLockRef.current = false;
       setSavingRoundEdit(false);
     }
-  }, [groupedByRonda, localidadId, pendingRoundEdit, setGroupedByRonda, setList, showToast, trainingTour]);
+  }, [refetch, groupedByRonda, localidadId, pendingRoundEdit, setGroupedByRonda, setList, showToast, trainingTour]);
 
   const handleCancelRequest = useCallback((item: Ronda) => {
     if (trainingTour.active && !trainingTour.isTrainingMovement(movementTechnicalId(item))) {
@@ -875,6 +866,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
         .map((item) => byId.get(item.id) ?? item));
       setDidSave(true);
       setCancelItem(null);
+      if (cancelItem.source === 'torreon') refetch();
       showToast('Movimiento cancelado y retirado de la ronda');
     } catch (e: unknown) {
       console.error(e);
@@ -883,7 +875,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
       cancelLockRef.current = false;
       setCancellingId(null);
     }
-  }, [cancelItem, groupedByRonda, localidadId, setGroupedByRonda, setList, showToast, trainingTour]);
+  }, [refetch, cancelItem, groupedByRonda, localidadId, setGroupedByRonda, setList, showToast, trainingTour]);
 
   // Arrastrar sólo prepara el cambio; la API se ejecuta después de confirmarlo.
   const handleDragEnd = (event: DragEndEvent) => {
@@ -907,18 +899,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
       return;
     }
 
-    if (activeItem.source === 'torreon' || overItem.source === 'torreon') {
-      if (activeItem.source !== 'torreon' || overItem.source !== 'torreon' || activeItem.rondaNumero !== overItem.rondaNumero) {
-        alert('Torreón sólo permite reordenar dentro de su misma ronda.');
-        return;
-      }
-      const currentList = [...(groupedByRonda[activeItem.rondaNumero] || [])]
-        .sort((a, b) => a.orden - b.orden || a.id - b.id);
-      const newIndex = currentList.findIndex((item) => item.id === overId);
-      if (newIndex < 0) return;
-      setPendingRoundEdit({ active: activeItem, target: overItem, kind: 'torreon-order', targetOrder: newIndex + 1 });
-      return;
-    }
+    if ((activeItem.source === 'torreon') !== (overItem.source === 'torreon')) return;
 
     setPendingRoundEdit({ active: activeItem, target: overItem, kind: 'swap', targetOrder: overItem.orden });
   };
@@ -1035,7 +1016,7 @@ const EditRondas: React.FC<Props> = ({ localidadId, onClose, onSaved }) => {
         <SwapModal
           visible={swapModal.visible}
           base={swapModal.base}
-          candidatos={todasLasRondas.filter((item) => item.source !== 'torreon')}
+          candidatos={todasLasRondas.filter((item) => (item.source === 'torreon') === (swapModal.base?.source === 'torreon'))}
           infoMap={displayedInfoMap}
           onConfirm={handleSwap}
           onClose={() => setSwapModal({ visible: false, base: null })}

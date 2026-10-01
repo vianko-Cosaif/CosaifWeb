@@ -382,6 +382,7 @@ export default function TorreonNaturalesPanel({
                   cargando={naturales.loading}
                   rol={rol}
                   mostrarDuracion={false}
+                  onEditar={(id) => router.push(`/${rol === 'ADMINISTRADOR' ? 'administrador' : rol === 'SUPERVISOR' ? 'supervisor' : 'coordinador'}/editar?id=${id}&source=torreon`)}
                   onPagina={naturales.setPage}
                   onOrden={(campoOrden, direccionOrden) =>
                     setExtraFilters((current) => ({ ...current, campoOrden, direccionOrden }))

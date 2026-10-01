@@ -29,6 +29,9 @@ const detail = (empresaId = 3, localidadId = 1) => ({
   movimiento: { id: 10, localidadId },
 });
 beforeEach(() => {
+  upstream.torreon.mockReset();
+  upstream.fetch.mockReset();
+  upstream.session.mockReset();
   vi.stubEnv("API_ORIGIN", "http://synthetic-backend.invalid");
   vi.stubEnv("TORREON_LOCALIDAD_IDS", "2");
   upstream.session.mockResolvedValue(session());
@@ -93,6 +96,28 @@ describe.each([
     upstream.torreon.mockResolvedValue([{ id: 1, numeroRonda: 1, localidadId, movimientos: [{ id: 10, empresaId, movimientoId: 50, movimiento: { id: 50, empresaId, estado: "SOLICITADO" } }] }]);
     expect((await post({ action: "orden", id: 10, orden: 2 })).status).toBe(403);
     expect(upstream.torreon.mock.calls.every(([, init]) => init?.method !== "PATCH")).toBe(true);
+  });
+  it.each([[3,2,200],[4,2,403],[3,1,403]])('validates Torreón swap company/patio %s/%s', async (empresaId,localidadId,status) => {
+    upstream.session.mockResolvedValue({ ...session(), localidadId: 2 });
+    upstream.torreon.mockResolvedValueOnce([{ id:1,numeroRonda:1,localidadId:2,movimientos:[{id:10,empresaId:3,movimientoId:50,movimiento:{id:50,empresaId:3,localidadId:2,estado:'SOLICITADO'}}]}, {id:2,numeroRonda:2,localidadId,movimientos:[{id:11,empresaId,movimientoId:51,movimiento:{id:51,empresaId,localidadId,estado:'SOLICITADO'}}]}]);
+    upstream.torreon.mockResolvedValueOnce({ok:true});
+    expect((await post({action:'swap',rondaAId:10,rondaBId:11})).status).toBe(status);
+    expect(upstream.fetch).not.toHaveBeenCalled();
+    if(status===200) {
+      const [path,init]=upstream.torreon.mock.calls.at(-1)!;
+      expect(path).toBe('/rondas/intercambiar-movimientos');
+      expect(JSON.parse(init.body)).toEqual({rondaAId:10,rondaBId:11,empresaId:3});
+    } else expect(upstream.torreon.mock.calls.every(([,init])=>init?.method!=='PATCH')).toBe(true);
+  });
+  it.each([[7,200],[8,403]])('Torreón cancel requires the movement owner %s', async (ownerId,status) => {
+    upstream.session.mockResolvedValue({ ...session(), localidadId: 2 });
+    upstream.torreon.mockResolvedValueOnce([{id:1,numeroRonda:1,localidadId:2,movimientos:[{id:10,empresaId:3,movimientoId:50,movimiento:{id:50,empresaId:3,localidadId:2,estado:'SOLICITADO'}}]}]);
+    upstream.torreon.mockResolvedValueOnce({data:{creadoPorId:ownerId,clienteId:ownerId}});
+    if(status===200) upstream.torreon.mockResolvedValueOnce({ok:true});
+    expect((await post({action:'cancel',movimientoId:50,razon:'Duplicado'})).status).toBe(status);
+    expect(upstream.fetch).not.toHaveBeenCalled();
+    if(status===200) expect(upstream.torreon.mock.calls.at(-1)?.[0]).toBe('/movimientos/50/cancelar');
+    else expect(upstream.torreon.mock.calls.every(([,init])=>init?.method!=='PATCH')).toBe(true);
   });
   it("validates both sides of a swap", async () => {
     upstream.fetch.mockResolvedValueOnce(Response.json(detail()));

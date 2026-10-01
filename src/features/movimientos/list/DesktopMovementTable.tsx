@@ -337,7 +337,7 @@ export default function DesktopMovementTable({
               }
               onClick={(event) => {
                 event.stopPropagation();
-                onEditar?.(movementId);
+                onEditar?.(movementId, movement);
               }}
               className="font-bold"
             >

@@ -3,7 +3,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
 import { createPortal } from "react-dom";
-import { shouldUseIncidentCountdown } from "@/lib/incidentCountdownPolicy";
+import { shouldUseIncidentCountdown, isTorreonIncidentContext } from "@/lib/incidentCountdownPolicy";
 import { isTrainingIncidentId } from "@/lib/routePolicy";
 import { GuidedTarget } from "@/features/capacitacion";
 import { useTrainingTour } from "@/features/capacitacion/TrainingTourContext";
@@ -436,7 +436,7 @@ export default function SmartIncidentBlocker({
   const pct = Math.round(((WINDOW_DURATION_MS - leftMs) / WINDOW_DURATION_MS) * 100);
   const estado = (fetched?.estado || incident?.estado || "ABIERTO") as keyof typeof ESTADO_COLORS;
   const canActOnIncident = estado === "ABIERTO" && (!countdownAllowed || leftMs > 0);
-  const showTimer = countdownAllowed && canActOnIncident;
+  const showTimer = countdownAllowed && estado === "ABIERTO";
 
   /* Actions */
   const doResolve = useCallback(async () => {
@@ -552,6 +552,7 @@ export default function SmartIncidentBlocker({
               </button>
             </div>
             {showTimer && <TimerBar leftMs={leftMs} pct={pct} />}
+            {showTimer && leftMs === 0 && isTorreonIncidentContext(incident) && <p role="status" className="text-sm font-semibold text-amber-600">Tiempo vencido. El servidor está cerrando el incidente y actualizando la ronda…</p>}
           </div>
 
           {/* Status */}

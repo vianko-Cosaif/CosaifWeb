@@ -12,7 +12,7 @@ export interface TablaProps {
   cargando?: boolean;
   onPagina: (p: number) => void;
   onOrden: (c: CampoOrden, d: DireccionOrden) => void;
-  onEditar?: (id: number) => void;
+  onEditar?: (id: number, movement?: Movement) => void;
   rol?: Rol;
   mostrarDuracion?: boolean;
 }
