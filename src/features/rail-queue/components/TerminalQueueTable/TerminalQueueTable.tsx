@@ -1,5 +1,6 @@
 "use client";
 
+import RoundIncidentTimer from "../RoundIncidentTimer";
 import { useEffect, useMemo, useState } from "react";
 import Button from "antd/es/button";
 import ConfigProvider from "antd/es/config-provider";
@@ -217,6 +218,7 @@ export function TerminalQueueTable({
               <div className="mt-1 text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">
                 {mv?.estado || "—"}
               </div>
+              <RoundIncidentTimer incident={ronda.movimiento?.incidenteActivo ?? mv?.incidenteActivo} />
             </div>
           );
         },

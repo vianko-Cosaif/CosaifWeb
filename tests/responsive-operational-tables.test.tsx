@@ -127,7 +127,7 @@ describe("responsive operational list rendering", () => {
     expect(screen.getByRole("button", { name: "Ocultar detalles del movimiento #1" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Página 2" }).getAttribute("aria-current")).toBe("page");
     fireEvent.click(screen.getByRole("button", { name: "Editar" }));
-    expect(props.onEditar).toHaveBeenCalledWith(1001);
+    expect(props.onEditar).toHaveBeenCalledWith(1001, props.filas[0]);
     expect(screen.getByRole("button", { name: "Ocultar detalles del movimiento #1" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Ocultar detalles del movimiento #1" }));
     expect(screen.queryByText("Personal Asignado")).toBeNull();
@@ -149,7 +149,7 @@ describe("responsive operational list rendering", () => {
     expect(within(desktop).getByRole("columnheader", { name: "Resolución" })).toBeTruthy();
     expect(within(desktop).getAllByText("Nombre privado supervisor")).toHaveLength(3);
     fireEvent.click(within(desktop).getByRole("button", { name: "Editar" }));
-    expect(props.onEditar).toHaveBeenCalledWith(1001);
+    expect(props.onEditar).toHaveBeenCalledWith(1001, props.filas[0]);
     fireEvent.click(screen.getByRole("button", { name: "Ordenar solicitud" }));
     expect(props.onOrden).toHaveBeenCalledWith("solicitud", "asc");
     expect(props.onPagina).not.toHaveBeenCalled();

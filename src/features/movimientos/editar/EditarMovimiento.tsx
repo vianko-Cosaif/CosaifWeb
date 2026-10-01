@@ -24,13 +24,16 @@ export default function EditarMovimiento({
   onClose,
   onSaved,
   initialRole,
+  source = "cosaif",
 }: {
   movimientoId: number | string;
   initialRole?: string;
+  source?: "cosaif" | "torreon";
   onClose?: () => void;
   onSaved?: (updated: unknown) => void;
 }) {
   const router = useRouter();
+  const editEndpoint = `${API_BASE}/${source === "torreon" ? "torreon/" : ""}movimientos/${movimientoId}/edicion`;
   const training = useTrainingTour();
   const numericMovementId = Number(movimientoId);
   const reservedTrainingId = [
@@ -191,7 +194,7 @@ export default function EditarMovimiento({
     (async () => {
       try {
         setLoading(true);
-        const data = await Movimiento.fetchJSON(`${API_BASE}/movimientos/${movimientoId}/edicion`) as InfoEdicion;
+        const data = await Movimiento.fetchJSON(editEndpoint) as InfoEdicion;
         if (!mounted) return;
         setInfo(data);
 
@@ -212,6 +215,13 @@ export default function EditarMovimiento({
         setInitialTornoMedicion(parsedTorno);
         setInitialTornoSerialized(serializeTornoMedicion(parsedTorno));
 
+        if (source === 'torreon') {
+          const text = String(data.movimiento.instrucciones ?? '');
+          const origin = text.match(/\[META ORIGEN:(\d+)\]/i);
+          const destination = text.match(/\[META DESTINO:(\d+)\]/i);
+          setFromSection(origin ? Number(origin[1]) : undefined);
+          setToSection(destination ? Number(destination[1]) : undefined);
+        }
         // Prefill secciones desde meta si aplica (el parser expone meta.seccion y meta.destinoId)
         if (data.movimiento.meta?.seccion) setToSection(Number(data.movimiento.meta.seccion));
 
@@ -243,7 +253,7 @@ export default function EditarMovimiento({
       }
     })();
     return () => { mounted = false; };
-  }, [isTrainingEditor, movimientoId, trainingMovement]);
+  }, [isTrainingEditor, movimientoId, trainingMovement, editEndpoint]);
 
   /** Secciones por vía (caché) */
   const secLoadingRef = useRef<Record<number, boolean>>({});
@@ -573,7 +583,7 @@ export default function EditarMovimiento({
     try {
       saveLockRef.current = true;
       setSaving(true);
-      const updated = await Movimiento.fetchJSON(`${API_BASE}/movimientos/${movimientoId}/edicion`, {
+      const updated = await Movimiento.fetchJSON(editEndpoint, {
         method: "PATCH",
         body: JSON.stringify(payload),
       });

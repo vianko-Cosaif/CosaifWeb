@@ -64,7 +64,7 @@ export default function ScopedIncidentMonitor({
         setEmpresaId(nextEmpresaId);
         setLocalidadId(nextLocalidadId);
         setTorreonScope(isTorreonScope);
-        setCountdownEnabled(!isTorreonScope);
+        setCountdownEnabled(!normalizedRole.includes('ARRASTRE'));
         setScopeReady(true);
       };
 

@@ -1,4 +1,5 @@
 export type RondaMovement = {
+  incidenteActivo?: { id: number; fechaInicio: string | null; estado: string; source: "torreon" | "cosaif" } | null;
   id?: number;
   idTecnico?: number | string | null;
   folioLocalidad?: number | null;

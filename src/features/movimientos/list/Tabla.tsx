@@ -76,7 +76,7 @@ function TablaInner({
   const isDesktop = useMediaQuery("(min-width: 1152px)");
   const clienteSoloIds = isClientLikeRole(rol);
   const puedeVerDuracion = mostrarDuracion && canViewMovementDuration(rol);
-  const NO_EDIT_STATES = useMemo(() => new Set(["DETENIDO", "EN_PROCESO", "CONCLUIDO"]), []);
+  const NO_EDIT_STATES = useMemo(() => new Set(["EN_PROCESO", "CONCLUIDO", "CANCELADO"]), []);
   const puedeEditarMovimiento = useCallback(
     (estado?: string) => {
       const key = String(estado || "")
@@ -343,7 +343,7 @@ interface MovimientoRowProps {
   movement: Movement;
   isOpen: boolean;
   onToggle: (rowKey: string) => void;
-  onEditar?: (id: number) => void;
+  onEditar?: (id: number, movement?: Movement) => void;
   showEdit?: boolean;
   canEdit?: boolean;
   showMeasures?: boolean;
@@ -384,7 +384,7 @@ const MobileCard = memo(function MobileCard({
   const handleEditClick = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
       event.stopPropagation();
-      if (onEditar && canEdit) onEditar(getMovementTechnicalId(movement));
+      if (onEditar && canEdit) onEditar(getMovementTechnicalId(movement), movement);
     },
     [onEditar, movement, canEdit],
   );

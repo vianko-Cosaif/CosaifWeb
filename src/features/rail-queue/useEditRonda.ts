@@ -1,5 +1,6 @@
 // /hooks/useEditRondaWeb.ts
 'use client';
+import { useRealtimeBoardRefresh } from './useRealtimeBoardRefresh';
 
 import { useEffect, useState, useCallback } from 'react';
 import { invalidateCachedJson } from '@/lib/http/client';
@@ -297,6 +298,9 @@ export async function apiOrdenMovimiento(
    Hook principal de datos (WEB)
    ============================== */
 export const useRondaData = (localidadId: number, onClose: () => void) => {
+  const [revision, setRevision] = useState(0);
+  const refetch = useCallback(() => setRevision(value => value + 1), []);
+  useRealtimeBoardRefresh({ scopeLocalidadId: localidadId, onRefresh: refetch });
   const [user, setUser] = useState<User>({ empresaId: null, token: null });
   const [list, setList] = useState<Ronda[]>([]);
   const [infoMap, setInfoMap] = useState<Record<number, InfoExtra>>({});
@@ -358,7 +362,7 @@ export const useRondaData = (localidadId: number, onClose: () => void) => {
     return () => {
       mounted = false;
     };
-  }, [localidadId, onClose]);
+  }, [localidadId, onClose, revision]);
 
   // Helpers de orden (si usas subir/bajar más adelante)
   const swapOrderLocal = useCallback(
@@ -417,5 +421,6 @@ export const useRondaData = (localidadId: number, onClose: () => void) => {
     setList,
     swapOrderLocal,
     persistOrden,
+    refetch,
   };
 };

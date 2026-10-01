@@ -135,6 +135,35 @@ export async function POST(req: NextRequest) {
     const jsonHeaders = { ...headers, "content-type": "application/json" };
 
     if (isTorreonLocalidad(scopedLocalidadId)) {
+      if (action === "cancel") {
+        const movimientoId = Number(body.movimientoId);
+        if (!Number.isSafeInteger(movimientoId) || movimientoId <= 0) return NextResponse.json({ message: 'Movimiento inválido' }, { status: 400 });
+        const raw = await fetchTorreonMsJson(`/rondas?localidadId=${scopedLocalidadId}`, { signal: req.signal });
+        const allowed = mapTorreonRondasToOut(raw, false, shouldScopeEmpresa ? empresaId : null, scopedLocalidadId);
+        if (!allowed.some(row => Number(row.movimientoId ?? row.movimiento?.id) === movimientoId)) return NextResponse.json({ message: 'Solo puedes cancelar movimientos de tu empresa y localidad.' }, { status: 403 });
+        if (['CLIENTE', 'CLIENTE_ADMIN', 'CLIENTE_COOR'].includes(session.role)) {
+          type Owner = { clienteId?: number; creadoPorId?: number };
+          const detail = await fetchTorreonMsJson<Owner & { data?: Owner }>(`/movimientos/${movimientoId}`, { signal: req.signal });
+          const owner = detail.data ?? detail;
+          if (owner.clienteId !== session.userId && owner.creadoPorId !== session.userId) return NextResponse.json({ message: 'Solo puedes cancelar movimientos propios.' }, { status: 403 });
+        }
+        return NextResponse.json(await fetchTorreonMsJson(`/movimientos/${movimientoId}/cancelar`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ razon: String(body.razon || 'Cancelado por cliente') }),
+        }));
+      }
+      if (action === "swap") {
+        const ids = [Number(body.rondaAId), Number(body.rondaBId)];
+        if (ids.some(id => !Number.isSafeInteger(id) || id <= 0) || ids[0] === ids[1]) return NextResponse.json({ message: 'Selecciona dos movimientos distintos.' }, { status: 400 });
+        const raw = await fetchTorreonMsJson(`/rondas?localidadId=${scopedLocalidadId}`, { signal: req.signal });
+        const allowed = mapTorreonRondasToOut(raw, false, shouldScopeEmpresa ? empresaId : null, scopedLocalidadId);
+        if (ids.some(id => !allowed.some(row => row.id === id))) return NextResponse.json({ message: 'Solo puedes modificar movimientos de tu empresa y localidad.' }, { status: 403 });
+        const data = await fetchTorreonMsJson('/rondas/intercambiar-movimientos', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rondaAId: ids[0], rondaBId: ids[1], ...(shouldScopeEmpresa ? { empresaId } : {}) }),
+        });
+        return NextResponse.json(data);
+      }
       if (action === "orden") {
         const id = Number(body?.id ?? body?.rondaMovimientoId);
         const orden = Number(body?.orden);

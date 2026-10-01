@@ -97,7 +97,7 @@ export function mapTorreonRondasToOut(
         String(incidente?.estado ?? "").toUpperCase() === "ABIERTO";
       const estado = bloqueado
         ? "BLOQUEADO"
-        : String(detail.estado ?? movimiento.estado ?? "SOLICITADO").toUpperCase();
+        : String(movimiento.estado ?? (detail.estado === "ACTIVO" ? "EN_PROCESO" : "SOLICITADO")).toUpperCase();
       const locomotiveNumber = movimiento.locomotiveNumber ?? null;
       const empresaNombre =
         typeof movimiento.empresaNombreSnapshot === "string" &&
@@ -147,6 +147,9 @@ export function mapTorreonRondasToOut(
           fechaInicio: asDateString(detail.fechaInicio ?? movimiento.fechaInicio),
           fechaFin: asDateString(detail.fechaFin ?? movimiento.fechaFin),
           instrucciones: buildTorreonInstructions(movimiento, incidente),
+          incidenteActivo: incidente?.estado === "ABIERTO" && asNumber(incidente.id) ? {
+            id: asNumber(incidente.id)!, fechaInicio: asDateString(incidente.fechaInicio), estado: "ABIERTO", source: "torreon",
+          } : null,
         },
         movimientoId,
         createdAt: asDateString(

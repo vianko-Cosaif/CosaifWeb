@@ -31,7 +31,7 @@ export function canClientUseTorreonPath(role: string, method: string, rest: stri
   if (kind === "NATURAL") {
     return (
       (verb === "POST" && path === "/movimientos") ||
-      (verb === "PATCH" && path === "/rondas/movimientos/orden")
+      (verb === "PATCH" && (path === "/rondas/movimientos/orden" || path === "/rondas/intercambiar-movimientos" || /^\/movimientos\/\d+(?:\/(?:edicion|cancelar))?$/.test(path)))
     );
   }
   return (

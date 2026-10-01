@@ -18,6 +18,7 @@ import KpiCard from "@/components/ui/KpiCard";
 import ModuleHeader from "@/components/ui/ModuleHeader";
 import LoadingState from "@/components/ui/LoadingState";
 import { canViewMovementDuration } from "@/features/movimientos/table";
+import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 
 const Tabla = dynamic(() => import("./Tabla"), {
   loading: () => (
@@ -356,7 +357,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
     (movement: Movement) => {
       if (trainingTour.isTrainingMovement(movement.id)) return trainingTour.active;
       if (!canEdit) return false;
-      if (rol === "CLIENTE")
+      if (["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"].includes(String(rol).toUpperCase()))
         return movement.empresaId === userEmpresaId && movement.localidadId === userLocalidadId;
       return true;
     },
@@ -364,7 +365,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
   );
 
   const handleEditar = useCallback(
-    (id: number) => {
+    (id: number, selectedMovement?: Movement) => {
       if (trainingTour.active) {
         if (trainingTour.isTrainingMovement(id)) {
           router.push(`/cliente/editar?id=${id}&training=1`);
@@ -375,7 +376,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
         );
         return;
       }
-      const row = filas.find((movement) => (movement.idTecnico ?? movement.id) === id);
+      const row = selectedMovement ?? filas.find((movement) => (movement.idTecnico ?? movement.id) === id);
       if (!row || !puedeEditarFila(row)) return;
       const BASE: Record<string, string> = {
         ADMINISTRADOR: "/administrador",
@@ -384,7 +385,7 @@ export default function MovimientosPanel(props: MovimientosPanelProps) {
         CLIENTE: "/cliente",
       };
       const base = BASE[String(rol).toUpperCase()] ?? "/cliente";
-      router.push(`${base}/editar?id=${id}`);
+      router.push(`${base}/editar?id=${id}${isTorreonLocalidadId(row.localidadId) ? '&source=torreon' : ''}`);
     },
     [router, rol, trainingTour, filas, puedeEditarFila],
   );

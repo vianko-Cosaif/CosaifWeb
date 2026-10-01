@@ -1,3 +1,4 @@
+import RoundIncidentTimer from "./RoundIncidentTimer";
 import type { ReactNode } from "react";
 import { TrainFront } from "lucide-react";
 import { GuidedTarget } from "@/features/capacitacion";
@@ -170,6 +171,7 @@ function QueueCard({
         ]}
       />
       <FieldGrid fields={statusFields} />
+      <RoundIncidentTimer incident={item.movimiento?.incidenteActivo ?? movement?.incidenteActivo} />
       <FieldGrid fields={dateFields} />
       <div className={styles.instructions}>
         <span>Comentarios / Instrucciones</span>

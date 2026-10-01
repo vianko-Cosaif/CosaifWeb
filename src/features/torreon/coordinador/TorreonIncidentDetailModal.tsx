@@ -73,6 +73,17 @@ function incidentImages(incident: TorreonIncidentDetail) {
 export default function TorreonIncidentDetailModal({ incident, title, subtitle, resolving = false, loadingEvidence = false, evidenceError, onResolve, onCancel, onClose }: Props) {
   const status = normalizeStatus(incident.estado);
   const fotos = incidentImages(incident);
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (status !== 'ABIERTO') return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [incident.id, status]);
+  const start = new Date(incident.fechaInicio ?? '').getTime();
+  const end = status === 'ABIERTO' ? now : new Date(incident.fechaResolucion ?? '').getTime();
+  const seconds = Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, Math.floor((end - start) / 1000)) : null;
+  const elapsedLabel = seconds == null ? '--' : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+
   const canResolve = status === "ABIERTO" && Boolean(onResolve);
   const canCancel = status === "ABIERTO" && Boolean(onCancel);
   const [solucion, setSolucion] = useState("");
@@ -139,6 +150,7 @@ export default function TorreonIncidentDetailModal({ incident, title, subtitle, 
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <div className="grid gap-3 md:grid-cols-4">
+            <InfoTile icon={CalendarClock} label="Tiempo del incidente" value={elapsedLabel} />
             <InfoTile icon={Hash} label="Incidente" value={incident.id ? `#${incident.id}` : "--"} />
             <InfoTile icon={CalendarClock} label="Inicio" value={formatDate(incident.fechaInicio)} />
             <InfoTile icon={CheckCircle2} label="Resuelto en" value={formatDate(incident.fechaResolucion)} />
