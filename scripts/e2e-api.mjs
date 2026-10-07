@@ -40,31 +40,26 @@ const envelope = (data, pageSize = 25) => ({
 });
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", "http://127.0.0.1:3911");
+  const key = String(request.headers.authorization || "").replace(/^Bearer e2e-/, "");
+  const proxiedTorreonRead =
+    request.method === "GET" &&
+    url.pathname.startsWith("/torreon/") &&
+    Object.hasOwn(profiles, key);
+  const torreonRead = request.headers["x-service-id"] === "e2e" || proxiedTorreonRead;
+  const torreonPath = proxiedTorreonRead ? url.pathname.slice("/torreon".length) : url.pathname;
   if (
     request.method === "GET" &&
-    request.headers["x-service-id"] === "e2e" &&
-    ["/incidentes", "/arrastres/incidentes"].includes(url.pathname)
+    torreonRead &&
+    ["/incidentes", "/arrastres/incidentes", "/catalogos/arrastre"].includes(torreonPath)
   )
     return json(response, 200, []);
   if (url.pathname === "/health") return json(response, 200, { ok: true });
   // Dedicated empty Torreón contract for the admin's optional locality summary.
-  if (
-    url.pathname === "/rondas" &&
-    request.method === "GET" &&
-    request.headers["x-service-id"] === "e2e"
-  )
+  if (torreonPath === "/rondas" && request.method === "GET" && torreonRead)
     return json(response, 200, []);
-  if (
-    url.pathname === "/arrastres" &&
-    request.method === "GET" &&
-    request.headers["x-service-id"] === "e2e"
-  )
+  if (torreonPath === "/arrastres" && request.method === "GET" && torreonRead)
     return json(response, 200, arrastresPage(url.searchParams));
-  if (
-    request.method === "GET" &&
-    request.headers["x-service-id"] === "e2e" &&
-    url.pathname === "/movimientos"
-  ) {
+  if (request.method === "GET" && torreonRead && torreonPath === "/movimientos") {
     return json(response, 200, {
       data: Array.from({ length: 4 }, (_, index) => ({
         id: 700 + index,
@@ -103,7 +98,6 @@ const server = createServer(async (request, response) => {
       return json(response, 400, { error: "Solicitud de prueba inválida" });
     }
   }
-  const key = String(request.headers.authorization || "").replace(/^Bearer e2e-/, "");
   if (!Object.hasOwn(profiles, key))
     return json(response, 401, { error: "Sesión de prueba inválida" });
   // One explicit synthetic write exercises the natural client creation boundary.
