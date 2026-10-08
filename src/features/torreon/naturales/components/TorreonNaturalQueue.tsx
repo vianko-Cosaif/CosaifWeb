@@ -1,52 +1,23 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowUp,
+  CheckCircle2,
+  Clock3,
+  ListOrdered,
+  PauseCircle,
+  RefreshCw,
+  Search,
+  TrainFront,
+  X,
+} from "lucide-react";
+import Modal from "@/components/ui/Modal";
 import { useRealtimeBoardRefresh } from "@/features/rail-queue/useRealtimeBoardRefresh";
 import { isTorreonNaturalEvent } from "@/features/torreon/realtime";
-import { toTorreonImageProxyUrl } from "@/lib/torreonImageProxy";
+import NaturalQueueTable from "./NaturalQueueTable";
+import { dateLabel, filterQueue, type QueueAudit, type QueueUnit } from "../queueView";
+import s from "./naturalQueue.module.scss";
 
-type Movement = {
-  id: number;
-  empresaId: number;
-  empresaNombreSnapshot?: string;
-  locomotiveNumber: number;
-  locomotoraRemolque?: number;
-  viaOrigenNombreSnapshot?: string;
-  viaDestinoNombreSnapshot?: string;
-  seccionOrigenNombreSnapshot?: string;
-  seccionDestinoNombreSnapshot?: string;
-  polo?: string;
-  posicionCabina?: string;
-  posicionChimenea?: string;
-  tipoMovimiento?: string;
-  direccionEmpuje?: string;
-  instrucciones?: string;
-  estado: string;
-};
-type Incident = {
-  id: number;
-  estado: string;
-  motivo: string;
-  solucion?: string;
-  fechaInicio: string;
-  fotos?: { url: string }[];
-  confirmadoPorRol?: string;
-  resueltoPorId?: number;
-  fechaResolucion?: string;
-};
-type Unit = {
-  id: number;
-  modalidad: string;
-  estado: string;
-  operadorId: number | null;
-  operador?: { nombre: string };
-  disponible: boolean;
-  posicion: number;
-  fechaHabilitacion?: string;
-  ordenManual: number | null;
-  movimientos: Movement[];
-  incidentes: Incident[];
-  incidenteBloqueanteId?: number;
-};
 async function request(path: string, method = "GET", body?: unknown) {
   const response = await fetch(`/bff/torreon${path}`, {
     method,
@@ -60,8 +31,20 @@ async function request(path: string, method = "GET", body?: unknown) {
     throw new Error(data.message ?? data.error ?? "No se pudo completar la operación");
   return data;
 }
-const field =
-  "rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white";
+const auditActions: Record<string, string> = {
+  CREAR: "Solicitud registrada",
+  SOLICITAR: "Solicitud registrada",
+  CREAR_SOLICITUD: "Solicitud registrada",
+  ASIGNAR: "Maquinista asignado",
+  PRIORIZAR: "Prioridad actualizada",
+  FORMAR_CONJUNTO: "Conjunto formado",
+  INICIAR: "Movimiento iniciado",
+  REANUDAR: "Movimiento reanudado",
+  FINALIZAR: "Movimiento finalizado",
+  REPORTAR_INCIDENTE: "Incidente reportado",
+  RESOLVER_INCIDENTE: "Incidente resuelto",
+  HABILITAR_REANUDACION: "Reanudación habilitada",
+};
 export default function TorreonNaturalQueue({
   localidadId,
   rol = "CLIENTE",
@@ -70,26 +53,37 @@ export default function TorreonNaturalQueue({
   rol?: string;
 }) {
   const dispatch = ["COORDINADOR", "SUPERVISOR", "ADMINISTRADOR"].includes(rol);
-  const [units, setUnits] = useState<Unit[]>([]),
-    [selected, setSelected] = useState<number[]>([]);
-  const [together, setTogether] = useState(false),
-    [history, setHistory] = useState(false);
-  const [error, setError] = useState(""),
-    [busy, setBusy] = useState(false),
-    [loading, setLoading] = useState(true);
+  const [units, setUnits] = useState<QueueUnit[]>([]);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [together, setTogether] = useState(false);
+  const [history, setHistory] = useState(false);
+  const [search, setSearch] = useState("");
+  const [state, setState] = useState("");
+  const [coordinator, setCoordinator] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [operators, setOperators] = useState<{ id: number; nombre: string }[]>([]);
-  const [assignment, setAssignment] = useState<Record<number, string>>({});
-  const [solution, setSolution] = useState<Record<number, string>>({});
-  const [audit, setAudit] = useState<
-    { id: number; fecha: string; accion: string; usuarioId: number; rol?: string }[] | null
-  >(null);
+  const [audit, setAudit] = useState<{
+    unitId: number;
+    entries: QueueAudit[];
+    loading: boolean;
+    error: string;
+  } | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const requestSequence = useRef(0);
+  const auditSequence = useRef(0);
   const load = useCallback(async () => {
     const sequence = ++requestSequence.current;
     try {
       const data = await request(`/cola?localidadId=${localidadId}&historial=${history}`);
       if (sequence !== requestSequence.current) return;
-      setUnits(Array.isArray(data) ? data : []);
+      const rows: QueueUnit[] = Array.isArray(data) ? data : [];
+      setUnits(rows);
+      setSelected((prev) =>
+        prev.filter((id) => rows.some((u) => u.id === id && u.estado === "PENDIENTE")),
+      );
+      setUpdatedAt(new Date().toISOString());
       setError("");
     } catch (e) {
       if (sequence === requestSequence.current)
@@ -98,15 +92,18 @@ export default function TorreonNaturalQueue({
       if (sequence === requestSequence.current) setLoading(false);
     }
   }, [localidadId, history]);
+  const cancelPendingLoad = useCallback(() => {
+    requestSequence.current++;
+  }, []);
   useEffect(() => {
     setLoading(true);
     setSelected([]);
     setUnits([]);
+    setState("");
+    setCoordinator("");
     void load();
-    return () => {
-      requestSequence.current++;
-    };
-  }, [load]);
+    return cancelPendingLoad;
+  }, [load, cancelPendingLoad]);
   useRealtimeBoardRefresh({
     enabled: true,
     realtimeLocalidadId: localidadId,
@@ -124,7 +121,10 @@ export default function TorreonNaturalQueue({
     if (!dispatch) return;
     let active = true;
     void fetch(`/bff/usuarios?localidadId=${localidadId}`, { credentials: "include" })
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("No se pudieron cargar los maquinistas");
+        return r.json();
+      })
       .then((data) => {
         const rows = Array.isArray(data) ? data : (data.data ?? data.usuarios ?? []);
         if (active)
@@ -162,27 +162,232 @@ export default function TorreonNaturalQueue({
       setBusy(false);
     }
   };
+  const openAudit = async (unitId: number) => {
+    const sequence = ++auditSequence.current;
+    setAudit({ unitId, entries: [], loading: true, error: "" });
+    try {
+      const entries = await request(`/cola/${unitId}/historial`);
+      if (sequence === auditSequence.current)
+        setAudit({
+          unitId,
+          entries: Array.isArray(entries) ? entries : [],
+          loading: false,
+          error: "",
+        });
+    } catch (e) {
+      if (sequence === auditSequence.current)
+        setAudit({
+          unitId,
+          entries: [],
+          loading: false,
+          error: e instanceof Error ? e.message : "No se pudo cargar el historial",
+        });
+    }
+  };
+  const visible = useMemo(
+    () => filterQueue(units, search, state, coordinator),
+    [units, search, state, coordinator],
+  );
+  const movementsCount = units.reduce((total, unit) => total + unit.movimientos.length, 0);
+  const visibleCount = visible.reduce((total, unit) => total + unit.movimientos.length, 0);
+  const coordinatorOptions = useMemo(() => {
+    const options = new Map<number, string>();
+    for (const unit of units)
+      for (const movement of unit.movimientos) {
+        const id = movement.coordinadorId ?? movement.coordinador?.id;
+        if (id) options.set(id, movement.coordinador?.nombre ?? `Coordinador #${id}`);
+      }
+    return [...options].sort((a, b) => a[1].localeCompare(b[1], "es"));
+  }, [units]);
+  const names = useMemo(() => {
+    const result = new Map<number, string>();
+    for (const unit of units)
+      for (const m of unit.movimientos)
+        for (const person of [
+          m.coordinador,
+          m.operador,
+          m.supervisor,
+          m.creadoPor,
+          m.cliente,
+          unit.operador,
+        ])
+          if (person?.id) result.set(person.id, person.nombre);
+    return result;
+  }, [units]);
+  const hasFilters = Boolean(search || state || coordinator);
+  const clearFilters = () => {
+    setSearch("");
+    setState("");
+    setCoordinator("");
+    setSelected([]);
+  };
+  const metrics = history
+    ? [
+        { label: "Movimientos", value: movementsCount, icon: TrainFront, tone: "neutral" },
+        {
+          label: "Solicitudes concluidas",
+          value: units.filter((u) => u.estado === "CONCLUIDA").length,
+          icon: CheckCircle2,
+          tone: "green",
+        },
+        {
+          label: "Solicitudes canceladas",
+          value: units.filter((u) => u.estado === "CANCELADA").length,
+          icon: X,
+          tone: "neutral",
+        },
+      ]
+    : [
+        { label: "Movimientos", value: movementsCount, icon: TrainFront, tone: "neutral" },
+        {
+          label: "Pendientes",
+          value: units.filter((u) => u.estado === "PENDIENTE").length,
+          icon: Clock3,
+          tone: "amber",
+        },
+        {
+          label: "En atención",
+          value: units.filter((u) => u.estado === "EN_PROCESO").length,
+          icon: TrainFront,
+          tone: "blue",
+        },
+        {
+          label: "Detenidas",
+          value: units.filter((u) => u.estado === "DETENIDA").length,
+          icon: PauseCircle,
+          tone: "red",
+        },
+        {
+          label: "Listas para reanudar",
+          value: units.filter((u) => u.estado === "LISTA_REANUDAR").length,
+          icon: ListOrdered,
+          tone: "green",
+        },
+      ];
   return (
-    <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-white">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-bold">Movimientos naturales · Torreón</h2>
-          <p className="text-sm text-slate-500">
-            Reanudaciones, prioridad manual y solicitudes por llegada.
-          </p>
+    <section
+      className={s.board}
+      aria-labelledby="torreon-natural-title"
+      aria-busy={loading || busy}
+    >
+      <header className={s.header}>
+        <div className={s.heading}>
+          <span className={s.headingIcon}>
+            <TrainFront size={22} aria-hidden />
+          </span>
+          <div>
+            <span className={s.eyebrow}>CONTROL DE OPERACIÓN · TORREÓN</span>
+            <h2 id="torreon-natural-title">Movimientos naturales</h2>
+            <p>Seguimiento de solicitudes y responsables en el patio.</p>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <button className={field} onClick={() => setHistory(!history)}>
-            {history ? "Ver operación" : "Ver concluidos"}
-          </button>
-          <button className={field} disabled={busy} onClick={() => void load()}>
-            Actualizar
+        <div className={s.headerActions}>
+          <div className={s.switcher} aria-label="Vista de movimientos">
+            <button
+              type="button"
+              disabled={busy}
+              aria-pressed={!history}
+              onClick={() => setHistory(false)}
+            >
+              En operación
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              aria-pressed={history}
+              onClick={() => setHistory(true)}
+            >
+              Concluidos
+            </button>
+          </div>
+          <button
+            type="button"
+            className={s.button}
+            disabled={busy || loading}
+            onClick={() => void load()}
+          >
+            <RefreshCw size={15} aria-hidden /> Actualizar
           </button>
         </div>
+      </header>
+      <div className={s.metrics}>
+        {metrics.map(({ label, value, icon: Icon, tone }) => (
+          <div key={label} className={s.metric} data-tone={tone}>
+            <span className={s.metricIcon}>
+              <Icon size={17} aria-hidden />
+            </span>
+            <div>
+              <strong>{loading ? "—" : value}</strong>
+              <span>{label}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className={s.toolbar}>
+        <label className={s.search}>
+          <Search size={17} aria-hidden />
+          <input
+            aria-label="Buscar movimientos"
+            placeholder="Buscar locomotora, vía, empresa o responsable…"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setSelected([]);
+            }}
+          />
+        </label>
+        <select
+          className={s.field}
+          aria-label="Filtrar por estado"
+          value={state}
+          onChange={(e) => {
+            setState(e.target.value);
+            setSelected([]);
+          }}
+        >
+          <option value="">Todos los estados</option>
+          {history ? (
+            <>
+              <option value="CONCLUIDA">Concluidos</option>
+              <option value="CANCELADA">Cancelados</option>
+            </>
+          ) : (
+            <>
+              <option value="PENDIENTE">Pendientes</option>
+              <option value="EN_PROCESO">En atención</option>
+              <option value="DETENIDA">Detenidos</option>
+              <option value="LISTA_REANUDAR">Listos para reanudar</option>
+            </>
+          )}
+        </select>
+        <select
+          className={s.field}
+          aria-label="Filtrar por coordinador"
+          value={coordinator}
+          onChange={(e) => {
+            setCoordinator(e.target.value);
+            setSelected([]);
+          }}
+        >
+          <option value="">Todos los coordinadores</option>
+          {coordinatorOptions.map(([id, name]) => (
+            <option key={id} value={id}>
+              {name}
+            </option>
+          ))}
+        </select>
+        {hasFilters && (
+          <button type="button" className={s.textButton} onClick={clearFilters}>
+            <X size={14} aria-hidden /> Limpiar
+          </button>
+        )}
       </div>
       {dispatch && !history && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
-          <label>
+        <div className={s.dispatchBar}>
+          <span>
+            <strong>{selected.length}</strong> solicitudes seleccionadas
+          </span>
+          <label className={s.checkLabel}>
             <input
               type="checkbox"
               checked={together}
@@ -191,209 +396,119 @@ export default function TorreonNaturalQueue({
             En conjunto
           </label>
           <button
-            className={field}
+            type="button"
+            className={s.primaryButton}
             disabled={busy || !selected.length || (together && selected.length < 2)}
             onClick={() =>
               void mutate("/cola/priorizar", { unidadIds: selected, enConjunto: together })
             }
           >
-            Subir {selected.length ? `(${selected.length})` : "selección"}
+            <ArrowUp size={15} aria-hidden /> Subir{" "}
+            {selected.length ? `(${selected.length})` : "selección"}
           </button>
-          <p className="text-sm">
-            La selección conserva el orden en que marcas las solicitudes. Sin «En conjunto», se
-            atienden por separado.
-          </p>
+          <small>Se respeta el orden de selección. Agrupar requiere marcar «En conjunto».</small>
         </div>
       )}
       {error && (
-        <p role="alert" className="text-red-600">
+        <div role="alert" className={s.error}>
           {error}
-        </p>
+          <button
+            type="button"
+            className={s.textButton}
+            disabled={busy}
+            onClick={() => void load()}
+          >
+            Reintentar
+          </button>
+        </div>
       )}
       {loading ? (
-        <p>Cargando cola…</p>
-      ) : !units.length ? (
-        <p>No hay solicitudes en esta vista.</p>
-      ) : (
-        units.map((unit) => (
-          <article
-            key={unit.id}
-            className="space-y-3 rounded-xl border border-slate-200 p-4 dark:border-slate-700"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex gap-3">
-                {dispatch && unit.estado === "PENDIENTE" && (
-                  <input
-                    aria-label={`Seleccionar unidad ${unit.id}`}
-                    type="checkbox"
-                    checked={selected.includes(unit.id)}
-                    onChange={(e) =>
-                      setSelected((prev) =>
-                        e.target.checked ? [...prev, unit.id] : prev.filter((id) => id !== unit.id),
-                      )
-                    }
-                  />
-                )}
-                <div>
-                  <strong>
-                    {unit.modalidad === "CONJUNTO"
-                      ? `Conjunto #${unit.id}`
-                      : `Solicitud #${unit.movimientos[0]?.id}`}
-                  </strong>
-                  <p className="text-sm">
-                    {unit.estado === "LISTA_REANUDAR"
-                      ? "Reanudación prioritaria"
-                      : unit.estado === "DETENIDA"
-                        ? "Detenido por incidente"
-                        : unit.estado === "EN_PROCESO"
-                          ? "En ejecución"
-                          : unit.ordenManual !== null
-                            ? "Prioridad manual"
-                            : "Por llegada"}{" "}
-                    ·{" "}
-                    {unit.operador?.nombre ??
-                      (unit.operadorId ? `Maquinista #${unit.operadorId}` : "Sin asignar")}
-                  </p>
-                </div>
-              </div>
-              {dispatch && !["EN_PROCESO", "CONCLUIDA", "CANCELADA"].includes(unit.estado) && (
-                <div className="flex gap-2">
-                  <select
-                    aria-label={`Asignar unidad ${unit.id}`}
-                    className={field}
-                    value={assignment[unit.id] ?? ""}
-                    onChange={(e) =>
-                      setAssignment((prev) => ({ ...prev, [unit.id]: e.target.value }))
-                    }
-                  >
-                    <option value="">Maquinista</option>
-                    {operators.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.nombre}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className={field}
-                    disabled={busy || !assignment[unit.id]}
-                    onClick={() =>
-                      void mutate(`/cola/${unit.id}/asignar`, {
-                        operadorId: Number(assignment[unit.id]),
-                      })
-                    }
-                  >
-                    Asignar
-                  </button>
-                </div>
-              )}
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {unit.movimientos.map((m) => (
-                <div key={m.id} className="rounded-lg bg-slate-50 p-3 dark:bg-slate-900">
-                  <strong>
-                    Movimiento #{m.id} · Locomotora {m.locomotiveNumber}
-                  </strong>
-                  <p>
-                    {m.viaOrigenNombreSnapshot ?? "Origen"} {m.seccionOrigenNombreSnapshot ?? ""} →{" "}
-                    {m.viaDestinoNombreSnapshot ?? "Destino"} {m.seccionDestinoNombreSnapshot ?? ""}
-                  </p>
-                  <p className="text-sm">
-                    {m.tipoMovimiento} · Polo: {m.polo ?? "Sin solicitar"} · Chimenea:{" "}
-                    {m.posicionChimenea ?? "Sin solicitar"} · Cabina:{" "}
-                    {m.posicionCabina ?? "Sin solicitar"}
-                  </p>
-                  {m.tipoMovimiento === "REMOLCADA" && (
-                    <p>
-                      Remolca: {m.locomotoraRemolque} · {m.direccionEmpuje}
-                    </p>
-                  )}
-                  <p className="text-sm">{m.estado}</p>
-                  {m.instrucciones && <p>Indicaciones: {m.instrucciones}</p>}
-                </div>
-              ))}
-            </div>
-            {unit.incidenteBloqueanteId &&
-              !unit.incidentes.some((i) => i.id === unit.incidenteBloqueanteId) && (
-                <p>Ruta bloqueada por incidente #{unit.incidenteBloqueanteId}.</p>
-              )}
-            {unit.incidentes.map((i) => (
-              <div key={i.id} className="space-y-2 rounded-lg border border-amber-300 p-3">
-                <p>
-                  <strong>
-                    Incidente #{i.id} · {i.estado}
-                  </strong>{" "}
-                  · {i.motivo}
-                </p>
-                <p className="text-sm">
-                  Reportado: {new Date(i.fechaInicio).toLocaleString("es-MX")}
-                </p>
-                <div className="flex gap-2">
-                  {i.fotos?.map((f, n) => (
-                    <a
-                      key={n}
-                      href={toTorreonImageProxyUrl(f.url) ?? undefined}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Evidencia {n + 1}
-                    </a>
-                  ))}
-                </div>
-                {i.solucion && (
-                  <p>
-                    Solución: {i.solucion} · Usuario #{i.resueltoPorId} {i.confirmadoPorRol} ·{" "}
-                    {i.fechaResolucion ? new Date(i.fechaResolucion).toLocaleString("es-MX") : ""}
-                  </p>
-                )}
-                {i.estado === "ABIERTO" && (
-                  <div className="flex flex-wrap gap-2">
-                    <input
-                      className={`${field} flex-1`}
-                      aria-label={`Solución del incidente ${i.id}`}
-                      placeholder="Describe la solución confirmada"
-                      value={solution[i.id] ?? ""}
-                      onChange={(e) => setSolution((prev) => ({ ...prev, [i.id]: e.target.value }))}
-                    />
-                    <button
-                      className={field}
-                      disabled={busy || (solution[i.id]?.trim().length ?? 0) < 3}
-                      onClick={() =>
-                        void mutate(`/incidentes/${i.id}/resolver?tipo=NATURAL`, {
-                          solucion: solution[i.id],
-                        })
-                      }
-                    >
-                      Confirmar solución
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-            <button
-              className="text-sm underline"
-              onClick={() => {
-                void request(`/cola/${unit.id}/historial`)
-                  .then(setAudit)
-                  .catch((e) => setError(e.message));
-              }}
-            >
-              Ver historial de operación
-            </button>
-          </article>
-        ))
-      )}
-      {audit && (
-        <div role="dialog" aria-label="Historial de operación" className="rounded-xl border p-4">
-          <button className={field} onClick={() => setAudit(null)}>
-            Cerrar historial
-          </button>
-          {audit.map((e) => (
-            <p key={e.id}>
-              {new Date(e.fecha).toLocaleString("es-MX")} · {e.accion} · Usuario #{e.usuarioId}{" "}
-              {e.rol}
-            </p>
-          ))}
+        <div className={s.empty} role="status">
+          <RefreshCw size={24} aria-hidden />
+          <strong>Cargando movimientos…</strong>
         </div>
+      ) : !visible.length ? (
+        <div className={s.empty}>
+          <TrainFront size={30} aria-hidden />
+          <strong>
+            {hasFilters ? "No hay coincidencias" : "No hay solicitudes en esta vista"}
+          </strong>
+          <p>
+            {hasFilters
+              ? "Prueba con otra locomotora, vía o responsable."
+              : history
+                ? "Los movimientos finalizados aparecerán aquí."
+                : "Las nuevas solicitudes aparecerán en orden de atención."}
+          </p>
+          {hasFilters && (
+            <button type="button" className={s.button} onClick={clearFilters}>
+              Limpiar filtros
+            </button>
+          )}
+        </div>
+      ) : (
+        <NaturalQueueTable
+          units={visible}
+          dispatch={dispatch && !history}
+          selected={selected}
+          onSelect={(id, checked) =>
+            setSelected((prev) => (checked ? [...prev, id] : prev.filter((value) => value !== id)))
+          }
+          operators={operators}
+          busy={busy}
+          mutate={mutate}
+          onHistory={(id) => void openAudit(id)}
+        />
+      )}
+      <footer className={s.footer}>
+        <span>
+          <strong>{visibleCount}</strong> de {movementsCount} movimientos · {visible.length}{" "}
+          {visible.length === 1 ? "solicitud" : "solicitudes"}
+          {hasFilters ? (visible.length === 1 ? " visible" : " visibles") : ""}
+        </span>
+        <span className={s.footerNote}>
+          <span className={s.liveDot} />
+          {updatedAt
+            ? `Actualizado ${new Intl.DateTimeFormat("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Monterrey" }).format(new Date(updatedAt))}`
+            : "Actualización automática"}
+        </span>
+        <span>Orden: reanudación · prioridad manual · llegada</span>
+      </footer>
+      {audit && (
+        <Modal
+          title={`Historial de operación · Solicitud #${audit.unitId}`}
+          onClose={() => {
+            auditSequence.current++;
+            setAudit(null);
+          }}
+          closeLabel="Cerrar historial"
+        >
+          {audit.loading ? (
+            <p role="status">Cargando historial…</p>
+          ) : audit.error ? (
+            <p role="alert">{audit.error}</p>
+          ) : !audit.entries.length ? (
+            <p className={s.muted}>No hay eventos registrados para esta solicitud.</p>
+          ) : (
+            <ol className={s.auditList}>
+              {audit.entries.map((event) => (
+                <li key={event.id}>
+                  <span className={s.auditDot} />
+                  <div>
+                    <strong>
+                      {auditActions[event.accion] ?? event.accion.replaceAll("_", " ")}
+                    </strong>
+                    <p>
+                      {names.get(event.usuarioId) ?? `Usuario #${event.usuarioId}`}{" "}
+                      {event.rol ? `· ${event.rol.toLowerCase()}` : ""}
+                    </p>
+                    <time dateTime={event.fecha}>{dateLabel(event.fecha)}</time>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </Modal>
       )}
     </section>
   );

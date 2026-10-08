@@ -85,7 +85,7 @@ it("client can review 1–5 independent rows, including the distinct towing loco
   expect(sent.movimientos[0].operadorId).toBeUndefined();
 });
 it("raising several units keeps separate attention unless En conjunto is explicitly checked", async () => {
-  const fetcher = vi.fn(async (url: string) =>
+  const fetcher = vi.fn<(url: string, options?: RequestInit) => Promise<Response>>(async (url) =>
     json(url.includes("/usuarios") ? [] : [unit(1), unit(2)]),
   );
   vi.stubGlobal("fetch", fetcher);
@@ -94,10 +94,10 @@ it("raising several units keeps separate attention unless En conjunto is explici
   for (const id of [2, 1]) fireEvent.click(screen.getByLabelText(`Seleccionar unidad ${id}`));
   fireEvent.click(screen.getByRole("button", { name: "Subir (2)" }));
   await waitFor(() =>
-    expect(fetcher.mock.calls.some((call) => (call as any)[1]?.method === "PATCH")).toBe(true),
+    expect(fetcher.mock.calls.some((call) => call[1]?.method === "PATCH")).toBe(true),
   );
-  const patch = fetcher.mock.calls.find((call) => (call as any)[1]?.method === "PATCH") as any;
-  expect(JSON.parse(patch[1].body)).toEqual({ unidadIds: [2, 1], enConjunto: false });
+  const patch = fetcher.mock.calls.find((call) => call[1]?.method === "PATCH")!;
+  expect(JSON.parse(patch[1]!.body as string)).toEqual({ unidadIds: [2, 1], enConjunto: false });
   await waitFor(() =>
     expect((screen.getByLabelText("Seleccionar unidad 1") as HTMLInputElement).checked).toBe(false),
   );
@@ -105,14 +105,10 @@ it("raising several units keeps separate attention unless En conjunto is explici
   for (const id of [1, 2]) fireEvent.click(screen.getByLabelText(`Seleccionar unidad ${id}`));
   fireEvent.click(screen.getByRole("button", { name: "Subir (2)" }));
   await waitFor(() =>
-    expect(fetcher.mock.calls.filter((call) => (call as any)[1]?.method === "PATCH")).toHaveLength(
-      2,
-    ),
+    expect(fetcher.mock.calls.filter((call) => call[1]?.method === "PATCH")).toHaveLength(2),
   );
-  const grouped = fetcher.mock.calls.filter(
-    (call) => (call as any)[1]?.method === "PATCH",
-  )[1] as any;
-  expect(JSON.parse(grouped[1].body)).toEqual({ unidadIds: [1, 2], enConjunto: true });
+  const grouped = fetcher.mock.calls.filter((call) => call[1]?.method === "PATCH")[1]!;
+  expect(JSON.parse(grouped[1]!.body as string)).toEqual({ unidadIds: [1, 2], enConjunto: true });
 });
 it("client queue exposes persistent incident solution without dispatcher or deadline controls", async () => {
   vi.stubGlobal(
@@ -130,6 +126,7 @@ it("client queue exposes persistent incident solution without dispatcher or dead
     ),
   );
   render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Ver incidentes del movimiento 101" }));
   await screen.findByText(/Incidente #90/);
   expect(screen.getByRole("button", { name: "Confirmar solución" })).toBeTruthy();
   expect(screen.queryByLabelText("En conjunto")).toBeNull();
