@@ -16,7 +16,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import type { IncidenteEmergente } from "@/features/incidentes/useIncidentMonitor";
-import { shouldUseIncidentCountdown, isTorreonIncidentContext } from "@/lib/incidentCountdownPolicy";
+import { shouldUseIncidentCountdown, isTorreonIncidentContext, isPersistentTorreonNaturalIncident } from "@/lib/incidentCountdownPolicy";
 import { registerDialog } from "@/components/ui/Modal/dialogStack";
 import ConfirmationModal from "../../../components/ConfirmationModal";
 import { ImageGallery } from "./ImageGallery";
@@ -541,7 +541,7 @@ export default function IncidentModal({
         </div>
 
         <footer className="flex shrink-0 flex-col gap-2 border-t border-[var(--app-border)] bg-[var(--app-surface)] px-4 pb-[max(.75rem,env(safe-area-inset-bottom))] pt-3 sm:flex-row sm:justify-end sm:px-7 sm:py-4">
-          {canActOnIncident && tab === 0 ? (
+          {canActOnIncident && tab === 0 && !isPersistentTorreonNaturalIncident(incident) ? (
             <button
               type="button"
               data-guide-action="incident-alert-skip"

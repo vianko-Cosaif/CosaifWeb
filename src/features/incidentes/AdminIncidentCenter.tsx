@@ -185,7 +185,7 @@ function mapIncident(incident: UnknownRecord, localityNames: Map<number, string>
     descripcion: text(incident.descripcion || incident.motivo) || "Sin descripción",
     usuario: text(asRecord(incident.usuario).nombre) || "—",
     fuente: sourceLabel,
-    tipoIncidente: kind === "ARRASTRE" ? "Arrastre" : "Ronda natural",
+    tipoIncidente: kind === "ARRASTRE" ? "Arrastre" : "Movimiento natural",
     _original: incident,
   };
 }
@@ -433,7 +433,7 @@ export default function AdminIncidentCenter() {
 
   const filteredRows = useMemo(() => queryFilteredRows.filter((row) => (
     operationKind === "TODOS" ||
-    (operationKind === "ARRASTRE" ? row.tipoIncidente === "Arrastre" : row.tipoIncidente === "Ronda natural")
+    (operationKind === "ARRASTRE" ? row.tipoIncidente === "Arrastre" : row.tipoIncidente === "Movimiento natural")
   )), [operationKind, queryFilteredRows]);
 
   const stats = useMemo(() => ({
@@ -442,7 +442,7 @@ export default function AdminIncidentCenter() {
     resolved: filteredRows.filter((row) => row.estadoRaw === "RESUELTO").length,
     torreon: queryFilteredRows.filter((row) => row.fuente === "Torreón").length,
     gdl: queryFilteredRows.filter((row) => row.fuente === "Guadalajara").length,
-    natural: queryFilteredRows.filter((row) => row.tipoIncidente === "Ronda natural").length,
+    natural: queryFilteredRows.filter((row) => row.tipoIncidente === "Movimiento natural").length,
     arrastre: queryFilteredRows.filter((row) => row.tipoIncidente === "Arrastre").length,
     companies: new Set(filteredRows.map((row) => row.empresaId).filter(Boolean)).size,
     localities: new Set(filteredRows.map((row) => row.localidadId || row.localidad).filter(Boolean)).size,
@@ -567,7 +567,7 @@ export default function AdminIncidentCenter() {
       )}
 
       {selectedIncident ? sourceOf(selectedIncident) === "torreon" ? (
-        <TorreonIncidentDetailModal incident={selectedIncident} title={`${kindOf(selectedIncident) === "ARRASTRE" ? "Arrastre" : "Ronda natural"} · Incidente #${String(selectedIncident.id || "—")}`} subtitle={["Torreón", text(asRecord(asRecord(selectedIncident.movimiento).empresa).nombre), text(selectedIncident.motivo || selectedIncident.descripcion)].filter(Boolean).join(" · ")} resolving={actionBusy} onResolve={(comments) => actOnIncident("resolve", comments)} onCancel={(comments) => actOnIncident("close", comments)} onClose={() => setSelectedIncident(null)} />
+        <TorreonIncidentDetailModal incident={selectedIncident} title={`${kindOf(selectedIncident) === "ARRASTRE" ? "Arrastre" : "Movimiento natural"} · Incidente #${String(selectedIncident.id || "—")}`} subtitle={["Torreón", text(asRecord(asRecord(selectedIncident.movimiento).empresa).nombre), text(selectedIncident.motivo || selectedIncident.descripcion)].filter(Boolean).join(" · ")} resolving={actionBusy} onResolve={(comments) => actOnIncident("resolve", comments)} onCancel={(comments) => actOnIncident("close", comments)} onClose={() => setSelectedIncident(null)} />
       ) : (
         <SmartIncidentBlocker incident={selectedIncident} operatorComment={text(selectedIncident.operadorComentario)} onResolve={(comments) => void actOnIncident("resolve", comments)} onContinue={() => setSelectedIncident(null)} onSkip={() => void actOnIncident("close")} />
       ) : null}

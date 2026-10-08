@@ -3,7 +3,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
 import { createPortal } from "react-dom";
-import { shouldUseIncidentCountdown, isTorreonIncidentContext } from "@/lib/incidentCountdownPolicy";
+import { shouldUseIncidentCountdown, isTorreonIncidentContext, isPersistentTorreonNaturalIncident } from "@/lib/incidentCountdownPolicy";
 import { isTrainingIncidentId } from "@/lib/routePolicy";
 import { GuidedTarget } from "@/features/capacitacion";
 import { useTrainingTour } from "@/features/capacitacion/TrainingTourContext";
@@ -436,6 +436,7 @@ export default function SmartIncidentBlocker({
   const pct = Math.round(((WINDOW_DURATION_MS - leftMs) / WINDOW_DURATION_MS) * 100);
   const estado = (fetched?.estado || incident?.estado || "ABIERTO") as keyof typeof ESTADO_COLORS;
   const canActOnIncident = estado === "ABIERTO" && (!countdownAllowed || leftMs > 0);
+  const persistentNatural = isPersistentTorreonNaturalIncident(incident) || isPersistentTorreonNaturalIncident(fetched);
   const showTimer = countdownAllowed && estado === "ABIERTO";
 
   /* Actions */
@@ -687,7 +688,7 @@ export default function SmartIncidentBlocker({
                     >
                       <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-100">Resolución del incidente</h2>
                       <p className="mb-3 text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
-                        Resolver cambia el incidente a RESUELTO. Cerrar sin resolver lo deja como cierre operativo sin registrar solución.
+                        {persistentNatural ? 'Confirmar la solución habilita la reanudación cuando no queda otro impedimento. El maquinista registra la continuación.' : 'Resolver cambia el incidente a RESUELTO. Cerrar sin resolver lo deja como cierre operativo sin registrar solución.'}
                       </p>
                       <textarea
                         data-guide-id="incident-resolution-input"
@@ -762,14 +763,14 @@ export default function SmartIncidentBlocker({
                         <CheckCircle2 className="h-5 w-5" />
                 Resolver incidente
                       </button>
-                      <button
+                      {!persistentNatural && <button
                         data-guide-id="incident-close-action"
                         onClick={doSkip}
                         className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-3 font-semibold text-white shadow-lg hover:from-amber-500 hover:to-amber-700 transition-all"
                       >
                         <FastForward className="h-5 w-5" />
                 Cerrar sin resolver
-                      </button>
+                      </button>}
             </>
           ) : (
             <button

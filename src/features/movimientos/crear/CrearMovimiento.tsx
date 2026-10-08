@@ -1,5 +1,7 @@
 "use client";
 
+import TorreonBatchCapture from '@/features/torreon/naturales/components/TorreonBatchCapture';
+import { isTorreonLocalidadId } from '@/lib/torreonLocalidad';
 import { OutboxPanel } from "../offline/OutboxPanel";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -198,7 +200,7 @@ export default function CrearMovimiento() {
       else window.alert("Primero completa los pasos anteriores; el atajo no puede saltarse validaciones.");
     };
     window.addEventListener("keydown", onTrainingSubmitShortcut, true);
-    return () => window.removeEventListener("keydown", onTrainingSubmitShortcut, true);
+  return () => window.removeEventListener("keydown", onTrainingSubmitShortcut, true);
   }, [sandboxMode, step, submitTrainingMovement]);
 
   const useTornoMedicionStep = hasTornoPdfStep;
@@ -456,6 +458,12 @@ export default function CrearMovimiento() {
   ]);
 
   if (!mounted) return null;
+
+  if (!sandboxMode && (step > 1 || (guidedMode && guidedStepOnePage >= 2)) && !form.service && isTorreonLocalidadId(form.selectedLocalityId) && form.empresaId && form.creadoPorId) {
+    return <TorreonBatchCapture initialMovement={{ locomotiveNumber: form.locomotiveNumber || '', viaOrigenId: form.fromTrack ? String(form.fromTrack) : '', viaDestinoId: form.toTrack ? String(form.toTrack) : '', seccionOrigenId: String(sectionsByVia[Number(form.fromTrack)]?.find(s => s.numero === fromSection)?.id ?? ''), seccionDestinoId: String(sectionsByVia[Number(form.toTrack)]?.find(s => s.numero === toSection)?.id ?? ''), polo: form.polo || 'Sin_Solicitar', posicionCabina: form.cabinPosition || 'Sin_Solicitar', posicionChimenea: form.chimneyPosition || 'Sin_Solicitar', tipoMovimiento: form.movementType || 'MD_TRABAJANDO', direccionEmpuje: form.pushPull || 'Sin_Solicitar', instrucciones: form.comments || '' }} localidadId={Number(form.selectedLocalityId)} empresaId={form.empresaId} creadoPorId={form.creadoPorId} vias={vias} sectionsByVia={sectionsByVia} ensureSections={ensureSections} onFinish={() => { clearForm(); goSalir(); }} onCancel={goSalir} />;
+  }
+
+
 
   return (
       <div className={Movimiento.clsx(

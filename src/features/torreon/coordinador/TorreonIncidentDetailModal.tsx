@@ -24,6 +24,8 @@ export type TorreonIncidentDetail = {
   viaBloqueadaId?: number | null;
   seccionBloqueadaId?: number | null;
   vagonId?: number | null;
+  tipoIncidente?: string | null;
+  arrastreId?: number | null;
   fotosCount?: number | null;
   fotos?: TorreonIncidentImage[] | null;
   imagenes?: string[] | null;
@@ -85,7 +87,7 @@ export default function TorreonIncidentDetailModal({ incident, title, subtitle, 
   const elapsedLabel = seconds == null ? '--' : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 
   const canResolve = status === "ABIERTO" && Boolean(onResolve);
-  const canCancel = status === "ABIERTO" && Boolean(onCancel);
+  const canCancel = status === "ABIERTO" && Boolean(onCancel) && (incident.tipoIncidente === "ARRASTRE" || !!incident.arrastreId || !!incident.vagonId);
   const [solucion, setSolucion] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<"resolve" | "cancel" | null>(null);
@@ -209,7 +211,7 @@ export default function TorreonIncidentDetailModal({ incident, title, subtitle, 
                 Resolución del incidente
               </div>
               <p className="mt-2 text-xs font-bold text-emerald-800/80 dark:text-emerald-200/80">
-                Resolver libera el bloqueo, regresa el movimiento a SOLICITADO y lo coloca primero en la cola. Cerrar el incidente cancela el movimiento o arrastre ligado.
+                Confirmar la solución habilita el mismo movimiento o conjunto para reanudar cuando no queden impedimentos abiertos. El maquinista registra la reanudación.
               </p>
               <textarea
                 value={solucion}

@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
+import { shouldUseIncidentCountdown } from "@/lib/incidentCountdownPolicy";
 import type { RondaMovement } from "../types";
 
 export default function RoundIncidentTimer({ incident }: { incident?: RondaMovement["incidenteActivo"] }) {
   const [now, setNow] = useState<number | null>(null);
   const start = Date.parse(incident?.fechaInicio ?? "");
-  const active = incident?.estado === "ABIERTO" && Number.isFinite(start);
+  const active = shouldUseIncidentCountdown(incident) && incident?.estado === "ABIERTO" && Number.isFinite(start);
   useEffect(() => {
     if (!active) return;
     const tick = () => setNow(Date.now());

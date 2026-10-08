@@ -70,9 +70,11 @@ export function shouldUseIncidentCountdown(
   incident: unknown,
   context: IncidentCountdownContext = {},
 ) {
-  if (!isTorreonIncidentContext(incident, context)) return true;
-  if (normalizeText(context.role).includes('ARRASTRE')) return false;
-  return !collectIncidentRecords(incident).some(record =>
+  return !isTorreonIncidentContext(incident, context);
+}
+
+export function isPersistentTorreonNaturalIncident(incident: unknown) {
+  return isTorreonIncidentContext(incident) && !collectIncidentRecords(incident).some(record =>
     normalizeText(record._torreonTipo || record.tipoIncidente || record.tipo).includes('ARRASTRE') || Number(record.arrastreId) > 0
   );
 }

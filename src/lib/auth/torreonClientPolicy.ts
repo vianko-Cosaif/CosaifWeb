@@ -19,7 +19,7 @@ export function canClientUseTorreonPath(role: string, method: string, rest: stri
     return (
       incident ||
       (kind === "NATURAL"
-        ? /^\/(movimientos|rondas)(?:\/|$)/.test(path)
+        ? /^\/(movimientos|rondas|cola)(?:\/|$)/.test(path)
         : /^\/arrastres(?:\/|$)/.test(path) || path === "/catalogos/arrastre")
     );
   }
@@ -30,8 +30,8 @@ export function canClientUseTorreonPath(role: string, method: string, rest: stri
     return true;
   if (kind === "NATURAL") {
     return (
-      (verb === "POST" && path === "/movimientos") ||
-      (verb === "PATCH" && (path === "/rondas/movimientos/orden" || path === "/rondas/intercambiar-movimientos" || /^\/movimientos\/\d+(?:\/(?:edicion|cancelar))?$/.test(path)))
+      (verb === "POST" && ["/movimientos", "/movimientos/lote"].includes(path)) ||
+      (verb === "PATCH" && (/^\/movimientos\/\d+(?:\/(?:edicion|cancelar))?$/.test(path)))
     );
   }
   return (
