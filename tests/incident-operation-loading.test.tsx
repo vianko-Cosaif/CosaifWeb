@@ -40,6 +40,8 @@ describe('operational incident page loading', () => {
     expect(mocks.read.mock.calls.filter(([url]) => /\/api\/incidentes\/\d/.test(url)).map(([url]) => url)).toEqual(['/api/incidentes/501']);
     const url = new URL(listCalls()[0][0], 'https://test');
     expect(url.searchParams.get('empresaId')).toBe('3'); expect(url.searchParams.get('localidadId')).toBe('1');
+    expect(mocks.read.mock.calls.some(([url]) => url === '/bff/empresas/3')).toBe(true);
+    expect(mocks.read.mock.calls.some(([url]) => url === '/bff/empresas/lite')).toBe(false);
     await act(async () => detail.resolve({ data: { ...incident(501), movimiento: { ...incident(501).movimiento, empresa: { nombre: 'Detalle disponible' } } } }));
     expect(screen.getByTestId('rows').textContent).toContain('Detalle disponible');
   });
@@ -147,6 +149,43 @@ describe('operational incident page loading', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
     expect(listCalls()).toHaveLength(2);
     expect(listCalls()[1][2]).toMatchObject({ force: true });
+  });
+
+  it('loads the real company catalogue route for Torreón clients without discarding their assigned locality', async () => {
+    mocks.read.mockImplementation(async (url: string) => {
+      if (url === '/bff/empresas/lite') return { data: [{ id: 3, nombre: 'Propia' }, { id: 4, nombre: 'Otra' }] };
+      if (url === '/bff/localidades/2') return { data: { id: 2, nombre: 'Torreón' } };
+      if (url.startsWith('/bff/')) throw new Error('Unsupported catalogue route');
+      return envelope([]);
+    });
+    const authorization = loginProfile('CLIENTE');
+    authorization.scope.localidadId = 2;
+    render(<IncidenteController authorization={authorization}/>);
+
+    await screen.findAllByRole('option', { name: 'Torreón', hidden: true });
+    expect(mocks.read.mock.calls.some(([url]) => url === '/bff/empresas/lite')).toBe(true);
+    expect(mocks.read.mock.calls.some(([url]) => url === '/bff/empresas/3')).toBe(false);
+    expect(screen.queryByText('Error al cargar catálogos')).toBeNull();
+    const query = new URL(listCalls()[0][0], 'https://test').searchParams;
+    expect(query.get('empresaId')).toBe('3');
+    expect(query.get('localidadId')).toBe('2');
+    expect(query.get('tipo')).toBe('NATURAL');
+  });
+
+  it('still exposes a Torreón incident service failure when its catalogues load correctly', async () => {
+    mocks.read.mockImplementation(async (url: string) => {
+      if (url === '/bff/empresas/lite') return { data: [{ id: 3, nombre: 'Propia' }] };
+      if (url === '/bff/localidades/2') return { data: { id: 2, nombre: 'Torreón' } };
+      throw new Error('Incidentes no disponibles');
+    });
+    const authorization = loginProfile('CLIENTE');
+    authorization.scope.localidadId = 2;
+    render(<IncidenteController authorization={authorization}/>);
+
+    await screen.findByText('Incidentes no disponibles');
+    expect(screen.getByText('Error al cargar incidentes')).toBeTruthy();
+    expect(screen.queryByText('Error al cargar catálogos')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Reintentar' })).toBeTruthy();
   });
 
 });

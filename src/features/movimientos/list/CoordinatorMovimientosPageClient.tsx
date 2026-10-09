@@ -213,6 +213,7 @@ export default function CoordinatorMovimientosPageClient({
             {torreonView === "naturales" ? (
               <TorreonNaturalesPanel
                 key={`naturales-${activeLocalidadId}`}
+                variant="movimientos"
                 localidadId={activeLocalidadId}
                 apiBase={apiBase}
                 rol={rol}

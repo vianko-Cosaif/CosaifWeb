@@ -143,6 +143,7 @@ export function movementToRondaOut(
       lavado: Boolean(mv.lavado ?? mv.Lavado),
       torno: Boolean(mv.torno),
       estado: mv.estado ?? (concluido ? "CONCLUIDO" : "SOLICITADO"),
+      finalizado: mv.finalizado ?? null,
       prioridad: mv.prioridad ?? null,
       locomotiveNumber: mv.locomotiveNumber ?? mv.locomotora ?? null,
       locomotora: mv.locomotora ?? null,

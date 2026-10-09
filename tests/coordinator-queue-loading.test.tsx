@@ -75,6 +75,25 @@ describe("coordinator queue request lifecycle", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("empties the active GDL queue after refresh reports finalized or terminal movements, before cache expiry", async () => {
+    const active = [10, 20, 30].map(id => ({ ...row(id), source: "cosaif" }));
+    const finished = [
+      { ...active[0], movimiento: { id: 10, estado: "DETENIDO", finalizado: true } },
+      { ...active[1], movimiento: { id: 20, estado: "CANCELADO", finalizado: false } },
+      { ...active[2], movimiento: { id: 30, estado: "CONCLUIDO", finalizado: false } },
+    ];
+    const fetch = vi.fn().mockResolvedValueOnce(json(active)).mockResolvedValueOnce(json(finished));
+    const onChanged = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    render(<Fixture onChanged={onChanged} />);
+    await waitFor(() => expect(screen.getByTestId("items").textContent).toBe("10,20,30"));
+    fireEvent.click(screen.getByRole("button", { name: "Actualizar" }));
+    await waitFor(() => expect(screen.getByTestId("items").textContent).toBe(""));
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(onChanged).toHaveBeenLastCalledWith([], active);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("aborts pending reads on navigation and never notifies after unmount", async () => {
     const pending = deferred<Response>();
     let signal: AbortSignal | null = null;

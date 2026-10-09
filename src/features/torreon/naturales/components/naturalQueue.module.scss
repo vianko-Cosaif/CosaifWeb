@@ -57,6 +57,48 @@
   --q-accent-soft: #123547;
   box-shadow: none;
 }
+.navigation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 13px 24px;
+  border-bottom: 1px solid var(--q-line);
+  background: var(--q-soft);
+}
+.navigationLink,
+.incidentsLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--q-muted);
+  font-weight: 650;
+  white-space: nowrap;
+  text-decoration: none;
+  &:hover {
+    background: var(--q-bg);
+    color: var(--q-ink);
+  }
+}
+.navigationLink[aria-current="page"] {
+  color: var(--q-accent);
+  background: var(--q-accent-soft);
+}
+.incidentsLink {
+  margin-left: auto;
+  background: var(--q-bg);
+  border: 1px solid var(--q-line);
+  color: var(--q-ink);
+  span {
+    color: var(--q-muted);
+    font-size: 10px;
+    font-weight: 500;
+    border-left: 1px solid var(--q-line);
+    padding-left: 8px;
+  }
+}
 .header {
   display: flex;
   align-items: center;
@@ -140,6 +182,7 @@
   border-radius: 8px;
   line-height: 1.4;
   min-height: 36px;
+  text-decoration: none;
 }
 .button {
   border: 1px solid var(--q-line);
@@ -318,7 +361,7 @@
 }
 .table {
   width: 100%;
-  min-width: 1370px;
+  min-width: 1520px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
@@ -362,8 +405,11 @@
 .locomotiveCol {
   width: 165px;
 }
+.startCol {
+  width: 150px;
+}
 .routeCol {
-  width: 165px;
+  width: 180px;
 }
 .configCol {
   width: 170px;
@@ -462,6 +508,13 @@ tbody[data-group="true"] .orderCell {
   display: flex;
   margin-top: 3px;
   color: var(--q-accent);
+}
+.routeLabel {
+  display: block;
+  color: var(--q-muted);
+  font-size: 10px;
+  font-weight: 600;
+  margin-bottom: 2px;
 }
 .route {
   display: grid;
@@ -881,6 +934,22 @@ tbody[data-group="true"] .orderCell {
   height: 6px;
   border-radius: 50%;
   background: #37a380;
+}
+.auditIntro {
+  color: var(--app-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  margin-bottom: 22px;
+}
+.auditTarget {
+  display: block;
+  color: var(--app-text);
+  font-weight: 600;
+  font-size: 12px;
+  margin-top: 5px;
+}
+.auditList li[data-system="true"] .auditDot {
+  background: var(--app-text-muted);
 }
 .auditList {
   display: grid;

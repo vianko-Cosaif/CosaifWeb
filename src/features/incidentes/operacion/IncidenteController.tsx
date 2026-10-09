@@ -200,6 +200,8 @@ export default function IncidenteController({
     initialIncidentFilters(authorization, searchParams),
   );
   const isTorreonScope = isTorreonFilter(filters);
+  const useTorreonClientCompanyCatalog =
+    isTorreonScope && clientIncidentKind === "NATURAL" && isLimitedClientView;
   const { source, torreonTipo, empresaId, localidadId } = filters;
 
   const filtersPanelId = useId();
@@ -258,7 +260,11 @@ export default function IncidenteController({
         const [empresasResponse, localidadesResponse] = await Promise.all([
           isLimitedClientView
             ? userEmpresaId
-              ? read(`${EMPRESAS}/${userEmpresaId}`)
+              ? read(
+                  useTorreonClientCompanyCatalog
+                    ? `${EMPRESAS}/lite`
+                    : `${EMPRESAS}/${userEmpresaId}`,
+                )
               : null
             : read(EMPRESAS),
           isLocalityScopedView
@@ -282,7 +288,9 @@ export default function IncidenteController({
 
         if (controller.signal.aborted) return;
         setCatalogues({
-          empresas: toOptions(empresasResponse, "Empresa"),
+          empresas: toOptions(empresasResponse, "Empresa").filter(
+            (empresa) => !useTorreonClientCompanyCatalog || empresa.id === userEmpresaId,
+          ),
           localidades: toOptions(localidadesResponse, "Localidad"),
           loading: false,
         });
@@ -294,7 +302,14 @@ export default function IncidenteController({
     };
     void load();
     return () => controller.abort();
-  }, [isLimitedClientView, isLocalityScopedView, userEmpresaId, userLocalidadId, showNotification]);
+  }, [
+    isLimitedClientView,
+    isLocalityScopedView,
+    userEmpresaId,
+    userLocalidadId,
+    useTorreonClientCompanyCatalog,
+    showNotification,
+  ]);
 
   /** Construye URL del API de incidentes */
   const buildApiUrl = useCallback(

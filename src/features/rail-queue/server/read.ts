@@ -25,6 +25,7 @@ import { readRondasJson, fetchRondasJsonFirst, getApiBase, authHeaders } from ".
 import { RondasReadError } from "./errors";
 import { readTornoRounds } from "./torno";
 import { mapTorreonRondasToOut } from "./torreon";
+import { isCosaifMovementFinished } from "../queueStatus";
 
 async function fetchCosaifRondasOut({
   base,
@@ -89,10 +90,7 @@ async function fetchCosaifRondasOut({
   const baseList = normalizeRondas(raw).filter(
     (round) =>
       round.concluido === concluido &&
-      (concluido ||
-        !["CONCLUIDO", "CANCELADO", "RESUELTO"].includes(
-          String(round.movimiento?.estado ?? "").toUpperCase(),
-        )),
+      (concluido || !isCosaifMovementFinished(round.movimiento)),
   );
   if (!baseList.length) return [];
 
@@ -128,6 +126,7 @@ async function fetchCosaifRondasOut({
     const baseMv = r.movimiento ?? null;
     const baseEmp = r.empresa ?? baseMv?.empresa ?? null;
     const mv = info?.movimiento ?? baseMv;
+    if (!concluido && isCosaifMovementFinished(mv)) continue;
     const emp = info?.empresa ?? mv?.empresa ?? baseEmp;
     const empresaId = firstPositiveNumber(emp?.id, mv?.empresaId);
     const movementLocalidadId = firstPositiveNumber(
@@ -161,6 +160,7 @@ async function fetchCosaifRondasOut({
             lavado: Boolean(mv.lavado ?? mv.Lavado),
             torno: Boolean(mv.torno),
             estado: mv.estado ?? null,
+            finalizado: mv.finalizado ?? null,
             prioridad: mv.prioridad ?? null,
             locomotiveNumber: mv.locomotiveNumber ?? mv.locomotora ?? null,
             locomotora: mv.locomotora ?? null,

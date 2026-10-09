@@ -82,8 +82,8 @@ it("shows the actual coordinator and machinist with complete route, configuratio
     "Ferrocarril del Norte",
     "Vía 29",
     "Vía 3",
-    "Sección patio sur",
-    "Sección taller",
+    "Posición: Sección patio sur",
+    "Posición: Sección taller",
     "Remolcada",
     "Remolca 9900 · Jalar",
     "Norte",
@@ -93,7 +93,12 @@ it("shows the actual coordinator and machinist with complete route, configuratio
     expect(details.getByText(text)).toBeTruthy();
   const time = row.querySelector(`time[datetime="${requestedAt}"]`);
   expect(time?.textContent).toMatch(/08.*oct.*2026.*12:30/);
-  expect(details.getByText("En espera")).toBeTruthy();
+  expect(details.queryByText("En espera")).toBeNull();
+  expect(details.getByText("Pendiente de inicio")).toBeTruthy();
+  expect(details.getByText("Polo de patio")).toBeTruthy();
+  expect(within(table).getByRole("columnheader", { name: "Inicio" })).toBeTruthy();
+  expect(details.getByText("De dónde se saca")).toBeTruthy();
+  expect(details.getByText("Dónde se coloca")).toBeTruthy();
   expect(within(table).getByRole("columnheader", { name: "Responsables" })).toBeTruthy();
 });
 
@@ -146,7 +151,7 @@ it("expands participants, operation times and photo evidence, then loads history
     url.endsWith("/historial") ? historyResponse : json([unit(71, 1, [row])]),
   );
   vi.stubGlobal("fetch", fetcher);
-  render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" />);
+  render(<TorreonNaturalQueue localidadId={2} rol="COORDINADOR" />);
   const expand = await screen.findByRole("button", { name: "Ver detalle del movimiento 501" });
   expect(screen.queryByText("Elena García")).toBeNull();
   fireEvent.click(expand);
@@ -154,8 +159,9 @@ it("expands participants, operation times and photo evidence, then loads history
   expect(screen.queryByText(/META ORIGEN/)).toBeNull();
   for (const name of ["Elena García", "Luis Torres", "Pedro Mendoza"])
     expect(screen.getByText(name)).toBeTruthy();
-  expect(screen.getByText(/08.*oct.*2026.*12:40/)).toBeTruthy();
-  expect(screen.getByText(/08.*oct.*2026.*13:00/)).toBeTruthy();
+  expect(screen.getAllByText(/08.*oct.*2026.*12:40/)).toHaveLength(2);
+  expect(screen.queryByText(/08.*oct.*2026.*13:00/)).toBeNull();
+  expect(screen.queryByText(/^Fin$/)).toBeNull();
   const photo = screen.getByRole("link", { name: /Antes del movimiento/ });
   expect(photo.getAttribute("href")).toBe("/api/torreon/imagenes/torreon/antes.jpg");
   expect(photo.getAttribute("target")).toBe("_blank");
@@ -287,4 +293,105 @@ it("uses the requester's name for the client only when both user ids match", asy
   fireEvent.click(screen.getByRole("button", { name: "Ver detalle del movimiento 601" }));
   expect(screen.getAllByText("Beatriz Ramos")).toHaveLength(1);
   expect(screen.getByText("Usuario #89")).toBeTruthy();
+});
+
+it.each(["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "COORDINADOR", "SUPERVISOR", "ADMINISTRADOR"])(
+  "applies Inicio visibility and company incident navigation for %s",
+  async (role) => {
+    const m = {
+      ...movement(501, 7620),
+      fotos: [{ id: 11, url: "uploads/incidentes/torreon/antes.jpg", tipo: "ANTES_MOVIMIENTO" }],
+      fechaFin: "2026-10-08T19:00:00.000Z",
+      incidentes: [
+        {
+          id: 91,
+          estado: "ABIERTO",
+          motivo: "Vía obstruida",
+          fechaInicio: requestedAt,
+          fotos: [{ id: 12, url: "uploads/incidentes/torreon/incidente.jpg" }],
+        },
+      ],
+    };
+    const fetcher = vi.fn(async (url: string) =>
+      json(url.startsWith("/bff/usuarios") ? [] : [unit(71, 1, [m])]),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    render(<TorreonNaturalQueue localidadId={2} rol={role} />);
+    const table = await screen.findByRole("table");
+    const client = ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"].includes(role);
+    const elapsed = ["COORDINADOR", "SUPERVISOR"].includes(role);
+    const incidentLink = screen.queryByRole("link", { name: "Incidentes de mi empresa" });
+    expect(Boolean(incidentLink)).toBe(client);
+    if (incidentLink)
+      expect(incidentLink.getAttribute("href")).toBe(
+        "/cliente/incidentes?source=torreon&tipo=NATURAL",
+      );
+    expect(Boolean(within(table).queryByText("En espera"))).toBe(elapsed);
+    expect(within(table).getByRole("columnheader", { name: "Inicio" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Concluidos" })).toBeNull();
+    expect(fetcher.mock.calls.some(([url]) => url.includes("historial=false"))).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Ver detalle del movimiento 501" }));
+    expect(Boolean(screen.queryByRole("link", { name: /Antes del movimiento/ }))).toBe(!client);
+    expect(Boolean(screen.queryByRole("link", { name: /Evidencia 1/ }))).toBe(!client);
+    expect(screen.queryByText(/^Fin$/)).toBeNull();
+    expect(screen.queryByText(/13:00/)).toBeNull();
+  },
+);
+
+it("retains final timestamps and concluded requests in Seguimiento", async () => {
+  const finished = {
+    ...movement(501, 7620),
+    fechaInicio: "2026-10-08T18:40:00.000Z",
+    fechaFin: "2026-10-08T19:00:00.000Z",
+  };
+  const fetcher = vi.fn(async (url: string) =>
+    json(
+      url.startsWith("/bff/usuarios") ? [] : [{ ...unit(71, 1, [finished]), estado: "CONCLUIDA" }],
+    ),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(<TorreonNaturalQueue localidadId={2} rol="COORDINADOR" view="seguimiento" />);
+  await screen.findByRole("table");
+  fireEvent.click(screen.getByRole("button", { name: "Concluidos" }));
+  await waitFor(() =>
+    expect(fetcher.mock.calls.some(([url]) => url.includes("historial=true"))).toBe(true),
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "Ver detalle del movimiento 501" }));
+  expect(screen.getByText(/^Fin$/)).toBeTruthy();
+  expect(screen.getByText(/08.*oct.*2026.*13:00/)).toBeTruthy();
+});
+
+it("keeps section identifiers visible when a legacy movement has no section snapshot", async () => {
+  const m = {
+    ...movement(501, 7620),
+    seccionOrigenId: 8,
+    seccionDestinoId: 9,
+    seccionOrigenNombreSnapshot: null,
+    seccionDestinoNombreSnapshot: null,
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => json([unit(71, 1, [m])])),
+  );
+  render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" />);
+  await screen.findByRole("table");
+  expect(screen.getByText("Posición: Sección #8")).toBeTruthy();
+  expect(screen.getByText("Posición: Sección #9")).toBeTruthy();
+  expect(screen.queryByText(/Sin sección registrada/)).toBeNull();
+});
+
+it("offers movement capture only to clients with creation permission", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => json([unit(71, 1, [movement(501, 7620)])])),
+  );
+  const page = render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" canCreateMovements />);
+  await screen.findByRole("table");
+  expect(screen.getByRole("link", { name: "Solicitar movimientos" }).getAttribute("href")).toBe(
+    "/movimientos/crear?tipo=NATURAL",
+  );
+  page.rerender(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" canCreateMovements={false} />);
+  expect(screen.queryByRole("link", { name: "Solicitar movimientos" })).toBeNull();
+  page.rerender(<TorreonNaturalQueue localidadId={2} rol="COORDINADOR" canCreateMovements />);
+  expect(screen.queryByRole("link", { name: "Solicitar movimientos" })).toBeNull();
 });

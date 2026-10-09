@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchJson, isAbortError } from "../utils";
 import type { Ronda } from "../types";
+import { isCosaifMovementFinished } from "../queueStatus";
 
 type Snapshot = {
   localidadId: number;
@@ -60,7 +61,8 @@ export function useCoordinatorQueueData({
         if (!Array.isArray(response)) throw new Error("No se pudo leer la respuesta de rondas.");
         const items = response.filter((item) => {
           const itemLocalidadId = item.localidadId ?? item.localidad?.id;
-          return (!itemLocalidadId || itemLocalidadId === localidadId) && !item.concluido;
+          return (!itemLocalidadId || itemLocalidadId === localidadId) && !item.concluido &&
+            !(item.source === "cosaif" && isCosaifMovementFinished(item.movimiento));
         }).sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden || a.id - b.id);
         if (previous.current?.localidadId === localidadId) onChangedRef.current?.(items, previous.current.items);
         previous.current = { localidadId, items };

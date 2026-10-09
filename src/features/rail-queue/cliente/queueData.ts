@@ -1,4 +1,5 @@
 import type { QueueEntityKind, Ronda, RondaInfo } from "../types";
+import { isCosaifMovementFinished } from "../queueStatus";
 
 export type ClientQueueSelection = {
   localidadId: number;
@@ -25,6 +26,7 @@ export function selectClientQueue(items: readonly Ronda[], selection: ClientQueu
   return items.filter((item) => {
     const localidadId = item.localidadId ?? item.localidad?.id;
     if (localidadId && localidadId !== selection.localidadId) return false;
+    if (selection.entity === "movimientos" && item.source === "cosaif" && isCosaifMovementFinished(item.movimiento)) return false;
     return !isFinished(item);
   }).sort((a, b) => a.rondaNumero - b.rondaNumero || a.orden - b.orden || a.id - b.id);
 }

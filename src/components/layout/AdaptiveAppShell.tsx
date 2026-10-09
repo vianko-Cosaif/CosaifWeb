@@ -15,6 +15,7 @@ type AdaptiveAppShellProps = {
   gridClassName?: string;
   footerClassName?: string;
   contentClassName?: string;
+  hideBanner?: boolean;
 };
 
 function cn(...classes: Array<string | undefined | false | null>) {
@@ -31,9 +32,10 @@ export default function AdaptiveAppShell({
   gridClassName = defaultGrid,
   footerClassName = "text-slate-500",
   contentClassName,
+  hideBanner = false,
 }: AdaptiveAppShellProps) {
   const pathname = usePathname();
-  const showBanner = /^\/(administrador|coordinador|supervisor|cliente|comercial)\/?$/.test(pathname);
+  const showBanner = !hideBanner && /^\/(administrador|coordinador|supervisor|cliente|comercial)\/?$/.test(pathname);
   return (
     <div data-app-shell="true" className={cn("relative flex min-h-svh w-full overflow-x-hidden", backgroundClassName)}>
       <SidebarMenu />

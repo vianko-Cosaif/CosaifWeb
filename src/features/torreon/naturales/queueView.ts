@@ -27,6 +27,8 @@ export type QueueMovement = {
   locomotoraRemolque?: number | null;
   viaOrigenId?: number | null;
   viaDestinoId?: number | null;
+  seccionOrigenId?: number | null;
+  seccionDestinoId?: number | null;
   viaOrigenNombreSnapshot?: string | null;
   viaDestinoNombreSnapshot?: string | null;
   seccionOrigenNombreSnapshot?: string | null;
@@ -75,6 +77,9 @@ export type QueueUnit = {
 };
 export type QueueAudit = {
   id: number;
+  unidadId?: number | null;
+  movimientoId?: number | null;
+  incidenteId?: number | null;
   fecha: string;
   accion: string;
   usuarioId: number;
@@ -155,7 +160,7 @@ export function filterQueue(
     ).includes(query);
   });
 }
-export function dateLabel(value?: string | null) {
+export function dateLabel(value?: string | null, options?: { seconds?: boolean }) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
@@ -165,6 +170,7 @@ export function dateLabel(value?: string | null) {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    ...(options?.seconds ? { second: "2-digit" as const } : {}),
     hour12: false,
     timeZone: "America/Monterrey",
   }).format(date);

@@ -93,6 +93,7 @@ export function useCrearMovimientoController(
   const router = useRouter();
   const [requestedLocalidadId] = useState<number | null>(() => readRequestedLocalidadIdClient());
   const [step, setStep] = useState<CrearMovimientoStep>(1);
+  const [contextReady, setContextReady] = useState(false);
   const [form, setForm] = useState<MovementFormData>(baseInitialForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -215,6 +216,7 @@ export function useCrearMovimientoController(
     didBootstrapRef.current = true;
 
     let alive = true;
+    let completed = false;
 
     initFormLocked();
 
@@ -272,10 +274,13 @@ export function useCrearMovimientoController(
         }));
       }
       hydratePendingCount();
+      completed = true;
+      setContextReady(true);
     })();
 
     return () => {
       alive = false;
+      if (!completed) didBootstrapRef.current = false;
     };
   }, [
     initFormLocked,
@@ -772,6 +777,7 @@ export function useCrearMovimientoController(
 
   return {
     step,
+    contextReady,
     setStep,
     form,
     setForm,

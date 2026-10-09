@@ -1,5 +1,18 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import {
+  ArrowRight,
+  Check,
+  ClipboardCheck,
+  Info,
+  MapPin,
+  Plus,
+  Send,
+  TrainFront,
+  Trash2,
+} from "lucide-react";
+import { configurationLabel } from "../queueView";
+import s from "./batchCapture.module.scss";
 type Row = {
   locomotiveNumber: string;
   viaOrigenId: string;
@@ -39,8 +52,6 @@ type Props = {
   onFinish: () => void;
   onCancel: () => void;
 };
-const field =
-  "w-full rounded-lg border border-slate-300 bg-white p-2 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white";
 export default function TorreonBatchCapture({
   initialMovement,
   localidadId,
@@ -57,6 +68,7 @@ export default function TorreonBatchCapture({
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const key = useRef<string>("");
+  const prefix = useId();
   useEffect(() => {
     for (const id of [initialMovement?.viaOrigenId, initialMovement?.viaDestinoId])
       if (id) void ensureSections(Number(id));
@@ -93,7 +105,7 @@ export default function TorreonBatchCapture({
       )
         return prefix + "completa locomotora, origen y destino.";
       if (r.polo === "Sin_Solicitar" && r.posicionChimenea === "Sin_Solicitar")
-        return prefix + "selecciona polo o posición de chimenea.";
+        return prefix + "selecciona el polo de patio o la posición de chimenea.";
       for (const side of ["Origen", "Destino"] as const) {
         if ((sectionsByVia[Number(r[`via${side}Id`])]?.length ?? 0) > 0 && !r[`seccion${side}Id`])
           return prefix + `selecciona la sección de ${side.toLowerCase()}.`;
@@ -164,217 +176,386 @@ export default function TorreonBatchCapture({
       setBusy(false);
     }
   };
+  const sectionLabel = (r: Row, side: "Origen" | "Destino") => {
+    const section = sectionsByVia[Number(r[`via${side}Id`])]?.find(
+      (item) => item.id === Number(r[`seccion${side}Id`]),
+    );
+    return section ? section.nombre || `Sección ${section.numero}` : "Sin posición específica";
+  };
   const select = (
     r: Row,
     n: number,
     name: keyof Row,
     label: string,
     options: { value: string; label: string }[],
-  ) => (
-    <label className="text-sm">
-      {label}
-      <select
-        disabled={busy}
-        className={field}
-        value={r[name]}
-        onChange={(e) => update(n, name, e.target.value)}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
+    hint?: string,
+    disabled = false,
+  ) => {
+    const id = `${prefix}-${n}-${name}`;
+    return (
+      <div className={s.fieldGroup}>
+        <label htmlFor={id}>{label}</label>
+        <select
+          id={id}
+          disabled={busy || disabled}
+          className={s.field}
+          value={r[name]}
+          aria-describedby={hint ? `${id}-hint` : undefined}
+          onChange={(e) => update(n, name, e.target.value)}
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        {hint && (
+          <small id={`${id}-hint`} className={s.fieldHint}>
+            {hint}
+          </small>
+        )}
+      </div>
+    );
+  };
   return (
-    <section className="mx-auto max-w-5xl space-y-4 p-4 text-slate-900 dark:text-white">
-      <h1 className="text-2xl font-bold">Solicitar movimientos · Torreón</h1>
-      <p>
-        De 1 a 5 solicitudes independientes. La atención conjunta la registra coordinación o
-        supervisión.
-      </p>
+    <section className={s.capture} aria-labelledby="torreon-capture-title" aria-busy={busy}>
+      <header className={s.header}>
+        <div className={s.heading}>
+          <span className={s.headingIcon}>
+            <TrainFront size={24} aria-hidden />
+          </span>
+          <div>
+            <span className={s.eyebrow}>MOVIMIENTOS NATURALES · TORREÓN</span>
+            <h1 id="torreon-capture-title">Solicitar movimientos</h1>
+            <p>Indica qué locomotora se mueve y dónde debe quedar.</p>
+          </div>
+        </div>
+        <div className={s.counter}>
+          <strong>
+            {rows.length}
+            <span> / 5</span>
+          </strong>
+          <span>{rows.length === 1 ? "solicitud en este envío" : "solicitudes en este envío"}</span>
+        </div>
+      </header>
+      <ol className={s.steps} aria-label="Pasos de la solicitud">
+        <li
+          data-active={!review}
+          data-complete={review}
+          aria-current={!review ? "step" : undefined}
+        >
+          <span>{review ? <Check size={15} aria-hidden /> : "1"}</span>
+          Capturar datos
+        </li>
+        <li className={s.stepLine} aria-hidden role="presentation" />
+        <li data-active={review} aria-current={review ? "step" : undefined}>
+          <span>2</span> Revisar y enviar
+        </li>
+      </ol>
+      <div className={s.notice}>
+        <Info size={18} aria-hidden />
+        <p>
+          Puedes registrar de 1 a 5 solicitudes. Cada una se atenderá por separado; coordinación o
+          supervisión puede reunirlas después.
+        </p>
+      </div>
+      {review && (
+        <div className={s.reviewIntro}>
+          <ClipboardCheck size={20} aria-hidden />
+          <div>
+            <strong>Revisa tu envío</strong>
+            <p>Confirma locomotoras, origen, destino y orientación antes de enviar.</p>
+          </div>
+        </div>
+      )}
       {error && (
-        <p role="alert" className="text-red-600">
+        <p role="alert" className={s.error}>
           {error}
         </p>
       )}
-      {rows.map((r, n) => (
-        <article
-          key={n}
-          className="space-y-3 rounded-xl border border-slate-300 p-4 dark:border-slate-700"
-        >
-          <div className="flex justify-between">
-            <h2 className="font-bold">
-              Solicitud {n + 1}
-              {review ? ` · Locomotora ${r.locomotiveNumber}` : ""}
-            </h2>
-            {!review && rows.length > 1 && (
-              <button
-                disabled={busy}
-                onClick={() => {
-                  key.current = "";
-                  setRows((prev) => prev.filter((_, i) => i !== n));
-                }}
-              >
-                Quitar
-              </button>
-            )}
-          </div>
-          {review ? (
-            <div>
-              <p>
-                {vias.find((v) => v.id === Number(r.viaOrigenId))?.nombre}{" "}
-                {r.seccionOrigenId
-                  ? `· Sección ${sectionsByVia[Number(r.viaOrigenId)]?.find((s) => s.id === Number(r.seccionOrigenId))?.numero}`
-                  : ""}{" "}
-                → {vias.find((v) => v.id === Number(r.viaDestinoId))?.nombre}{" "}
-                {r.seccionDestinoId
-                  ? `· Sección ${sectionsByVia[Number(r.viaDestinoId)]?.find((s) => s.id === Number(r.seccionDestinoId))?.numero}`
-                  : ""}
-              </p>
-              <p>
-                Polo: {r.polo} · Chimenea: {r.posicionChimenea} · Cabina: {r.posicionCabina} ·{" "}
-                {r.tipoMovimiento}
-              </p>
-              {r.tipoMovimiento === "REMOLCADA" && (
-                <p>
-                  Remolca: {r.locomotoraRemolque} · {r.direccionEmpuje}
-                </p>
-              )}
-              {r.instrucciones && <p>Indicaciones: {r.instrucciones}</p>}
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <label className="text-sm">
-                Locomotora solicitada
-                <input
+      <div className={s.requests}>
+        {rows.map((r, n) => (
+          <article key={n} className={s.request} aria-labelledby={`${prefix}-${n}-title`}>
+            <header className={s.requestHeader}>
+              <div>
+                <span className={s.requestNumber}>{String(n + 1).padStart(2, "0")}</span>
+                <h2 id={`${prefix}-${n}-title`}>
+                  Solicitud {n + 1}
+                  {review ? ` · Locomotora ${r.locomotiveNumber}` : ""}
+                </h2>
+              </div>
+              {!review && rows.length > 1 && (
+                <button
+                  type="button"
+                  className={s.removeButton}
                   disabled={busy}
-                  className={field}
-                  inputMode="numeric"
-                  value={r.locomotiveNumber}
-                  onChange={(e) => update(n, "locomotiveNumber", e.target.value)}
-                />
-              </label>
-              {(["Origen", "Destino"] as const).map((side) => (
-                <div key={side} className="space-y-2">
-                  {select(r, n, `via${side}Id`, `Vía de ${side.toLowerCase()}`, [
-                    { value: "", label: "Seleccionar vía" },
-                    ...vias.map((v) => ({ value: String(v.id), label: v.nombre })),
-                  ])}
-                  {select(r, n, `seccion${side}Id`, `Sección de ${side.toLowerCase()}`, [
-                    { value: "", label: "Seleccionar sección si corresponde" },
-                    ...(sectionsByVia[Number(r[`via${side}Id`])] ?? []).map((s) => ({
-                      value: String(s.id),
-                      label: s.nombre ?? `Sección ${s.numero}`,
-                    })),
-                  ])}
-                </div>
-              ))}
-              {select(
-                r,
-                n,
-                "polo",
-                "Polo",
-                ["Sin_Solicitar", "NORTE", "SUR"].map((value) => ({
-                  value,
-                  label: value.replace("_", " "),
-                })),
+                  aria-label={`Quitar solicitud ${n + 1}`}
+                  onClick={() => {
+                    key.current = "";
+                    setRows((prev) => prev.filter((_, i) => i !== n));
+                  }}
+                >
+                  <Trash2 size={14} aria-hidden /> Quitar
+                </button>
               )}
-              {(["posicionChimenea", "posicionCabina"] as const).map((name) => (
-                <div key={name}>
-                  {select(
-                    r,
-                    n,
-                    name,
-                    name === "posicionCabina" ? "Cabina" : "Chimenea",
-                    ["Sin_Solicitar", "DENTRO", "AFUERA"].map((value) => ({
-                      value,
-                      label: value.replace("_", " "),
-                    })),
+              {review && <span className={s.independentTag}>Solicitud independiente</span>}
+            </header>
+            {review ? (
+              <div className={s.requestBody}>
+                <div className={s.reviewRoute}>
+                  {(["Origen", "Destino"] as const).map((side) => (
+                    <div key={side} className={s.reviewStop}>
+                      <span>
+                        <MapPin size={14} aria-hidden />
+                        {side === "Origen" ? "De dónde se saca" : "Dónde se va a colocar"}
+                      </span>
+                      <strong>
+                        {vias.find((v) => v.id === Number(r[`via${side}Id`]))?.nombre}
+                      </strong>
+                      <small>{sectionLabel(r, side)}</small>
+                    </div>
+                  ))}
+                  <ArrowRight size={20} className={s.reviewArrow} aria-hidden />
+                </div>
+                <dl className={s.reviewData}>
+                  <div>
+                    <dt>Tipo de movimiento</dt>
+                    <dd>{configurationLabel(r.tipoMovimiento)}</dd>
+                  </div>
+                  <div>
+                    <dt>Polo de patio</dt>
+                    <dd>{configurationLabel(r.polo)}</dd>
+                  </div>
+                  <div>
+                    <dt>Posición de chimenea</dt>
+                    <dd>{configurationLabel(r.posicionChimenea)}</dd>
+                  </div>
+                  <div>
+                    <dt>Posición de cabina</dt>
+                    <dd>{configurationLabel(r.posicionCabina)}</dd>
+                  </div>
+                </dl>
+                {r.tipoMovimiento === "REMOLCADA" && (
+                  <p className={s.reviewTowing}>
+                    Remolca: {r.locomotoraRemolque} · {configurationLabel(r.direccionEmpuje)}
+                  </p>
+                )}
+                {r.instrucciones && (
+                  <div className={s.reviewInstructions}>
+                    <strong>Indicaciones adicionales</strong>
+                    <p>{r.instrucciones}</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className={s.requestBody}>
+                <fieldset className={s.group}>
+                  <legend>
+                    <TrainFront size={16} aria-hidden /> Locomotora y movimiento
+                  </legend>
+                  <div className={s.twoColumns}>
+                    <label className={s.fieldGroup}>
+                      Locomotora solicitada
+                      <input
+                        disabled={busy}
+                        className={s.field}
+                        inputMode="numeric"
+                        placeholder="Ej. 12345"
+                        value={r.locomotiveNumber}
+                        onChange={(e) => update(n, "locomotiveNumber", e.target.value)}
+                      />
+                    </label>
+                    {select(r, n, "tipoMovimiento", "Tipo de movimiento", [
+                      { value: "MD_TRABAJANDO", label: "MD trabajando" },
+                      { value: "REMOLCADA", label: "Remolcada" },
+                    ])}
+                  </div>
+                  {r.tipoMovimiento === "REMOLCADA" && (
+                    <div className={s.towingFields}>
+                      <p>La locomotora que remolca debe ser distinta a la solicitada.</p>
+                      <div className={s.twoColumns}>
+                        <label className={s.fieldGroup}>
+                          Locomotora que remolca
+                          <input
+                            disabled={busy}
+                            className={s.field}
+                            inputMode="numeric"
+                            placeholder="Número de la locomotora de apoyo"
+                            value={r.locomotoraRemolque}
+                            onChange={(e) => update(n, "locomotoraRemolque", e.target.value)}
+                          />
+                        </label>
+                        {select(r, n, "direccionEmpuje", "Dirección", [
+                          { value: "Sin_Solicitar", label: "Seleccionar dirección" },
+                          { value: "EMPUJAR", label: "Empujar" },
+                          { value: "JALAR", label: "Jalar" },
+                        ])}
+                      </div>
+                    </div>
                   )}
-                </div>
-              ))}
-              {select(r, n, "tipoMovimiento", "Tipo de movimiento", [
-                { value: "MD_TRABAJANDO", label: "MD Trabajando" },
-                { value: "REMOLCADA", label: "Remolcada" },
-              ])}
-              {r.tipoMovimiento === "REMOLCADA" && (
-                <>
-                  <label className="text-sm">
-                    Locomotora que remolca
-                    <input
-                      disabled={busy}
-                      className={field}
-                      inputMode="numeric"
-                      value={r.locomotoraRemolque}
-                      onChange={(e) => update(n, "locomotoraRemolque", e.target.value)}
-                    />
-                  </label>
-                  {select(r, n, "direccionEmpuje", "Dirección", [
-                    { value: "Sin_Solicitar", label: "Seleccionar" },
-                    { value: "EMPUJAR", label: "Empujar" },
-                    { value: "JALAR", label: "Jalar" },
-                  ])}
-                </>
-              )}
-              <label className="text-sm">
-                Indicaciones adicionales
-                <textarea
-                  disabled={busy}
-                  className={field}
-                  value={r.instrucciones}
-                  onChange={(e) => update(n, "instrucciones", e.target.value)}
-                  maxLength={2000}
-                />
-              </label>
-            </div>
-          )}
-        </article>
-      ))}
-      <div className="flex flex-wrap gap-3">
-        {!review && (
-          <>
+                </fieldset>
+                <fieldset className={s.group}>
+                  <legend>
+                    <MapPin size={16} aria-hidden /> Recorrido del movimiento
+                  </legend>
+                  <div className={s.routeFields}>
+                    {(["Origen", "Destino"] as const).map((side) => {
+                      const sections = sectionsByVia[Number(r[`via${side}Id`])] ?? [];
+                      const hasVia = Boolean(r[`via${side}Id`]);
+                      return (
+                        <div key={side} className={s.routeCard}>
+                          <header>
+                            <span className={s.routeDot} data-destination={side === "Destino"} />
+                            <div>
+                              <h3>{side}</h3>
+                              <p>
+                                {side === "Origen" ? "De dónde se saca" : "Dónde se va a colocar"}
+                              </p>
+                            </div>
+                          </header>
+                          {select(r, n, `via${side}Id`, `Vía de ${side.toLowerCase()}`, [
+                            { value: "", label: "Seleccionar vía" },
+                            ...vias.map((v) => ({ value: String(v.id), label: v.nombre })),
+                          ])}
+                          {select(
+                            r,
+                            n,
+                            `seccion${side}Id`,
+                            `Posición de ${side.toLowerCase()}`,
+                            [
+                              {
+                                value: "",
+                                label: !hasVia
+                                  ? "Primero selecciona una vía"
+                                  : sections.length
+                                    ? "Seleccionar posición"
+                                    : "Sin posiciones registradas",
+                              },
+                              ...sections.map((section) => ({
+                                value: String(section.id),
+                                label: section.nombre || `Sección ${section.numero}`,
+                              })),
+                            ],
+                            hasVia && !sections.length
+                              ? "Esta vía no tiene secciones registradas."
+                              : "Selecciona la sección dentro de la vía.",
+                            !hasVia || !sections.length,
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+                <fieldset className={s.group}>
+                  <legend>Orientación en patio</legend>
+                  <p className={s.groupHint}>
+                    Completa el polo de patio o la posición de chimenea.
+                  </p>
+                  <div className={s.threeColumns}>
+                    {select(
+                      r,
+                      n,
+                      "polo",
+                      "Polo de patio",
+                      ["Sin_Solicitar", "NORTE", "SUR"].map((value) => ({
+                        value,
+                        label: configurationLabel(value),
+                      })),
+                    )}
+                    {(["posicionChimenea", "posicionCabina"] as const).map((name) => (
+                      <div key={name}>
+                        {select(
+                          r,
+                          n,
+                          name,
+                          name === "posicionCabina" ? "Posición de cabina" : "Posición de chimenea",
+                          ["Sin_Solicitar", "DENTRO", "AFUERA"].map((value) => ({
+                            value,
+                            label: configurationLabel(value),
+                          })),
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </fieldset>
+                <label className={s.fieldGroup}>
+                  Indicaciones adicionales
+                  <textarea
+                    disabled={busy}
+                    className={s.field}
+                    rows={3}
+                    placeholder="Agrega instrucciones que coordinación deba conocer (opcional)."
+                    value={r.instrucciones}
+                    onChange={(e) => update(n, "instrucciones", e.target.value)}
+                    maxLength={2000}
+                  />
+                </label>
+              </div>
+            )}
+          </article>
+        ))}
+      </div>
+      {!review && (
+        <button
+          type="button"
+          className={s.addButton}
+          disabled={busy || rows.length >= 5}
+          onClick={() => {
+            key.current = "";
+            setRows((prev) => [...prev, empty()]);
+          }}
+        >
+          <Plus size={17} aria-hidden /> Agregar solicitud ({rows.length}/5)
+        </button>
+      )}
+      <footer className={s.footer}>
+        <span>
+          {rows.length}{" "}
+          {rows.length === 1 ? "solicitud independiente" : "solicitudes independientes"} en este
+          envío
+        </span>
+        <div className={s.footerActions}>
+          <button type="button" className={s.cancelButton} disabled={busy} onClick={onCancel}>
+            Salir
+          </button>
+          {review ? (
+            <>
+              <button
+                type="button"
+                className={s.button}
+                disabled={busy}
+                onClick={() => setReview(false)}
+              >
+                Editar datos
+              </button>
+              <button
+                type="button"
+                className={s.primaryButton}
+                disabled={busy}
+                onClick={() => void send()}
+              >
+                <Send size={16} aria-hidden />
+                {busy
+                  ? "Enviando…"
+                  : `Enviar ${rows.length} ${rows.length === 1 ? "solicitud" : "solicitudes"}`}
+              </button>
+            </>
+          ) : (
             <button
-              className={field + " !w-auto"}
-              disabled={busy || rows.length >= 5}
-              onClick={() => {
-                key.current = "";
-                setRows((prev) => [...prev, empty()]);
-              }}
-            >
-              Agregar solicitud ({rows.length}/5)
-            </button>
-            <button
-              className={field + " !w-auto"}
+              type="button"
+              className={s.primaryButton}
+              disabled={busy}
               onClick={() => {
                 const issue = validate();
                 setError(issue);
                 if (!issue) setReview(true);
               }}
             >
-              Revisar envío
+              Revisar envío <ArrowRight size={16} aria-hidden />
             </button>
-          </>
-        )}
-        {review && (
-          <>
-            <button className={field + " !w-auto"} disabled={busy} onClick={() => setReview(false)}>
-              Editar datos
-            </button>
-            <button
-              className="rounded-lg bg-emerald-700 px-4 py-2 font-bold text-white disabled:opacity-50"
-              disabled={busy}
-              onClick={() => void send()}
-            >
-              {busy ? "Enviando…" : `Enviar ${rows.length} solicitudes`}
-            </button>
-          </>
-        )}
-        <button disabled={busy} onClick={onCancel}>
-          Salir
-        </button>
-      </div>
+          )}
+        </div>
+      </footer>
     </section>
   );
 }

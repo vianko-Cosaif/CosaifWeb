@@ -67,6 +67,7 @@ export type ResolvedIds = {
 export interface CrearMovimientoController {
   /* Estado principal del wizard */
   step: CrearMovimientoStep;
+  contextReady: boolean;
   setStep: Dispatch<SetStateAction<CrearMovimientoStep>>;
   form: MovementFormData;
   setForm: Dispatch<SetStateAction<MovementFormData>>;

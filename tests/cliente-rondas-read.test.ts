@@ -95,6 +95,51 @@ describe("client current rounds and private history", () => {
     expect(params.has("empresaId")).toBe(false);
   });
 
+  it("removes finalized GDL movements from pending rounds without removing active stops or changing their order", async () => {
+    const movementRound = (id: number, estado: string, finalizado: boolean) => ({
+      ...round(id), movimiento: { ...round(id).movimiento, estado, finalizado },
+    });
+    upstream.fetch.mockResolvedValueOnce(Response.json([
+      { ...movementRound(8, "EN_PROCESO", false), rondaNumero: 2, orden: 1 },
+      movementRound(1, "CONCLUIDO", false),
+      movementRound(2, "CANCELADO", false),
+      movementRound(3, "RESUELTO", false),
+      movementRound(4, "DETENIDO", true),
+      movementRound(5, "EN_PROCESO", true),
+      { ...round(9), orden: 4 },
+      { ...movementRound(7, "DETENIDO", false), orden: 2 },
+    ]));
+    const response = await read();
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.map((item: { id: number }) => item.id)).toEqual([7, 9, 8]);
+    expect(data.map((item: { orden: number }) => item.orden)).toEqual([2, 4, 1]);
+    expect(data[0]).toMatchObject({ source: "cosaif", movimiento: { estado: "DETENIDO", finalizado: false } });
+    expect(upstream.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["CONCLUIDO", false], ["CANCELADO", false], ["DETENIDO", true], ["EN_PROCESO", true],
+  ])("removes a sparse GDL round when its detail reveals %s and finalizado=%s", async (estado, finalizado) => {
+    const session = clientSession();
+    session.role = "COORDINADOR";
+    session.authorization.role = "COORDINADOR";
+    upstream.session.mockResolvedValue(session);
+    upstream.fetch.mockResolvedValueOnce(Response.json([
+      { id: 7, localidadId: 1, rondaNumero: 1, orden: 1, concluido: false, movimientoId: 70 },
+      round(9),
+    ]));
+    upstream.fetch.mockResolvedValueOnce(Response.json({
+      empresa: { id: 3, nombre: "Empresa 3" },
+      movimiento: { ...round(7).movimiento, estado, finalizado },
+    }));
+    const response = await read();
+    expect(response.status).toBe(200);
+    expect((await response.json()).map((item: { id: number }) => item.id)).toEqual([9]);
+    expect(upstream.fetch).toHaveBeenCalledTimes(2);
+    expect(upstream.fetch.mock.calls[1][0]).toContain("/movimientos/ronda/7/info");
+  });
+
   it.each(["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"])("limits editor options to the signed company for %s", async role => {
     upstream.session.mockResolvedValue({ ...clientSession(), role });
     upstream.fetch.mockResolvedValueOnce(Response.json([round(1), round(2, 4), round(3, 3, 2)]));

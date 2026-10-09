@@ -30,6 +30,9 @@ import s from "./naturalQueue.module.scss";
 type Props = {
   units: QueueUnit[];
   dispatch: boolean;
+  showWaitTime: boolean;
+  showImages: boolean;
+  showFinish: boolean;
   selected: number[];
   onSelect: (id: number, checked: boolean) => void;
   operators: { id: number; nombre: string }[];
@@ -56,6 +59,9 @@ function timing(unit: QueueUnit, movement: QueueMovement) {
 export default function NaturalQueueTable({
   units,
   dispatch,
+  showWaitTime,
+  showImages,
+  showFinish,
   selected,
   onSelect,
   operators,
@@ -86,6 +92,7 @@ export default function NaturalQueueTable({
         <colgroup>
           <col className={s.orderCol} />
           <col className={s.locomotiveCol} />
+          <col className={s.startCol} />
           <col className={s.routeCol} />
           <col className={s.peopleCol} />
           <col className={s.statusCol} />
@@ -99,11 +106,12 @@ export default function NaturalQueueTable({
             {[
               "Orden",
               "Locomotora / empresa",
-              "Origen → destino",
+              "Inicio",
+              "Recorrido / posición",
               "Responsables",
               "Estado",
               "Configuración",
-              "Solicitud / tiempo",
+              showWaitTime ? "Solicitud / tiempo" : "Solicitud",
               "Incidentes",
               "Detalle",
             ].map((label) => (
@@ -187,8 +195,18 @@ export default function NaturalQueueTable({
                         {unit.modalidad !== "CONJUNTO" ? ` · Solicitud #${unit.id}` : ""}
                       </small>
                     </th>
+                    <td className={s.timeCell}>
+                      {(movement.fechaInicio ?? unit.fechaInicio) ? (
+                        <time dateTime={movement.fechaInicio ?? unit.fechaInicio ?? undefined}>
+                          {dateLabel(movement.fechaInicio ?? unit.fechaInicio)}
+                        </time>
+                      ) : (
+                        <span className={s.unassigned}>Pendiente de inicio</span>
+                      )}
+                    </td>
                     <td>
                       <div className={s.route}>
+                        <span className={s.routeLabel}>De dónde se saca</span>
                         <span className={s.routeOrigin}>
                           <span className={s.routeDot} />
                           <span>
@@ -198,12 +216,17 @@ export default function NaturalQueueTable({
                                   ? `Vía #${movement.viaOrigenId}`
                                   : "Origen sin registrar")}
                             </strong>
-                            {movement.seccionOrigenNombreSnapshot && (
-                              <small>{movement.seccionOrigenNombreSnapshot}</small>
-                            )}
+                            <small>
+                              Posición:{" "}
+                              {movement.seccionOrigenNombreSnapshot ||
+                                (movement.seccionOrigenId
+                                  ? `Sección #${movement.seccionOrigenId}`
+                                  : "Sin sección registrada")}
+                            </small>
                           </span>
                         </span>
                         <ArrowDown size={13} className={s.routeArrow} aria-hidden />
+                        <span className={s.routeLabel}>Dónde se coloca</span>
                         <span className={s.routeDestination}>
                           <span className={s.routeDot} />
                           <span>
@@ -213,9 +236,13 @@ export default function NaturalQueueTable({
                                   ? `Vía #${movement.viaDestinoId}`
                                   : "Destino sin registrar")}
                             </strong>
-                            {movement.seccionDestinoNombreSnapshot && (
-                              <small>{movement.seccionDestinoNombreSnapshot}</small>
-                            )}
+                            <small>
+                              Posición:{" "}
+                              {movement.seccionDestinoNombreSnapshot ||
+                                (movement.seccionDestinoId
+                                  ? `Sección #${movement.seccionDestinoId}`
+                                  : "Sin sección registrada")}
+                            </small>
                           </span>
                         </span>
                       </div>
@@ -256,12 +283,14 @@ export default function NaturalQueueTable({
                         {unit.incidenteBloqueanteId && unit.estado !== "DETENIDA" && (
                           <span className={s.blockedTag}>Ruta bloqueada</span>
                         )}
-                        <span className={s.photoCount}>
-                          <Camera size={13} aria-hidden />
-                          {movement.fotos?.length
-                            ? `${movement.fotos.length} ${movement.fotos.length === 1 ? "foto" : "fotos"}`
-                            : "Sin fotos"}
-                        </span>
+                        {showImages && (
+                          <span className={s.photoCount}>
+                            <Camera size={13} aria-hidden />
+                            {movement.fotos?.length
+                              ? `${movement.fotos.length} ${movement.fotos.length === 1 ? "foto" : "fotos"}`
+                              : "Sin fotos"}
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td>
@@ -276,7 +305,7 @@ export default function NaturalQueueTable({
                       )}
                       <dl className={s.configuration}>
                         <div>
-                          <dt>Polo</dt>
+                          <dt>Polo de patio</dt>
                           <dd>{configurationLabel(movement.polo)}</dd>
                         </div>
                         <div>
@@ -293,8 +322,12 @@ export default function NaturalQueueTable({
                       <time dateTime={movement.fechaSolicitud ?? unit.fechaRecepcion ?? undefined}>
                         {dateLabel(movement.fechaSolicitud ?? unit.fechaRecepcion)}
                       </time>
-                      <span>{time.label}</span>
-                      <strong>{time.value}</strong>
+                      {showWaitTime && (
+                        <>
+                          <span>{time.label}</span>
+                          <strong>{time.value}</strong>
+                        </>
+                      )}
                     </td>
                     <td>
                       <div className={s.incidentsSummary}>
@@ -356,7 +389,7 @@ export default function NaturalQueueTable({
                   </tr>
                   {isExpanded && (
                     <tr className={s.detailRow}>
-                      <td colSpan={9} id={detailId}>
+                      <td colSpan={10} id={detailId}>
                         <div className={s.detailHeader}>
                           <strong>
                             Movimiento #{movement.id} · Locomotora {movement.locomotiveNumber}
@@ -427,10 +460,12 @@ export default function NaturalQueueTable({
                                 <dt>Inicio</dt>
                                 <dd>{dateLabel(movement.fechaInicio ?? unit.fechaInicio)}</dd>
                               </div>
-                              <div>
-                                <dt>Fin</dt>
-                                <dd>{dateLabel(movement.fechaFin ?? unit.fechaFin)}</dd>
-                              </div>
+                              {showFinish && (
+                                <div>
+                                  <dt>Fin</dt>
+                                  <dd>{dateLabel(movement.fechaFin ?? unit.fechaFin)}</dd>
+                                </div>
+                              )}
                               <div>
                                 <dt>Pausa</dt>
                                 <dd>{dateLabel(movement.fechaPausa)}</dd>
@@ -491,17 +526,19 @@ export default function NaturalQueueTable({
                               )}
                             </div>
                           )}
-                        <div className={s.evidence}>
-                          <h3>
-                            <Camera size={15} aria-hidden /> Evidencias del movimiento{" "}
-                            <span>{movement.fotos?.length ?? 0}</span>
-                          </h3>
-                          {movement.fotos?.length ? (
-                            <PhotoLinks photos={movement.fotos} movement />
-                          ) : (
-                            <p className={s.muted}>Aún no se han registrado fotografías.</p>
-                          )}
-                        </div>
+                        {showImages && (
+                          <div className={s.evidence}>
+                            <h3>
+                              <Camera size={15} aria-hidden /> Evidencias del movimiento{" "}
+                              <span>{movement.fotos?.length ?? 0}</span>
+                            </h3>
+                            {movement.fotos?.length ? (
+                              <PhotoLinks photos={movement.fotos} movement />
+                            ) : (
+                              <p className={s.muted}>Aún no se han registrado fotografías.</p>
+                            )}
+                          </div>
+                        )}
                         {unit.incidenteBloqueanteId &&
                           !incidents.some(
                             (incident) => incident.id === unit.incidenteBloqueanteId,
@@ -516,6 +553,7 @@ export default function NaturalQueueTable({
                           <IncidentDetail
                             key={incident.id}
                             incident={incident}
+                            showImages={showImages}
                             busy={busy}
                             solution={solution[incident.id] ?? ""}
                             onSolution={(value) =>
@@ -569,12 +607,14 @@ function PhotoLinks({ photos, movement = false }: { photos: QueuePhoto[]; moveme
 }
 function IncidentDetail({
   incident,
+  showImages,
   busy,
   solution,
   onSolution,
   onResolve,
 }: {
   incident: QueueIncident;
+  showImages: boolean;
   busy: boolean;
   solution: string;
   onSolution: (value: string) => void;
@@ -595,11 +635,12 @@ function IncidentDetail({
         <time dateTime={incident.fechaInicio}>Reportado: {dateLabel(incident.fechaInicio)}</time>
       </div>
       <p>{incident.motivo}</p>
-      {incident.fotos?.length ? (
-        <PhotoLinks photos={incident.fotos} />
-      ) : (
-        <p className={s.muted}>Sin fotografías del incidente.</p>
-      )}
+      {showImages &&
+        (incident.fotos?.length ? (
+          <PhotoLinks photos={incident.fotos} />
+        ) : (
+          <p className={s.muted}>Sin fotografías del incidente.</p>
+        ))}
       {incident.solucion && (
         <p className={s.incidentSolution}>
           <strong>Solución confirmada:</strong> {incident.solucion}

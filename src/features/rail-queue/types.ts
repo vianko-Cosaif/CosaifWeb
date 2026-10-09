@@ -9,6 +9,7 @@ export type RondaMovement = {
   lavado?: boolean;
   torno?: boolean;
   estado?: string | null;
+  finalizado?: boolean | null;
   prioridad?: "BAJA" | "ALTA" | null;
   locomotiveNumber?: number | string | null;
   locomotora?: string | null;

@@ -1,11 +1,16 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
+  AlertTriangle,
   ArrowUp,
+  Home,
+  ListChecks,
   CheckCircle2,
   Clock3,
   ListOrdered,
   PauseCircle,
+  Plus,
   RefreshCw,
   Search,
   TrainFront,
@@ -16,6 +21,7 @@ import { useRealtimeBoardRefresh } from "@/features/rail-queue/useRealtimeBoardR
 import { isTorreonNaturalEvent } from "@/features/torreon/realtime";
 import NaturalQueueTable from "./NaturalQueueTable";
 import { dateLabel, filterQueue, type QueueAudit, type QueueUnit } from "../queueView";
+import { auditEventView, uniqueAuditEvents } from "../auditView";
 import s from "./naturalQueue.module.scss";
 
 async function request(path: string, method = "GET", body?: unknown) {
@@ -31,28 +37,21 @@ async function request(path: string, method = "GET", body?: unknown) {
     throw new Error(data.message ?? data.error ?? "No se pudo completar la operación");
   return data;
 }
-const auditActions: Record<string, string> = {
-  CREAR: "Solicitud registrada",
-  SOLICITAR: "Solicitud registrada",
-  CREAR_SOLICITUD: "Solicitud registrada",
-  ASIGNAR: "Maquinista asignado",
-  PRIORIZAR: "Prioridad actualizada",
-  FORMAR_CONJUNTO: "Conjunto formado",
-  INICIAR: "Movimiento iniciado",
-  REANUDAR: "Movimiento reanudado",
-  FINALIZAR: "Movimiento finalizado",
-  REPORTAR_INCIDENTE: "Incidente reportado",
-  RESOLVER_INCIDENTE: "Incidente resuelto",
-  HABILITAR_REANUDACION: "Reanudación habilitada",
-};
 export default function TorreonNaturalQueue({
   localidadId,
   rol = "CLIENTE",
+  view = "inicio",
+  canCreateMovements = false,
 }: {
   localidadId: number;
   rol?: string;
+  view?: "inicio" | "seguimiento";
+  canCreateMovements?: boolean;
 }) {
   const dispatch = ["COORDINADOR", "SUPERVISOR", "ADMINISTRADOR"].includes(rol);
+  const isClient = ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"].includes(rol);
+  const showWaitTime = ["COORDINADOR", "SUPERVISOR"].includes(rol);
+  const area = isClient ? "cliente" : rol.toLowerCase();
   const [units, setUnits] = useState<QueueUnit[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
   const [together, setTogether] = useState(false);
@@ -76,7 +75,9 @@ export default function TorreonNaturalQueue({
   const load = useCallback(async () => {
     const sequence = ++requestSequence.current;
     try {
-      const data = await request(`/cola?localidadId=${localidadId}&historial=${history}`);
+      const data = await request(
+        `/cola?localidadId=${localidadId}&historial=${view === "seguimiento" && history}`,
+      );
       if (sequence !== requestSequence.current) return;
       const rows: QueueUnit[] = Array.isArray(data) ? data : [];
       setUnits(rows);
@@ -91,7 +92,7 @@ export default function TorreonNaturalQueue({
     } finally {
       if (sequence === requestSequence.current) setLoading(false);
     }
-  }, [localidadId, history]);
+  }, [localidadId, history, view]);
   const cancelPendingLoad = useCallback(() => {
     requestSequence.current++;
   }, []);
@@ -214,6 +215,13 @@ export default function TorreonNaturalQueue({
           if (person?.id) result.set(person.id, person.nombre);
     return result;
   }, [units]);
+  const auditRows = useMemo(() => {
+    const unit = units.find((item) => item.id === audit?.unitId);
+    return uniqueAuditEvents(audit?.entries ?? []).map((event) => ({
+      event,
+      ...auditEventView(event, unit, names),
+    }));
+  }, [audit, units, names]);
   const hasFilters = Boolean(search || state || coordinator);
   const clearFilters = () => {
     setSearch("");
@@ -270,6 +278,32 @@ export default function TorreonNaturalQueue({
       aria-labelledby="torreon-natural-title"
       aria-busy={loading || busy}
     >
+      <nav className={s.navigation} aria-label="Navegación de movimientos de Torreón">
+        <Link
+          className={s.navigationLink}
+          href={`/${area}`}
+          aria-current={view === "inicio" ? "page" : undefined}
+        >
+          <Home size={15} aria-hidden /> Inicio
+        </Link>
+        <Link
+          className={s.navigationLink}
+          href={`/${area}/movimientos`}
+          aria-current={view === "seguimiento" ? "page" : undefined}
+        >
+          <ListChecks size={15} aria-hidden /> Seguimiento
+        </Link>
+        {isClient && (
+          <Link
+            className={s.incidentsLink}
+            href="/cliente/incidentes?source=torreon&tipo=NATURAL"
+            aria-label="Incidentes de mi empresa"
+          >
+            <AlertTriangle size={15} aria-hidden /> Incidentes
+            <span>Mi empresa</span>
+          </Link>
+        )}
+      </nav>
       <header className={s.header}>
         <div className={s.heading}>
           <span className={s.headingIcon}>
@@ -278,28 +312,39 @@ export default function TorreonNaturalQueue({
           <div>
             <span className={s.eyebrow}>CONTROL DE OPERACIÓN · TORREÓN</span>
             <h2 id="torreon-natural-title">Movimientos naturales</h2>
-            <p>Seguimiento de solicitudes y responsables en el patio.</p>
+            <p>
+              {view === "inicio"
+                ? "Solicitudes activas, recorrido y responsables en el patio."
+                : "Consulta de solicitudes, tiempos y movimientos concluidos."}
+            </p>
           </div>
         </div>
         <div className={s.headerActions}>
-          <div className={s.switcher} aria-label="Vista de movimientos">
-            <button
-              type="button"
-              disabled={busy}
-              aria-pressed={!history}
-              onClick={() => setHistory(false)}
-            >
-              En operación
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              aria-pressed={history}
-              onClick={() => setHistory(true)}
-            >
-              Concluidos
-            </button>
-          </div>
+          {isClient && canCreateMovements && (
+            <Link href="/movimientos/crear?tipo=NATURAL" className={s.primaryButton}>
+              <Plus size={15} aria-hidden /> Solicitar movimientos
+            </Link>
+          )}
+          {view === "seguimiento" && (
+            <div className={s.switcher} aria-label="Vista de movimientos">
+              <button
+                type="button"
+                disabled={busy}
+                aria-pressed={!history}
+                onClick={() => setHistory(false)}
+              >
+                En operación
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                aria-pressed={history}
+                onClick={() => setHistory(true)}
+              >
+                Concluidos
+              </button>
+            </div>
+          )}
           <button
             type="button"
             className={s.button}
@@ -450,6 +495,9 @@ export default function TorreonNaturalQueue({
         <NaturalQueueTable
           units={visible}
           dispatch={dispatch && !history}
+          showWaitTime={showWaitTime}
+          showImages={!isClient}
+          showFinish={view === "seguimiento"}
           selected={selected}
           onSelect={(id, checked) =>
             setSelected((prev) => (checked ? [...prev, id] : prev.filter((value) => value !== id)))
@@ -490,23 +538,28 @@ export default function TorreonNaturalQueue({
           ) : !audit.entries.length ? (
             <p className={s.muted}>No hay eventos registrados para esta solicitud.</p>
           ) : (
-            <ol className={s.auditList}>
-              {audit.entries.map((event) => (
-                <li key={event.id}>
-                  <span className={s.auditDot} />
-                  <div>
-                    <strong>
-                      {auditActions[event.accion] ?? event.accion.replaceAll("_", " ")}
-                    </strong>
-                    <p>
-                      {names.get(event.usuarioId) ?? `Usuario #${event.usuarioId}`}{" "}
-                      {event.rol ? `· ${event.rol.toLowerCase()}` : ""}
-                    </p>
-                    <time dateTime={event.fecha}>{dateLabel(event.fecha)}</time>
-                  </div>
-                </li>
-              ))}
-            </ol>
+            <>
+              <p className={s.auditIntro}>
+                Eventos en orden cronológico. Incluye el historial de cada movimiento del conjunto,
+                cuando corresponde.
+              </p>
+              <ol className={s.auditList}>
+                {auditRows.map(({ event, title, actor, target, detail }) => (
+                  <li key={event.id} data-system={actor === "Sistema"}>
+                    <span className={s.auditDot} />
+                    <div>
+                      <strong>{title}</strong>
+                      {target && <span className={s.auditTarget}>{target}</span>}
+                      {detail && <p>{detail}</p>}
+                      <p>{actor}</p>
+                      <time dateTime={event.fecha}>
+                        {dateLabel(event.fecha, { seconds: true })}
+                      </time>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </>
           )}
         </Modal>
       )}

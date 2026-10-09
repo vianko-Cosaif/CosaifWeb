@@ -21,6 +21,27 @@ describe("client current locality queue", () => {
     expect(rows.map((item) => item.id)).toEqual([2, 1, 3, 4, 5, 6]);
   });
 
+  it("filters finalized Cosaif movements and terminal states while preserving active stop order", () => {
+    const movementRound = (id: number, estado: string, finalizado: boolean) => round(id, 8, {
+      source: "cosaif", movimiento: { id, estado, finalizado },
+    });
+    const rows = [movementRound(8, "DETENIDO", false), movementRound(1, "DETENIDO", true),
+      movementRound(2, "SOLICITADO", true), movementRound(3, "CONCLUIDO", false),
+      movementRound(4, "CANCELADO", false), movementRound(5, "RESUELTO", false),
+      movementRound(7, "EN_PROCESO", false)];
+    const items = selectClientQueue(rows, selection);
+    expect(items.map(item => item.id)).toEqual([7, 8]);
+    expect(items.map(item => item.orden)).toEqual([7, 8]);
+    expect(rows.map(item => item.id)).toEqual([8, 1, 2, 3, 4, 5, 7]);
+  });
+
+  it("keeps Torreón and Torno outside the GDL movement finalization safeguard", () => {
+    const torreon = round(1, 8, { source: "torreon", movimiento: { estado: "DETENIDO", finalizado: true } });
+    const torno = round(2, 8, { source: "torno", movimiento: { estado: "DETENIDO", finalizado: true } });
+    expect(selectClientQueue([torreon, torno], selection).map(item => item.id)).toEqual([1, 2]);
+    expect(selectClientQueue([torno], { ...selection, entity: "torneados" }).map(item => item.id)).toEqual([2]);
+  });
+
   it("keeps every returned active round in a stable operational order", () => {
     const rows = Array.from({ length: 125 }, (_, index) => round(index + 1, 8, { rondaNumero: index < 60 ? 2 : 1 })).reverse();
     const items = selectClientQueue(rows, selection);

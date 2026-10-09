@@ -280,7 +280,7 @@ export default function RailQueueBoard({
       ? "No hay torneados pendientes o en movimiento en esta localidad."
       : "No hay movimientos pendientes o en curso en esta localidad.";
 
-  if (naturalTorreon && !trainingTour.active) return <TorreonNaturalQueue localidadId={Number(localidadId)} rol="CLIENTE" />;
+  if (naturalTorreon && !trainingTour.active) return <TorreonNaturalQueue localidadId={Number(localidadId)} rol={role ?? "CLIENTE"} canCreateMovements={canCreateMovements} />;
 
   return (
     <GuidedTarget id="dashboard-rounds-board" className={S.Layout.root}>

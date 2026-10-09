@@ -74,6 +74,7 @@ export default function CrearMovimiento() {
   /** Contrato unico de estado/acciones que maneja todo el flujo. */
   const {
     step,
+    contextReady,
     form,
     setForm,
     sending,
@@ -459,8 +460,57 @@ export default function CrearMovimiento() {
 
   if (!mounted) return null;
 
-  if (!sandboxMode && (step > 1 || (guidedMode && guidedStepOnePage >= 2)) && !form.service && isTorreonLocalidadId(form.selectedLocalityId) && form.empresaId && form.creadoPorId) {
-    return <TorreonBatchCapture initialMovement={{ locomotiveNumber: form.locomotiveNumber || '', viaOrigenId: form.fromTrack ? String(form.fromTrack) : '', viaDestinoId: form.toTrack ? String(form.toTrack) : '', seccionOrigenId: String(sectionsByVia[Number(form.fromTrack)]?.find(s => s.numero === fromSection)?.id ?? ''), seccionDestinoId: String(sectionsByVia[Number(form.toTrack)]?.find(s => s.numero === toSection)?.id ?? ''), polo: form.polo || 'Sin_Solicitar', posicionCabina: form.cabinPosition || 'Sin_Solicitar', posicionChimenea: form.chimneyPosition || 'Sin_Solicitar', tipoMovimiento: form.movementType || 'MD_TRABAJANDO', direccionEmpuje: form.pushPull || 'Sin_Solicitar', instrucciones: form.comments || '' }} localidadId={Number(form.selectedLocalityId)} empresaId={form.empresaId} creadoPorId={form.creadoPorId} vias={vias} sectionsByVia={sectionsByVia} ensureSections={ensureSections} onFinish={() => { clearForm(); goSalir(); }} onCancel={goSalir} />;
+  const naturalEntryRequested = searchParams.get("tipo") === "NATURAL";
+  const assignedClientContext =
+    !sandboxMode &&
+    rol === "CLIENTE" &&
+    !canChooseLocality &&
+    !canManageAll &&
+    isTorreonLocalidadId(form.selectedLocalityId) &&
+    Number.isInteger(form.empresaId) && Number(form.empresaId) > 0 &&
+    Number.isInteger(form.creadoPorId) && Number(form.creadoPorId) > 0;
+  const directNaturalEntry = naturalEntryRequested && assignedClientContext && contextReady;
+  const legacyNaturalEntry =
+    !sandboxMode &&
+    (step > 1 || (guidedMode && guidedStepOnePage >= 2)) &&
+    !form.service &&
+    isTorreonLocalidadId(form.selectedLocalityId) &&
+    form.empresaId &&
+    form.creadoPorId;
+
+  if (naturalEntryRequested && assignedClientContext && !contextReady) {
+    return <p role="status" className="p-6 text-sm text-[var(--app-text-muted)]">Preparando la captura de Torreón…</p>;
+  }
+
+  if (directNaturalEntry || legacyNaturalEntry) {
+    return (
+      <TorreonBatchCapture
+        initialMovement={form.service ? undefined : {
+          locomotiveNumber: form.locomotiveNumber || "",
+          viaOrigenId: form.fromTrack ? String(form.fromTrack) : "",
+          viaDestinoId: form.toTrack ? String(form.toTrack) : "",
+          seccionOrigenId: String(sectionsByVia[Number(form.fromTrack)]?.find((section) => section.numero === fromSection)?.id ?? ""),
+          seccionDestinoId: String(sectionsByVia[Number(form.toTrack)]?.find((section) => section.numero === toSection)?.id ?? ""),
+          polo: form.polo || "Sin_Solicitar",
+          posicionCabina: form.cabinPosition || "Sin_Solicitar",
+          posicionChimenea: form.chimneyPosition || "Sin_Solicitar",
+          tipoMovimiento: form.movementType || "MD_TRABAJANDO",
+          direccionEmpuje: form.pushPull || "Sin_Solicitar",
+          instrucciones: form.comments || "",
+        }}
+        localidadId={Number(form.selectedLocalityId)}
+        empresaId={form.empresaId}
+        creadoPorId={form.creadoPorId}
+        vias={vias}
+        sectionsByVia={sectionsByVia}
+        ensureSections={ensureSections}
+        onFinish={() => {
+          if (!form.service) clearForm();
+          goSalir();
+        }}
+        onCancel={goSalir}
+      />
+    );
   }
 
 
