@@ -1,7 +1,9 @@
 // src/app/cliente/movimientos/page.tsx
 import MovimientosPanel from "@/features/movimientos/list/MovimientosPanel";
+import TorreonNaturalQueue from "@/features/torreon/naturales/components/TorreonNaturalQueue";
 import { redirect } from "next/navigation";
 import { getVerifiedSession } from "@/lib/server/session";
+import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 
 export const dynamic = "force-dynamic";
 const MOVIMIENTOS_API_BASE = process.env.NEXT_PUBLIC_API_BASE || "/bff";
@@ -19,6 +21,9 @@ export default async function Page() {
     (session.authorization.scope.mode === "COMPANY_LOCALITY" && session.localidadId == null)
   )
     redirect("/login?loc=cliente");
+  const torreonLocalidadId = isTorreonLocalidadId(session.localidadId)
+    ? session.localidadId
+    : null;
 
   return (
     <section
@@ -36,15 +41,24 @@ export default async function Page() {
           py-2 sm:py-4
         "
       >
-        <MovimientosPanel
-          apiBase={MOVIMIENTOS_API_BASE}
-          authorization={session.authorization}
-          empresaIdUsuario={session.empresaId}
-          localidadIdUsuario={session.localidadId}
-          bloquearLocalidad={session.authorization.scope.mode === "COMPANY_LOCALITY"}
-          puedeCrear={capabilities.canCreateMovements}
-          intervaloAutoMs={15000}
-        />
+        {torreonLocalidadId != null ? (
+          <TorreonNaturalQueue
+            localidadId={torreonLocalidadId}
+            rol={role}
+            view="seguimiento"
+            canCreateMovements={capabilities.canCreateMovements}
+          />
+        ) : (
+          <MovimientosPanel
+            apiBase={MOVIMIENTOS_API_BASE}
+            authorization={session.authorization}
+            empresaIdUsuario={session.empresaId}
+            localidadIdUsuario={session.localidadId}
+            bloquearLocalidad={session.authorization.scope.mode === "COMPANY_LOCALITY"}
+            puedeCrear={capabilities.canCreateMovements}
+            intervaloAutoMs={15000}
+          />
+        )}
       </div>
     </section>
   );
