@@ -275,6 +275,7 @@ export default function TorreonNaturalQueue({
   return (
     <section
       className={s.board}
+      data-view={view}
       aria-labelledby="torreon-natural-title"
       aria-busy={loading || busy}
     >
@@ -307,15 +308,25 @@ export default function TorreonNaturalQueue({
       <header className={s.header}>
         <div className={s.heading}>
           <span className={s.headingIcon}>
-            <TrainFront size={22} aria-hidden />
+            {view === "seguimiento" ? (
+              <ListChecks size={22} aria-hidden />
+            ) : (
+              <TrainFront size={22} aria-hidden />
+            )}
           </span>
           <div>
-            <span className={s.eyebrow}>CONTROL DE OPERACIÓN · TORREÓN</span>
-            <h2 id="torreon-natural-title">Movimientos naturales</h2>
+            <span className={s.eyebrow}>
+              {view === "seguimiento"
+                ? "CONSULTA DE MOVIMIENTOS · TORREÓN"
+                : "CONTROL DE OPERACIÓN · TORREÓN"}
+            </span>
+            <h2 id="torreon-natural-title">
+              {view === "seguimiento" ? "Seguimiento de movimientos" : "Movimientos naturales"}
+            </h2>
             <p>
               {view === "inicio"
                 ? "Solicitudes activas, recorrido y responsables en el patio."
-                : "Consulta de solicitudes, tiempos y movimientos concluidos."}
+                : "Revisa solicitudes activas, consulta su detalle y explora el historial."}
             </p>
           </div>
         </div>
@@ -324,26 +335,6 @@ export default function TorreonNaturalQueue({
             <Link href="/movimientos/crear?tipo=NATURAL" className={s.primaryButton}>
               <Plus size={15} aria-hidden /> Solicitar movimientos
             </Link>
-          )}
-          {view === "seguimiento" && (
-            <div className={s.switcher} aria-label="Vista de movimientos">
-              <button
-                type="button"
-                disabled={busy}
-                aria-pressed={!history}
-                onClick={() => setHistory(false)}
-              >
-                En operación
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                aria-pressed={history}
-                onClick={() => setHistory(true)}
-              >
-                Concluidos
-              </button>
-            </div>
           )}
           <button
             type="button"
@@ -355,6 +346,31 @@ export default function TorreonNaturalQueue({
           </button>
         </div>
       </header>
+      {view === "seguimiento" && (
+        <div className={s.followUpTabs}>
+          <div className={s.switcher} role="group" aria-label="Período de seguimiento">
+            <button
+              type="button"
+              disabled={busy}
+              aria-pressed={!history}
+              onClick={() => setHistory(false)}
+            >
+              <Clock3 size={16} aria-hidden /> Activos
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              aria-pressed={history}
+              onClick={() => setHistory(true)}
+            >
+              <CheckCircle2 size={16} aria-hidden /> Historial
+            </button>
+          </div>
+          <span>
+            {history ? "Solicitudes concluidas y canceladas" : "Solicitudes pendientes y en curso"}
+          </span>
+        </div>
+      )}
       <div className={s.metrics}>
         {metrics.map(({ label, value, icon: Icon, tone }) => (
           <div key={label} className={s.metric} data-tone={tone}>

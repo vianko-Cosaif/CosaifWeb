@@ -328,7 +328,7 @@ it.each(["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "COORDINADOR", "SUPERVISOR"
       );
     expect(Boolean(within(table).queryByText("En espera"))).toBe(elapsed);
     expect(within(table).getByRole("columnheader", { name: "Inicio" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Concluidos" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Historial" })).toBeNull();
     expect(fetcher.mock.calls.some(([url]) => url.includes("historial=false"))).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Ver detalle del movimiento 501" }));
     expect(Boolean(screen.queryByRole("link", { name: /Antes del movimiento/ }))).toBe(!client);
@@ -352,7 +352,7 @@ it("retains final timestamps and concluded requests in Seguimiento", async () =>
   vi.stubGlobal("fetch", fetcher);
   render(<TorreonNaturalQueue localidadId={2} rol="COORDINADOR" view="seguimiento" />);
   await screen.findByRole("table");
-  fireEvent.click(screen.getByRole("button", { name: "Concluidos" }));
+  fireEvent.click(screen.getByRole("button", { name: "Historial" }));
   await waitFor(() =>
     expect(fetcher.mock.calls.some(([url]) => url.includes("historial=true"))).toBe(true),
   );
