@@ -4,10 +4,6 @@ import TorreonNaturalQueue from "@/features/torreon/naturales/components/Torreon
 import { redirect } from "next/navigation";
 import { getVerifiedSession } from "@/lib/server/session";
 import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
-<<<<<<< Updated upstream
-=======
-import TorreonNaturalQueue from "@/features/torreon/naturales/components/TorreonNaturalQueue";
->>>>>>> Stashed changes
 
 export const dynamic = "force-dynamic";
 const MOVIMIENTOS_API_BASE = process.env.NEXT_PUBLIC_API_BASE || "/bff";

@@ -37,6 +37,25 @@ type FormState = {
   confirm: string;
 };
 
+function reconcileAssignment(
+  current: FormState,
+  empresas: Empresa[],
+  localidades: Localidad[],
+  roleOptions: Rol[]
+): FormState {
+  const rol = roleOptions.includes(current.rol) ? current.rol : (roleOptions[0] ?? current.rol);
+  const compatibleEmpresas = empresas.filter((empresa) => isCompanyAllowedForRole(empresa.nombre, rol));
+  const empresaId = !empresas.length || compatibleEmpresas.some((empresa) => empresa.id === current.empresaId)
+    ? current.empresaId
+    : (compatibleEmpresas[0]?.id ?? "");
+  const localidadId = current.localidadId || (localidades[0]?.id ?? "");
+
+  if (rol === current.rol && empresaId === current.empresaId && localidadId === current.localidadId) {
+    return current;
+  }
+  return { ...current, rol, empresaId, localidadId };
+}
+
 export default function UserForm({
   mode,
   empresas,
@@ -47,7 +66,7 @@ export default function UserForm({
   onSubmit,
   onCancel,
 }: UserFormProps) {
-  const [form, setForm] = useState<FormState>(() => ({
+  const [form, setForm] = useState<FormState>(() => reconcileAssignment({
     nombre: initial?.nombre ?? "",
     email: initial?.email ?? "",
     rol: initial?.rol ?? "CLIENTE",
@@ -55,7 +74,7 @@ export default function UserForm({
     localidadId: initial?.localidad?.id ?? initial?.localidadId ?? (localidades[0]?.id ?? ""),
     password: "",
     confirm: "",
-  }));
+  }, empresas, localidades, roleOptions));
   const [saving, setSaving] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -78,10 +97,6 @@ export default function UserForm({
     () => empresas.find((empresa) => Number(empresa.id) === Number(form.empresaId)),
     [empresas, form.empresaId]
   );
-  const compatibleRoleOptions = useMemo(
-    () => roleOptions.filter((role) => isRoleAllowedForCompany(role, selectedEmpresa?.nombre)),
-    [roleOptions, selectedEmpresa?.nombre]
-  );
   const compatibleEmpresas = useMemo(
     () => empresas.filter((empresa) => isCompanyAllowedForRole(empresa.nombre, form.rol)),
     [empresas, form.rol]
@@ -93,17 +108,10 @@ export default function UserForm({
       : "";
 
   useEffect(() => {
-    if (compatibleRoleOptions.length && !compatibleRoleOptions.includes(form.rol)) {
-      setForm((current) => ({ ...current, rol: compatibleRoleOptions[0] }));
-    }
-  }, [compatibleRoleOptions, form.rol]);
-
-  useEffect(() => {
-    if (!compatibleEmpresas.length) return;
-    if (!compatibleEmpresas.some((empresa) => Number(empresa.id) === Number(form.empresaId))) {
-      setForm((current) => ({ ...current, empresaId: compatibleEmpresas[0].id }));
-    }
-  }, [compatibleEmpresas, form.empresaId]);
+    // The selected role determines the company; update both together so they
+    // cannot trigger competing effects when catalogs load or change.
+    setForm((current) => reconcileAssignment(current, empresas, localidades, roleOptions));
+  }, [empresas, localidades, roleOptions]);
 
   const passwordStatusMessage =
     shouldValidatePassword && passwordDraft.length > 0 && passwordDraft.length < 8
@@ -134,6 +142,8 @@ export default function UserForm({
     form.email.trim() &&
     !!form.empresaId &&
     !!form.localidadId &&
+    !!selectedEmpresa &&
+    roleOptions.includes(form.rol) &&
     !businessRuleMessage &&
     passwordReady &&
     !saving;
@@ -292,11 +302,14 @@ export default function UserForm({
       <div>
         <label className="mb-1.5 block text-sm font-black text-slate-700 dark:text-slate-300">Rol</label>
         <div className="grid grid-cols-2 gap-2">
-          {compatibleRoleOptions.map((role) => (
+          {roleOptions.map((role) => (
             <button
               key={role}
               type="button"
-              onClick={() => setForm((current) => ({ ...current, rol: role }))}
+              aria-pressed={form.rol === role}
+              onClick={() => setForm((current) => reconcileAssignment(
+                { ...current, rol: role }, empresas, localidades, roleOptions
+              ))}
               className={cn(
                 "rounded-xl border px-3 py-2.5 text-sm font-black transition",
                 form.rol === role

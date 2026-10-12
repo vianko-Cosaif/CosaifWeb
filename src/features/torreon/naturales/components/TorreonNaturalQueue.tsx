@@ -356,7 +356,6 @@ export default function TorreonNaturalQueue({
             )}
           </span>
           <div>
-<<<<<<< Updated upstream
             <span className={s.eyebrow}>
               {view === "seguimiento"
                 ? "CONSULTA DE MOVIMIENTOS · TORREÓN"
@@ -366,17 +365,13 @@ export default function TorreonNaturalQueue({
               {view === "seguimiento" ? "Seguimiento de movimientos" : "Movimientos naturales"}
             </h2>
             <p>
-              {view === "inicio"
+              {isClient
+                ? history && view === "seguimiento"
+                  ? "Historial de movimientos de tu empresa · solo consulta."
+                  : "Vista general de todas las empresas del patio · solo consulta."
+                : view === "inicio"
                 ? "Solicitudes activas, recorrido y responsables en el patio."
                 : "Revisa solicitudes activas, consulta su detalle y explora el historial."}
-=======
-            <span className={s.eyebrow}>PATIO TORREÓN</span>
-            <h2 id="torreon-natural-title">Movimientos naturales</h2>
-            <p>
-              {view === "inicio"
-                ? "Consulta el orden de atención y los responsables de cada movimiento."
-                : "Sigue la operación y consulta movimientos concluidos o cancelados."}
->>>>>>> Stashed changes
             </p>
           </div>
         </div>
@@ -386,29 +381,6 @@ export default function TorreonNaturalQueue({
               <Plus size={15} aria-hidden /> Solicitar movimientos
             </Link>
           )}
-<<<<<<< Updated upstream
-=======
-          {view === "seguimiento" && (
-            <div className={s.switcher} aria-label="Vista de movimientos">
-              <button
-                type="button"
-                disabled={busy}
-                aria-pressed={!history}
-                onClick={() => setHistory(false)}
-              >
-                En operación
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                aria-pressed={history}
-                onClick={() => setHistory(true)}
-              >
-                Historial
-              </button>
-            </div>
-          )}
->>>>>>> Stashed changes
           <button
             type="button"
             className={s.button}
@@ -419,7 +391,6 @@ export default function TorreonNaturalQueue({
           </button>
         </div>
       </header>
-<<<<<<< Updated upstream
       {view === "seguimiento" && (
         <div className={s.followUpTabs}>
           <div className={s.switcher} role="group" aria-label="Período de seguimiento">
@@ -441,14 +412,15 @@ export default function TorreonNaturalQueue({
             </button>
           </div>
           <span>
-            {history ? "Solicitudes concluidas y canceladas" : "Solicitudes pendientes y en curso"}
+            {history
+              ? isClient
+                ? "Solicitudes concluidas y canceladas de tu empresa"
+                : "Solicitudes concluidas y canceladas de todas las empresas"
+              : "Solicitudes en espera, detenidas y en proceso"}
           </span>
         </div>
       )}
-      <div className={s.metrics}>
-=======
       <div className={s.metrics} role="group" aria-label="Resumen de movimientos">
->>>>>>> Stashed changes
         {metrics.map(({ label, value, icon: Icon, tone }) => (
           <div key={label} className={s.metric} data-tone={tone}>
             <span className={s.metricIcon}>
@@ -689,8 +661,9 @@ export default function TorreonNaturalQueue({
         <NaturalQueueTable
           units={visible}
           dispatch={dispatch && !history}
+          canResolveIncidents={dispatch}
           showWaitTime={showWaitTime}
-          showImages={!isClient}
+          showImages={true}
           showFinish={view === "seguimiento"}
           selected={selected}
           onSelect={(id, checked) =>

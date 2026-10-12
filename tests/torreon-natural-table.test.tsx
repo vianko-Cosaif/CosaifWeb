@@ -276,7 +276,7 @@ it("assigns the entire attention unit using its id and only offers active local 
   expect(JSON.parse(options!.body as string)).toEqual({ operadorId: 17 });
 });
 
-it("lets clients inspect and confirm an incident solution without dispatcher controls", async () => {
+it("lets clients inspect incidents across the yard with read-only controls", async () => {
   const detained = {
     ...unit(71, 1, [movement(501, 7620)]),
     estado: "DETENIDA",
@@ -306,23 +306,38 @@ it("lets clients inspect and confirm an incident solution without dispatcher con
   expect(screen.queryByLabelText("Asignar unidad 71")).toBeNull();
   expect(screen.queryByRole("checkbox")).toBeNull();
   expect(screen.queryByRole("button", { name: /^Subir|^Asignar$/ })).toBeNull();
-  const confirm = screen.getByRole("button", { name: "Confirmar solución" });
-  expect((confirm as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.change(screen.getByLabelText("Solución del incidente 91"), {
-    target: { value: "Vía despejada" },
-  });
-  fireEvent.click(confirm);
-  await waitFor(() =>
-    expect(fetcher.mock.calls.some(([, options]) => options?.method === "PATCH")).toBe(true),
-  );
-  const [url, options] = fetcher.mock.calls.find(([, init]) => init?.method === "PATCH")!;
-  expect(url).toBe("/bff/torreon/incidentes/91/resolver?tipo=NATURAL");
-  expect(JSON.parse(options!.body as string)).toEqual({
-    solucion: "Vía despejada",
-  });
+  expect(screen.queryByRole("button", { name: "Confirmar solución" })).toBeNull();
+  expect(screen.queryByLabelText("Solución del incidente 91")).toBeNull();
+  expect(fetcher.mock.calls.some(([, options]) => options?.method && options.method !== "GET")).toBe(false);
 });
 
-it("shows the real size of a partially visible conjunto without adding movements outside the client scope", async () => {
+it.each(["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"])(
+  "shows %s the same companies and complete groups as coordination without operational controls",
+  async (role) => {
+    const otherCompany = { ...movement(502, 8820), empresaId: 4, empresaNombreSnapshot: "Empresa del Pacífico" };
+    const rows = [unit(71, 1, [movement(501, 7620), otherCompany]), unit(72, 2, [
+      { ...otherCompany, id: 503, locomotiveNumber: 9901 },
+    ])];
+    const fetcher = vi.fn(async (url: string) => json(url.startsWith("/bff/usuarios") ? [] : rows));
+    vi.stubGlobal("fetch", fetcher);
+    const page = render(<TorreonNaturalQueue localidadId={2} rol={role} />);
+    const table = await screen.findByRole("table");
+    const clientOrder = locomotiveOrder();
+    expect(clientOrder).toEqual(["7620", "8820", "9901"]);
+    expect(within(table).getAllByText("Empresa del Pacífico")).toHaveLength(2);
+    expect(within(table).getByText("Ferrocarril del Norte")).toBeTruthy();
+    expect(screen.getByText("Vista general de todas las empresas del patio · solo consulta.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Ver detalle del movimiento 502" }));
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Subir|^Asignar$|Confirmar solución|Iniciar|Finalizar/ })).toBeNull();
+    expect(fetcher.mock.calls.every(([url]) => !url.startsWith("/bff/usuarios"))).toBe(true);
+    page.rerender(<TorreonNaturalQueue localidadId={2} rol="COORDINADOR" />);
+    expect(locomotiveOrder()).toEqual(clientOrder);
+    expect(screen.getAllByRole("checkbox").length).toBeGreaterThan(0);
+  },
+);
+
+it("shows the real size of a partially visible conjunto without adding unavailable rows", async () => {
   const scopedGroup: QueueUnit = {
     ...unit(71, 1, [movement(501, 7620)]),
     modalidad: "CONJUNTO",
@@ -411,12 +426,13 @@ it.each(["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "COORDINADOR", "SUPERVISOR"
         "/cliente/incidentes?source=torreon&tipo=NATURAL",
       );
     expect(Boolean(within(table).queryByText("En espera"))).toBe(elapsed);
+    expect(within(table).getByRole("columnheader", { name: elapsed ? "Solicitud / tiempo" : "Solicitud" })).toBeTruthy();
     expect(within(table).getByRole("columnheader", { name: "Inicio" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Historial" })).toBeNull();
     expect(fetcher.mock.calls.some(([url]) => url.includes("historial=false"))).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Ver detalle del movimiento 501" }));
-    expect(Boolean(screen.queryByRole("link", { name: /Antes del movimiento/ }))).toBe(!client);
-    expect(Boolean(screen.queryByRole("link", { name: /Evidencia 1/ }))).toBe(!client);
+    expect(screen.getByRole("link", { name: /Antes del movimiento/ })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Evidencia 1/ })).toBeTruthy();
     expect(screen.queryByText(/^Fin$/)).toBeNull();
     expect(screen.queryByText(/13:00/)).toBeNull();
   },
@@ -448,6 +464,47 @@ it("retains final timestamps and concluded requests in Seguimiento", async () =>
   expect(screen.getByText(/^Fin$/)).toBeTruthy();
   expect(screen.getByText(/08.*oct.*2026.*13:00/)).toBeTruthy();
 });
+
+it.each(["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "COORDINADOR", "SUPERVISOR"])(
+  "switches %s from shared active operations to the correct history scope",
+  async (role) => {
+    const client = role.startsWith("CLIENTE");
+    const activeStates = ["PENDIENTE", "DETENIDA", "EN_PROCESO", "LISTA_REANUDAR"];
+    const active = activeStates.map((estado, index) => ({
+      ...unit(index + 1, index + 1, [{
+        ...movement(index + 501, index + 7601),
+        empresaId: index % 2 ? 4 : 3,
+        empresaNombreSnapshot: index % 2 ? "Empresa B" : "Empresa A",
+      }]),
+      estado,
+    }));
+    const past = active.map((entry, index) => ({
+      ...entry,
+      estado: index % 2 ? "CANCELADA" : "CONCLUIDA",
+      movimientos: entry.movimientos.map(movement => ({ ...movement, estado: index % 2 ? "CANCELADO" : "CONCLUIDO" })),
+    }));
+    const ownHistory = past.filter(entry => entry.movimientos[0].empresaId === 3);
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => json(
+      url.startsWith("/bff/usuarios") ? [] : url.includes("historial=true") ? (client ? ownHistory : past) : active,
+    )));
+    render(<TorreonNaturalQueue localidadId={2} rol={role} view="seguimiento" />);
+    await screen.findByRole("table");
+    expect(locomotiveOrder()).toEqual(["7601", "7602", "7603", "7604"]);
+    expect(screen.getByText("Solicitudes en espera, detenidas y en proceso")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Historial" }));
+    await waitFor(() => expect(locomotiveOrder()).toEqual(client ? ["7601", "7603"] : ["7601", "7602", "7603", "7604"]));
+    expect(screen.getByText(client
+      ? "Solicitudes concluidas y canceladas de tu empresa"
+      : "Solicitudes concluidas y canceladas de todas las empresas")).toBeTruthy();
+    if (client) {
+      expect(screen.getByText("Historial de movimientos de tu empresa · solo consulta.")).toBeTruthy();
+      expect(screen.queryByText("Empresa B")).toBeNull();
+      expect(screen.queryByText("En espera")).toBeNull();
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Activos" }));
+    await waitFor(() => expect(locomotiveOrder()).toEqual(["7601", "7602", "7603", "7604"]));
+  },
+);
 
 it("uses the natural queue for client Seguimiento and finds a concluded movement beyond the old page limit", async () => {
   const past = Array.from({ length: 110 }, (_, index) => ({

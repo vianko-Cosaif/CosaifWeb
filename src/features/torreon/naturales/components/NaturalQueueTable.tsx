@@ -31,6 +31,7 @@ import s from "./naturalQueue.module.scss";
 type Props = {
   units: QueueUnit[];
   dispatch: boolean;
+  canResolveIncidents?: boolean;
   showWaitTime: boolean;
   showImages: boolean;
   showFinish: boolean;
@@ -46,6 +47,7 @@ const cleanInstructions = (text?: string | null) =>
 export default function NaturalQueueTable({
   units,
   dispatch,
+  canResolveIncidents = dispatch,
   showWaitTime,
   showImages,
   showFinish,
@@ -578,6 +580,7 @@ export default function NaturalQueueTable({
                             <IncidentDetail
                               key={incident.id}
                               incident={incident}
+                              canResolve={canResolveIncidents}
                               showImages={showImages}
                               busy={busy}
                               solution={solution[incident.id] ?? ""}
@@ -636,6 +639,7 @@ function PhotoLinks({ photos, movement = false }: { photos: QueuePhoto[]; moveme
 }
 function IncidentDetail({
   incident,
+  canResolve,
   showImages,
   busy,
   solution,
@@ -643,6 +647,7 @@ function IncidentDetail({
   onResolve,
 }: {
   incident: QueueIncident;
+  canResolve: boolean;
   showImages: boolean;
   busy: boolean;
   solution: string;
@@ -681,7 +686,7 @@ function IncidentDetail({
           </small>
         </p>
       )}
-      {incident.estado === "ABIERTO" && (
+      {canResolve && incident.estado === "ABIERTO" && (
         <div className={s.resolve}>
           <label className={s.solutionField}>
             <span>¿Cómo se solucionó?</span>
