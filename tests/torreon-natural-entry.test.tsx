@@ -198,7 +198,8 @@ it("starts a fresh natural capture and preserves an existing service draft after
   fireEvent.change(screen.getByLabelText("Locomotora solicitada"), { target: { value: "121" } });
   fireEvent.change(screen.getByLabelText("Vía de origen"), { target: { value: "8" } });
   fireEvent.change(screen.getByLabelText("Vía de destino"), { target: { value: "9" } });
-  fireEvent.change(screen.getByLabelText("Polo de patio"), { target: { value: "NORTE" } });
+  fireEvent.change(screen.getByLabelText("Polo de salida"), { target: { value: "NORTE" } });
+  fireEvent.change(screen.getByLabelText("Polo de llegada"), { target: { value: "SUR" } });
   fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
   fireEvent.click(screen.getByRole("button", { name: "Enviar 1 solicitud" }));
   await waitFor(() => expect(current.goSalir).toHaveBeenCalledOnce());
@@ -232,6 +233,10 @@ it("transfers a natural draft with its real section ids and clears it only after
   expect((screen.getByLabelText("Posición de origen") as HTMLSelectElement).value).toBe("81");
   expect((screen.getByLabelText("Posición de destino") as HTMLSelectElement).value).toBe("91");
   expect(current.clearForm).not.toHaveBeenCalled();
+  expect((screen.getByLabelText("Polo de salida") as HTMLSelectElement).value).toBe("");
+  expect((screen.getByLabelText("Polo de llegada") as HTMLSelectElement).value).toBe("");
+  fireEvent.change(screen.getByLabelText("Polo de salida"), { target: { value: "NORTE" } });
+  fireEvent.change(screen.getByLabelText("Polo de llegada"), { target: { value: "SUR" } });
   fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
   fireEvent.click(screen.getByRole("button", { name: "Enviar 1 solicitud" }));
   await waitFor(() => expect(current.goSalir).toHaveBeenCalledOnce());

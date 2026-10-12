@@ -6,7 +6,7 @@ import { invalidateCachedJson } from "@/lib/http/client";
 import { useClientQueueData } from "@/features/rail-queue/cliente/useClientQueueData";
 import type { ClientQueueSelection } from "@/features/rail-queue/cliente/queueData";
 
-function Fixture(props: Partial<ClientQueueSelection> & { onChanged?: () => void }) {
+function Fixture(props: Partial<ClientQueueSelection> & { enabled?: boolean; onChanged?: () => void }) {
   const queue = useClientQueueData({ localidadId: 1, empresaId: 8, entity: "movimientos", ...props });
   return <><output data-testid="items">{queue.items.map((item) => item.id).join(",")}</output><output data-testid="loading">{String(queue.loading)}</output>{queue.error && <p role="alert">{queue.error}</p>}<button onClick={() => queue.load(true)}>Actualizar</button></>;
 }
@@ -21,6 +21,17 @@ beforeEach(() => invalidateCachedJson());
 afterEach(() => { cleanup(); invalidateCachedJson(); vi.unstubAllGlobals(); });
 
 describe("client queue requests on filter changes", () => {
+  it("does not request legacy rounds while the natural Torreón queue owns the screen, and preserves the GDL request when reenabled", async () => {
+    const fetch = vi.fn().mockResolvedValue(json([row(10)]));
+    vi.stubGlobal("fetch", fetch);
+    const view = render(<Fixture enabled={false} localidadId={2} />);
+    fireEvent.click(screen.getByRole("button"));
+    expect(fetch).not.toHaveBeenCalled();
+    view.rerender(<Fixture />);
+    await waitFor(() => expect(screen.getByTestId("items").textContent).toBe("10"));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][0]).toBe("/api/cliente/rondas?localidadId=1&estado=pendientes&entity=movimientos&alcance=localidad");
+  });
   it("does not show a previous entity's response after filters change", async () => {
     const old = deferred<Response>();
     const fresh = deferred<Response>();

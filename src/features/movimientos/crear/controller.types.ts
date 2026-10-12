@@ -84,6 +84,7 @@ export interface CrearMovimientoController {
   reloadVias: () => Promise<void>;
   sectionsByVia: Record<number, Seccion[]>;
   secLoading: Record<number, boolean>;
+  secErrors: Record<number, string>;
 
   /* Sesion y permisos */
   rol: Rol;

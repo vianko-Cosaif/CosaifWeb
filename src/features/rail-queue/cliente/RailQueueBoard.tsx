@@ -112,6 +112,7 @@ export default function RailQueueBoard({
     empresaId ? "/api/cliente" : API_XAPI_BASE,
   );
   const { items, loading, refreshing, error, updatedAt, load } = useClientQueueData({
+    enabled: !naturalTorreon || trainingTour.active,
     localidadId,
     empresaId,
     entity: activeEntity,

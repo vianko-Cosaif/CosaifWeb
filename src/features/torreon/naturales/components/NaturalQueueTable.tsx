@@ -16,12 +16,13 @@ import { toTorreonImageProxyUrl } from "@/lib/torreonImageProxy";
 import {
   configurationLabel,
   dateLabel,
-  elapsedLabel,
+  naturalTiming,
+  poleLabel,
+  sectionPositionLabel,
   movementIncidents,
   personName,
   unitPriority,
   type QueueIncident,
-  type QueueMovement,
   type QueuePhoto,
   type QueueUnit,
 } from "../queueView";
@@ -42,20 +43,6 @@ type Props = {
 };
 const cleanInstructions = (text?: string | null) =>
   text?.replace(/\[META (?:ORIGEN|DESTINO):\d+\]\s*/gi, "").trim();
-function timing(unit: QueueUnit, movement: QueueMovement) {
-  const start = movement.fechaInicio ?? unit.fechaInicio;
-  const finish = movement.fechaFin ?? unit.fechaFin;
-  if (finish && start) return { label: "Inicio a fin", value: elapsedLabel(start, finish) };
-  if (movement.fechaPausa && unit.estado === "DETENIDA")
-    return { label: "Pausado hace", value: elapsedLabel(movement.fechaPausa) };
-  if (start) return { label: "Desde inicio", value: elapsedLabel(start) };
-  if (["CONCLUIDA", "CANCELADA"].includes(unit.estado))
-    return { label: "Cierre", value: dateLabel(finish) };
-  return {
-    label: "En espera",
-    value: elapsedLabel(movement.fechaSolicitud ?? unit.fechaRecepcion),
-  };
-}
 export default function NaturalQueueTable({
   units,
   dispatch,
@@ -127,7 +114,31 @@ export default function NaturalQueueTable({
               const incidents = movementIncidents(unit, movement);
               const openIncidents = incidents.filter((incident) => incident.estado === "ABIERTO");
               const isExpanded = expanded.includes(movement.id);
-              const time = timing(unit, movement);
+              const time = naturalTiming(unit, movement);
+              const statusLabel =
+                unit.estado === "LISTA_REANUDAR"
+                  ? "Listo para continuar"
+                  : (
+                      {
+                        SOLICITADO: "Por iniciar",
+                        PENDIENTE: "Por iniciar",
+                        ASIGNADO: "Por iniciar",
+                        EN_PROCESO: "En curso",
+                        DETENIDO: "Con incidente",
+                        CONCLUIDO: "Concluido",
+                        CANCELADO: "Cancelado",
+                      } as Record<string, string>
+                    )[movement.estado];
+              const originSection = sectionPositionLabel(
+                movement.seccionOrigenNumero,
+                movement.seccionOrigenNombreSnapshot,
+                Boolean(movement.seccionOrigenId),
+              );
+              const destinationSection = sectionPositionLabel(
+                movement.seccionDestinoNumero,
+                movement.seccionDestinoNombreSnapshot,
+                Boolean(movement.seccionDestinoId),
+              );
               const detailId = `${prefix}-movement-${movement.id}`;
               const coordinatorName = personName(
                 movement.coordinador,
@@ -190,10 +201,7 @@ export default function NaturalQueueTable({
                       <span className={s.company}>
                         {movement.empresaNombreSnapshot || `Empresa #${movement.empresaId}`}
                       </span>
-                      <small>
-                        Movimiento #{movement.id}
-                        {unit.modalidad !== "CONJUNTO" ? ` · Solicitud #${unit.id}` : ""}
-                      </small>
+                      <small>Solicitud #{movement.id}</small>
                     </th>
                     <td className={s.timeCell}>
                       {(movement.fechaInicio ?? unit.fechaInicio) ? (
@@ -216,13 +224,10 @@ export default function NaturalQueueTable({
                                   ? `Vía #${movement.viaOrigenId}`
                                   : "Origen sin registrar")}
                             </strong>
-                            <small>
-                              Posición:{" "}
-                              {movement.seccionOrigenNombreSnapshot ||
-                                (movement.seccionOrigenId
-                                  ? `Sección #${movement.seccionOrigenId}`
-                                  : "Sin sección registrada")}
-                            </small>
+                            <span className={s.sectionBadge}>{originSection}</span>
+                            <span className={s.poleLabel}>
+                              Polo de salida: <strong>{poleLabel(movement.poloOrigen)}</strong>
+                            </span>
                           </span>
                         </span>
                         <ArrowDown size={13} className={s.routeArrow} aria-hidden />
@@ -236,13 +241,10 @@ export default function NaturalQueueTable({
                                   ? `Vía #${movement.viaDestinoId}`
                                   : "Destino sin registrar")}
                             </strong>
-                            <small>
-                              Posición:{" "}
-                              {movement.seccionDestinoNombreSnapshot ||
-                                (movement.seccionDestinoId
-                                  ? `Sección #${movement.seccionDestinoId}`
-                                  : "Sin sección registrada")}
-                            </small>
+                            <span className={s.sectionBadge}>{destinationSection}</span>
+                            <span className={s.poleLabel}>
+                              Polo de llegada: <strong>{poleLabel(movement.poloDestino)}</strong>
+                            </span>
                           </span>
                         </span>
                       </div>
@@ -273,12 +275,21 @@ export default function NaturalQueueTable({
                     </td>
                     <td>
                       <div className={s.statusStack}>
-                        <StatusBadge status={movement.estado} size="sm" dot />
-                        {unit.estado === "LISTA_REANUDAR" && (
-                          <span className={s.readyTag}>Lista para reanudar</span>
-                        )}
+                        <StatusBadge
+                          status={movement.estado}
+                          label={statusLabel}
+                          tone={
+                            unit.estado === "LISTA_REANUDAR"
+                              ? "success"
+                              : movement.estado === "DETENIDO"
+                                ? "danger"
+                                : undefined
+                          }
+                          size="sm"
+                          dot
+                        />
                         {unit.ordenManual != null && unit.estado === "PENDIENTE" && (
-                          <span className={s.priorityTag}>Prioridad manual</span>
+                          <span className={s.priorityTag}>Prioridad asignada</span>
                         )}
                         {unit.incidenteBloqueanteId && unit.estado !== "DETENIDA" && (
                           <span className={s.blockedTag}>Ruta bloqueada</span>
@@ -303,20 +314,6 @@ export default function NaturalQueueTable({
                           {configurationLabel(movement.direccionEmpuje)}
                         </p>
                       )}
-                      <dl className={s.configuration}>
-                        <div>
-                          <dt>Polo de patio</dt>
-                          <dd>{configurationLabel(movement.polo)}</dd>
-                        </div>
-                        <div>
-                          <dt>Chimenea</dt>
-                          <dd>{configurationLabel(movement.posicionChimenea)}</dd>
-                        </div>
-                        <div>
-                          <dt>Cabina</dt>
-                          <dd>{configurationLabel(movement.posicionCabina)}</dd>
-                        </div>
-                      </dl>
                     </td>
                     <td className={s.timeCell}>
                       <time dateTime={movement.fechaSolicitud ?? unit.fechaRecepcion ?? undefined}>
@@ -326,6 +323,7 @@ export default function NaturalQueueTable({
                         <>
                           <span>{time.label}</span>
                           <strong>{time.value}</strong>
+                          {time.total && <small>Tiempo total: {time.total}</small>}
                         </>
                       )}
                     </td>
@@ -369,7 +367,7 @@ export default function NaturalQueueTable({
                         )}
                       </div>
                     </td>
-                    <td>
+                    <td className={s.actionCell}>
                       <button
                         type="button"
                         className={s.detailButton}
@@ -390,182 +388,213 @@ export default function NaturalQueueTable({
                   {isExpanded && (
                     <tr className={s.detailRow}>
                       <td colSpan={10} id={detailId}>
-                        <div className={s.detailHeader}>
-                          <strong>
-                            Movimiento #{movement.id} · Locomotora {movement.locomotiveNumber}
-                          </strong>
-                          <button
-                            type="button"
-                            className={s.textButton}
-                            onClick={() => onHistory(unit.id)}
-                          >
-                            <History size={15} aria-hidden /> Ver historial de operación
-                          </button>
-                        </div>
-                        <div className={s.detailGrid}>
-                          <div>
-                            <h3>Indicaciones</h3>
-                            <p className={s.instructions}>
-                              {cleanInstructions(movement.instrucciones) ||
-                                "Sin indicaciones adicionales."}
-                            </p>
-                            {unit.modalidad === "CONJUNTO" && (
-                              <p className={s.groupNote}>
-                                <Link2 size={14} aria-hidden />
-                                Parte del conjunto #{unit.id}, con{" "}
-                                {unit.totalIntegrantes ?? unit.movimientos.length} movimientos.{" "}
-                                {unit.totalIntegrantes &&
-                                unit.totalIntegrantes > unit.movimientos.length
-                                  ? `Se muestran ${unit.movimientos.length} de tu empresa.`
-                                  : ""}
+                        <div className={s.detailContent}>
+                          <div className={s.detailHeader}>
+                            <strong>
+                              Solicitud #{movement.id} · Locomotora {movement.locomotiveNumber}
+                            </strong>
+                            <button
+                              type="button"
+                              className={s.textButton}
+                              onClick={() => onHistory(unit.id)}
+                            >
+                              <History size={15} aria-hidden /> Ver historial de operación
+                            </button>
+                          </div>
+                          <div className={s.detailRoute} aria-label="Recorrido de la solicitud">
+                            <div>
+                              <span>Origen · De dónde se saca</span>
+                              <strong>
+                                {movement.viaOrigenNombreSnapshot || "Vía sin registrar"}
+                              </strong>
+                              <p className={s.sectionBadge}>{originSection}</p>
+                              <p className={s.poleLabel}>
+                                Polo de salida: <strong>{poleLabel(movement.poloOrigen)}</strong>
                               </p>
+                            </div>
+                            <ArrowDown size={18} aria-hidden />
+                            <div>
+                              <span>Destino · Dónde se coloca</span>
+                              <strong>
+                                {movement.viaDestinoNombreSnapshot || "Vía sin registrar"}
+                              </strong>
+                              <p className={s.sectionBadge}>{destinationSection}</p>
+                              <p className={s.poleLabel}>
+                                Polo de llegada: <strong>{poleLabel(movement.poloDestino)}</strong>
+                              </p>
+                            </div>
+                          </div>
+                          <div className={s.detailGrid}>
+                            <div>
+                              <h3>Indicaciones</h3>
+                              <p className={s.instructions}>
+                                {cleanInstructions(movement.instrucciones) ||
+                                  "Sin indicaciones adicionales."}
+                              </p>
+                              {unit.modalidad === "CONJUNTO" && (
+                                <p className={s.groupNote}>
+                                  <Link2 size={14} aria-hidden />
+                                  Parte del conjunto #{unit.id}, con{" "}
+                                  {unit.totalIntegrantes ?? unit.movimientos.length} movimientos.{" "}
+                                  {unit.totalIntegrantes &&
+                                  unit.totalIntegrantes > unit.movimientos.length
+                                    ? `Se muestran ${unit.movimientos.length} de tu empresa.`
+                                    : ""}
+                                </p>
+                              )}
+                            </div>
+                            <div>
+                              <h3>Participantes</h3>
+                              <dl className={s.detailData}>
+                                <div>
+                                  <dt>Solicitante</dt>
+                                  <dd>
+                                    {personName(
+                                      movement.creadoPor,
+                                      movement.creadoPorId,
+                                      "Sin registrar",
+                                    )}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt>Cliente</dt>
+                                  <dd>
+                                    {personName(
+                                      movement.cliente ??
+                                        (movement.clienteId === movement.creadoPorId
+                                          ? movement.creadoPor
+                                          : null),
+                                      movement.clienteId,
+                                      "Sin registrar",
+                                    )}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt>Supervisor</dt>
+                                  <dd>{personName(movement.supervisor, movement.supervisorId)}</dd>
+                                </div>
+                              </dl>
+                            </div>
+                            <div>
+                              <h3>Tiempos de operación</h3>
+                              <dl className={s.detailData}>
+                                <div>
+                                  <dt>Inicio</dt>
+                                  <dd>{dateLabel(movement.fechaInicio ?? unit.fechaInicio)}</dd>
+                                </div>
+                                {showFinish && (
+                                  <div>
+                                    <dt>Fin</dt>
+                                    <dd>{dateLabel(movement.fechaFin ?? unit.fechaFin)}</dd>
+                                  </div>
+                                )}
+                                <div>
+                                  <dt>Pausa</dt>
+                                  <dd>{dateLabel(movement.fechaPausa)}</dd>
+                                </div>
+                                {unit.fechaHabilitacion && (
+                                  <div>
+                                    <dt>Reanudación habilitada</dt>
+                                    <dd>{dateLabel(unit.fechaHabilitacion)}</dd>
+                                  </div>
+                                )}
+                              </dl>
+                            </div>
+                          </div>
+                          {dispatch &&
+                            !["EN_PROCESO", "CONCLUIDA", "CANCELADA"].includes(unit.estado) && (
+                              <div className={s.assignment}>
+                                <UserRound size={17} aria-hidden />
+                                <div>
+                                  <strong>
+                                    Asignación de maquinista
+                                    {unit.modalidad === "CONJUNTO" ? ` · Conjunto #${unit.id}` : ""}
+                                  </strong>
+                                  <small>
+                                    {unit.modalidad === "CONJUNTO"
+                                      ? "La asignación aplica a todos los movimientos del conjunto."
+                                      : "Selecciona quién atenderá esta solicitud."}
+                                  </small>
+                                </div>
+                                <select
+                                  aria-label={`Asignar unidad ${unit.id}`}
+                                  className={s.field}
+                                  value={assignment[unit.id] ?? ""}
+                                  onChange={(e) =>
+                                    setAssignment((prev) => ({
+                                      ...prev,
+                                      [unit.id]: e.target.value,
+                                    }))
+                                  }
+                                >
+                                  <option value="">Seleccionar maquinista</option>
+                                  {operators.map((operator) => (
+                                    <option key={operator.id} value={operator.id}>
+                                      {operator.nombre}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  className={s.primaryButton}
+                                  disabled={busy || !assignment[unit.id]}
+                                  onClick={() =>
+                                    void mutate(`/cola/${unit.id}/asignar`, {
+                                      operadorId: Number(assignment[unit.id]),
+                                    })
+                                  }
+                                >
+                                  Asignar
+                                </button>
+                                {!operators.length && (
+                                  <small>No hay maquinistas disponibles en esta localidad.</small>
+                                )}
+                              </div>
                             )}
-                          </div>
-                          <div>
-                            <h3>Participantes</h3>
-                            <dl className={s.detailData}>
-                              <div>
-                                <dt>Solicitante</dt>
-                                <dd>
-                                  {personName(
-                                    movement.creadoPor,
-                                    movement.creadoPorId,
-                                    "Sin registrar",
-                                  )}
-                                </dd>
-                              </div>
-                              <div>
-                                <dt>Cliente</dt>
-                                <dd>
-                                  {personName(
-                                    movement.cliente ??
-                                      (movement.clienteId === movement.creadoPorId
-                                        ? movement.creadoPor
-                                        : null),
-                                    movement.clienteId,
-                                    "Sin registrar",
-                                  )}
-                                </dd>
-                              </div>
-                              <div>
-                                <dt>Supervisor</dt>
-                                <dd>{personName(movement.supervisor, movement.supervisorId)}</dd>
-                              </div>
-                            </dl>
-                          </div>
-                          <div>
-                            <h3>Tiempos de operación</h3>
-                            <dl className={s.detailData}>
-                              <div>
-                                <dt>Inicio</dt>
-                                <dd>{dateLabel(movement.fechaInicio ?? unit.fechaInicio)}</dd>
-                              </div>
-                              {showFinish && (
-                                <div>
-                                  <dt>Fin</dt>
-                                  <dd>{dateLabel(movement.fechaFin ?? unit.fechaFin)}</dd>
-                                </div>
+                          {showImages && (
+                            <div className={s.evidence}>
+                              <h3>
+                                <Camera size={15} aria-hidden /> Evidencias del movimiento{" "}
+                                <span>{movement.fotos?.length ?? 0}</span>
+                              </h3>
+                              {movement.fotos?.length ? (
+                                <PhotoLinks photos={movement.fotos} movement />
+                              ) : (
+                                <p className={s.muted}>Aún no se han registrado fotografías.</p>
                               )}
-                              <div>
-                                <dt>Pausa</dt>
-                                <dd>{dateLabel(movement.fechaPausa)}</dd>
+                            </div>
+                          )}
+                          {unit.incidenteBloqueanteId &&
+                            !incidents.some(
+                              (incident) => incident.id === unit.incidenteBloqueanteId,
+                            ) && (
+                              <div className={s.routeBlock}>
+                                <AlertTriangle size={17} aria-hidden />
+                                Ruta bloqueada por el incidente #{unit.incidenteBloqueanteId}. La
+                                solicitud requiere la solución del bloqueo para continuar.
                               </div>
-                              {unit.fechaHabilitacion && (
-                                <div>
-                                  <dt>Reanudación habilitada</dt>
-                                  <dd>{dateLabel(unit.fechaHabilitacion)}</dd>
-                                </div>
-                              )}
-                            </dl>
-                          </div>
+                            )}
+                          {incidents.map((incident) => (
+                            <IncidentDetail
+                              key={incident.id}
+                              incident={incident}
+                              showImages={showImages}
+                              busy={busy}
+                              solution={solution[incident.id] ?? ""}
+                              onSolution={(value) =>
+                                setSolution((prev) => ({
+                                  ...prev,
+                                  [incident.id]: value,
+                                }))
+                              }
+                              onResolve={() =>
+                                void mutate(`/incidentes/${incident.id}/resolver?tipo=NATURAL`, {
+                                  solucion: solution[incident.id],
+                                })
+                              }
+                            />
+                          ))}
                         </div>
-                        {dispatch &&
-                          !["EN_PROCESO", "CONCLUIDA", "CANCELADA"].includes(unit.estado) && (
-                            <div className={s.assignment}>
-                              <UserRound size={17} aria-hidden />
-                              <div>
-                                <strong>
-                                  Asignación de maquinista
-                                  {unit.modalidad === "CONJUNTO" ? ` · Conjunto #${unit.id}` : ""}
-                                </strong>
-                                <small>
-                                  {unit.modalidad === "CONJUNTO"
-                                    ? "La asignación aplica a todos los movimientos del conjunto."
-                                    : "Selecciona quién atenderá esta solicitud."}
-                                </small>
-                              </div>
-                              <select
-                                aria-label={`Asignar unidad ${unit.id}`}
-                                className={s.field}
-                                value={assignment[unit.id] ?? ""}
-                                onChange={(e) =>
-                                  setAssignment((prev) => ({ ...prev, [unit.id]: e.target.value }))
-                                }
-                              >
-                                <option value="">Seleccionar maquinista</option>
-                                {operators.map((operator) => (
-                                  <option key={operator.id} value={operator.id}>
-                                    {operator.nombre}
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                type="button"
-                                className={s.primaryButton}
-                                disabled={busy || !assignment[unit.id]}
-                                onClick={() =>
-                                  void mutate(`/cola/${unit.id}/asignar`, {
-                                    operadorId: Number(assignment[unit.id]),
-                                  })
-                                }
-                              >
-                                Asignar
-                              </button>
-                              {!operators.length && (
-                                <small>No hay maquinistas disponibles en esta localidad.</small>
-                              )}
-                            </div>
-                          )}
-                        {showImages && (
-                          <div className={s.evidence}>
-                            <h3>
-                              <Camera size={15} aria-hidden /> Evidencias del movimiento{" "}
-                              <span>{movement.fotos?.length ?? 0}</span>
-                            </h3>
-                            {movement.fotos?.length ? (
-                              <PhotoLinks photos={movement.fotos} movement />
-                            ) : (
-                              <p className={s.muted}>Aún no se han registrado fotografías.</p>
-                            )}
-                          </div>
-                        )}
-                        {unit.incidenteBloqueanteId &&
-                          !incidents.some(
-                            (incident) => incident.id === unit.incidenteBloqueanteId,
-                          ) && (
-                            <div className={s.routeBlock}>
-                              <AlertTriangle size={17} aria-hidden />
-                              Ruta bloqueada por el incidente #{unit.incidenteBloqueanteId}. La
-                              solicitud requiere la solución del bloqueo para continuar.
-                            </div>
-                          )}
-                        {incidents.map((incident) => (
-                          <IncidentDetail
-                            key={incident.id}
-                            incident={incident}
-                            showImages={showImages}
-                            busy={busy}
-                            solution={solution[incident.id] ?? ""}
-                            onSolution={(value) =>
-                              setSolution((prev) => ({ ...prev, [incident.id]: value }))
-                            }
-                            onResolve={() =>
-                              void mutate(`/incidentes/${incident.id}/resolver?tipo=NATURAL`, {
-                                solucion: solution[incident.id],
-                              })
-                            }
-                          />
-                        ))}
                       </td>
                     </tr>
                   )}
@@ -654,13 +683,16 @@ function IncidentDetail({
       )}
       {incident.estado === "ABIERTO" && (
         <div className={s.resolve}>
-          <input
-            className={s.field}
-            aria-label={`Solución del incidente ${incident.id}`}
-            placeholder="Describe la solución confirmada"
-            value={solution}
-            onChange={(e) => onSolution(e.target.value)}
-          />
+          <label className={s.solutionField}>
+            <span>¿Cómo se solucionó?</span>
+            <input
+              className={s.field}
+              aria-label={`Solución del incidente ${incident.id}`}
+              placeholder="Describe la solución confirmada"
+              value={solution}
+              onChange={(e) => onSolution(e.target.value)}
+            />
+          </label>
           <button
             type="button"
             className={s.primaryButton}

@@ -29,11 +29,15 @@ export type QueueMovement = {
   viaDestinoId?: number | null;
   seccionOrigenId?: number | null;
   seccionDestinoId?: number | null;
+  seccionOrigenNumero?: number | null;
+  seccionDestinoNumero?: number | null;
   viaOrigenNombreSnapshot?: string | null;
   viaDestinoNombreSnapshot?: string | null;
   seccionOrigenNombreSnapshot?: string | null;
   seccionDestinoNombreSnapshot?: string | null;
   polo?: string | null;
+  poloOrigen?: string | null;
+  poloDestino?: string | null;
   posicionCabina?: string | null;
   posicionChimenea?: string | null;
   tipoMovimiento?: string | null;
@@ -54,6 +58,10 @@ export type QueueMovement = {
   fechaInicio?: string | null;
   fechaFin?: string | null;
   fechaPausa?: string | null;
+  tiempoActivoSegundos?: number | null;
+  tiempoActivoEstimado?: boolean;
+  tiempoTotalSegundos?: number | null;
+  tiempoCalculadoEn?: string | null;
   fotos?: QueuePhoto[];
   incidentes?: QueueIncident[];
 };
@@ -86,6 +94,35 @@ export type QueueAudit = {
   rol?: string;
   datos?: Record<string, unknown> | null;
 };
+
+/** Section numbers come from the catalog/API, never from database identifiers. */
+export function poleLabel(value?: string | null) {
+  return value === "NORTE" ? "Norte" : value === "SUR" ? "Sur" : "No registrado";
+}
+
+export function sectionPositionLabel(
+  numero?: number | null,
+  snapshot?: string | null,
+  hasSection = false,
+) {
+  const name = snapshot?.trim() || "";
+  const explicit = name.match(/^secci[oó]n\s+([1-9]\d*)\b(?:\s*[·:\-]\s*(.*))?$/i);
+  const verifiedNumber = typeof numero === "number" && Number.isInteger(numero) && numero > 0;
+  if (verifiedNumber || explicit) {
+    const value = verifiedNumber ? numero : Number(explicit![1]);
+    const base = `Sección ${value}`;
+    const detail = explicit ? explicit[2]?.trim() || "" : name;
+    return detail && detail !== String(value) ? `${base} · ${detail}` : base;
+  }
+  if (name && !/^secci[oó]n\s*#/i.test(name)) return `Sección sin número · ${name}`;
+  return hasSection ? "Número de sección no disponible" : "Sin sección especificada";
+}
+
+export function queueUnitLabel(unit: QueueUnit) {
+  if (unit.modalidad === "CONJUNTO") return `Conjunto #${unit.id}`;
+  const movement = unit.movimientos[0];
+  return movement ? `Solicitud #${movement.id}` : `Operación #${unit.id}`;
+}
 
 export function personName(person?: QueuePerson | null, id?: number | null, empty = "Sin asignar") {
   return person?.nombre || (id ? `Usuario #${id}` : empty);
@@ -122,9 +159,40 @@ export function filterQueue(
   search: string,
   state: string,
   coordinator: string,
+  dates?: { field: "solicitud" | "inicio" | "fin"; from: string; to: string },
 ) {
   const query = normalize(search.trim());
   return units.filter((unit) => {
+    if (dates && (dates.from || dates.to)) {
+      if (dates.from && dates.to && dates.from > dates.to) return false;
+      const field = {
+        solicitud: "fechaSolicitud",
+        inicio: "fechaInicio",
+        fin: "fechaFin",
+      } as const;
+      const fallback = {
+        solicitud: unit.fechaRecepcion,
+        inicio: unit.fechaInicio,
+        fin: unit.fechaFin,
+      };
+      if (
+        !unit.movimientos.some((movement) => {
+          const value = movement[field[dates.field]] ?? fallback[dates.field];
+          const stamp = value ? new Date(value) : null;
+          if (!stamp || !Number.isFinite(stamp.getTime())) return false;
+          const parts = new Intl.DateTimeFormat("en", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            timeZone: "America/Monterrey",
+          }).formatToParts(stamp);
+          const part = (type: string) => parts.find((item) => item.type === type)?.value;
+          const day = `${part("year")}-${part("month")}-${part("day")}`;
+          return (!dates.from || day >= dates.from) && (!dates.to || day <= dates.to);
+        })
+      )
+        return false;
+    }
     if (state && unit.estado !== state) return false;
     if (
       coordinator &&
@@ -146,8 +214,16 @@ export function filterQueue(
           m.empresaNombreSnapshot,
           m.viaOrigenNombreSnapshot,
           m.viaDestinoNombreSnapshot,
-          m.seccionOrigenNombreSnapshot,
-          m.seccionDestinoNombreSnapshot,
+          sectionPositionLabel(
+            m.seccionOrigenNumero,
+            m.seccionOrigenNombreSnapshot,
+            Boolean(m.seccionOrigenId),
+          ),
+          sectionPositionLabel(
+            m.seccionDestinoNumero,
+            m.seccionDestinoNombreSnapshot,
+            Boolean(m.seccionDestinoId),
+          ),
           m.coordinador?.nombre,
           m.operador?.nombre,
           m.supervisor?.nombre,
@@ -180,11 +256,50 @@ export function elapsedLabel(from?: string | null, to?: string | null) {
   const start = new Date(from).getTime(),
     end = to ? new Date(to).getTime() : Date.now();
   if (!Number.isFinite(start) || !Number.isFinite(end)) return "—";
-  const minutes = Math.max(0, Math.floor((end - start) / 60000));
+  return durationLabel((end - start) / 1000);
+}
+export function durationLabel(seconds: number) {
+  const minutes = Math.max(0, Math.floor(seconds / 60));
   if (minutes < 1) return "Menos de 1 min";
   if (minutes < 60) return `${minutes} min`;
   if (minutes < 1440) return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
   return `${Math.floor(minutes / 1440)} d ${Math.floor((minutes % 1440) / 60)} h`;
+}
+export function naturalTiming(unit: QueueUnit, movement: QueueMovement, now = Date.now()) {
+  const start = movement.fechaInicio ?? unit.fechaInicio;
+  const finish = movement.fechaFin ?? unit.fechaFin;
+  const active = movement.tiempoActivoSegundos;
+  if (start && typeof active === "number" && Number.isFinite(active) && active >= 0) {
+    const calculatedAt = movement.tiempoCalculadoEn ? Date.parse(movement.tiempoCalculadoEn) : NaN;
+    const running = movement.estado === "EN_PROCESO" && unit.estado === "EN_PROCESO" && !finish;
+    const extra =
+      running && Number.isFinite(calculatedAt) ? Math.max(0, (now - calculatedAt) / 1000) : 0;
+    return {
+      label: movement.tiempoActivoEstimado ? "Trabajo efectivo aprox." : "Trabajo efectivo",
+      value: durationLabel(active + extra),
+      total: elapsedLabel(start, finish ?? new Date(now).toISOString()),
+    };
+  }
+  if (finish && start) return { label: "Tiempo total", value: elapsedLabel(start, finish) };
+  if (movement.fechaPausa && unit.estado === "DETENIDA")
+    return {
+      label: "Pausado hace",
+      value: elapsedLabel(movement.fechaPausa, new Date(now).toISOString()),
+    };
+  if (start)
+    return {
+      label: "Tiempo total",
+      value: elapsedLabel(start, new Date(now).toISOString()),
+    };
+  if (["CONCLUIDA", "CANCELADA"].includes(unit.estado))
+    return { label: "Cierre", value: dateLabel(finish) };
+  return {
+    label: "En espera",
+    value: elapsedLabel(
+      movement.fechaSolicitud ?? unit.fechaRecepcion,
+      new Date(now).toISOString(),
+    ),
+  };
 }
 export function movementIncidents(unit: QueueUnit, movement: QueueMovement) {
   const rows = [

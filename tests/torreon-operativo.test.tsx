@@ -22,7 +22,8 @@ const unit = (id: number) => ({
       locomotiveNumber: 120 + id,
       estado: "SOLICITADO",
       tipoMovimiento: "MD_TRABAJANDO",
-      polo: "NORTE",
+      poloOrigen: "NORTE",
+      poloDestino: "SUR",
     },
   ],
 });
@@ -54,14 +55,18 @@ it("client can review 1–5 independent rows, including the distinct towing loco
   expect(rows).toHaveLength(5);
   for (let i = 0; i < rows.length; i++) {
     const row = within(rows[i]);
+    const disclosure = row.getByRole("button", { name: `Editar solicitud ${i + 1}` });
+    if (disclosure.getAttribute("aria-expanded") !== "true") fireEvent.click(disclosure);
     fireEvent.change(row.getByLabelText("Locomotora solicitada"), {
       target: { value: String(120 + i) },
     });
     fireEvent.change(row.getByLabelText("Vía de origen"), { target: { value: "8" } });
     fireEvent.change(row.getByLabelText("Vía de destino"), { target: { value: "9" } });
-    fireEvent.change(row.getByLabelText("Polo de patio"), { target: { value: "NORTE" } });
+    fireEvent.change(row.getByLabelText("Polo de salida"), { target: { value: "NORTE" } });
+    fireEvent.change(row.getByLabelText("Polo de llegada"), { target: { value: "SUR" } });
   }
   const first = within(rows[0]);
+  fireEvent.click(first.getByRole("button", { name: "Editar solicitud 1" }));
   fireEvent.change(first.getByLabelText("Tipo de movimiento"), { target: { value: "REMOLCADA" } });
   fireEvent.change(first.getByLabelText("Locomotora que remolca"), { target: { value: "800" } });
   fireEvent.change(first.getByLabelText("Dirección"), { target: { value: "JALAR" } });
@@ -80,9 +85,19 @@ it("client can review 1–5 independent rows, including the distinct towing loco
     direccionEmpuje: "JALAR",
     viaOrigenId: 8,
     viaDestinoId: 9,
+    poloOrigen: "NORTE",
+    poloDestino: "SUR",
   });
   expect(sent.enConjunto).toBeUndefined();
   expect(sent.movimientos[0].operadorId).toBeUndefined();
+  expect(
+    sent.movimientos.every(
+      (movement: Record<string, unknown>) =>
+        !("polo" in movement) &&
+        !("posicionChimenea" in movement) &&
+        !("posicionCabina" in movement),
+    ),
+  ).toBe(true);
 });
 it("raising several units keeps separate attention unless En conjunto is explicitly checked", async () => {
   const fetcher = vi.fn<(url: string, options?: RequestInit) => Promise<Response>>(async (url) =>
@@ -140,7 +155,8 @@ it("keeps the first locomotive and route already captured by the existing form",
         locomotiveNumber: "121",
         viaOrigenId: "8",
         viaDestinoId: "9",
-        polo: "NORTE",
+        poloOrigen: "NORTE",
+        poloDestino: "SUR",
       }}
       localidadId={2}
       empresaId={3}
@@ -173,7 +189,8 @@ it("clarifies patio and route positions, clears only the changed route section a
         viaDestinoId: "9",
         seccionOrigenId: "81",
         seccionDestinoId: "91",
-        polo: "NORTE",
+        poloOrigen: "NORTE",
+        poloDestino: "SUR",
       }}
       localidadId={2}
       empresaId={3}
@@ -193,9 +210,18 @@ it("clarifies patio and route positions, clears only the changed route section a
       onCancel={() => {}}
     />,
   );
+  expect(screen.getByRole("option", { name: "Sección 1 · Salida sur" })).toHaveProperty(
+    "value",
+    "81",
+  );
+  expect(screen.getByRole("option", { name: "Sección 2 · Taller 2" })).toHaveProperty(
+    "value",
+    "91",
+  );
+  expect(screen.queryByLabelText(/chimenea|cabina/i)).toBeNull();
   expect(screen.getByText("De dónde se saca")).toBeTruthy();
   expect(screen.getByText("Dónde se va a colocar")).toBeTruthy();
-  expect((screen.getByLabelText("Polo de patio") as HTMLSelectElement).value).toBe("NORTE");
+  expect((screen.getByLabelText("Polo de salida") as HTMLSelectElement).value).toBe("NORTE");
   expect(ensureSections).toHaveBeenCalledWith(8);
   expect(ensureSections).toHaveBeenCalledWith(9);
   fireEvent.change(screen.getByLabelText("Vía de origen"), { target: { value: "10" } });
@@ -207,10 +233,11 @@ it("clarifies patio and route positions, clears only the changed route section a
   expect(fetcher).not.toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText("Posición de origen"), { target: { value: "101" } });
   fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
-  expect(screen.getByText("Patio 3")).toBeTruthy();
-  expect(screen.getByText("Taller 2")).toBeTruthy();
+  expect(screen.getByText("Sección 3 · Patio 3")).toBeTruthy();
+  expect(screen.getByText("Sección 2 · Taller 2")).toBeTruthy();
   expect(screen.getByText("Norte")).toBeTruthy();
   expect(screen.getByText("MD trabajando")).toBeTruthy();
+  expect(screen.queryByText(/chimenea|cabina/i)).toBeNull();
   expect(screen.queryByText("MD_TRABAJANDO")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Editar datos" }));
   expect((screen.getByLabelText("Locomotora solicitada") as HTMLInputElement).value).toBe("121");
@@ -237,7 +264,8 @@ it("keeps one request id for retries and issues another id only after editing th
         viaDestinoId: "9",
         seccionOrigenId: "81",
         seccionDestinoId: "91",
-        polo: "NORTE",
+        poloOrigen: "NORTE",
+        poloDestino: "SUR",
       }}
       localidadId={2}
       empresaId={3}
@@ -275,12 +303,13 @@ it("keeps one request id for retries and issues another id only after editing th
     viaDestinoId: 9,
     seccionOrigenId: 81,
     seccionDestinoId: 91,
-    polo: "NORTE",
+    poloOrigen: "NORTE",
+    poloDestino: "SUR",
     localidadId: 2,
     empresaId: 3,
     creadoPorId: 7,
-    seccionOrigenNombreSnapshot: "Salida sur",
-    seccionDestinoNombreSnapshot: "Taller 2",
+    seccionOrigenNombreSnapshot: "Sección 1 · Salida sur",
+    seccionDestinoNombreSnapshot: "Sección 2 · Taller 2",
   });
   fireEvent.click(screen.getByRole("button", { name: "Editar datos" }));
   fireEvent.change(screen.getByLabelText("Indicaciones adicionales"), {
@@ -292,4 +321,129 @@ it("keeps one request id for retries and issues another id only after editing th
   const edited = JSON.parse(fetcher.mock.calls[2][1]!.body as string);
   expect(edited.clientRequestId).not.toBe(first.clientRequestId);
   expect(edited.movimientos[0].instrucciones).toBe("Entrar lentamente");
+});
+
+it("opens the first incomplete request and focuses its invalid field", () => {
+  render(
+    <TorreonBatchCapture
+      localidadId={2}
+      empresaId={3}
+      creadoPorId={7}
+      vias={[{ id: 8, nombre: "Vía A" }]}
+      sectionsByVia={{ 8: [] }}
+      ensureSections={() => {}}
+      onFinish={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: /Agregar solicitud/ }));
+  expect(
+    screen.getByRole("button", { name: "Editar solicitud 2" }).getAttribute("aria-expanded"),
+  ).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  const locomotive = screen.getByLabelText("Locomotora solicitada", { selector: "input" });
+  expect(
+    screen.getByRole("button", { name: "Editar solicitud 1" }).getAttribute("aria-expanded"),
+  ).toBe("true");
+  expect(document.activeElement).toBe(locomotive);
+  expect(locomotive.getAttribute("aria-invalid")).toBe("true");
+  expect(
+    document.getElementById(locomotive.getAttribute("aria-describedby")!)?.textContent,
+  ).toContain("número de la locomotora");
+});
+
+it("distinguishes pending, failed and genuinely empty position catalogs before review", () => {
+  const retry = vi.fn();
+  const props = {
+    localidadId: 2,
+    empresaId: 3,
+    creadoPorId: 7,
+    initialMovement: {
+      locomotiveNumber: "121",
+      viaOrigenId: "8",
+      viaDestinoId: "9",
+      poloOrigen: "NORTE",
+      poloDestino: "SUR",
+    },
+    vias: [
+      { id: 8, nombre: "Vía A" },
+      { id: 9, nombre: "Vía B" },
+    ],
+    ensureSections: retry,
+    onFinish() {},
+    onCancel() {},
+  };
+  const { rerender } = render(<TorreonBatchCapture {...props} sectionsByVia={{ 9: [] }} />);
+  expect(screen.getByText("Cargando posiciones…")).toBeTruthy();
+  expect(screen.getAllByText("Esta vía no tiene secciones registradas.")).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  expect(screen.getByRole("alert").textContent).toContain("espera a que carguen");
+  expect(screen.queryByRole("button", { name: "Enviar 1 solicitud" })).toBeNull();
+  rerender(
+    <TorreonBatchCapture
+      {...props}
+      sectionsByVia={{ 9: [] }}
+      sectionsError={{ 8: "Error de red" }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Reintentar posiciones de origen" }));
+  expect(retry).toHaveBeenCalledWith(8);
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  expect(screen.getByRole("alert").textContent).toContain("reintenta la carga");
+  rerender(<TorreonBatchCapture {...props} sectionsByVia={{ 8: [], 9: [] }} />);
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  expect(screen.getByRole("button", { name: "Enviar 1 solicitud" })).toBeTruthy();
+  expect(document.activeElement?.textContent).toContain("Revisa tu envío");
+});
+
+it("requires independent departure and arrival poles despite legacy single pole and obsolete fields", async () => {
+  const finish = vi.fn();
+  const fetcher = vi.fn(async () => json([{ id: 101 }]));
+  vi.stubGlobal("fetch", fetcher);
+  const legacyDraft = {
+    locomotiveNumber: "121",
+    viaOrigenId: "8",
+    viaDestinoId: "9",
+    polo: "NORTE",
+    posicionChimenea: "DENTRO",
+    posicionCabina: "AFUERA",
+  };
+  render(
+    <TorreonBatchCapture
+      initialMovement={legacyDraft}
+      localidadId={2}
+      empresaId={3}
+      creadoPorId={7}
+      vias={[
+        { id: 8, nombre: "Vía A" },
+        { id: 9, nombre: "Vía B" },
+      ]}
+      sectionsByVia={{ 8: [], 9: [] }}
+      ensureSections={() => {}}
+      onFinish={finish}
+      onCancel={() => {}}
+    />,
+  );
+  expect(screen.queryByLabelText(/chimenea|cabina/i)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  expect(screen.getByRole("alert").textContent).toContain("selecciona el polo de salida");
+  expect(document.activeElement).toBe(screen.getByLabelText("Polo de salida"));
+  expect(fetcher).not.toHaveBeenCalled();
+  expect((screen.getByLabelText("Polo de salida") as HTMLSelectElement).value).toBe("");
+  expect((screen.getByLabelText("Polo de llegada") as HTMLSelectElement).value).toBe("");
+  fireEvent.change(screen.getByLabelText("Polo de salida"), { target: { value: "NORTE" } });
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  expect(screen.getByRole("alert").textContent).toContain("selecciona el polo de llegada");
+  expect(document.activeElement).toBe(screen.getByLabelText("Polo de llegada"));
+  fireEvent.change(screen.getByLabelText("Polo de llegada"), { target: { value: "SUR" } });
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  expect(screen.queryByText(/chimenea|cabina/i)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Enviar 1 solicitud" }));
+  await waitFor(() => expect(finish).toHaveBeenCalledOnce());
+  const [, options] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+  const payload = JSON.parse(options.body as string).movimientos[0];
+  expect(payload).toMatchObject({ poloOrigen: "NORTE", poloDestino: "SUR" });
+  expect(payload).not.toHaveProperty("polo");
+  expect(payload).not.toHaveProperty("posicionChimenea");
+  expect(payload).not.toHaveProperty("posicionCabina");
 });

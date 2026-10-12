@@ -4,11 +4,19 @@ import TorreonNaturalQueue from "@/features/torreon/naturales/components/Torreon
 import { redirect } from "next/navigation";
 import { getVerifiedSession } from "@/lib/server/session";
 import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
+<<<<<<< Updated upstream
+=======
+import TorreonNaturalQueue from "@/features/torreon/naturales/components/TorreonNaturalQueue";
+>>>>>>> Stashed changes
 
 export const dynamic = "force-dynamic";
 const MOVIMIENTOS_API_BASE = process.env.NEXT_PUBLIC_API_BASE || "/bff";
 
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ loc?: string | string[] }>;
+}) {
   const session = await getVerifiedSession();
   if (!session) redirect("/login");
   const role = session.role;
@@ -24,6 +32,25 @@ export default async function Page() {
   const torreonLocalidadId = isTorreonLocalidadId(session.localidadId)
     ? session.localidadId
     : null;
+
+  const { loc } = await searchParams;
+  const requestedLocalidadId = Number(Array.isArray(loc) ? loc[0] : loc);
+  const selectedLocalidadId =
+    capabilities.canSwitchLocalidad &&
+    Number.isSafeInteger(requestedLocalidadId) &&
+    requestedLocalidadId > 0
+      ? requestedLocalidadId
+      : session.localidadId;
+  if (selectedLocalidadId && isTorreonLocalidadId(selectedLocalidadId)) {
+    return (
+      <TorreonNaturalQueue
+        localidadId={selectedLocalidadId}
+        rol={role}
+        view="seguimiento"
+        canCreateMovements={capabilities.canCreateMovements}
+      />
+    );
+  }
 
   return (
     <section

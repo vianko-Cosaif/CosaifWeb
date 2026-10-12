@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import {
   ArrowRight,
   Check,
+  ChevronDown,
   ClipboardCheck,
   Info,
   MapPin,
@@ -11,7 +12,7 @@ import {
   TrainFront,
   Trash2,
 } from "lucide-react";
-import { configurationLabel } from "../queueView";
+import { configurationLabel, poleLabel, sectionPositionLabel } from "../queueView";
 import s from "./batchCapture.module.scss";
 type Row = {
   locomotiveNumber: string;
@@ -19,9 +20,8 @@ type Row = {
   viaDestinoId: string;
   seccionOrigenId: string;
   seccionDestinoId: string;
-  polo: string;
-  posicionChimenea: string;
-  posicionCabina: string;
+  poloOrigen: string;
+  poloDestino: string;
   tipoMovimiento: string;
   direccionEmpuje: string;
   locomotoraRemolque: string;
@@ -33,9 +33,8 @@ const empty = (): Row => ({
   viaDestinoId: "",
   seccionOrigenId: "",
   seccionDestinoId: "",
-  polo: "Sin_Solicitar",
-  posicionChimenea: "Sin_Solicitar",
-  posicionCabina: "Sin_Solicitar",
+  poloOrigen: "",
+  poloDestino: "",
   tipoMovimiento: "MD_TRABAJANDO",
   direccionEmpuje: "Sin_Solicitar",
   locomotoraRemolque: "",
@@ -49,6 +48,10 @@ type Props = {
   vias: { id: number; nombre: string }[];
   sectionsByVia: Record<number, { id: number; numero: number; nombre?: string | null }[]>;
   ensureSections: (id: number) => unknown;
+  sectionsError?: Record<number, string>;
+  viasLoading?: boolean;
+  viasError?: string | null;
+  onRetryVias?: () => void;
   onFinish: () => void;
   onCancel: () => void;
 };
@@ -60,6 +63,10 @@ export default function TorreonBatchCapture({
   vias,
   sectionsByVia,
   ensureSections,
+  sectionsError = {},
+  viasLoading = false,
+  viasError,
+  onRetryVias,
   onFinish,
   onCancel,
 }: Props) {
@@ -67,14 +74,29 @@ export default function TorreonBatchCapture({
   const [review, setReview] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const [active, setActive] = useState(0);
+  const [fieldIssue, setFieldIssue] = useState<{
+    index: number;
+    field: keyof Row;
+    message: string;
+  } | null>(null);
+  const [focusRequest, setFocusRequest] = useState<{ id: string } | null>(null);
   const key = useRef<string>("");
   const prefix = useId();
+  useEffect(() => {
+    if (!focusRequest) return;
+    const field = document.getElementById(focusRequest.id);
+    field?.focus({ preventScroll: true });
+    field?.scrollIntoView?.({ block: "center", behavior: "auto" });
+  }, [focusRequest]);
   useEffect(() => {
     for (const id of [initialMovement?.viaOrigenId, initialMovement?.viaDestinoId])
       if (id) void ensureSections(Number(id));
   }, [ensureSections, initialMovement?.viaOrigenId, initialMovement?.viaDestinoId]);
   const update = (index: number, name: keyof Row, value: string) => {
     key.current = "";
+    setError("");
+    setFieldIssue(null);
     setRows((prev) =>
       prev.map((r, n) =>
         n === index
@@ -92,47 +114,105 @@ export default function TorreonBatchCapture({
     );
     if (name === "viaOrigenId" || name === "viaDestinoId") void ensureSections(Number(value));
   };
-  const validate = () => {
-    if (!empresaId || !creadoPorId) return "Completa empresa y sesión antes de enviar.";
-    for (let n = 0; n < rows.length; n++) {
-      const r = rows[n],
-        prefix = `Solicitud ${n + 1}: `;
-      if (
-        !/^\d+$/.test(r.locomotiveNumber) ||
-        Number(r.locomotiveNumber) <= 0 ||
-        !r.viaOrigenId ||
-        !r.viaDestinoId
-      )
-        return prefix + "completa locomotora, origen y destino.";
-      if (r.polo === "Sin_Solicitar" && r.posicionChimenea === "Sin_Solicitar")
-        return prefix + "selecciona el polo de patio o la posición de chimenea.";
-      for (const side of ["Origen", "Destino"] as const) {
-        if ((sectionsByVia[Number(r[`via${side}Id`])]?.length ?? 0) > 0 && !r[`seccion${side}Id`])
-          return prefix + `selecciona la sección de ${side.toLowerCase()}.`;
-      }
-      if (
-        r.tipoMovimiento === "REMOLCADA" &&
-        (!/^\d+$/.test(r.locomotoraRemolque) ||
-          Number(r.locomotoraRemolque) <= 0 ||
-          Number(r.locomotoraRemolque) === Number(r.locomotiveNumber) ||
-          r.direccionEmpuje === "Sin_Solicitar")
-      )
-        return prefix + "indica otra locomotora que remolca y Empujar/Jalar.";
+  const rowIssue = (r: Row): { field: keyof Row; message: string } | null => {
+    if (!/^\d+$/.test(r.locomotiveNumber) || Number(r.locomotiveNumber) <= 0)
+      return {
+        field: "locomotiveNumber",
+        message: "indica el número de la locomotora solicitada.",
+      };
+    for (const side of ["Origen", "Destino"] as const) {
+      const via = Number(r[`via${side}Id`]);
+      if (!via || !vias.some((item) => item.id === via))
+        return { field: `via${side}Id`, message: `selecciona la vía de ${side.toLowerCase()}.` };
+      if (sectionsError[via])
+        return {
+          field: `via${side}Id`,
+          message: `reintenta la carga de posiciones de ${side.toLowerCase()}.`,
+        };
+      const sections = sectionsByVia[via];
+      if (!Array.isArray(sections))
+        return {
+          field: `via${side}Id`,
+          message: `espera a que carguen las posiciones de ${side.toLowerCase()}.`,
+        };
+      if (sections.length && !sections.some((item) => item.id === Number(r[`seccion${side}Id`])))
+        return {
+          field: `seccion${side}Id`,
+          message: `selecciona la sección de ${side.toLowerCase()}.`,
+        };
     }
-    return "";
+    for (const side of ["Origen", "Destino"] as const) {
+      if (!["NORTE", "SUR"].includes(r[`polo${side}`]))
+        return {
+          field: `polo${side}`,
+          message: `selecciona el polo de ${side === "Origen" ? "salida" : "llegada"}.`,
+        };
+    }
+    if (r.tipoMovimiento === "REMOLCADA") {
+      if (
+        !/^\d+$/.test(r.locomotoraRemolque) ||
+        Number(r.locomotoraRemolque) <= 0 ||
+        Number(r.locomotoraRemolque) === Number(r.locomotiveNumber)
+      )
+        return {
+          field: "locomotoraRemolque",
+          message: "indica otra locomotora que remolca, distinta a la solicitada.",
+        };
+      if (r.direccionEmpuje === "Sin_Solicitar")
+        return { field: "direccionEmpuje", message: "selecciona Empujar o Jalar." };
+    }
+    return null;
   };
-  const send = async () => {
-    const issue = validate();
-    if (issue) {
-      setError(issue);
-      return;
+  const validate = () => {
+    if (!empresaId || !creadoPorId) {
+      setError("Completa empresa y sesión antes de enviar.");
+      setFocusRequest({ id: `${prefix}-error` });
+      return false;
     }
+    for (let index = 0; index < rows.length; index++) {
+      const issue = rowIssue(rows[index]);
+      if (issue) {
+        setFieldIssue({ ...issue, index });
+        setError(`Solicitud ${index + 1}: ${issue.message}`);
+        setActive(index);
+        setReview(false);
+        setFocusRequest({ id: `${prefix}-${index}-${issue.field}` });
+        return false;
+      }
+    }
+    setError("");
+    setFieldIssue(null);
+    return true;
+  };
+  const fieldMessage = (n: number, name: keyof Row) =>
+    fieldIssue?.index === n && fieldIssue.field === name ? fieldIssue.message : "";
+  const fieldAccessibility = (n: number, name: keyof Row, hint = false) => ({
+    id: `${prefix}-${n}-${name}`,
+    "aria-invalid": fieldMessage(n, name) ? true : undefined,
+    "aria-describedby":
+      [
+        hint ? `${prefix}-${n}-${name}-hint` : "",
+        fieldMessage(n, name) ? `${prefix}-${n}-${name}-error` : "",
+      ]
+        .filter(Boolean)
+        .join(" ") || undefined,
+  });
+  const inlineError = (n: number, name: keyof Row) =>
+    fieldMessage(n, name) ? (
+      <small id={`${prefix}-${n}-${name}-error`} className={s.fieldError}>
+        {fieldMessage(n, name)}
+      </small>
+    ) : null;
+  const send = async () => {
+    if (!validate()) return;
     setBusy(true);
     setError("");
     key.current ||= crypto.randomUUID();
     try {
       const movements = rows.map((r) => ({
-        ...r,
+        poloOrigen: r.poloOrigen,
+        poloDestino: r.poloDestino,
+        tipoMovimiento: r.tipoMovimiento,
         instrucciones: r.instrucciones.trim() || undefined,
         locomotiveNumber: Number(r.locomotiveNumber),
         viaOrigenId: Number(r.viaOrigenId),
@@ -147,18 +227,8 @@ export default function TorreonBatchCapture({
         creadoPorId,
         viaOrigenNombreSnapshot: vias.find((v) => v.id === Number(r.viaOrigenId))?.nombre,
         viaDestinoNombreSnapshot: vias.find((v) => v.id === Number(r.viaDestinoId))?.nombre,
-        seccionOrigenNombreSnapshot:
-          sectionsByVia[Number(r.viaOrigenId)]?.find((s) => s.id === Number(r.seccionOrigenId))
-            ?.nombre ??
-          (r.seccionOrigenId
-            ? `Sección ${sectionsByVia[Number(r.viaOrigenId)]?.find((s) => s.id === Number(r.seccionOrigenId))?.numero}`
-            : undefined),
-        seccionDestinoNombreSnapshot:
-          sectionsByVia[Number(r.viaDestinoId)]?.find((s) => s.id === Number(r.seccionDestinoId))
-            ?.nombre ??
-          (r.seccionDestinoId
-            ? `Sección ${sectionsByVia[Number(r.viaDestinoId)]?.find((s) => s.id === Number(r.seccionDestinoId))?.numero}`
-            : undefined),
+        seccionOrigenNombreSnapshot: r.seccionOrigenId ? sectionLabel(r, "Origen") : undefined,
+        seccionDestinoNombreSnapshot: r.seccionDestinoId ? sectionLabel(r, "Destino") : undefined,
       }));
       const response = await fetch("/bff/torreon/movimientos/lote", {
         method: "POST",
@@ -172,6 +242,7 @@ export default function TorreonBatchCapture({
       onFinish();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo enviar");
+      setFocusRequest({ id: `${prefix}-error` });
     } finally {
       setBusy(false);
     }
@@ -180,7 +251,9 @@ export default function TorreonBatchCapture({
     const section = sectionsByVia[Number(r[`via${side}Id`])]?.find(
       (item) => item.id === Number(r[`seccion${side}Id`]),
     );
-    return section ? section.nombre || `Sección ${section.numero}` : "Sin posición específica";
+    return section
+      ? sectionPositionLabel(section.numero, section.nombre, true)
+      : "Sin sección especificada";
   };
   const select = (
     r: Row,
@@ -196,11 +269,10 @@ export default function TorreonBatchCapture({
       <div className={s.fieldGroup}>
         <label htmlFor={id}>{label}</label>
         <select
-          id={id}
+          {...fieldAccessibility(n, name, Boolean(hint))}
           disabled={busy || disabled}
           className={s.field}
           value={r[name]}
-          aria-describedby={hint ? `${id}-hint` : undefined}
           onChange={(e) => update(n, name, e.target.value)}
         >
           {options.map((o) => (
@@ -209,6 +281,7 @@ export default function TorreonBatchCapture({
             </option>
           ))}
         </select>
+        {inlineError(n, name)}
         {hint && (
           <small id={`${id}-hint`} className={s.fieldHint}>
             {hint}
@@ -260,7 +333,7 @@ export default function TorreonBatchCapture({
         </p>
       </div>
       {review && (
-        <div className={s.reviewIntro}>
+        <div id={`${prefix}-review`} tabIndex={-1} className={s.reviewIntro}>
           <ClipboardCheck size={20} aria-hidden />
           <div>
             <strong>Revisa tu envío</strong>
@@ -269,36 +342,102 @@ export default function TorreonBatchCapture({
         </div>
       )}
       {error && (
-        <p role="alert" className={s.error}>
+        <p id={`${prefix}-error`} tabIndex={-1} role="alert" className={s.error}>
           {error}
         </p>
+      )}
+      {!review && (
+        <p className={s.formHint}>
+          Completa una solicitud a la vez. Los campos opcionales están indicados.
+        </p>
+      )}
+      {!review && (viasLoading || viasError || !vias.length) && (
+        <div className={s.catalogNotice} role="status">
+          <p>
+            {viasLoading
+              ? "Cargando vías de Torreón…"
+              : viasError ||
+                "No hay vías disponibles en Torreón. Solicita a coordinación revisar el catálogo."}
+          </p>
+          {!viasLoading && onRetryVias && (
+            <button type="button" className={s.button} onClick={onRetryVias}>
+              Reintentar carga de vías
+            </button>
+          )}
+        </div>
       )}
       <div className={s.requests}>
         {rows.map((r, n) => (
           <article key={n} className={s.request} aria-labelledby={`${prefix}-${n}-title`}>
-            <header className={s.requestHeader}>
-              <div>
-                <span className={s.requestNumber}>{String(n + 1).padStart(2, "0")}</span>
-                <h2 id={`${prefix}-${n}-title`}>
-                  Solicitud {n + 1}
-                  {review ? ` · Locomotora ${r.locomotiveNumber}` : ""}
-                </h2>
+            <header className={s.requestHeader} data-expanded={review || active === n}>
+              <span className={s.requestNumber}>{String(n + 1).padStart(2, "0")}</span>
+              <div className={s.requestSummary}>
+                {review ? (
+                  <h2 id={`${prefix}-${n}-title`}>
+                    Solicitud {n + 1} · Locomotora {r.locomotiveNumber}
+                  </h2>
+                ) : (
+                  <h2 id={`${prefix}-${n}-title`}>
+                    <button
+                      type="button"
+                      className={s.expandButton}
+                      aria-label={`Editar solicitud ${n + 1}`}
+                      aria-expanded={active === n}
+                      aria-controls={`${prefix}-${n}-body`}
+                      disabled={busy}
+                      onClick={() => setActive((current) => (current === n ? -1 : n))}
+                    >
+                      <span>
+                        <span className={s.requestTitle}>
+                          Solicitud {n + 1}
+                          {r.locomotiveNumber ? ` · Locomotora ${r.locomotiveNumber}` : ""}
+                        </span>
+                        <span className={s.requestSubtitle}>
+                          {r.viaOrigenId || r.viaDestinoId
+                            ? `${vias.find((v) => v.id === Number(r.viaOrigenId))?.nombre || "Elige origen"} → ${vias.find((v) => v.id === Number(r.viaDestinoId))?.nombre || "Elige destino"}`
+                            : "Indica la locomotora y su recorrido"}
+                        </span>
+                      </span>
+                      <ChevronDown
+                        size={18}
+                        aria-hidden
+                        className={active === n ? s.chevronOpen : undefined}
+                      />
+                    </button>
+                  </h2>
+                )}
               </div>
-              {!review && rows.length > 1 && (
-                <button
-                  type="button"
-                  className={s.removeButton}
-                  disabled={busy}
-                  aria-label={`Quitar solicitud ${n + 1}`}
-                  onClick={() => {
-                    key.current = "";
-                    setRows((prev) => prev.filter((_, i) => i !== n));
-                  }}
-                >
-                  <Trash2 size={14} aria-hidden /> Quitar
-                </button>
-              )}
-              {review && <span className={s.independentTag}>Solicitud independiente</span>}
+              <div className={s.requestTools}>
+                <span className={s.completionTag} data-complete={!rowIssue(r)}>
+                  {!rowIssue(r) ? (
+                    <>
+                      <Check size={13} aria-hidden /> Completa
+                    </>
+                  ) : (
+                    "Por completar"
+                  )}
+                </span>
+                {!review && rows.length > 1 && (
+                  <button
+                    type="button"
+                    className={s.removeButton}
+                    disabled={busy}
+                    aria-label={`Quitar solicitud ${n + 1}`}
+                    onClick={() => {
+                      key.current = "";
+                      setRows((prev) => prev.filter((_, i) => i !== n));
+                      setActive((current) =>
+                        Math.max(0, current > n ? current - 1 : Math.min(current, rows.length - 2)),
+                      );
+                      setError("");
+                      setFieldIssue(null);
+                    }}
+                  >
+                    <Trash2 size={16} aria-hidden />
+                    <span>Quitar</span>
+                  </button>
+                )}
+              </div>
             </header>
             {review ? (
               <div className={s.requestBody}>
@@ -312,7 +451,11 @@ export default function TorreonBatchCapture({
                       <strong>
                         {vias.find((v) => v.id === Number(r[`via${side}Id`]))?.nombre}
                       </strong>
-                      <small>{sectionLabel(r, side)}</small>
+                      <span className={s.sectionBadge}>{sectionLabel(r, side)}</span>
+                      <p className={s.poleLabel}>
+                        Polo de {side === "Origen" ? "salida" : "llegada"}:{" "}
+                        <strong>{poleLabel(r[`polo${side}`])}</strong>
+                      </p>
                     </div>
                   ))}
                   <ArrowRight size={20} className={s.reviewArrow} aria-hidden />
@@ -321,18 +464,6 @@ export default function TorreonBatchCapture({
                   <div>
                     <dt>Tipo de movimiento</dt>
                     <dd>{configurationLabel(r.tipoMovimiento)}</dd>
-                  </div>
-                  <div>
-                    <dt>Polo de patio</dt>
-                    <dd>{configurationLabel(r.polo)}</dd>
-                  </div>
-                  <div>
-                    <dt>Posición de chimenea</dt>
-                    <dd>{configurationLabel(r.posicionChimenea)}</dd>
-                  </div>
-                  <div>
-                    <dt>Posición de cabina</dt>
-                    <dd>{configurationLabel(r.posicionCabina)}</dd>
                   </div>
                 </dl>
                 {r.tipoMovimiento === "REMOLCADA" && (
@@ -347,16 +478,19 @@ export default function TorreonBatchCapture({
                   </div>
                 )}
               </div>
-            ) : (
-              <div className={s.requestBody}>
+            ) : active === n ? (
+              <div id={`${prefix}-${n}-body`} className={s.requestBody}>
                 <fieldset className={s.group}>
                   <legend>
                     <TrainFront size={16} aria-hidden /> Locomotora y movimiento
                   </legend>
                   <div className={s.twoColumns}>
-                    <label className={s.fieldGroup}>
-                      Locomotora solicitada
+                    <div className={s.fieldGroup}>
+                      <label htmlFor={`${prefix}-${n}-locomotiveNumber`}>
+                        Locomotora solicitada
+                      </label>
                       <input
+                        {...fieldAccessibility(n, "locomotiveNumber")}
                         disabled={busy}
                         className={s.field}
                         inputMode="numeric"
@@ -364,19 +498,32 @@ export default function TorreonBatchCapture({
                         value={r.locomotiveNumber}
                         onChange={(e) => update(n, "locomotiveNumber", e.target.value)}
                       />
-                    </label>
-                    {select(r, n, "tipoMovimiento", "Tipo de movimiento", [
-                      { value: "MD_TRABAJANDO", label: "MD trabajando" },
-                      { value: "REMOLCADA", label: "Remolcada" },
-                    ])}
+                      {inlineError(n, "locomotiveNumber")}
+                    </div>
+                    {select(
+                      r,
+                      n,
+                      "tipoMovimiento",
+                      "Tipo de movimiento",
+                      [
+                        { value: "MD_TRABAJANDO", label: "MD trabajando" },
+                        { value: "REMOLCADA", label: "Remolcada" },
+                      ],
+                      r.tipoMovimiento === "MD_TRABAJANDO"
+                        ? "Se desplaza por sus propios medios."
+                        : "Necesita otra locomotora para moverse.",
+                    )}
                   </div>
                   {r.tipoMovimiento === "REMOLCADA" && (
                     <div className={s.towingFields}>
                       <p>La locomotora que remolca debe ser distinta a la solicitada.</p>
                       <div className={s.twoColumns}>
-                        <label className={s.fieldGroup}>
-                          Locomotora que remolca
+                        <div className={s.fieldGroup}>
+                          <label htmlFor={`${prefix}-${n}-locomotoraRemolque`}>
+                            Locomotora que remolca
+                          </label>
                           <input
+                            {...fieldAccessibility(n, "locomotoraRemolque")}
                             disabled={busy}
                             className={s.field}
                             inputMode="numeric"
@@ -384,7 +531,8 @@ export default function TorreonBatchCapture({
                             value={r.locomotoraRemolque}
                             onChange={(e) => update(n, "locomotoraRemolque", e.target.value)}
                           />
-                        </label>
+                          {inlineError(n, "locomotoraRemolque")}
+                        </div>
                         {select(r, n, "direccionEmpuje", "Dirección", [
                           { value: "Sin_Solicitar", label: "Seleccionar dirección" },
                           { value: "EMPUJAR", label: "Empujar" },
@@ -402,6 +550,11 @@ export default function TorreonBatchCapture({
                     {(["Origen", "Destino"] as const).map((side) => {
                       const sections = sectionsByVia[Number(r[`via${side}Id`])] ?? [];
                       const hasVia = Boolean(r[`via${side}Id`]);
+                      const sectionError = sectionsError[Number(r[`via${side}Id`])];
+                      const loading =
+                        hasVia &&
+                        !sectionError &&
+                        !Array.isArray(sectionsByVia[Number(r[`via${side}Id`])]);
                       return (
                         <div key={side} className={s.routeCard}>
                           <header>
@@ -413,10 +566,18 @@ export default function TorreonBatchCapture({
                               </p>
                             </div>
                           </header>
-                          {select(r, n, `via${side}Id`, `Vía de ${side.toLowerCase()}`, [
-                            { value: "", label: "Seleccionar vía" },
-                            ...vias.map((v) => ({ value: String(v.id), label: v.nombre })),
-                          ])}
+                          {select(
+                            r,
+                            n,
+                            `via${side}Id`,
+                            `Vía de ${side.toLowerCase()}`,
+                            [
+                              { value: "", label: "Seleccionar vía" },
+                              ...vias.map((v) => ({ value: String(v.id), label: v.nombre })),
+                            ],
+                            undefined,
+                            viasLoading || Boolean(viasError),
+                          )}
                           {select(
                             r,
                             n,
@@ -427,60 +588,66 @@ export default function TorreonBatchCapture({
                                 value: "",
                                 label: !hasVia
                                   ? "Primero selecciona una vía"
-                                  : sections.length
-                                    ? "Seleccionar posición"
-                                    : "Sin posiciones registradas",
+                                  : sectionError
+                                    ? "No se pudieron cargar"
+                                    : loading
+                                      ? "Cargando posiciones…"
+                                      : sections.length
+                                        ? "Seleccionar posición"
+                                        : "Sin posiciones registradas",
                               },
                               ...sections.map((section) => ({
                                 value: String(section.id),
-                                label: section.nombre || `Sección ${section.numero}`,
+                                label: sectionPositionLabel(section.numero, section.nombre, true),
                               })),
                             ],
-                            hasVia && !sections.length
-                              ? "Esta vía no tiene secciones registradas."
-                              : "Selecciona la sección dentro de la vía.",
-                            !hasVia || !sections.length,
+                            sectionError
+                              ? "No pudimos consultar las posiciones. Reintenta para continuar."
+                              : loading
+                                ? "Espera a que se cargue el catálogo de esta vía."
+                                : hasVia && !sections.length
+                                  ? "Esta vía no tiene secciones registradas."
+                                  : "Selecciona la sección dentro de la vía.",
+                            !hasVia || !sections.length || loading || Boolean(sectionError),
+                          )}
+                          {select(
+                            r,
+                            n,
+                            `polo${side}`,
+                            `Polo de ${side === "Origen" ? "salida" : "llegada"}`,
+                            [
+                              { value: "", label: "Seleccionar polo" },
+                              { value: "NORTE", label: "Norte" },
+                              { value: "SUR", label: "Sur" },
+                            ],
+                            side === "Origen"
+                              ? "Desde qué polo sale la locomotora. Obligatorio."
+                              : "En qué polo debe quedar la locomotora. Obligatorio.",
+                          )}
+                          {sectionError && (
+                            <button
+                              type="button"
+                              className={s.retryButton}
+                              onClick={() => {
+                                setError("");
+                                setFieldIssue(null);
+                                void ensureSections(Number(r[`via${side}Id`]));
+                              }}
+                            >
+                              Reintentar posiciones de {side.toLowerCase()}
+                            </button>
                           )}
                         </div>
                       );
                     })}
                   </div>
                 </fieldset>
-                <fieldset className={s.group}>
-                  <legend>Orientación en patio</legend>
-                  <p className={s.groupHint}>
-                    Completa el polo de patio o la posición de chimenea.
-                  </p>
-                  <div className={s.threeColumns}>
-                    {select(
-                      r,
-                      n,
-                      "polo",
-                      "Polo de patio",
-                      ["Sin_Solicitar", "NORTE", "SUR"].map((value) => ({
-                        value,
-                        label: configurationLabel(value),
-                      })),
-                    )}
-                    {(["posicionChimenea", "posicionCabina"] as const).map((name) => (
-                      <div key={name}>
-                        {select(
-                          r,
-                          n,
-                          name,
-                          name === "posicionCabina" ? "Posición de cabina" : "Posición de chimenea",
-                          ["Sin_Solicitar", "DENTRO", "AFUERA"].map((value) => ({
-                            value,
-                            label: configurationLabel(value),
-                          })),
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </fieldset>
                 <label className={s.fieldGroup}>
-                  Indicaciones adicionales
+                  <span>
+                    Indicaciones adicionales <span className={s.optional}>· Opcional</span>
+                  </span>
                   <textarea
+                    aria-label="Indicaciones adicionales"
                     disabled={busy}
                     className={s.field}
                     rows={3}
@@ -491,6 +658,8 @@ export default function TorreonBatchCapture({
                   />
                 </label>
               </div>
+            ) : (
+              <div id={`${prefix}-${n}-body`} hidden />
             )}
           </article>
         ))}
@@ -503,6 +672,8 @@ export default function TorreonBatchCapture({
           onClick={() => {
             key.current = "";
             setRows((prev) => [...prev, empty()]);
+            setActive(rows.length);
+            setFocusRequest({ id: `${prefix}-${rows.length}-locomotiveNumber` });
           }}
         >
           <Plus size={17} aria-hidden /> Agregar solicitud ({rows.length}/5)
@@ -524,7 +695,12 @@ export default function TorreonBatchCapture({
                 type="button"
                 className={s.button}
                 disabled={busy}
-                onClick={() => setReview(false)}
+                onClick={() => {
+                  setReview(false);
+                  setActive(Math.max(0, active));
+                  setError("");
+                  setFocusRequest({ id: `${prefix}-${Math.max(0, active)}-locomotiveNumber` });
+                }}
               >
                 Editar datos
               </button>
@@ -546,9 +722,10 @@ export default function TorreonBatchCapture({
               className={s.primaryButton}
               disabled={busy}
               onClick={() => {
-                const issue = validate();
-                setError(issue);
-                if (!issue) setReview(true);
+                if (validate()) {
+                  setReview(true);
+                  setFocusRequest({ id: `${prefix}-review` });
+                }
               }}
             >
               Revisar envío <ArrowRight size={16} aria-hidden />

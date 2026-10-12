@@ -88,6 +88,7 @@ export default function CrearMovimiento() {
     reloadVias,
     sectionsByVia,
     secLoading,
+    secErrors,
     rol,
     canManageAll,
     canChooseLocality,
@@ -491,9 +492,6 @@ export default function CrearMovimiento() {
           viaDestinoId: form.toTrack ? String(form.toTrack) : "",
           seccionOrigenId: String(sectionsByVia[Number(form.fromTrack)]?.find((section) => section.numero === fromSection)?.id ?? ""),
           seccionDestinoId: String(sectionsByVia[Number(form.toTrack)]?.find((section) => section.numero === toSection)?.id ?? ""),
-          polo: form.polo || "Sin_Solicitar",
-          posicionCabina: form.cabinPosition || "Sin_Solicitar",
-          posicionChimenea: form.chimneyPosition || "Sin_Solicitar",
           tipoMovimiento: form.movementType || "MD_TRABAJANDO",
           direccionEmpuje: form.pushPull || "Sin_Solicitar",
           instrucciones: form.comments || "",
@@ -503,6 +501,10 @@ export default function CrearMovimiento() {
         creadoPorId={form.creadoPorId}
         vias={vias}
         sectionsByVia={sectionsByVia}
+        sectionsError={secErrors}
+        viasLoading={viasLoading}
+        viasError={viasError}
+        onRetryVias={() => void reloadVias()}
         ensureSections={ensureSections}
         onFinish={() => {
           if (!form.service) clearForm();

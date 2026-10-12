@@ -1,4 +1,4 @@
-import type { QueueAudit, QueueUnit } from "./queueView";
+import { queueUnitLabel, type QueueAudit, type QueueUnit } from "./queueView";
 
 const actionTitles: Record<string, string> = {
   MIGRAR_MODELO: "Registro incorporado al modelo operativo",
@@ -44,9 +44,9 @@ export function auditEventView(
   const movement = unit?.movimientos.find((member) => member.id === event.movimientoId);
   let target: string | undefined;
   if (movement) {
-    target = `Locomotora ${movement.locomotiveNumber} · Movimiento #${movement.id}`;
+    target = `Locomotora ${movement.locomotiveNumber} · Solicitud #${movement.id}`;
   } else if (unit && event.unidadId === unit.id) {
-    target = `${unit.modalidad === "CONJUNTO" ? "Conjunto" : "Solicitud"} #${unit.id}`;
+    target = queueUnitLabel(unit);
     if (event.accion === "FORMAR_CONJUNTO" && Array.isArray(event.datos?.movimientoIds)) {
       // Use only members already visible in the company-scoped queue.
       const ids = event.datos.movimientoIds;

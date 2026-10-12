@@ -141,3 +141,26 @@ it("renders a readable audit timeline with system actors, movement targets and d
   expect(entries[2].textContent).toContain("16:15:00");
   expect(entries[3].textContent).toContain("16:15:58");
 });
+
+it("labels an individual by its request id while its audit still loads by operational unit id", async () => {
+  const individual = {
+    ...group,
+    id: 81,
+    modalidad: "INDIVIDUAL",
+    movimientos: [group.movimientos[0]],
+  };
+  const event = { ...firstPriority, unidadId: 81 };
+  expect(auditEventView(event, individual, names).target).toBe("Solicitud #1");
+  const fetcher = vi.fn(async (url: string) =>
+    json(url.endsWith("/historial") ? [event] : [individual]),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" />);
+  const table = await screen.findByRole("table");
+  expect(within(table).getByText("Solicitud #1")).toBeTruthy();
+  expect(within(table).queryByText("Solicitud #81")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Ver detalle del movimiento 1" }));
+  fireEvent.click(screen.getByRole("button", { name: "Ver historial de operación" }));
+  await screen.findByRole("dialog", { name: "Historial de operación · Solicitud #1" });
+  expect(fetcher.mock.calls.some(([url]) => url === "/bff/torreon/cola/81/historial")).toBe(true);
+});

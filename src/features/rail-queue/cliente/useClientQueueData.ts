@@ -16,8 +16,9 @@ type QueueSnapshot = {
 
 export function useClientQueueData({
   onChanged,
+  enabled = true,
   ...selection
-}: ClientQueueSelection & { onChanged?: (items: Ronda[], previous: Ronda[]) => void }) {
+}: ClientQueueSelection & { enabled?: boolean; onChanged?: (items: Ronda[], previous: Ronda[]) => void }) {
   const url = clientQueueUrl(selection);
   const key = `${selection.empresaId ?? "none"}:${url}`;
   const [snapshot, setSnapshot] = useState<QueueSnapshot>(() => ({ key, items: [], loading: true, refreshing: false, error: null, updatedAt: null }));
@@ -30,6 +31,7 @@ export function useClientQueueData({
 
   const { localidadId, empresaId, entity } = selection;
   const load = useCallback(async (force = true): Promise<void> => {
+    if (!enabled) return;
     if (active.current?.key === key) {
       if (force) pendingRefresh.current = true;
       return active.current.promise;
@@ -65,7 +67,7 @@ export function useClientQueueData({
     })();
     active.current = { key, controller, promise };
     return promise;
-  }, [key, url, localidadId, empresaId, entity]);
+  }, [key, url, localidadId, empresaId, entity, enabled]);
 
   const cancel = useCallback(() => {
     ++sequence.current;

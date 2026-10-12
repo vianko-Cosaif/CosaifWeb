@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE, SECC_BASE, type Empresa, type Localidad, type Seccion, type Via } from "../movimientos.shared";
 import { cachedFetchJson } from "@/lib/http/client";
+import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 
 /**
  * MODULO: useCrearMovimientoCatalogos
@@ -104,6 +105,8 @@ export function useCrearMovimientoCatalogos(
   const [viasError, setViasError] = useState<string | null>(null);
   const [sectionsByVia, setSectionsByVia] = useState<Record<number, Seccion[]>>({});
   const [secLoading, setSecLoading] = useState<Record<number, boolean>>({});
+  const [secErrors, setSecErrors] = useState<Record<number, string>>({});
+  const torreon = isTorreonLocalidadId(selectedLocalityId);
   const viaRequestRef = useRef(0);
 
   /** Carga catalogos de empresas y localidades. */
@@ -196,6 +199,11 @@ export function useCrearMovimientoCatalogos(
 
     secLoadingRef.current[viaId] = true;
     setSecLoading((s) => ({ ...s, [viaId]: true }));
+    if (torreon) setSecErrors((errors) => {
+      const next = { ...errors };
+      delete next[viaId];
+      return next;
+    });
 
     try {
       const raw = await cachedFetchJson<{ secciones?: Seccion[] } | Seccion[]>(
@@ -207,12 +215,23 @@ export function useCrearMovimientoCatalogos(
       const ordered = arr.slice().sort((a, b) => a.numero - b.numero);
       setSectionsByVia((m) => ({ ...m, [viaId]: ordered }));
     } catch {
-      setSectionsByVia((m) => ({ ...m, [viaId]: [] }));
+      if (torreon) {
+        // A failed catalog is unknown, not an empty track; allow an explicit retry.
+        setSecErrors((errors) => ({ ...errors, [viaId]: "No se pudieron cargar las posiciones de esta vía. Vuelve a intentarlo." }));
+      } else {
+        setSectionsByVia((m) => ({ ...m, [viaId]: [] }));
+      }
     } finally {
       secLoadingRef.current[viaId] = false;
       setSecLoading((s) => ({ ...s, [viaId]: false }));
     }
-  }, [sandbox, sectionsByVia]);
+  }, [sandbox, sectionsByVia, torreon]);
+
+  // The Torreón form requests its initial tracks in an effect. Keep this callback
+  // stable when a catalog resolves/fails so that only the retry button retries.
+  const ensureSectionsRef = useRef(ensureSections);
+  ensureSectionsRef.current = ensureSections;
+  const ensureTorreonSections = useCallback((viaId: number) => ensureSectionsRef.current(viaId), []);
 
   return {
     empresas,
@@ -222,8 +241,9 @@ export function useCrearMovimientoCatalogos(
     viasError,
     sectionsByVia,
     secLoading,
+    secErrors,
     loadCatalogos,
     reloadVias,
-    ensureSections,
+    ensureSections: torreon ? ensureTorreonSections : ensureSections,
   };
 }

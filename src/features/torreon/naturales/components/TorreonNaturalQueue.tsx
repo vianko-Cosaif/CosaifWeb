@@ -20,7 +20,13 @@ import Modal from "@/components/ui/Modal";
 import { useRealtimeBoardRefresh } from "@/features/rail-queue/useRealtimeBoardRefresh";
 import { isTorreonNaturalEvent } from "@/features/torreon/realtime";
 import NaturalQueueTable from "./NaturalQueueTable";
-import { dateLabel, filterQueue, type QueueAudit, type QueueUnit } from "../queueView";
+import {
+  dateLabel,
+  filterQueue,
+  queueUnitLabel,
+  type QueueAudit,
+  type QueueUnit,
+} from "../queueView";
 import { auditEventView, uniqueAuditEvents } from "../auditView";
 import s from "./naturalQueue.module.scss";
 
@@ -59,6 +65,9 @@ export default function TorreonNaturalQueue({
   const [search, setSearch] = useState("");
   const [state, setState] = useState("");
   const [coordinator, setCoordinator] = useState("");
+  const [dateField, setDateField] = useState<"solicitud" | "inicio" | "fin">("solicitud");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -121,7 +130,9 @@ export default function TorreonNaturalQueue({
   useEffect(() => {
     if (!dispatch) return;
     let active = true;
-    void fetch(`/bff/usuarios?localidadId=${localidadId}`, { credentials: "include" })
+    void fetch(`/bff/usuarios?localidadId=${localidadId}`, {
+      credentials: "include",
+    })
       .then((r) => {
         if (!r.ok) throw new Error("No se pudieron cargar los maquinistas");
         return r.json();
@@ -186,8 +197,15 @@ export default function TorreonNaturalQueue({
     }
   };
   const visible = useMemo(
-    () => filterQueue(units, search, state, coordinator),
-    [units, search, state, coordinator],
+    () =>
+      filterQueue(
+        units,
+        search,
+        state,
+        coordinator,
+        view === "seguimiento" ? { field: dateField, from: dateFrom, to: dateTo } : undefined,
+      ),
+    [units, search, state, coordinator, view, dateField, dateFrom, dateTo],
   );
   const movementsCount = units.reduce((total, unit) => total + unit.movimientos.length, 0);
   const visibleCount = visible.reduce((total, unit) => total + unit.movimientos.length, 0);
@@ -215,59 +233,82 @@ export default function TorreonNaturalQueue({
           if (person?.id) result.set(person.id, person.nombre);
     return result;
   }, [units]);
+  const auditUnit = units.find((item) => item.id === audit?.unitId);
   const auditRows = useMemo(() => {
-    const unit = units.find((item) => item.id === audit?.unitId);
     return uniqueAuditEvents(audit?.entries ?? []).map((event) => ({
       event,
-      ...auditEventView(event, unit, names),
+      ...auditEventView(event, auditUnit, names),
     }));
-  }, [audit, units, names]);
-  const hasFilters = Boolean(search || state || coordinator);
+  }, [audit, auditUnit, names]);
+  const hasFilters = Boolean(search || state || coordinator || dateFrom || dateTo);
+  const dateError =
+    dateFrom && dateTo && dateFrom > dateTo
+      ? "La fecha desde no puede ser posterior a la fecha hasta."
+      : "";
   const clearFilters = () => {
     setSearch("");
     setState("");
     setCoordinator("");
+    setDateFrom("");
+    setDateTo("");
     setSelected([]);
   };
+  const countMovements = (status: string) =>
+    units.reduce(
+      (total, unit) => total + (unit.estado === status ? unit.movimientos.length : 0),
+      0,
+    );
+  const visibleGroups = visible.filter((unit) => unit.modalidad === "CONJUNTO").length;
+  const visibleIndividuals = visible.length - visibleGroups;
   const metrics = history
     ? [
-        { label: "Movimientos", value: movementsCount, icon: TrainFront, tone: "neutral" },
         {
-          label: "Solicitudes concluidas",
-          value: units.filter((u) => u.estado === "CONCLUIDA").length,
+          label: "Movimientos",
+          value: movementsCount,
+          icon: TrainFront,
+          tone: "neutral",
+        },
+        {
+          label: "Concluidos",
+          value: countMovements("CONCLUIDA"),
           icon: CheckCircle2,
           tone: "green",
         },
         {
-          label: "Solicitudes canceladas",
-          value: units.filter((u) => u.estado === "CANCELADA").length,
+          label: "Cancelados",
+          value: countMovements("CANCELADA"),
           icon: X,
           tone: "neutral",
         },
       ]
     : [
-        { label: "Movimientos", value: movementsCount, icon: TrainFront, tone: "neutral" },
         {
-          label: "Pendientes",
-          value: units.filter((u) => u.estado === "PENDIENTE").length,
+          label: "Movimientos",
+          value: movementsCount,
+          icon: TrainFront,
+          tone: "neutral",
+        },
+        {
+          label: "Por iniciar",
+          value: countMovements("PENDIENTE"),
           icon: Clock3,
           tone: "amber",
         },
         {
-          label: "En atención",
-          value: units.filter((u) => u.estado === "EN_PROCESO").length,
+          label: "En curso",
+          value: countMovements("EN_PROCESO"),
           icon: TrainFront,
           tone: "blue",
         },
         {
-          label: "Detenidas",
-          value: units.filter((u) => u.estado === "DETENIDA").length,
+          label: "Con incidente",
+          value: countMovements("DETENIDA"),
           icon: PauseCircle,
           tone: "red",
         },
         {
-          label: "Listas para reanudar",
-          value: units.filter((u) => u.estado === "LISTA_REANUDAR").length,
+          label: "Listos para continuar",
+          value: countMovements("LISTA_REANUDAR"),
           icon: ListOrdered,
           tone: "green",
         },
@@ -282,14 +323,14 @@ export default function TorreonNaturalQueue({
       <nav className={s.navigation} aria-label="Navegación de movimientos de Torreón">
         <Link
           className={s.navigationLink}
-          href={`/${area}`}
+          href={`/${area}${isClient ? `?loc=${localidadId}` : ""}`}
           aria-current={view === "inicio" ? "page" : undefined}
         >
           <Home size={15} aria-hidden /> Inicio
         </Link>
         <Link
           className={s.navigationLink}
-          href={`/${area}/movimientos`}
+          href={`/${area}/movimientos${isClient ? `?loc=${localidadId}` : ""}`}
           aria-current={view === "seguimiento" ? "page" : undefined}
         >
           <ListChecks size={15} aria-hidden /> Seguimiento
@@ -315,6 +356,7 @@ export default function TorreonNaturalQueue({
             )}
           </span>
           <div>
+<<<<<<< Updated upstream
             <span className={s.eyebrow}>
               {view === "seguimiento"
                 ? "CONSULTA DE MOVIMIENTOS · TORREÓN"
@@ -327,6 +369,14 @@ export default function TorreonNaturalQueue({
               {view === "inicio"
                 ? "Solicitudes activas, recorrido y responsables en el patio."
                 : "Revisa solicitudes activas, consulta su detalle y explora el historial."}
+=======
+            <span className={s.eyebrow}>PATIO TORREÓN</span>
+            <h2 id="torreon-natural-title">Movimientos naturales</h2>
+            <p>
+              {view === "inicio"
+                ? "Consulta el orden de atención y los responsables de cada movimiento."
+                : "Sigue la operación y consulta movimientos concluidos o cancelados."}
+>>>>>>> Stashed changes
             </p>
           </div>
         </div>
@@ -336,6 +386,29 @@ export default function TorreonNaturalQueue({
               <Plus size={15} aria-hidden /> Solicitar movimientos
             </Link>
           )}
+<<<<<<< Updated upstream
+=======
+          {view === "seguimiento" && (
+            <div className={s.switcher} aria-label="Vista de movimientos">
+              <button
+                type="button"
+                disabled={busy}
+                aria-pressed={!history}
+                onClick={() => setHistory(false)}
+              >
+                En operación
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                aria-pressed={history}
+                onClick={() => setHistory(true)}
+              >
+                Historial
+              </button>
+            </div>
+          )}
+>>>>>>> Stashed changes
           <button
             type="button"
             className={s.button}
@@ -346,6 +419,7 @@ export default function TorreonNaturalQueue({
           </button>
         </div>
       </header>
+<<<<<<< Updated upstream
       {view === "seguimiento" && (
         <div className={s.followUpTabs}>
           <div className={s.switcher} role="group" aria-label="Período de seguimiento">
@@ -372,6 +446,9 @@ export default function TorreonNaturalQueue({
         </div>
       )}
       <div className={s.metrics}>
+=======
+      <div className={s.metrics} role="group" aria-label="Resumen de movimientos">
+>>>>>>> Stashed changes
         {metrics.map(({ label, value, icon: Icon, tone }) => (
           <div key={label} className={s.metric} data-tone={tone}>
             <span className={s.metricIcon}>
@@ -384,70 +461,148 @@ export default function TorreonNaturalQueue({
           </div>
         ))}
       </div>
-      <div className={s.toolbar}>
-        <label className={s.search}>
-          <Search size={17} aria-hidden />
-          <input
-            aria-label="Buscar movimientos"
-            placeholder="Buscar locomotora, vía, empresa o responsable…"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setSelected([]);
-            }}
-          />
-        </label>
-        <select
-          className={s.field}
-          aria-label="Filtrar por estado"
-          value={state}
-          onChange={(e) => {
-            setState(e.target.value);
-            setSelected([]);
-          }}
-        >
-          <option value="">Todos los estados</option>
-          {history ? (
-            <>
-              <option value="CONCLUIDA">Concluidos</option>
-              <option value="CANCELADA">Cancelados</option>
-            </>
-          ) : (
-            <>
-              <option value="PENDIENTE">Pendientes</option>
-              <option value="EN_PROCESO">En atención</option>
-              <option value="DETENIDA">Detenidos</option>
-              <option value="LISTA_REANUDAR">Listos para reanudar</option>
-            </>
+      <div className={s.toolbar} role="search" aria-label="Buscar y filtrar movimientos">
+        <div className={s.filterHeading}>
+          <div>
+            <h3>Buscar y filtrar</h3>
+            <p>Encuentra movimientos por locomotora, recorrido o responsable.</p>
+          </div>
+          {hasFilters && (
+            <button type="button" className={s.textButton} onClick={clearFilters}>
+              <X size={14} aria-hidden /> Limpiar
+            </button>
           )}
-        </select>
-        <select
-          className={s.field}
-          aria-label="Filtrar por coordinador"
-          value={coordinator}
-          onChange={(e) => {
-            setCoordinator(e.target.value);
-            setSelected([]);
-          }}
-        >
-          <option value="">Todos los coordinadores</option>
-          {coordinatorOptions.map(([id, name]) => (
-            <option key={id} value={id}>
-              {name}
-            </option>
-          ))}
-        </select>
-        {hasFilters && (
-          <button type="button" className={s.textButton} onClick={clearFilters}>
-            <X size={14} aria-hidden /> Limpiar
-          </button>
+        </div>
+        <div className={s.filterGrid}>
+          <label className={`${s.filterField} ${s.searchField}`}>
+            <span>Buscar movimiento</span>
+            <span className={s.search}>
+              <Search size={17} aria-hidden />
+              <input
+                aria-label="Buscar movimientos"
+                placeholder="Locomotora, vía, empresa o nombre"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setSelected([]);
+                }}
+              />
+            </span>
+          </label>
+          <label className={s.filterField}>
+            <span>Estado</span>
+            <select
+              className={s.field}
+              aria-label="Filtrar por estado"
+              value={state}
+              onChange={(e) => {
+                setState(e.target.value);
+                setSelected([]);
+              }}
+            >
+              <option value="">Todos los estados</option>
+              {history ? (
+                <>
+                  <option value="CONCLUIDA">Concluidos</option>
+                  <option value="CANCELADA">Cancelados</option>
+                </>
+              ) : (
+                <>
+                  <option value="PENDIENTE">Por iniciar</option>
+                  <option value="EN_PROCESO">En curso</option>
+                  <option value="DETENIDA">Con incidente</option>
+                  <option value="LISTA_REANUDAR">Listos para continuar</option>
+                </>
+              )}
+            </select>
+          </label>
+          <label className={s.filterField}>
+            <span>Coordinador</span>
+            <select
+              className={s.field}
+              aria-label="Filtrar por coordinador"
+              value={coordinator}
+              onChange={(e) => {
+                setCoordinator(e.target.value);
+                setSelected([]);
+              }}
+            >
+              <option value="">Todos los coordinadores</option>
+              {coordinatorOptions.map(([id, name]) => (
+                <option key={id} value={id}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {view === "seguimiento" && (
+          <div className={s.dateFilters}>
+            <label className={s.filterField}>
+              <span>Consultar por fecha de</span>
+              <select
+                className={s.field}
+                aria-label="Fecha a consultar"
+                value={dateField}
+                onChange={(event) => {
+                  setDateField(event.target.value as typeof dateField);
+                  setSelected([]);
+                }}
+              >
+                <option value="solicitud">Fecha de solicitud</option>
+                <option value="inicio">Fecha de inicio</option>
+                <option value="fin">Fecha de fin</option>
+              </select>
+            </label>
+            <label className={s.filterField}>
+              <span>Desde</span>
+              <input
+                className={s.field}
+                type="date"
+                value={dateFrom}
+                aria-label="Desde"
+                aria-invalid={Boolean(dateError)}
+                aria-describedby={dateError ? "torreon-date-error" : undefined}
+                onChange={(event) => {
+                  setDateFrom(event.target.value);
+                  setSelected([]);
+                }}
+              />
+            </label>
+            <label className={s.filterField}>
+              <span>Hasta</span>
+              <input
+                className={s.field}
+                type="date"
+                value={dateTo}
+                aria-label="Hasta"
+                aria-invalid={Boolean(dateError)}
+                aria-describedby={dateError ? "torreon-date-error" : undefined}
+                onChange={(event) => {
+                  setDateTo(event.target.value);
+                  setSelected([]);
+                }}
+              />
+            </label>
+            <p className={s.dateHint}>Fechas del patio de Torreón. Puedes usar sólo un límite.</p>
+          </div>
         )}
       </div>
+      {dateError && (
+        <p role="alert" className={s.error} id="torreon-date-error">
+          {dateError}
+        </p>
+      )}
       {dispatch && !history && (
         <div className={s.dispatchBar}>
-          <span>
-            <strong>{selected.length}</strong> solicitudes seleccionadas
-          </span>
+          <div className={s.dispatchHeading}>
+            <strong>Priorizar solicitudes</strong>
+            <span>
+              {selected.length
+                ? `${selected.length} elementos seleccionados`
+                : "Selecciona solicitudes o conjuntos en la columna Orden."}
+            </span>
+          </div>
           <label className={s.checkLabel}>
             <input
               type="checkbox"
@@ -461,13 +616,21 @@ export default function TorreonNaturalQueue({
             className={s.primaryButton}
             disabled={busy || !selected.length || (together && selected.length < 2)}
             onClick={() =>
-              void mutate("/cola/priorizar", { unidadIds: selected, enConjunto: together })
+              void mutate("/cola/priorizar", {
+                unidadIds: selected,
+                enConjunto: together,
+              })
             }
           >
             <ArrowUp size={15} aria-hidden /> Subir{" "}
             {selected.length ? `(${selected.length})` : "selección"}
           </button>
-          <small>Se respeta el orden de selección. Agrupar requiere marcar «En conjunto».</small>
+          {selected.length > 0 && (
+            <small>
+              Subir les da prioridad en el orden seleccionado. «En conjunto» reúne la selección para
+              atenderla como una sola operación.
+            </small>
+          )}
         </div>
       )}
       {error && (
@@ -483,6 +646,21 @@ export default function TorreonNaturalQueue({
           </button>
         </div>
       )}
+      <div className={s.resultsHeading}>
+        <div>
+          <h3>{history ? "Historial de movimientos" : "Orden de atención"}</h3>
+          <span>
+            {visibleCount} {visibleCount === 1 ? "movimiento" : "movimientos"}
+            {hasFilters ? " encontrados" : " en esta vista"}
+          </span>
+        </div>
+        <p>
+          {hasFilters
+            ? "Los conjuntos conservan sus integrantes visibles."
+            : "Abre Detalle para consultar indicaciones, participantes e incidentes."}
+        </p>
+        <span className={s.scrollHint}>Desliza la tabla para ver todas las columnas →</span>
+      </div>
       {loading ? (
         <div className={s.empty} role="status">
           <RefreshCw size={24} aria-hidden />
@@ -526,9 +704,11 @@ export default function TorreonNaturalQueue({
       )}
       <footer className={s.footer}>
         <span>
-          <strong>{visibleCount}</strong> de {movementsCount} movimientos · {visible.length}{" "}
-          {visible.length === 1 ? "solicitud" : "solicitudes"}
-          {hasFilters ? (visible.length === 1 ? " visible" : " visibles") : ""}
+          <strong>{visibleCount}</strong> de {movementsCount} movimientos
+          {visibleIndividuals > 0 &&
+            ` · ${visibleIndividuals} ${visibleIndividuals === 1 ? "solicitud individual" : "solicitudes individuales"}`}
+          {visibleGroups > 0 &&
+            ` · ${visibleGroups} ${visibleGroups === 1 ? "conjunto" : "conjuntos"}`}
         </span>
         <span className={s.footerNote}>
           <span className={s.liveDot} />
@@ -536,16 +716,18 @@ export default function TorreonNaturalQueue({
             ? `Actualizado ${new Intl.DateTimeFormat("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Monterrey" }).format(new Date(updatedAt))}`
             : "Actualización automática"}
         </span>
-        <span>Orden: reanudación · prioridad manual · llegada</span>
+        <span>Atención: primero reanudaciones, después prioridad y orden de llegada.</span>
       </footer>
       {audit && (
         <Modal
-          title={`Historial de operación · Solicitud #${audit.unitId}`}
+          title={`Historial de operación · ${auditUnit ? queueUnitLabel(auditUnit) : `Operación #${audit.unitId}`}`}
           onClose={() => {
             auditSequence.current++;
             setAudit(null);
           }}
           closeLabel="Cerrar historial"
+          className={s.auditModal}
+          bodyClassName={s.auditBody}
         >
           {audit.loading ? (
             <p role="status">Cargando historial…</p>

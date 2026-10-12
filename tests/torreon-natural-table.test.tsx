@@ -8,7 +8,9 @@ vi.mock("@/features/rail-queue/useRealtimeBoardRefresh", () => ({
   useRealtimeBoardRefresh() {},
 }));
 const json = (data: unknown) =>
-  new Response(JSON.stringify(data), { headers: { "content-type": "application/json" } });
+  new Response(JSON.stringify(data), {
+    headers: { "content-type": "application/json" },
+  });
 const requestedAt = "2026-10-08T18:30:00.000Z";
 function movement(id: number, locomotiveNumber: number): QueueMovement {
   return {
@@ -17,14 +19,20 @@ function movement(id: number, locomotiveNumber: number): QueueMovement {
     empresaId: 3,
     empresaNombreSnapshot: "Ferrocarril del Norte",
     viaOrigenNombreSnapshot: "Vía 29",
-    seccionOrigenNombreSnapshot: "Sección patio sur",
+    seccionOrigenId: 81,
+    seccionOrigenNumero: 1,
+    seccionOrigenNombreSnapshot: "Patio sur",
     viaDestinoNombreSnapshot: "Vía 3",
-    seccionDestinoNombreSnapshot: "Sección taller",
+    seccionDestinoId: 91,
+    seccionDestinoNumero: 2,
+    seccionDestinoNombreSnapshot: "Taller",
     estado: "SOLICITADO",
     tipoMovimiento: "REMOLCADA",
     locomotoraRemolque: 9900,
     direccionEmpuje: "JALAR",
-    polo: "NORTE",
+    polo: "SUR",
+    poloOrigen: "NORTE",
+    poloDestino: "SUR",
     posicionChimenea: "SUR",
     posicionCabina: "DENTRO",
     coordinadorId: 42,
@@ -82,31 +90,43 @@ it("shows the actual coordinator and machinist with complete route, configuratio
     "Ferrocarril del Norte",
     "Vía 29",
     "Vía 3",
-    "Posición: Sección patio sur",
-    "Posición: Sección taller",
+    "Sección 1 · Patio sur",
+    "Sección 2 · Taller",
     "Remolcada",
     "Remolca 9900 · Jalar",
     "Norte",
-    "Sur",
-    "Dentro",
   ])
     expect(details.getByText(text)).toBeTruthy();
   const time = row.querySelector(`time[datetime="${requestedAt}"]`);
   expect(time?.textContent).toMatch(/08.*oct.*2026.*12:30/);
   expect(details.queryByText("En espera")).toBeNull();
   expect(details.getByText("Pendiente de inicio")).toBeTruthy();
-  expect(details.getByText("Polo de patio")).toBeTruthy();
+  expect(details.getByText("Polo de salida:")).toBeTruthy();
+  expect(details.getByText("Polo de llegada:")).toBeTruthy();
   expect(within(table).getByRole("columnheader", { name: "Inicio" })).toBeTruthy();
   expect(details.getByText("De dónde se saca")).toBeTruthy();
   expect(details.getByText("Dónde se coloca")).toBeTruthy();
   expect(within(table).getByRole("columnheader", { name: "Responsables" })).toBeTruthy();
+  expect(screen.queryByText(/chimenea|cabina/i)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Ver detalle del movimiento 501" }));
+  const routeDetail = within(screen.getByLabelText("Recorrido de la solicitud"));
+  expect(routeDetail.getByText("Sección 1 · Patio sur")).toBeTruthy();
+  expect(routeDetail.getByText("Sección 2 · Taller")).toBeTruthy();
+  expect(screen.queryByText(/chimenea|cabina/i)).toBeNull();
 });
 
 it("filters without reordering the backend queue or splitting a matching conjunto", async () => {
-  const resumed = { ...unit(90, 1, [movement(900, 9100)]), estado: "LISTA_REANUDAR" };
+  const resumed = {
+    ...unit(90, 1, [movement(900, 9100)]),
+    estado: "LISTA_REANUDAR",
+  };
   const grouped = unit(60, 2, [
     movement(601, 7620),
-    { ...movement(602, 8820), coordinadorId: 43, coordinador: { id: 43, nombre: "Ana Gómez" } },
+    {
+      ...movement(602, 8820),
+      coordinadorId: 43,
+      coordinador: { id: 43, nombre: "Ana Gómez" },
+    },
   ]);
   const manual = { ...unit(7, 3, [movement(701, 7700)]), ordenManual: 1 };
   vi.stubGlobal(
@@ -116,15 +136,23 @@ it("filters without reordering the backend queue or splitting a matching conjunt
   render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" />);
   await screen.findByRole("table");
   expect(locomotiveOrder()).toEqual(["9100", "7620", "8820", "7700"]);
-  fireEvent.change(screen.getByLabelText("Buscar movimientos"), { target: { value: "7620" } });
+  fireEvent.change(screen.getByLabelText("Buscar movimientos"), {
+    target: { value: "7620" },
+  });
   expect(locomotiveOrder()).toEqual(["7620", "8820"]);
   expect(screen.getAllByText("Conjunto #60")).toHaveLength(2);
   fireEvent.click(screen.getByRole("button", { name: /^Limpiar$/ }));
-  fireEvent.change(screen.getByLabelText("Filtrar por estado"), { target: { value: "PENDIENTE" } });
+  fireEvent.change(screen.getByLabelText("Filtrar por estado"), {
+    target: { value: "PENDIENTE" },
+  });
   expect(locomotiveOrder()).toEqual(["7620", "8820", "7700"]);
-  fireEvent.change(screen.getByLabelText("Filtrar por coordinador"), { target: { value: "43" } });
+  fireEvent.change(screen.getByLabelText("Filtrar por coordinador"), {
+    target: { value: "43" },
+  });
   expect(locomotiveOrder()).toEqual(["7620", "8820"]);
-  fireEvent.change(screen.getByLabelText("Buscar movimientos"), { target: { value: "ana gomez" } });
+  fireEvent.change(screen.getByLabelText("Buscar movimientos"), {
+    target: { value: "ana gomez" },
+  });
   expect(locomotiveOrder()).toEqual(["7620", "8820"]);
 });
 
@@ -152,7 +180,9 @@ it("expands participants, operation times and photo evidence, then loads history
   );
   vi.stubGlobal("fetch", fetcher);
   render(<TorreonNaturalQueue localidadId={2} rol="COORDINADOR" />);
-  const expand = await screen.findByRole("button", { name: "Ver detalle del movimiento 501" });
+  const expand = await screen.findByRole("button", {
+    name: "Ver detalle del movimiento 501",
+  });
   expect(screen.queryByText("Elena García")).toBeNull();
   fireEvent.click(expand);
   expect(screen.getByText("Mover lentamente.")).toBeTruthy();
@@ -170,7 +200,15 @@ it("expands participants, operation times and photo evidence, then loads history
   expect(within(dialog).getByText("Cargando historial…")).toBeTruthy();
   expect(fetcher.mock.calls.some(([url]) => url === "/bff/torreon/cola/71/historial")).toBe(true);
   resolveHistory(
-    json([{ id: 1, accion: "ASIGNAR", usuarioId: 42, rol: "COORDINADOR", fecha: requestedAt }]),
+    json([
+      {
+        id: 1,
+        accion: "ASIGNAR",
+        usuarioId: 42,
+        rol: "COORDINADOR",
+        fecha: requestedAt,
+      },
+    ]),
   );
   await within(dialog).findByText("Maquinista asignado");
   expect(within(dialog).getByText("María Cruz · coordinador")).toBeTruthy();
@@ -183,16 +221,44 @@ it("assigns the entire attention unit using its id and only offers active local 
   const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
     if (url.startsWith("/bff/usuarios"))
       return json([
-        { id: 17, nombre: "José Hernández", rol: "MAQUINISTA", localidadId: 2, activo: true },
-        { id: 18, nombre: "Otro patio", rol: "MAQUINISTA", localidadId: 1, activo: true },
-        { id: 19, nombre: "Inactivo", rol: "MAQUINISTA", localidadId: 2, activo: false },
-        { id: 42, nombre: "María Cruz", rol: "COORDINADOR", localidadId: 2, activo: true },
+        {
+          id: 17,
+          nombre: "José Hernández",
+          rol: "MAQUINISTA",
+          localidadId: 2,
+          activo: true,
+        },
+        {
+          id: 18,
+          nombre: "Otro patio",
+          rol: "MAQUINISTA",
+          localidadId: 1,
+          activo: true,
+        },
+        {
+          id: 19,
+          nombre: "Inactivo",
+          rol: "MAQUINISTA",
+          localidadId: 2,
+          activo: false,
+        },
+        {
+          id: 42,
+          nombre: "María Cruz",
+          rol: "COORDINADOR",
+          localidadId: 2,
+          activo: true,
+        },
       ]);
     return json(options?.method === "PATCH" ? {} : [grouped]);
   });
   vi.stubGlobal("fetch", fetcher);
   render(<TorreonNaturalQueue localidadId={2} rol="COORDINADOR" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Ver detalle del movimiento 501" }));
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "Ver detalle del movimiento 501",
+    }),
+  );
   const assign = screen.getByLabelText("Asignar unidad 71");
   await within(assign).findByRole("option", { name: "José Hernández" });
   for (const name of ["Otro patio", "Inactivo", "María Cruz"])
@@ -230,7 +296,11 @@ it("lets clients inspect and confirm an incident solution without dispatcher con
   );
   vi.stubGlobal("fetch", fetcher);
   render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Ver incidentes del movimiento 501" }));
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "Ver incidentes del movimiento 501",
+    }),
+  );
   expect(screen.getByText("Incidente #91")).toBeTruthy();
   expect(screen.queryByLabelText("En conjunto")).toBeNull();
   expect(screen.queryByLabelText("Asignar unidad 71")).toBeNull();
@@ -247,7 +317,9 @@ it("lets clients inspect and confirm an incident solution without dispatcher con
   );
   const [url, options] = fetcher.mock.calls.find(([, init]) => init?.method === "PATCH")!;
   expect(url).toBe("/bff/torreon/incidentes/91/resolver?tipo=NATURAL");
-  expect(JSON.parse(options!.body as string)).toEqual({ solucion: "Vía despejada" });
+  expect(JSON.parse(options!.body as string)).toEqual({
+    solucion: "Vía despejada",
+  });
 });
 
 it("shows the real size of a partially visible conjunto without adding movements outside the client scope", async () => {
@@ -287,7 +359,11 @@ it("uses the requester's name for the client only when both user ids match", asy
     vi.fn(async () => json([unit(71, 1, [sameClient]), unit(72, 2, [distinctClient])])),
   );
   render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Ver detalle del movimiento 501" }));
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "Ver detalle del movimiento 501",
+    }),
+  );
   expect(screen.getAllByText("Elena García")).toHaveLength(2);
   expect(screen.queryByText("Usuario #88")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Ver detalle del movimiento 601" }));
@@ -300,7 +376,13 @@ it.each(["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "COORDINADOR", "SUPERVISOR"
   async (role) => {
     const m = {
       ...movement(501, 7620),
-      fotos: [{ id: 11, url: "uploads/incidentes/torreon/antes.jpg", tipo: "ANTES_MOVIMIENTO" }],
+      fotos: [
+        {
+          id: 11,
+          url: "uploads/incidentes/torreon/antes.jpg",
+          tipo: "ANTES_MOVIMIENTO",
+        },
+      ],
       fechaFin: "2026-10-08T19:00:00.000Z",
       incidentes: [
         {
@@ -320,7 +402,9 @@ it.each(["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR", "COORDINADOR", "SUPERVISOR"
     const table = await screen.findByRole("table");
     const client = ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"].includes(role);
     const elapsed = ["COORDINADOR", "SUPERVISOR"].includes(role);
-    const incidentLink = screen.queryByRole("link", { name: "Incidentes de mi empresa" });
+    const incidentLink = screen.queryByRole("link", {
+      name: "Incidentes de mi empresa",
+    });
     expect(Boolean(incidentLink)).toBe(client);
     if (incidentLink)
       expect(incidentLink.getAttribute("href")).toBe(
@@ -356,16 +440,85 @@ it("retains final timestamps and concluded requests in Seguimiento", async () =>
   await waitFor(() =>
     expect(fetcher.mock.calls.some(([url]) => url.includes("historial=true"))).toBe(true),
   );
-  fireEvent.click(await screen.findByRole("button", { name: "Ver detalle del movimiento 501" }));
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "Ver detalle del movimiento 501",
+    }),
+  );
   expect(screen.getByText(/^Fin$/)).toBeTruthy();
   expect(screen.getByText(/08.*oct.*2026.*13:00/)).toBeTruthy();
 });
 
-it("keeps section identifiers visible when a legacy movement has no section snapshot", async () => {
+it("uses the natural queue for client Seguimiento and finds a concluded movement beyond the old page limit", async () => {
+  const past = Array.from({ length: 110 }, (_, index) => ({
+    ...unit(index + 1, index + 1, [
+      {
+        ...movement(index + 501, index + 7600),
+        estado: "CONCLUIDO",
+        fechaInicio: "2026-10-11T18:00:00Z",
+        fechaFin: "2026-10-11T18:45:00Z",
+      },
+    ]),
+    estado: "CONCLUIDA",
+  }));
+  const fetcher = vi.fn(async (url: string) =>
+    json(url.includes("historial=true") ? past : [unit(1, 1, [movement(1, 1234)])]),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" view="seguimiento" />);
+  await screen.findByRole("table");
+  expect(screen.getByRole("link", { name: "Seguimiento" }).getAttribute("href")).toBe(
+    "/cliente/movimientos?loc=2",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Historial" }));
+  await screen.findByText("7709");
+  fireEvent.change(screen.getByLabelText("Buscar movimientos"), {
+    target: { value: "7709" },
+  });
+  fireEvent.change(screen.getByLabelText("Fecha a consultar"), {
+    target: { value: "fin" },
+  });
+  fireEvent.change(screen.getByLabelText("Desde"), {
+    target: { value: "2026-10-11" },
+  });
+  fireEvent.change(screen.getByLabelText("Hasta"), {
+    target: { value: "2026-10-11" },
+  });
+  expect(locomotiveOrder()).toEqual(["7709"]);
+  expect(fetcher.mock.calls.every(([url]) => url.startsWith("/bff/torreon/cola?"))).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Ver detalle del movimiento 610" }));
+  expect(screen.getByText(/^Fin$/)).toBeTruthy();
+  expect(screen.queryByText("Trabajo efectivo")).toBeNull();
+});
+
+it("shows effective and total work separately to coordination", async () => {
   const m = {
     ...movement(501, 7620),
-    seccionOrigenId: 8,
-    seccionDestinoId: 9,
+    estado: "CONCLUIDO",
+    fechaInicio: "2026-10-11T18:00:00Z",
+    fechaFin: "2026-10-11T18:45:00Z",
+    tiempoActivoSegundos: 600,
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      json(url.startsWith("/bff/usuarios") ? [] : [{ ...unit(71, 1, [m]), estado: "CONCLUIDA" }]),
+    ),
+  );
+  render(<TorreonNaturalQueue localidadId={2} rol="COORDINADOR" view="seguimiento" />);
+  await screen.findByRole("table");
+  expect(screen.getByText("Trabajo efectivo")).toBeTruthy();
+  expect(screen.getByText("10 min")).toBeTruthy();
+  expect(screen.getByText("Tiempo total: 45 min")).toBeTruthy();
+});
+
+it("does not disguise database identifiers as section numbers when legacy metadata is missing", async () => {
+  const m = {
+    ...movement(501, 7620),
+    seccionOrigenId: 81,
+    seccionDestinoId: 91,
+    seccionOrigenNumero: null,
+    seccionDestinoNumero: null,
     seccionOrigenNombreSnapshot: null,
     seccionDestinoNombreSnapshot: null,
   };
@@ -375,9 +528,8 @@ it("keeps section identifiers visible when a legacy movement has no section snap
   );
   render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" />);
   await screen.findByRole("table");
-  expect(screen.getByText("Posición: Sección #8")).toBeTruthy();
-  expect(screen.getByText("Posición: Sección #9")).toBeTruthy();
-  expect(screen.queryByText(/Sin sección registrada/)).toBeNull();
+  expect(screen.getAllByText("Número de sección no disponible")).toHaveLength(2);
+  expect(screen.queryByText(/Sección #?(81|91)/)).toBeNull();
 });
 
 it("offers movement capture only to clients with creation permission", async () => {
@@ -394,4 +546,116 @@ it("offers movement capture only to clients with creation permission", async () 
   expect(screen.queryByRole("link", { name: "Solicitar movimientos" })).toBeNull();
   page.rerender(<TorreonNaturalQueue localidadId={2} rol="COORDINADOR" canCreateMovements />);
   expect(screen.queryByRole("link", { name: "Solicitar movimientos" })).toBeNull();
+});
+
+it("counts movements inside conjuntos in the status summary and identifies their grouping separately", async () => {
+  const pendingGroup = unit(60, 1, [movement(601, 7601), movement(602, 7602)]);
+  const ready = {
+    ...unit(61, 2, [{ ...movement(603, 7603), estado: "DETENIDO" }]),
+    estado: "LISTA_REANUDAR",
+  };
+  const stopped = {
+    ...unit(62, 3, [{ ...movement(604, 7604), estado: "DETENIDO" }]),
+    estado: "DETENIDA",
+  };
+  const running = {
+    ...unit(63, 4, [{ ...movement(605, 7605), estado: "EN_PROCESO" }]),
+    estado: "EN_PROCESO",
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => json([pendingGroup, ready, stopped, running])),
+  );
+  render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" />);
+  await screen.findByRole("table");
+  const summary = within(screen.getByRole("group", { name: "Resumen de movimientos" }));
+  expect(summary.getByText("Movimientos").parentElement?.querySelector("strong")?.textContent).toBe(
+    "5",
+  );
+  expect(summary.getByText("Por iniciar").parentElement?.querySelector("strong")?.textContent).toBe(
+    "2",
+  );
+  expect(
+    summary.getByText("Con incidente").parentElement?.querySelector("strong")?.textContent,
+  ).toBe("1");
+  expect(
+    summary.getByText("Listos para continuar").parentElement?.querySelector("strong")?.textContent,
+  ).toBe("1");
+  const table = within(screen.getByRole("table"));
+  expect(table.getAllByText("Por iniciar")).toHaveLength(2);
+  expect(table.getByText("Listo para continuar")).toBeTruthy();
+  expect(table.getByText("Con incidente")).toBeTruthy();
+  expect(table.getByText("En curso")).toBeTruthy();
+  expect(
+    screen.getByText(/de 5 movimientos · 3 solicitudes individuales · 1 conjunto/),
+  ).toBeTruthy();
+});
+
+it("counts concluded and cancelled members in Historial and connects invalid date fields to their error", async () => {
+  const concluded = {
+    ...unit(70, 1, [movement(701, 7601), movement(702, 7602)]),
+    estado: "CONCLUIDA",
+  };
+  const cancelled = { ...unit(71, 2, [movement(703, 7603)]), estado: "CANCELADA" };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      json(url.includes("historial=true") ? [concluded, cancelled] : []),
+    ),
+  );
+  render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" view="seguimiento" />);
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Actualizar" }).hasAttribute("disabled")).toBe(false),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Historial" }));
+  await screen.findByRole("table");
+  const summary = within(screen.getByRole("group", { name: "Resumen de movimientos" }));
+  expect(summary.getByText("Concluidos").parentElement?.querySelector("strong")?.textContent).toBe(
+    "2",
+  );
+  expect(summary.getByText("Cancelados").parentElement?.querySelector("strong")?.textContent).toBe(
+    "1",
+  );
+  fireEvent.change(screen.getByLabelText("Desde", { exact: true }), {
+    target: { value: "2026-10-12" },
+  });
+  fireEvent.change(screen.getByLabelText("Hasta", { exact: true }), {
+    target: { value: "2026-10-01" },
+  });
+  expect(screen.getByRole("alert").textContent).toContain("La fecha desde no puede ser posterior");
+  expect(screen.getByLabelText("Desde", { exact: true }).getAttribute("aria-invalid")).toBe("true");
+  expect(screen.getByLabelText("Hasta", { exact: true }).getAttribute("aria-describedby")).toBe(
+    screen.getByRole("alert").id,
+  );
+});
+
+it.each(["CLIENTE", "COORDINADOR", "SUPERVISOR", "ADMINISTRADOR"])(
+  "shows independent route poles for %s in table and expanded detail",
+  async (rol) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => json([unit(71, 1, [movement(501, 7620)])])),
+    );
+    render(<TorreonNaturalQueue localidadId={2} rol={rol} />);
+    const table = await screen.findByRole("table");
+    const row = within(table).getByRole("rowheader").closest("tr")!;
+    expect(row.textContent).toContain("Polo de salida: Norte");
+    expect(row.textContent).toContain("Polo de llegada: Sur");
+    fireEvent.click(screen.getByRole("button", { name: "Ver detalle del movimiento 501" }));
+    const detail = screen.getByLabelText("Recorrido de la solicitud");
+    expect(detail.textContent).toContain("Polo de salida: Norte");
+    expect(detail.textContent).toContain("Polo de llegada: Sur");
+  },
+);
+it("does not infer either route pole from the legacy single value", async () => {
+  const legacy = { ...movement(501, 7620), polo: "NORTE", poloOrigen: null, poloDestino: null };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => json([unit(71, 1, [legacy])])),
+  );
+  render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" />);
+  const table = await screen.findByRole("table");
+  expect(within(table).getAllByText("No registrado")).toHaveLength(2);
+  expect(within(table).queryByText("Norte")).toBeNull();
+  expect(within(table).queryByText("Sur")).toBeNull();
 });
