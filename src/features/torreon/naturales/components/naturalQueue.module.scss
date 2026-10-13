@@ -1511,3 +1511,385 @@ tbody[data-group="true"] .orderCell {
     margin-top: 0;
   }
 }
+
+.viewToolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 0 24px 16px;
+  p {
+    color: var(--q-muted);
+    font-size: 12px;
+    margin: 0;
+  }
+  .switcher button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 36px;
+  }
+}
+.recordList {
+  display: grid;
+  gap: 16px;
+  padding: 0 24px 24px;
+}
+.record {
+  min-width: 0;
+  border: 1px solid var(--q-line);
+  border-radius: 12px;
+  background: var(--q-bg);
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgb(15 23 42 / 3%);
+  &[data-selected="true"] {
+    border-color: var(--q-accent);
+    box-shadow: 0 0 0 1px var(--q-accent);
+  }
+}
+.recordHeader {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px 20px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--q-line);
+}
+.recordIdentity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: min(300px, 100%);
+  > div {
+    min-width: 0;
+  }
+  p {
+    margin-top: 5px;
+    color: var(--q-muted);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+}
+.recordIcon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  border: 1px solid var(--q-line);
+  border-radius: 10px;
+  color: var(--q-accent);
+  background: var(--q-soft);
+}
+.recordTitle {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  h4 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 750;
+    letter-spacing: -0.025em;
+    font-variant-numeric: tabular-nums;
+  }
+}
+.recordFolio {
+  color: var(--q-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.recordStatus .photoCount {
+  display: none;
+}
+.recordIncidents {
+  max-width: 215px;
+  .incidentButton {
+    font-size: 12px !important;
+  }
+  .incidentReason {
+    font-size: 11px;
+  }
+}
+.recordBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  padding: 18px 20px;
+  > section + section {
+    border-left: 1px solid var(--q-line);
+    padding-left: 20px;
+  }
+  h5 {
+    margin: 0 0 12px;
+    color: var(--q-ink);
+    font-size: 12px;
+    font-weight: 700;
+  }
+}
+.recordRouteStops {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  > div {
+    min-width: 0;
+  }
+  .route {
+    margin-top: 5px;
+  }
+  .routeOrigin,
+  .routeDestination {
+    display: block;
+    > span:last-child {
+      display: block;
+    }
+    strong {
+      display: block;
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+  }
+  .routeDot {
+    display: none;
+  }
+  .sectionBadge {
+    font-size: 12px;
+    padding: 3px 6px;
+    margin-top: 6px;
+    overflow-wrap: anywhere;
+  }
+  .poleLabel {
+    margin-top: 7px;
+    font-size: 12px;
+    strong {
+      display: inline;
+      font-size: inherit;
+    }
+  }
+}
+.recordLabel {
+  color: var(--q-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.recordPeople {
+  .person > span {
+    font-size: 11px;
+  }
+  .person strong {
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+}
+.recordDates {
+  dl {
+    display: grid;
+    gap: 9px;
+    margin: 0;
+  }
+  dl > div {
+    display: grid;
+    grid-template-columns: 50px 1fr;
+    gap: 10px;
+    align-items: baseline;
+  }
+  dt {
+    color: var(--q-muted);
+    font-size: 11px;
+  }
+  dd {
+    margin: 0;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .unassigned {
+    color: var(--q-muted);
+  }
+}
+.recordTiming {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--q-line);
+  .timeCell {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 8px;
+    > span,
+    > strong {
+      margin: 0;
+      font-size: 12px;
+    }
+    > small {
+      flex-basis: 100%;
+      color: var(--q-muted);
+      font-size: 11px;
+    }
+  }
+}
+.recordFooter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--q-line);
+  background: var(--q-soft);
+}
+.recordOrder,
+.recordType {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  .orderCell {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .orderHint,
+  .groupTag {
+    margin: 0;
+    font-size: 11px;
+  }
+  .groupTag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .groupTag small {
+    display: inline;
+    margin: 0;
+  }
+  .orderTop strong {
+    font-size: 13px;
+    color: var(--q-ink);
+  }
+  .towing {
+    margin: 0;
+  }
+}
+.followUpDetail {
+  padding: 20px;
+  background: var(--q-soft);
+  border-top: 1px solid var(--q-line);
+  .detailContent {
+    position: static;
+    width: 100%;
+  }
+  .detailGrid h3 {
+    font-size: 12px;
+    text-transform: none;
+    letter-spacing: normal;
+  }
+  .detailData > div {
+    grid-template-columns: 95px 1fr;
+  }
+}
+@container (max-width: 1050px) {
+  .recordBody {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    .recordRoute {
+      grid-column: 1 / -1;
+    }
+    .recordPeople {
+      border-left: 0;
+      padding-left: 0;
+    }
+  }
+  .recordRouteStops {
+    gap: 24px;
+  }
+}
+@container (max-width: 640px) {
+  .viewToolbar {
+    padding: 0 16px 14px;
+  }
+  .viewToolbar > p {
+    display: none;
+  }
+  .viewToolbar .switcher {
+    width: 100%;
+  }
+  .recordList {
+    padding: 0 12px 16px;
+    gap: 12px;
+  }
+  .recordHeader {
+    padding: 14px;
+    gap: 12px;
+  }
+  .recordIdentity {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+  .recordTitle h4 {
+    font-size: 17px;
+  }
+  .recordHeader > .detailButton {
+    margin-left: auto;
+  }
+  .recordIncidents {
+    max-width: 100%;
+  }
+  .recordIncidents .incidentReason {
+    display: none;
+  }
+  .recordBody {
+    padding: 16px 14px;
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .recordBody > section + section {
+    border-left: 0;
+    padding-left: 0;
+    border-top: 1px solid var(--q-line);
+    padding-top: 14px;
+  }
+  .recordRouteStops {
+    gap: 12px;
+  }
+  .recordDates dl {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .recordDates dl > div {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+  .recordDates dd {
+    font-size: 11px;
+  }
+  .recordFooter {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+  .recordOrder,
+  .recordType {
+    flex-basis: 100%;
+  }
+  .followUpDetail {
+    padding: 16px 14px;
+  }
+}
+
+.followUpTable {
+  :global(.ant-table-tbody > tr > td) {
+    vertical-align: top;
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+  :global(.ant-table-tbody > tr:nth-child(even):not(.ant-table-expanded-row) > td) {
+    background: var(--q-soft);
+  }
+}
+.recordRouteStops .sectionBadge[data-empty="true"] {
+  color: var(--q-muted);
+  background: var(--q-soft);
+  font-weight: 400;
+}

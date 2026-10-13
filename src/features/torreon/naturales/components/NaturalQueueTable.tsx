@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowDown,
@@ -9,6 +9,9 @@ import {
   ExternalLink,
   History,
   Link2,
+  LayoutList,
+  Table2,
+  TrainFront,
   UserRound,
 } from "lucide-react";
 import ConfigProvider from "antd/es/config-provider";
@@ -39,6 +42,7 @@ type Props = {
   showWaitTime: boolean;
   showImages: boolean;
   showFinish: boolean;
+  followUp?: boolean;
   selected: number[];
   onSelect: (id: number, checked: boolean) => void;
   operators: { id: number; nombre: string }[];
@@ -56,6 +60,7 @@ export default function NaturalQueueTable({
   showWaitTime,
   showImages,
   showFinish,
+  followUp = false,
   selected,
   onSelect,
   operators,
@@ -63,6 +68,7 @@ export default function NaturalQueueTable({
   mutate,
   onHistory,
 }: Props) {
+  const [layout, setLayout] = useState<"summary" | "table">("summary");
   const [expanded, setExpanded] = useState<number[]>([]);
   const [assignment, setAssignment] = useState<Record<number, string>>({});
   const [solution, setSolution] = useState<Record<number, string>>({});
@@ -98,7 +104,16 @@ export default function NaturalQueueTable({
             {movement[`via${side}NombreSnapshot`] ||
               (movement[`via${side}Id`] ? `Vía #${movement[`via${side}Id`]}` : "Vía sin registrar")}
           </strong>
-          <span className={s.sectionBadge}>{section(movement, side)}</span>
+          <span
+            className={s.sectionBadge}
+            data-empty={
+              !movement[`seccion${side}Id`] &&
+              !movement[`seccion${side}Numero`] &&
+              !movement[`seccion${side}NombreSnapshot`]
+            }
+          >
+            {section(movement, side)}
+          </span>
           <span className={s.poleLabel}>
             Polo de {side === "Origen" ? "salida" : "llegada"}:{" "}
             <strong>{poleLabel(movement[`polo${side}`])}</strong>
@@ -107,173 +122,291 @@ export default function NaturalQueueTable({
       </span>
     </div>
   );
+  const cells: Record<string, (row: TableRow) => ReactNode> = {
+    fila: ({ unit, index, unitIndex }) => (
+      <div className={s.orderCell}>
+        <div className={s.orderTop}>
+          {index === 0 && dispatch && unit.estado === "PENDIENTE" && (
+            <input
+              type="checkbox"
+              aria-label={`Seleccionar unidad ${unit.id}`}
+              checked={selected.includes(unit.id)}
+              disabled={busy}
+              onChange={(e) => onSelect(unit.id, e.target.checked)}
+            />
+          )}
+          <strong>{String(unit.posicion ?? unitIndex + 1).padStart(2, "0")}</strong>
+        </div>
+        <span className={s.orderHint}>{unitPriority(unit)}</span>
+        {unit.modalidad === "CONJUNTO" && (
+          <span className={s.groupTag}>
+            <Link2 size={13} aria-hidden /> Conjunto #{unit.id}
+            <small>
+              {unit.totalIntegrantes && unit.totalIntegrantes > unit.movimientos.length
+                ? `${unit.movimientos.length} de ${unit.totalIntegrantes} visibles`
+                : `${index + 1} / ${unit.movimientos.length}`}
+            </small>
+          </span>
+        )}
+      </div>
+    ),
+    folio: ({ movement }) => (
+      <button
+        type="button"
+        className={s.detailButton}
+        aria-label={`Ver folio ${movement.id}`}
+        aria-expanded={expanded.includes(movement.id)}
+        onClick={() => toggle(movement.id)}
+      >
+        #{movement.id}
+      </button>
+    ),
+    locomotora: ({ movement }) => (
+      <strong className="text-base font-black tabular-nums">{movement.locomotiveNumber}</strong>
+    ),
+    tipo: ({ movement }) => (
+      <div>
+        <strong className={s.movementType}>{configurationLabel(movement.tipoMovimiento)}</strong>
+        {movement.tipoMovimiento === "REMOLCADA" && (
+          <p className={s.towing}>
+            Remolca {movement.locomotoraRemolque ?? "—"} ·{" "}
+            {configurationLabel(movement.direccionEmpuje)}
+          </p>
+        )}
+      </div>
+    ),
+    localidad: ({ movement }) => movement.localidadNombreSnapshot || "Torreón",
+    empresa: ({ movement }) => (
+      <strong>
+        {movement.empresaNombreSnapshot ||
+          (movement.empresaId ? `Empresa #${movement.empresaId}` : "Sin registrar")}
+      </strong>
+    ),
+    personal: ({ unit, movement }) => (
+      <div className={s.tablePeople}>
+        {[
+          [
+            "Cliente",
+            personName(
+              movement.cliente ??
+                (movement.clienteId === movement.creadoPorId ? movement.creadoPor : null),
+              movement.clienteId,
+            ),
+          ],
+          ["Coordinador", personName(movement.coordinador, movement.coordinadorId, "Por asignar")],
+          ["Supervisor", personName(movement.supervisor, movement.supervisorId)],
+          [
+            "Maquinista",
+            personName(movement.operador ?? unit.operador, movement.operadorId ?? unit.operadorId),
+          ],
+        ].map(([label, value]) => (
+          <div key={label} className={s.person}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </div>
+        ))}
+      </div>
+    ),
+    origen: ({ movement }) => renderRoute(movement, "Origen"),
+    destino: ({ movement }) => renderRoute(movement, "Destino"),
+    solicitud: ({ unit, movement }) => (
+      <time
+        className={s.timeCell}
+        dateTime={movement.fechaSolicitud ?? unit.fechaRecepcion ?? undefined}
+      >
+        {dateLabel(movement.fechaSolicitud ?? unit.fechaRecepcion)}
+      </time>
+    ),
+    inicio: ({ unit, movement }) =>
+      (movement.fechaInicio ?? unit.fechaInicio) ? (
+        <time
+          className={s.timeCell}
+          dateTime={movement.fechaInicio ?? unit.fechaInicio ?? undefined}
+        >
+          {dateLabel(movement.fechaInicio ?? unit.fechaInicio)}
+        </time>
+      ) : (
+        <span className={s.unassigned}>Pendiente de inicio</span>
+      ),
+    fin: ({ unit, movement }) => (
+      <time className={s.timeCell} dateTime={movement.fechaFin ?? unit.fechaFin ?? undefined}>
+        {dateLabel(movement.fechaFin ?? unit.fechaFin)}
+      </time>
+    ),
+    tiempo: ({ unit, movement }) => {
+      const time = naturalTiming(unit, movement);
+      return (
+        <div className={s.timeCell}>
+          <span>{time.label}</span>
+          <strong>{time.value}</strong>
+          {time.total && <small>Tiempo total: {time.total}</small>}
+        </div>
+      );
+    },
+    estado: ({ unit, movement }) => (
+      <div className={s.statusStack}>
+        <StatusBadge
+          status={movement.estado}
+          label={
+            unit.estado === "LISTA_REANUDAR"
+              ? "Listo para continuar"
+              : (
+                  {
+                    SOLICITADO: "Por iniciar",
+                    ASIGNADO: "Por iniciar",
+                    EN_PROCESO: "En curso",
+                    DETENIDO: "Con incidente",
+                    CONCLUIDO: "Concluido",
+                    CANCELADO: "Cancelado",
+                  } as Record<string, string>
+                )[movement.estado]
+          }
+          tone={
+            unit.estado === "LISTA_REANUDAR"
+              ? "success"
+              : movement.estado === "DETENIDO"
+                ? "danger"
+                : undefined
+          }
+          size="sm"
+          dot
+        />
+        {unit.ordenManual != null && unit.estado === "PENDIENTE" && (
+          <span className={s.priorityTag}>Prioridad asignada</span>
+        )}
+        {unit.incidenteBloqueanteId && unit.estado !== "DETENIDA" && (
+          <span className={s.blockedTag}>Ruta bloqueada</span>
+        )}
+        {showImages && (
+          <span className={s.photoCount}>
+            <Camera size={13} aria-hidden />
+            {movement.fotos?.length
+              ? `${movement.fotos.length} ${movement.fotos.length === 1 ? "foto" : "fotos"}`
+              : "Sin fotos"}
+          </span>
+        )}
+      </div>
+    ),
+    incidentes: ({ unit, movement }) => {
+      const incidents = movementIncidents(unit, movement);
+      const open = incidents.filter((incident) => incident.estado === "ABIERTO");
+      return (
+        <div className={s.incidentsSummary}>
+          {open.length || unit.incidenteBloqueanteId ? (
+            <button
+              type="button"
+              className={s.incidentButton}
+              aria-label={`Ver incidentes del movimiento ${movement.id}`}
+              onClick={() => {
+                if (!expanded.includes(movement.id)) toggle(movement.id);
+              }}
+            >
+              <AlertTriangle size={14} aria-hidden />
+              {open.length
+                ? `${open.length} ${open.length === 1 ? "abierto" : "abiertos"}`
+                : `Bloqueo #${unit.incidenteBloqueanteId}`}
+            </button>
+          ) : (
+            <span className={s.noIncidents}>
+              {incidents.length ? "Resueltos" : "Sin incidentes"}
+            </span>
+          )}
+          {open[0] && (
+            <span className={s.incidentReason} title={open[0].motivo}>
+              #{open[0].id} · {open[0].motivo}
+            </span>
+          )}
+          {!open.length && incidents.length > 0 && <small>{incidents.length} en historial</small>}
+        </div>
+      );
+    },
+    detalle: ({ movement }) => (
+      <button
+        type="button"
+        className={s.detailButton}
+        aria-label={`${expanded.includes(movement.id) ? "Ocultar" : "Ver"} detalle del movimiento ${movement.id}`}
+        aria-expanded={expanded.includes(movement.id)}
+        aria-controls={
+          expanded.includes(movement.id) ? `${prefix}-movement-${movement.id}` : undefined
+        }
+        onClick={() => toggle(movement.id)}
+      >
+        {expanded.includes(movement.id) ? (
+          <ChevronUp size={16} aria-hidden />
+        ) : (
+          <ChevronDown size={16} aria-hidden />
+        )}
+        {expanded.includes(movement.id) ? "Cerrar" : "Detalle"}
+      </button>
+    ),
+  };
   const columns: ColumnsType<TableRow> = [
     {
       title: "Fila",
       key: "fila",
       width: 110,
       fixed: "left",
-      render: (_, { unit, index, unitIndex }) => (
-        <div className={s.orderCell}>
-          <div className={s.orderTop}>
-            {index === 0 && dispatch && unit.estado === "PENDIENTE" && (
-              <input
-                type="checkbox"
-                aria-label={`Seleccionar unidad ${unit.id}`}
-                checked={selected.includes(unit.id)}
-                disabled={busy}
-                onChange={(e) => onSelect(unit.id, e.target.checked)}
-              />
-            )}
-            <strong>{String(unit.posicion ?? unitIndex + 1).padStart(2, "0")}</strong>
-          </div>
-          <span className={s.orderHint}>{unitPriority(unit)}</span>
-          {unit.modalidad === "CONJUNTO" && (
-            <span className={s.groupTag}>
-              <Link2 size={13} aria-hidden /> Conjunto #{unit.id}
-              <small>
-                {unit.totalIntegrantes && unit.totalIntegrantes > unit.movimientos.length
-                  ? `${unit.movimientos.length} de ${unit.totalIntegrantes} visibles`
-                  : `${index + 1} / ${unit.movimientos.length}`}
-              </small>
-            </span>
-          )}
-        </div>
-      ),
+      render: (_, row) => cells.fila(row),
     },
     {
       title: "Folio",
       key: "folio",
       width: 110,
-      render: (_, { movement }) => (
-        <button
-          type="button"
-          className={s.detailButton}
-          aria-label={`Ver folio ${movement.id}`}
-          aria-expanded={expanded.includes(movement.id)}
-          onClick={() => toggle(movement.id)}
-        >
-          #{movement.id}
-        </button>
-      ),
+      render: (_, row) => cells.folio(row),
     },
     {
       title: "Locomotora",
       key: "locomotora",
       width: 140,
-      render: (_, { movement }) => (
-        <strong className="text-base font-black tabular-nums">{movement.locomotiveNumber}</strong>
-      ),
+      render: (_, row) => cells.locomotora(row),
     },
     {
       title: "Tipo",
       key: "tipo",
       width: 165,
-      render: (_, { movement }) => (
-        <div>
-          <strong className={s.movementType}>{configurationLabel(movement.tipoMovimiento)}</strong>
-          {movement.tipoMovimiento === "REMOLCADA" && (
-            <p className={s.towing}>
-              Remolca {movement.locomotoraRemolque ?? "—"} ·{" "}
-              {configurationLabel(movement.direccionEmpuje)}
-            </p>
-          )}
-        </div>
-      ),
+      render: (_, row) => cells.tipo(row),
     },
     {
       title: "Localidad",
       key: "localidad",
       width: 120,
-      render: (_, { movement }) => movement.localidadNombreSnapshot || "Torreón",
+      render: (_, row) => cells.localidad(row),
     },
     {
       title: "Empresa",
       key: "empresa",
       width: 160,
-      render: (_, { movement }) => (
-        <strong>
-          {movement.empresaNombreSnapshot ||
-            (movement.empresaId ? `Empresa #${movement.empresaId}` : "Sin registrar")}
-        </strong>
-      ),
+      render: (_, row) => cells.empresa(row),
     },
     {
       title: "Personal",
       key: "personal",
       width: 260,
-      render: (_, { unit, movement }) => (
-        <div className={s.tablePeople}>
-          {[
-            [
-              "Cliente",
-              personName(
-                movement.cliente ??
-                  (movement.clienteId === movement.creadoPorId ? movement.creadoPor : null),
-                movement.clienteId,
-              ),
-            ],
-            [
-              "Coordinador",
-              personName(movement.coordinador, movement.coordinadorId, "Por asignar"),
-            ],
-            ["Supervisor", personName(movement.supervisor, movement.supervisorId)],
-            [
-              "Maquinista",
-              personName(
-                movement.operador ?? unit.operador,
-                movement.operadorId ?? unit.operadorId,
-              ),
-            ],
-          ].map(([label, value]) => (
-            <div key={label} className={s.person}>
-              <span>{label}</span>
-              <strong>{value}</strong>
-            </div>
-          ))}
-        </div>
-      ),
+      render: (_, row) => cells.personal(row),
     },
     {
       title: "Origen",
       key: "origen",
       width: 180,
-      render: (_, { movement }) => renderRoute(movement, "Origen"),
+      render: (_, row) => cells.origen(row),
     },
     {
       title: "Destino",
       key: "destino",
       width: 180,
-      render: (_, { movement }) => renderRoute(movement, "Destino"),
+      render: (_, row) => cells.destino(row),
     },
     {
       title: "Solicitud",
       key: "solicitud",
       width: 155,
-      render: (_, { unit, movement }) => (
-        <time
-          className={s.timeCell}
-          dateTime={movement.fechaSolicitud ?? unit.fechaRecepcion ?? undefined}
-        >
-          {dateLabel(movement.fechaSolicitud ?? unit.fechaRecepcion)}
-        </time>
-      ),
+      render: (_, row) => cells.solicitud(row),
     },
     {
       title: "Inicio",
       key: "inicio",
       width: 155,
-      render: (_, { unit, movement }) =>
-        (movement.fechaInicio ?? unit.fechaInicio) ? (
-          <time
-            className={s.timeCell}
-            dateTime={movement.fechaInicio ?? unit.fechaInicio ?? undefined}
-          >
-            {dateLabel(movement.fechaInicio ?? unit.fechaInicio)}
-          </time>
-        ) : (
-          <span className={s.unassigned}>Pendiente de inicio</span>
-        ),
+      render: (_, row) => cells.inicio(row),
     },
   ];
   if (showFinish)
@@ -281,148 +414,80 @@ export default function NaturalQueueTable({
       title: "Fin",
       key: "fin",
       width: 155,
-      render: (_, { unit, movement }) => (
-        <time className={s.timeCell} dateTime={movement.fechaFin ?? unit.fechaFin ?? undefined}>
-          {dateLabel(movement.fechaFin ?? unit.fechaFin)}
-        </time>
-      ),
+      render: (_, row) => cells.fin(row),
     });
   if (showWaitTime)
     columns.push({
       title: "Resolución / tiempo",
       key: "tiempo",
       width: 160,
-      render: (_, { unit, movement }) => {
-        const time = naturalTiming(unit, movement);
-        return (
-          <div className={s.timeCell}>
-            <span>{time.label}</span>
-            <strong>{time.value}</strong>
-            {time.total && <small>Tiempo total: {time.total}</small>}
-          </div>
-        );
-      },
+      render: (_, row) => cells.tiempo(row),
     });
   columns.push(
     {
       title: "Estado",
       key: "estado",
       width: 160,
-      render: (_, { unit, movement }) => (
-        <div className={s.statusStack}>
-          <StatusBadge
-            status={movement.estado}
-            label={
-              unit.estado === "LISTA_REANUDAR"
-                ? "Listo para continuar"
-                : (
-                    {
-                      SOLICITADO: "Por iniciar",
-                      ASIGNADO: "Por iniciar",
-                      EN_PROCESO: "En curso",
-                      DETENIDO: "Con incidente",
-                      CONCLUIDO: "Concluido",
-                      CANCELADO: "Cancelado",
-                    } as Record<string, string>
-                  )[movement.estado]
-            }
-            tone={
-              unit.estado === "LISTA_REANUDAR"
-                ? "success"
-                : movement.estado === "DETENIDO"
-                  ? "danger"
-                  : undefined
-            }
-            size="sm"
-            dot
-          />
-          {unit.ordenManual != null && unit.estado === "PENDIENTE" && (
-            <span className={s.priorityTag}>Prioridad asignada</span>
-          )}
-          {unit.incidenteBloqueanteId && unit.estado !== "DETENIDA" && (
-            <span className={s.blockedTag}>Ruta bloqueada</span>
-          )}
-          {showImages && (
-            <span className={s.photoCount}>
-              <Camera size={13} aria-hidden />
-              {movement.fotos?.length
-                ? `${movement.fotos.length} ${movement.fotos.length === 1 ? "foto" : "fotos"}`
-                : "Sin fotos"}
-            </span>
-          )}
-        </div>
-      ),
+      render: (_, row) => cells.estado(row),
     },
     {
       title: "Incidentes",
       key: "incidentes",
       width: 150,
-      render: (_, { unit, movement }) => {
-        const incidents = movementIncidents(unit, movement);
-        const open = incidents.filter((incident) => incident.estado === "ABIERTO");
-        return (
-          <div className={s.incidentsSummary}>
-            {open.length || unit.incidenteBloqueanteId ? (
-              <button
-                type="button"
-                className={s.incidentButton}
-                aria-label={`Ver incidentes del movimiento ${movement.id}`}
-                onClick={() => {
-                  if (!expanded.includes(movement.id)) toggle(movement.id);
-                }}
-              >
-                <AlertTriangle size={14} aria-hidden />
-                {open.length
-                  ? `${open.length} ${open.length === 1 ? "abierto" : "abiertos"}`
-                  : `Bloqueo #${unit.incidenteBloqueanteId}`}
-              </button>
-            ) : (
-              <span className={s.noIncidents}>
-                {incidents.length ? "Resueltos" : "Sin incidentes"}
-              </span>
-            )}
-            {open[0] && (
-              <span className={s.incidentReason} title={open[0].motivo}>
-                #{open[0].id} · {open[0].motivo}
-              </span>
-            )}
-            {!open.length && incidents.length > 0 && <small>{incidents.length} en historial</small>}
-          </div>
-        );
-      },
+      render: (_, row) => cells.incidentes(row),
     },
     {
       title: "Detalle",
       key: "detalle",
       width: 110,
       fixed: "right",
-      render: (_, { movement }) => (
-        <button
-          type="button"
-          className={s.detailButton}
-          aria-label={`${expanded.includes(movement.id) ? "Ocultar" : "Ver"} detalle del movimiento ${movement.id}`}
-          aria-expanded={expanded.includes(movement.id)}
-          aria-controls={
-            expanded.includes(movement.id) ? `${prefix}-movement-${movement.id}` : undefined
-          }
-          onClick={() => toggle(movement.id)}
-        >
-          {expanded.includes(movement.id) ? (
-            <ChevronUp size={16} aria-hidden />
-          ) : (
-            <ChevronDown size={16} aria-hidden />
-          )}
-          {expanded.includes(movement.id) ? "Cerrar" : "Detalle"}
-        </button>
-      ),
+      render: (_, row) => cells.detalle(row),
     },
   );
+  const tableColumns: ColumnsType<TableRow> = followUp
+    ? [
+        "locomotora",
+        "folio",
+        "estado",
+        "incidentes",
+        "origen",
+        "destino",
+        "tipo",
+        "empresa",
+        "localidad",
+        "personal",
+        "solicitud",
+        "inicio",
+        "fin",
+        "tiempo",
+        "fila",
+        "detalle",
+      ].flatMap((key) => {
+        const column = columns.find((item) => item.key === key);
+        return column
+          ? [
+              {
+                ...column,
+                fixed:
+                  key === "locomotora"
+                    ? ("left" as const)
+                    : key === "detalle"
+                      ? ("right" as const)
+                      : undefined,
+              },
+            ]
+          : [];
+      })
+    : columns;
   const renderDetail = ({ unit, movement }: TableRow) => {
     const incidents = movementIncidents(unit, movement);
     const originSection = section(movement, "Origen");
     const destinationSection = section(movement, "Destino");
     return (
-      <div id={`${prefix}-movement-${movement.id}`}>
+      <div
+        id={`${prefix}-movement-${movement.id}`}
+        className={followUp && layout === "summary" ? s.followUpDetail : undefined}
+      >
         <div className={s.detailContent}>
           <div className={s.detailHeader}>
             <strong>
@@ -469,7 +534,7 @@ export default function NaturalQueueTable({
               )}
             </div>
             <div>
-              <h3>Participantes</h3>
+              <h3>Responsables del movimiento</h3>
               <dl className={s.detailData}>
                 <div>
                   <dt>Solicitante</dt>
@@ -487,6 +552,19 @@ export default function NaturalQueueTable({
                   </dd>
                 </div>
                 <div>
+                  <dt>Coordinador</dt>
+                  <dd>{personName(movement.coordinador, movement.coordinadorId)}</dd>
+                </div>
+                <div>
+                  <dt>Maquinista</dt>
+                  <dd>
+                    {personName(
+                      movement.operador ?? unit.operador,
+                      movement.operadorId ?? unit.operadorId,
+                    )}
+                  </dd>
+                </div>
+                <div>
                   <dt>Supervisor</dt>
                   <dd>{personName(movement.supervisor, movement.supervisorId)}</dd>
                 </div>
@@ -495,6 +573,10 @@ export default function NaturalQueueTable({
             <div>
               <h3>Tiempos de operación</h3>
               <dl className={s.detailData}>
+                <div>
+                  <dt>Solicitud</dt>
+                  <dd>{dateLabel(movement.fechaSolicitud ?? unit.fechaRecepcion)}</dd>
+                </div>
                 <div>
                   <dt>Inicio</dt>
                   <dd>{dateLabel(movement.fechaInicio ?? unit.fechaInicio)}</dd>
@@ -614,53 +696,192 @@ export default function NaturalQueueTable({
     );
   };
   return (
-    <div
-      role="region"
-      aria-label="Tabla de movimientos naturales"
-      className={s.tableScroll}
-      tabIndex={0}
-    >
-      <ConfigProvider
-        theme={{
-          token: {
-            colorPrimary: "#059669",
-            borderRadius: 10,
-            fontFamily: "inherit",
-            colorBgContainer: isDarkTheme ? "#141c23" : "#ffffff",
-            colorText: isDarkTheme ? "#e8edf1" : "#17212b",
-            colorTextSecondary: isDarkTheme ? "#a3afb9" : "#5f6f7d",
-            colorBorderSecondary: isDarkTheme ? "#293640" : "#d9e1e7",
-          },
-          components: {
-            Table: {
-              headerBg: isDarkTheme ? "#182129" : "#f8fafb",
-              headerColor: isDarkTheme ? "#e8edf1" : "#5f6f7d",
-              rowHoverBg: isDarkTheme ? "#1d2932" : "#f3f6f8",
-              borderColor: isDarkTheme ? "#293640" : "#d9e1e7",
-              colorBgContainer: isDarkTheme ? "#141c23" : "#ffffff",
-            },
-          },
-        }}
-      >
-        <Table<TableRow>
-          className="cosaif-ant-table"
-          rowKey={(row) => row.movement.id}
-          columns={columns}
-          dataSource={rows}
-          pagination={false}
-          size="middle"
-          scroll={{ x: columns.reduce((total, column) => total + Number(column.width ?? 150), 0) }}
-          rowClassName={(row) => (selected.includes(row.unit.id) ? s.selectedTableRow : "")}
-          expandable={{
-            expandedRowKeys: expanded,
-            showExpandColumn: false,
-            expandIcon: () => null,
-            expandedRowRender: renderDetail,
-          }}
-          locale={{ emptyText: "No hay movimientos registrados" }}
-        />
-      </ConfigProvider>
-    </div>
+    <>
+      {followUp && (
+        <div className={s.viewToolbar}>
+          <p>
+            {layout === "summary"
+              ? "Consulta el recorrido, el estado y los responsables de cada movimiento."
+              : "Desliza horizontalmente para consultar todas las columnas."}
+          </p>
+          <div className={s.switcher} role="group" aria-label="Presentación de movimientos">
+            <button
+              type="button"
+              aria-pressed={layout === "summary"}
+              onClick={() => setLayout("summary")}
+            >
+              <LayoutList size={16} aria-hidden /> Resumen
+            </button>
+            <button
+              type="button"
+              aria-pressed={layout === "table"}
+              onClick={() => setLayout("table")}
+            >
+              <Table2 size={16} aria-hidden /> Tabla completa
+            </button>
+          </div>
+        </div>
+      )}
+      {followUp && layout === "summary" ? (
+        <div className={s.recordList} role="region" aria-label="Registro de movimientos">
+          {rows.map((row) => {
+            const { movement, unit } = row;
+            const isExpanded = expanded.includes(movement.id);
+            return (
+              <article
+                key={movement.id}
+                className={s.record}
+                data-selected={selected.includes(unit.id)}
+                aria-labelledby={`${prefix}-record-${movement.id}`}
+              >
+                <header className={s.recordHeader}>
+                  <div className={s.recordIdentity}>
+                    <span className={s.recordIcon}>
+                      <TrainFront size={22} aria-hidden />
+                    </span>
+                    <div>
+                      <div className={s.recordTitle}>
+                        <h4 id={`${prefix}-record-${movement.id}`}>
+                          Locomotora {movement.locomotiveNumber}
+                        </h4>
+                        <span className={s.recordFolio}>Folio #{movement.id}</span>
+                      </div>
+                      <p>
+                        {movement.empresaNombreSnapshot ||
+                          (movement.empresaId
+                            ? `Empresa #${movement.empresaId}`
+                            : "Empresa sin registrar")}{" "}
+                        · {movement.localidadNombreSnapshot || "Torreón"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className={s.recordStatus}>{cells.estado(row)}</div>
+                  <div className={s.recordIncidents}>{cells.incidentes(row)}</div>
+                  {cells.detalle(row)}
+                </header>
+                <div className={s.recordBody}>
+                  <section
+                    className={s.recordRoute}
+                    aria-label={`Recorrido del movimiento ${movement.id}`}
+                  >
+                    <h5>Recorrido</h5>
+                    <div className={s.recordRouteStops}>
+                      <div>
+                        <span className={s.recordLabel}>Origen · Salida</span>
+                        {renderRoute(movement, "Origen")}
+                      </div>
+                      <div>
+                        <span className={s.recordLabel}>Destino · Llegada</span>
+                        {renderRoute(movement, "Destino")}
+                      </div>
+                    </div>
+                  </section>
+                  <section
+                    className={s.recordPeople}
+                    aria-label={`Responsables del movimiento ${movement.id}`}
+                  >
+                    <h5>Responsables</h5>
+                    {cells.personal(row)}
+                  </section>
+                  <section
+                    className={s.recordDates}
+                    aria-label={`Fechas del movimiento ${movement.id}`}
+                  >
+                    <h5>Fechas y avance</h5>
+                    <dl>
+                      <div>
+                        <dt>Solicitud</dt>
+                        <dd>{cells.solicitud(row)}</dd>
+                      </div>
+                      <div>
+                        <dt>Inicio</dt>
+                        <dd>{cells.inicio(row)}</dd>
+                      </div>
+                      {showFinish && (
+                        <div>
+                          <dt>Fin</dt>
+                          <dd>
+                            {(movement.fechaFin ?? unit.fechaFin) ? (
+                              cells.fin(row)
+                            ) : (
+                              <span className={s.muted}>
+                                {movement.estado === "CANCELADO" ? "No aplica" : "Sin finalizar"}
+                              </span>
+                            )}
+                          </dd>
+                        </div>
+                      )}
+                    </dl>
+                    {showWaitTime && <div className={s.recordTiming}>{cells.tiempo(row)}</div>}
+                  </section>
+                </div>
+                <footer className={s.recordFooter}>
+                  <div className={s.recordOrder}>
+                    <span className={s.recordLabel}>Orden de atención</span>
+                    {cells.fila(row)}
+                  </div>
+                  <div className={s.recordType}>
+                    <span className={s.recordLabel}>Tipo de movimiento</span>
+                    {cells.tipo(row)}
+                  </div>
+                </footer>
+                {isExpanded && renderDetail(row)}
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div
+          role="region"
+          aria-label="Tabla de movimientos naturales"
+          className={s.tableScroll}
+          tabIndex={0}
+        >
+          <ConfigProvider
+            theme={{
+              token: {
+                colorPrimary: "#059669",
+                borderRadius: 10,
+                fontFamily: "inherit",
+                colorBgContainer: isDarkTheme ? "#141c23" : "#ffffff",
+                colorText: isDarkTheme ? "#e8edf1" : "#17212b",
+                colorTextSecondary: isDarkTheme ? "#a3afb9" : "#5f6f7d",
+                colorBorderSecondary: isDarkTheme ? "#293640" : "#d9e1e7",
+              },
+              components: {
+                Table: {
+                  headerBg: isDarkTheme ? "#182129" : "#f8fafb",
+                  headerColor: isDarkTheme ? "#e8edf1" : "#5f6f7d",
+                  rowHoverBg: isDarkTheme ? "#1d2932" : "#f3f6f8",
+                  borderColor: isDarkTheme ? "#293640" : "#d9e1e7",
+                  colorBgContainer: isDarkTheme ? "#141c23" : "#ffffff",
+                },
+              },
+            }}
+          >
+            <Table<TableRow>
+              className={`cosaif-ant-table ${followUp ? s.followUpTable : ""}`}
+              rowKey={(row) => row.movement.id}
+              columns={tableColumns}
+              dataSource={rows}
+              pagination={false}
+              size="middle"
+              scroll={{
+                x: tableColumns.reduce((total, column) => total + Number(column.width ?? 150), 0),
+              }}
+              rowClassName={(row) => (selected.includes(row.unit.id) ? s.selectedTableRow : "")}
+              expandable={{
+                expandedRowKeys: expanded,
+                showExpandColumn: false,
+                expandIcon: () => null,
+                expandedRowRender: renderDetail,
+              }}
+              locale={{ emptyText: "No hay movimientos registrados" }}
+            />
+          </ConfigProvider>
+        </div>
+      )}
+    </>
   );
 }
 function PhotoLinks({ photos, movement = false }: { photos: QueuePhoto[]; movement?: boolean }) {

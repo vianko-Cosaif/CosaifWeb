@@ -370,8 +370,8 @@ export default function TorreonNaturalQueue({
                   ? "Historial de movimientos de tu empresa · solo consulta."
                   : "Vista general de todas las empresas del patio · solo consulta."
                 : view === "inicio"
-                ? "Solicitudes activas, recorrido y responsables en el patio."
-                : "Revisa solicitudes activas, consulta su detalle y explora el historial."}
+                  ? "Solicitudes activas, recorrido y responsables en el patio."
+                  : "Revisa solicitudes activas, consulta su detalle y explora el historial."}
             </p>
           </div>
         </div>
@@ -572,7 +572,7 @@ export default function TorreonNaturalQueue({
             <span>
               {selected.length
                 ? `${selected.length} elementos seleccionados`
-                : "Selecciona solicitudes o conjuntos en la columna Orden."}
+                : "Selecciona las solicitudes o conjuntos que deseas priorizar."}
             </span>
           </div>
           <label className={s.checkLabel}>
@@ -620,7 +620,13 @@ export default function TorreonNaturalQueue({
       )}
       <div className={s.resultsHeading}>
         <div>
-          <h3>{history ? "Historial de movimientos" : "Orden de atención"}</h3>
+          <h3>
+            {history
+              ? "Historial de movimientos"
+              : view === "seguimiento"
+                ? "Registro de movimientos"
+                : "Orden de atención"}
+          </h3>
           <span>
             {visibleCount} {visibleCount === 1 ? "movimiento" : "movimientos"}
             {hasFilters ? " encontrados" : " en esta vista"}
@@ -631,7 +637,9 @@ export default function TorreonNaturalQueue({
             ? "Los conjuntos conservan sus integrantes visibles."
             : "Abre Detalle para consultar indicaciones, participantes e incidentes."}
         </p>
-        <span className={s.scrollHint}>Desliza la tabla para ver todas las columnas →</span>
+        {view !== "seguimiento" && (
+          <span className={s.scrollHint}>Desliza la tabla para ver todas las columnas →</span>
+        )}
       </div>
       {loading ? (
         <div className={s.empty} role="status">
@@ -660,6 +668,7 @@ export default function TorreonNaturalQueue({
       ) : (
         <NaturalQueueTable
           units={visible}
+          followUp={view === "seguimiento"}
           dispatch={dispatch && !history}
           canResolveIncidents={dispatch}
           showWaitTime={showWaitTime}
