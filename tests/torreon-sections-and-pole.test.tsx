@@ -121,3 +121,50 @@ it("rejects clearing an existing pole while preserving the other value", async (
   expect(screen.getByRole("alert").textContent).toBe("Selecciona el polo de salida.");
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
+
+it("allows clearing an optional Norte section without changing the other endpoint", async () => {
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
+    json(options?.method === "PATCH" ? { ok: true } : movement),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(<TorreonNaturalEdit movimientoId={501} />);
+  fireEvent.change(await screen.findByLabelText("Sección de origen"), { target: { value: "" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+  await waitFor(() => expect(router.push).toHaveBeenCalled());
+  const patch = fetcher.mock.calls.find(([, options]) => options?.method === "PATCH")!;
+  expect(JSON.parse(patch[1]!.body as string)).toEqual({ seccionOrigenId: null });
+});
+it("requires a section when editing a destination to Centro and sends the selected catalogue ID", async () => {
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) =>
+    json(
+      options?.method === "PATCH"
+        ? { ok: true }
+        : url.includes("/secciones/")
+          ? [{ id: 91, numero: 3, nombre: "Taller" }]
+          : {
+              ...movement,
+              viaDestinoId: 9,
+              seccionDestinoId: null,
+              seccionDestinoNumero: null,
+              seccionDestinoNombreSnapshot: null,
+            },
+    ),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(<TorreonNaturalEdit movimientoId={501} />);
+  fireEvent.change(await screen.findByLabelText("Polo de llegada"), {
+    target: { value: "CENTRO" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+  expect(screen.getByRole("alert").textContent).toContain("sección de destino para el polo Centro");
+  expect(fetcher.mock.calls.some(([, options]) => options?.method === "PATCH")).toBe(false);
+  await screen.findByRole("option", { name: "Sección 3 · Taller" });
+  fireEvent.change(screen.getByLabelText("Sección de destino"), { target: { value: "91" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+  await waitFor(() => expect(router.push).toHaveBeenCalled());
+  const patch = fetcher.mock.calls.find(([, options]) => options?.method === "PATCH")!;
+  expect(JSON.parse(patch[1]!.body as string)).toEqual({
+    poloDestino: "CENTRO",
+    seccionDestinoId: 91,
+  });
+});

@@ -17,6 +17,8 @@ const editableFields = new Set([
   "instrucciones",
   "poloOrigen",
   "poloDestino",
+  "seccionOrigenId",
+  "seccionDestinoId",
   "direccionEmpuje",
 ]);
 

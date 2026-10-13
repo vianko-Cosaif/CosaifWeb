@@ -1,11 +1,31 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import TorreonBatchCapture from "@/features/torreon/naturales/components/TorreonBatchCapture";
 import TorreonNaturalQueue from "@/features/torreon/naturales/components/TorreonNaturalQueue";
 vi.mock("@/features/rail-queue/useRealtimeBoardRefresh", () => ({ useRealtimeBoardRefresh() {} }));
 const json = (data: unknown) =>
   new Response(JSON.stringify(data), { headers: { "content-type": "application/json" } });
+beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({
+      matches: false,
+      addListener() {},
+      removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+    })),
+  );
+});
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -125,7 +145,7 @@ it("raising several units keeps separate attention unless En conjunto is explici
   const grouped = fetcher.mock.calls.filter((call) => call[1]?.method === "PATCH")[1]!;
   expect(JSON.parse(grouped[1]!.body as string)).toEqual({ unidadIds: [1, 2], enConjunto: true });
 });
-it("client queue exposes persistent incident solution without dispatcher or deadline controls", async () => {
+it("client queue shows incidents while leaving resolution to authorized operational roles", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () =>
@@ -143,7 +163,7 @@ it("client queue exposes persistent incident solution without dispatcher or dead
   render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" />);
   fireEvent.click(await screen.findByRole("button", { name: "Ver incidentes del movimiento 101" }));
   await screen.findByText(/Incidente #90/);
-  expect(screen.getByRole("button", { name: "Confirmar solución" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Confirmar solución" })).toBeNull();
   expect(screen.queryByLabelText("En conjunto")).toBeNull();
   expect(screen.queryByText(/Tiempo vencido|Cerrar sin resolver/)).toBeNull();
 });
@@ -228,6 +248,7 @@ it("clarifies patio and route positions, clears only the changed route section a
   expect(ensureSections).toHaveBeenCalledWith(10);
   expect((screen.getByLabelText("Posición de origen") as HTMLSelectElement).value).toBe("");
   expect((screen.getByLabelText("Posición de destino") as HTMLSelectElement).value).toBe("91");
+  fireEvent.change(screen.getByLabelText("Polo de salida"), { target: { value: "CENTRO" } });
   fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
   expect(screen.getByRole("alert").textContent).toContain("selecciona la sección de origen");
   expect(fetcher).not.toHaveBeenCalled();
@@ -235,7 +256,7 @@ it("clarifies patio and route positions, clears only the changed route section a
   fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
   expect(screen.getByText("Sección 3 · Patio 3")).toBeTruthy();
   expect(screen.getByText("Sección 2 · Taller 2")).toBeTruthy();
-  expect(screen.getByText("Norte")).toBeTruthy();
+  expect(screen.getByText("Centro")).toBeTruthy();
   expect(screen.getByText("MD trabajando")).toBeTruthy();
   expect(screen.queryByText(/chimenea|cabina/i)).toBeNull();
   expect(screen.queryByText("MD_TRABAJANDO")).toBeNull();
@@ -362,7 +383,7 @@ it("distinguishes pending, failed and genuinely empty position catalogs before r
       locomotiveNumber: "121",
       viaOrigenId: "8",
       viaDestinoId: "9",
-      poloOrigen: "NORTE",
+      poloOrigen: "CENTRO",
       poloDestino: "SUR",
     },
     vias: [
@@ -390,7 +411,14 @@ it("distinguishes pending, failed and genuinely empty position catalogs before r
   expect(retry).toHaveBeenCalledWith(8);
   fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
   expect(screen.getByRole("alert").textContent).toContain("reintenta la carga");
-  rerender(<TorreonBatchCapture {...props} sectionsByVia={{ 8: [], 9: [] }} />);
+  rerender(
+    <TorreonBatchCapture
+      {...props}
+      initialMovement={props.initialMovement}
+      sectionsByVia={{ 8: [{ id: 81, numero: 1 }], 9: [] }}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Posición de origen"), { target: { value: "81" } });
   fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
   expect(screen.getByRole("button", { name: "Enviar 1 solicitud" })).toBeTruthy();
   expect(document.activeElement?.textContent).toContain("Revisa tu envío");
@@ -418,7 +446,7 @@ it("requires independent departure and arrival poles despite legacy single pole 
         { id: 8, nombre: "Vía A" },
         { id: 9, nombre: "Vía B" },
       ]}
-      sectionsByVia={{ 8: [], 9: [] }}
+      sectionsByVia={{ 8: [{ id: 81, numero: 1 }], 9: [{ id: 91, numero: 2 }] }}
       ensureSections={() => {}}
       onFinish={finish}
       onCancel={() => {}}
@@ -436,6 +464,8 @@ it("requires independent departure and arrival poles despite legacy single pole 
   expect(screen.getByRole("alert").textContent).toContain("selecciona el polo de llegada");
   expect(document.activeElement).toBe(screen.getByLabelText("Polo de llegada"));
   fireEvent.change(screen.getByLabelText("Polo de llegada"), { target: { value: "CENTRO" } });
+  fireEvent.change(screen.getByLabelText("Posición de origen"), { target: { value: "81" } });
+  fireEvent.change(screen.getByLabelText("Posición de destino"), { target: { value: "91" } });
   fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
   expect(screen.queryByText(/chimenea|cabina/i)).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Enviar 1 solicitud" }));

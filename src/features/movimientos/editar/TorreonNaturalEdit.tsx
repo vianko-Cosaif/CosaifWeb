@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, TrainFront } from "lucide-react";
+import { SECC_BASE } from "@/features/movimientos/movimientos.shared";
 import { sectionPositionLabel } from "@/features/torreon/naturales/queueView";
 
 type Movement = {
@@ -15,6 +16,8 @@ type Movement = {
   instrucciones: string | null;
   poloOrigen?: "NORTE" | "CENTRO" | "SUR" | null;
   poloDestino?: "NORTE" | "CENTRO" | "SUR" | null;
+  viaOrigenId?: number | null;
+  viaDestinoId?: number | null;
   seccionOrigenId?: number | null;
   seccionDestinoId?: number | null;
   seccionOrigenNumero?: number | null;
@@ -41,6 +44,8 @@ function editFields(movement: Movement) {
     instrucciones: movement.instrucciones?.trim() || null,
     poloOrigen: movement.poloOrigen || null,
     poloDestino: movement.poloDestino || null,
+    seccionOrigenId: movement.seccionOrigenId || null,
+    seccionDestinoId: movement.seccionDestinoId || null,
     direccionEmpuje:
       movement.tipoMovimiento === "REMOLCADA"
         ? movement.direccionEmpuje || "Sin_Solicitar"
@@ -59,6 +64,34 @@ export default function TorreonNaturalEdit({ movimientoId }: { movimientoId: num
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [sections, setSections] = useState<
+    Record<number, { id: number; numero: number; nombre?: string | null }[]>
+  >({});
+  const [sectionErrors, setSectionErrors] = useState<Record<number, string>>({});
+  const loadSections = useCallback(async (viaId: number, signal?: AbortSignal) => {
+    setSectionErrors((previous) => ({ ...previous, [viaId]: "" }));
+    try {
+      const payload = await readJson(
+        await fetch(`${SECC_BASE}/via/${viaId}`, { cache: "no-store", signal }),
+      );
+      const rows = Array.isArray(payload) ? payload : (payload.data ?? payload.secciones);
+      if (!Array.isArray(rows)) throw new Error("No se pudieron cargar las secciones.");
+      if (!signal?.aborted) setSections((previous) => ({ ...previous, [viaId]: rows }));
+    } catch (reason) {
+      if (!signal?.aborted)
+        setSectionErrors((previous) => ({
+          ...previous,
+          [viaId]:
+            reason instanceof Error ? reason.message : "No se pudieron cargar las secciones.",
+        }));
+    }
+  }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    for (const viaId of new Set([initialMovement?.viaOrigenId, initialMovement?.viaDestinoId]))
+      if (viaId) void loadSections(viaId, controller.signal);
+    return () => controller.abort();
+  }, [initialMovement?.viaOrigenId, initialMovement?.viaDestinoId, loadSections]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -94,6 +127,12 @@ export default function TorreonNaturalEdit({ movimientoId }: { movimientoId: num
       const key = `polo${side}`;
       if (key in payload && !["NORTE", "CENTRO", "SUR"].includes(String(payload[key]))) {
         setError(`Selecciona el polo de ${side === "Origen" ? "salida" : "llegada"}.`);
+        return;
+      }
+    }
+    for (const side of ["Origen", "Destino"] as const) {
+      if (movement[`polo${side}`] === "CENTRO" && !movement[`seccion${side}Id`]) {
+        setError(`Selecciona la sección de ${side.toLowerCase()} para el polo Centro.`);
         return;
       }
     }
@@ -260,13 +299,6 @@ export default function TorreonNaturalEdit({ movimientoId }: { movimientoId: num
                   <p className="mt-2 text-base font-bold text-slate-900 dark:text-white">
                     {movement[`via${side}NombreSnapshot`] || "Vía sin registrar"}
                   </p>
-                  <p className="mt-2 w-fit rounded-md bg-sky-50 px-2 py-1.5 text-sm font-semibold text-sky-800 dark:bg-sky-950 dark:text-sky-200">
-                    {sectionPositionLabel(
-                      movement[`seccion${side}Numero`],
-                      movement[`seccion${side}NombreSnapshot`],
-                      Boolean(movement[`seccion${side}Id`]),
-                    )}
-                  </p>
                   <label className={`${label} mt-4`}>
                     Polo de {side === "Origen" ? "salida" : "llegada"}
                     <select
@@ -283,6 +315,63 @@ export default function TorreonNaturalEdit({ movimientoId }: { movimientoId: num
                       <option value="SUR">Sur</option>
                     </select>
                   </label>
+                  <label className={`${label} mt-4`}>
+                    Sección de {side.toLowerCase()}
+                    <select
+                      className={field}
+                      aria-label={`Sección de ${side.toLowerCase()}`}
+                      aria-required={movement[`polo${side}`] === "CENTRO"}
+                      disabled={!editable || saving || !movement[`via${side}Id`]}
+                      value={movement[`seccion${side}Id`] ?? ""}
+                      onChange={(e) =>
+                        setMovement({
+                          ...movement,
+                          [`seccion${side}Id`]: Number(e.target.value) || null,
+                        })
+                      }
+                    >
+                      <option value="">
+                        {movement[`polo${side}`] === "CENTRO"
+                          ? "Seleccionar sección (obligatoria)"
+                          : "Sin sección · Opcional"}
+                      </option>
+                      {movement[`seccion${side}Id`] &&
+                        !(sections[movement[`via${side}Id`] ?? 0] ?? []).some(
+                          (section) => section.id === movement[`seccion${side}Id`],
+                        ) && (
+                          <option value={movement[`seccion${side}Id`] ?? ""}>
+                            {sectionPositionLabel(
+                              movement[`seccion${side}Numero`],
+                              movement[`seccion${side}NombreSnapshot`],
+                              true,
+                            )}
+                          </option>
+                        )}
+                      {(sections[movement[`via${side}Id`] ?? 0] ?? []).map((section) => (
+                        <option key={section.id} value={section.id}>
+                          {sectionPositionLabel(section.numero, section.nombre, true)}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="mt-1 block text-xs font-normal text-slate-500">
+                      {movement[`polo${side}`] === "CENTRO"
+                        ? "Centro requiere una sección de esta vía."
+                        : "Sección opcional para Norte y Sur."}
+                    </span>
+                  </label>
+                  {sectionErrors[movement[`via${side}Id`] ?? 0] && (
+                    <div className="mt-2 text-xs text-amber-700">
+                      <p>{sectionErrors[movement[`via${side}Id`] ?? 0]}</p>
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => void loadSections(Number(movement[`via${side}Id`]))}
+                        className="mt-1 underline"
+                      >
+                        Reintentar secciones de {side.toLowerCase()}
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

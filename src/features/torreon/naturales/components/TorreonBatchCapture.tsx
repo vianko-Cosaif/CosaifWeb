@@ -124,6 +124,17 @@ export default function TorreonBatchCapture({
       const via = Number(r[`via${side}Id`]);
       if (!via || !vias.some((item) => item.id === via))
         return { field: `via${side}Id`, message: `selecciona la vía de ${side.toLowerCase()}.` };
+      if (!["NORTE", "CENTRO", "SUR"].includes(r[`polo${side}`]))
+        return {
+          field: `polo${side}`,
+          message: `selecciona el polo de ${side === "Origen" ? "salida" : "llegada"}.`,
+        };
+    }
+    for (const side of ["Origen", "Destino"] as const) {
+      const via = Number(r[`via${side}Id`]);
+      const sectionId = r[`seccion${side}Id`];
+      const required = r[`polo${side}`] === "CENTRO";
+      if (!required && !sectionId) continue;
       if (sectionsError[via])
         return {
           field: `via${side}Id`,
@@ -135,17 +146,12 @@ export default function TorreonBatchCapture({
           field: `via${side}Id`,
           message: `espera a que carguen las posiciones de ${side.toLowerCase()}.`,
         };
-      if (sections.length && !sections.some((item) => item.id === Number(r[`seccion${side}Id`])))
+      if (!sections.some((item) => item.id === Number(sectionId)))
         return {
           field: `seccion${side}Id`,
-          message: `selecciona la sección de ${side.toLowerCase()}.`,
-        };
-    }
-    for (const side of ["Origen", "Destino"] as const) {
-      if (!["NORTE", "CENTRO", "SUR"].includes(r[`polo${side}`]))
-        return {
-          field: `polo${side}`,
-          message: `selecciona el polo de ${side === "Origen" ? "salida" : "llegada"}.`,
+          message: required
+            ? `selecciona la sección de ${side.toLowerCase()} para el polo Centro.`
+            : `selecciona una sección válida de ${side.toLowerCase()} o deja el campo vacío.`,
         };
     }
     if (r.tipoMovimiento === "REMOLCADA") {
@@ -271,6 +277,13 @@ export default function TorreonBatchCapture({
         <select
           {...fieldAccessibility(n, name, Boolean(hint))}
           disabled={busy || disabled}
+          aria-required={
+            name === "seccionOrigenId"
+              ? r.poloOrigen === "CENTRO"
+              : name === "seccionDestinoId"
+                ? r.poloDestino === "CENTRO"
+                : undefined
+          }
           className={s.field}
           value={r[name]}
           onChange={(e) => update(n, name, e.target.value)}
@@ -581,6 +594,21 @@ export default function TorreonBatchCapture({
                           {select(
                             r,
                             n,
+                            `polo${side}`,
+                            `Polo de ${side === "Origen" ? "salida" : "llegada"}`,
+                            [
+                              { value: "", label: "Seleccionar polo" },
+                              { value: "NORTE", label: "Norte" },
+                              { value: "CENTRO", label: "Centro" },
+                              { value: "SUR", label: "Sur" },
+                            ],
+                            side === "Origen"
+                              ? "Desde qué polo sale la locomotora. Obligatorio."
+                              : "En qué polo debe quedar la locomotora. Obligatorio.",
+                          )}
+                          {select(
+                            r,
+                            n,
                             `seccion${side}Id`,
                             `Posición de ${side.toLowerCase()}`,
                             [
@@ -593,7 +621,9 @@ export default function TorreonBatchCapture({
                                     : loading
                                       ? "Cargando posiciones…"
                                       : sections.length
-                                        ? "Seleccionar posición"
+                                        ? r[`polo${side}`] === "CENTRO"
+                                          ? "Seleccionar sección (obligatoria)"
+                                          : "Sin sección · Opcional"
                                         : "Sin posiciones registradas",
                               },
                               ...sections.map((section) => ({
@@ -602,28 +632,21 @@ export default function TorreonBatchCapture({
                               })),
                             ],
                             sectionError
-                              ? "No pudimos consultar las posiciones. Reintenta para continuar."
+                              ? r[`polo${side}`] === "CENTRO" || r[`seccion${side}Id`]
+                                ? "No pudimos consultar las posiciones. Reintenta para continuar."
+                                : "Puedes continuar sin sección para Norte o Sur."
                               : loading
-                                ? "Espera a que se cargue el catálogo de esta vía."
+                                ? r[`polo${side}`] === "CENTRO"
+                                  ? "Espera a que se cargue el catálogo de esta vía."
+                                  : "La sección es opcional para Norte y Sur."
                                 : hasVia && !sections.length
-                                  ? "Esta vía no tiene secciones registradas."
-                                  : "Selecciona la sección dentro de la vía.",
+                                  ? r[`polo${side}`] === "CENTRO"
+                                    ? "Registra secciones en esta vía para seleccionar Centro."
+                                    : "Esta vía no tiene secciones registradas."
+                                  : r[`polo${side}`] === "CENTRO"
+                                    ? "Centro requiere una sección dentro de esta vía."
+                                    : "Sección opcional para Norte y Sur.",
                             !hasVia || !sections.length || loading || Boolean(sectionError),
-                          )}
-                          {select(
-                            r,
-                            n,
-                            `polo${side}`,
-                            `Polo de ${side === "Origen" ? "salida" : "llegada"}`,
-                            [
-                              { value: "", label: "Seleccionar polo" },
-                              { value: "NORTE", label: "Norte" },
-                              { value: "CENTRO", label: "Centro" },
-                              { value: "SUR", label: "Sur" },
-                            ],
-                            side === "Origen"
-                              ? "Desde qué polo sale la locomotora. Obligatorio."
-                              : "En qué polo debe quedar la locomotora. Obligatorio.",
                           )}
                           {sectionError && (
                             <button

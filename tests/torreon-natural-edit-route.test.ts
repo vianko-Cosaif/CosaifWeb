@@ -175,3 +175,15 @@ it("preserves missing legacy poles when only instructions are edited", async () 
   expect(JSON.parse(mock.fetch.mock.calls[1][1].body)).toEqual(body);
   expect(await response.json()).toMatchObject({ poloOrigen: null, poloDestino: null });
 });
+
+it.each([null, 93])(
+  "forwards section updates %s with the signed movement scope",
+  async (sectionId) => {
+    mock.fetch
+      .mockResolvedValueOnce(Response.json(movement))
+      .mockResolvedValueOnce(Response.json({ ...movement, seccionDestinoId: sectionId }));
+    const body = { poloDestino: sectionId ? "CENTRO" : "SUR", seccionDestinoId: sectionId };
+    expect((await PATCH(request(body), context())).status).toBe(200);
+    expect(JSON.parse(mock.fetch.mock.calls.at(-1)![1].body)).toEqual(body);
+  },
+);
