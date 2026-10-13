@@ -635,11 +635,9 @@ export default function TorreonNaturalQueue({
         <p>
           {hasFilters
             ? "Los conjuntos conservan sus integrantes visibles."
-            : "Abre Detalle para consultar indicaciones, participantes e incidentes."}
+            : "Selecciona el folio o la fila para consultar el detalle del movimiento."}
         </p>
-        {view !== "seguimiento" && (
-          <span className={s.scrollHint}>Desliza la tabla para ver todas las columnas →</span>
-        )}
+        <span className={s.scrollHint}>Desliza la tabla para ver todas las columnas →</span>
       </div>
       {loading ? (
         <div className={s.empty} role="status">

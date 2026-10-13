@@ -2,21 +2,21 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
-  ArrowDown,
   Camera,
   ChevronDown,
   ChevronUp,
   ExternalLink,
   History,
   Link2,
-  LayoutList,
-  Table2,
   TrainFront,
+  MapPin,
   UserRound,
 } from "lucide-react";
 import ConfigProvider from "antd/es/config-provider";
 import Table from "antd/es/table";
 import type { ColumnsType } from "antd/es/table";
+import NaturalMovementDetails from "./NaturalMovementDetails";
+import { BadgeEstado, BadgeTipoMovimiento } from "@/features/movimientos/table/MovementBadges";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { toTorreonImageProxyUrl } from "@/lib/torreonImageProxy";
 import {
@@ -50,8 +50,6 @@ type Props = {
   mutate: (path: string, body: unknown) => Promise<void>;
   onHistory: (id: number) => void;
 };
-const cleanInstructions = (text?: string | null) =>
-  text?.replace(/\[META (?:ORIGEN|DESTINO):\d+\]\s*/gi, "").trim();
 type TableRow = { unit: QueueUnit; movement: QueueMovement; index: number; unitIndex: number };
 export default function NaturalQueueTable({
   units,
@@ -68,7 +66,6 @@ export default function NaturalQueueTable({
   mutate,
   onHistory,
 }: Props) {
-  const [layout, setLayout] = useState<"summary" | "table">("summary");
   const [expanded, setExpanded] = useState<number[]>([]);
   const [assignment, setAssignment] = useState<Record<number, string>>({});
   const [solution, setSolution] = useState<Record<number, string>>({});
@@ -135,7 +132,9 @@ export default function NaturalQueueTable({
               onChange={(e) => onSelect(unit.id, e.target.checked)}
             />
           )}
-          <strong>{String(unit.posicion ?? unitIndex + 1).padStart(2, "0")}</strong>
+          <strong className={followUp ? s.rowNumber : undefined}>
+            {String(unit.posicion ?? unitIndex + 1).padStart(2, "0")}
+          </strong>
         </div>
         <span className={s.orderHint}>{unitPriority(unit)}</span>
         {unit.modalidad === "CONJUNTO" && (
@@ -153,20 +152,36 @@ export default function NaturalQueueTable({
     folio: ({ movement }) => (
       <button
         type="button"
-        className={s.detailButton}
+        className={followUp ? s.folioButton : s.detailButton}
         aria-label={`Ver folio ${movement.id}`}
         aria-expanded={expanded.includes(movement.id)}
         onClick={() => toggle(movement.id)}
       >
         #{movement.id}
+        {followUp && (
+          <ChevronDown
+            size={14}
+            aria-hidden
+            className={expanded.includes(movement.id) ? "rotate-180" : ""}
+          />
+        )}
       </button>
     ),
     locomotora: ({ movement }) => (
-      <strong className="text-base font-black tabular-nums">{movement.locomotiveNumber}</strong>
+      <div className="flex items-center gap-3">
+        {followUp && (
+          <span className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+            <TrainFront size={17} aria-hidden />
+          </span>
+        )}
+        <strong className="font-black tabular-nums text-slate-950 dark:text-slate-100">
+          {movement.locomotiveNumber}
+        </strong>
+      </div>
     ),
     tipo: ({ movement }) => (
       <div>
-        <strong className={s.movementType}>{configurationLabel(movement.tipoMovimiento)}</strong>
+        <BadgeTipoMovimiento tipo={movement.tipoMovimiento} />
         {movement.tipoMovimiento === "REMOLCADA" && (
           <p className={s.towing}>
             Remolca {movement.locomotoraRemolque ?? "—"} ·{" "}
@@ -175,15 +190,20 @@ export default function NaturalQueueTable({
         )}
       </div>
     ),
-    localidad: ({ movement }) => movement.localidadNombreSnapshot || "Torreón",
+    localidad: ({ movement }) => (
+      <span className="inline-flex items-center gap-1.5 font-semibold text-slate-600 dark:text-slate-300">
+        <MapPin size={13} aria-hidden className="shrink-0 text-slate-400" />
+        {movement.localidadNombreSnapshot || "Torreón"}
+      </span>
+    ),
     empresa: ({ movement }) => (
-      <strong>
+      <strong className="font-semibold text-slate-700 dark:text-slate-200">
         {movement.empresaNombreSnapshot ||
           (movement.empresaId ? `Empresa #${movement.empresaId}` : "Sin registrar")}
       </strong>
     ),
     personal: ({ unit, movement }) => (
-      <div className={s.tablePeople}>
+      <div className={`${s.tablePeople} ${followUp ? s.compactPeople : ""}`}>
         {[
           [
             "Cliente",
@@ -202,7 +222,7 @@ export default function NaturalQueueTable({
         ].map(([label, value]) => (
           <div key={label} className={s.person}>
             <span>{label}</span>
-            <strong>{value}</strong>
+            <strong title={value}>{value}</strong>
           </div>
         ))}
       </div>
@@ -245,32 +265,36 @@ export default function NaturalQueueTable({
     },
     estado: ({ unit, movement }) => (
       <div className={s.statusStack}>
-        <StatusBadge
-          status={movement.estado}
-          label={
-            unit.estado === "LISTA_REANUDAR"
-              ? "Listo para continuar"
-              : (
-                  {
-                    SOLICITADO: "Por iniciar",
-                    ASIGNADO: "Por iniciar",
-                    EN_PROCESO: "En curso",
-                    DETENIDO: "Con incidente",
-                    CONCLUIDO: "Concluido",
-                    CANCELADO: "Cancelado",
-                  } as Record<string, string>
-                )[movement.estado]
-          }
-          tone={
-            unit.estado === "LISTA_REANUDAR"
-              ? "success"
-              : movement.estado === "DETENIDO"
-                ? "danger"
-                : undefined
-          }
-          size="sm"
-          dot
-        />
+        {followUp && unit.estado !== "LISTA_REANUDAR" ? (
+          <BadgeEstado estado={movement.estado} />
+        ) : (
+          <StatusBadge
+            status={movement.estado}
+            label={
+              unit.estado === "LISTA_REANUDAR"
+                ? "Listo para continuar"
+                : (
+                    {
+                      SOLICITADO: "Por iniciar",
+                      ASIGNADO: "Por iniciar",
+                      EN_PROCESO: "En curso",
+                      DETENIDO: "Con incidente",
+                      CONCLUIDO: "Concluido",
+                      CANCELADO: "Cancelado",
+                    } as Record<string, string>
+                  )[movement.estado]
+            }
+            tone={
+              unit.estado === "LISTA_REANUDAR"
+                ? "success"
+                : movement.estado === "DETENIDO"
+                  ? "danger"
+                  : undefined
+            }
+            size="sm"
+            dot
+          />
+        )}
         {unit.ordenManual != null && unit.estado === "PENDIENTE" && (
           <span className={s.priorityTag}>Prioridad asignada</span>
         )}
@@ -344,68 +368,69 @@ export default function NaturalQueueTable({
     {
       title: "Fila",
       key: "fila",
-      width: 110,
+      width: 96,
       fixed: "left",
       render: (_, row) => cells.fila(row),
     },
     {
       title: "Folio",
       key: "folio",
-      width: 110,
+      width: 116,
       render: (_, row) => cells.folio(row),
     },
     {
       title: "Locomotora",
       key: "locomotora",
-      width: 140,
+      width: 150,
       render: (_, row) => cells.locomotora(row),
     },
     {
       title: "Tipo",
       key: "tipo",
-      width: 165,
+      align: followUp ? "center" : "left",
+      width: 140,
       render: (_, row) => cells.tipo(row),
     },
     {
       title: "Localidad",
       key: "localidad",
-      width: 120,
+      width: 170,
       render: (_, row) => cells.localidad(row),
     },
     {
       title: "Empresa",
       key: "empresa",
-      width: 160,
+      width: 190,
       render: (_, row) => cells.empresa(row),
     },
     {
       title: "Personal",
       key: "personal",
-      width: 260,
+      width: 280,
       render: (_, row) => cells.personal(row),
     },
     {
       title: "Origen",
       key: "origen",
-      width: 180,
+      width: 170,
       render: (_, row) => cells.origen(row),
     },
     {
       title: "Destino",
       key: "destino",
-      width: 180,
+      width: 170,
       render: (_, row) => cells.destino(row),
     },
     {
       title: "Solicitud",
       key: "solicitud",
-      width: 155,
+      width: 150,
       render: (_, row) => cells.solicitud(row),
     },
     {
       title: "Inicio",
       key: "inicio",
-      width: 155,
+      width: 150,
       render: (_, row) => cells.inicio(row),
     },
   ];
@@ -413,21 +438,22 @@ export default function NaturalQueueTable({
     columns.push({
       title: "Fin",
       key: "fin",
-      width: 155,
+      width: 150,
       render: (_, row) => cells.fin(row),
     });
   if (showWaitTime)
     columns.push({
       title: "Resolución / tiempo",
       key: "tiempo",
-      width: 160,
+      width: 140,
       render: (_, row) => cells.tiempo(row),
     });
   columns.push(
     {
       title: "Estado",
       key: "estado",
-      width: 160,
+      align: followUp ? "center" : "left",
+      width: 150,
       render: (_, row) => cells.estado(row),
     },
     {
@@ -440,54 +466,14 @@ export default function NaturalQueueTable({
       title: "Detalle",
       key: "detalle",
       width: 110,
-      fixed: "right",
+      fixed: followUp ? undefined : "right",
       render: (_, row) => cells.detalle(row),
     },
   );
-  const tableColumns: ColumnsType<TableRow> = followUp
-    ? [
-        "locomotora",
-        "folio",
-        "estado",
-        "incidentes",
-        "origen",
-        "destino",
-        "tipo",
-        "empresa",
-        "localidad",
-        "personal",
-        "solicitud",
-        "inicio",
-        "fin",
-        "tiempo",
-        "fila",
-        "detalle",
-      ].flatMap((key) => {
-        const column = columns.find((item) => item.key === key);
-        return column
-          ? [
-              {
-                ...column,
-                fixed:
-                  key === "locomotora"
-                    ? ("left" as const)
-                    : key === "detalle"
-                      ? ("right" as const)
-                      : undefined,
-              },
-            ]
-          : [];
-      })
-    : columns;
   const renderDetail = ({ unit, movement }: TableRow) => {
     const incidents = movementIncidents(unit, movement);
-    const originSection = section(movement, "Origen");
-    const destinationSection = section(movement, "Destino");
     return (
-      <div
-        id={`${prefix}-movement-${movement.id}`}
-        className={followUp && layout === "summary" ? s.followUpDetail : undefined}
-      >
+      <div id={`${prefix}-movement-${movement.id}`} className={followUp ? s.gdlDetail : undefined}>
         <div className={s.detailContent}>
           <div className={s.detailHeader}>
             <strong>
@@ -497,109 +483,12 @@ export default function NaturalQueueTable({
               <History size={15} aria-hidden /> Ver historial de operación
             </button>
           </div>
-          <div className={s.detailRoute} aria-label="Recorrido de la solicitud">
-            <div>
-              <span>Origen · De dónde se saca</span>
-              <strong>{movement.viaOrigenNombreSnapshot || "Vía sin registrar"}</strong>
-              <p className={s.sectionBadge}>{originSection}</p>
-              <p className={s.poleLabel}>
-                Polo de salida: <strong>{poleLabel(movement.poloOrigen)}</strong>
-              </p>
-            </div>
-            <ArrowDown size={18} aria-hidden />
-            <div>
-              <span>Destino · Dónde se coloca</span>
-              <strong>{movement.viaDestinoNombreSnapshot || "Vía sin registrar"}</strong>
-              <p className={s.sectionBadge}>{destinationSection}</p>
-              <p className={s.poleLabel}>
-                Polo de llegada: <strong>{poleLabel(movement.poloDestino)}</strong>
-              </p>
-            </div>
-          </div>
-          <div className={s.detailGrid}>
-            <div>
-              <h3>Indicaciones</h3>
-              <p className={s.instructions}>
-                {cleanInstructions(movement.instrucciones) || "Sin indicaciones adicionales."}
-              </p>
-              {unit.modalidad === "CONJUNTO" && (
-                <p className={s.groupNote}>
-                  <Link2 size={14} aria-hidden />
-                  Parte del conjunto #{unit.id}, con{" "}
-                  {unit.totalIntegrantes ?? unit.movimientos.length} movimientos.{" "}
-                  {unit.totalIntegrantes && unit.totalIntegrantes > unit.movimientos.length
-                    ? `Se muestran ${unit.movimientos.length} de tu empresa.`
-                    : ""}
-                </p>
-              )}
-            </div>
-            <div>
-              <h3>Responsables del movimiento</h3>
-              <dl className={s.detailData}>
-                <div>
-                  <dt>Solicitante</dt>
-                  <dd>{personName(movement.creadoPor, movement.creadoPorId, "Sin registrar")}</dd>
-                </div>
-                <div>
-                  <dt>Cliente</dt>
-                  <dd>
-                    {personName(
-                      movement.cliente ??
-                        (movement.clienteId === movement.creadoPorId ? movement.creadoPor : null),
-                      movement.clienteId,
-                      "Sin registrar",
-                    )}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Coordinador</dt>
-                  <dd>{personName(movement.coordinador, movement.coordinadorId)}</dd>
-                </div>
-                <div>
-                  <dt>Maquinista</dt>
-                  <dd>
-                    {personName(
-                      movement.operador ?? unit.operador,
-                      movement.operadorId ?? unit.operadorId,
-                    )}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Supervisor</dt>
-                  <dd>{personName(movement.supervisor, movement.supervisorId)}</dd>
-                </div>
-              </dl>
-            </div>
-            <div>
-              <h3>Tiempos de operación</h3>
-              <dl className={s.detailData}>
-                <div>
-                  <dt>Solicitud</dt>
-                  <dd>{dateLabel(movement.fechaSolicitud ?? unit.fechaRecepcion)}</dd>
-                </div>
-                <div>
-                  <dt>Inicio</dt>
-                  <dd>{dateLabel(movement.fechaInicio ?? unit.fechaInicio)}</dd>
-                </div>
-                {showFinish && (
-                  <div>
-                    <dt>Fin</dt>
-                    <dd>{dateLabel(movement.fechaFin ?? unit.fechaFin)}</dd>
-                  </div>
-                )}
-                <div>
-                  <dt>Pausa</dt>
-                  <dd>{dateLabel(movement.fechaPausa)}</dd>
-                </div>
-                {unit.fechaHabilitacion && (
-                  <div>
-                    <dt>Reanudación habilitada</dt>
-                    <dd>{dateLabel(unit.fechaHabilitacion)}</dd>
-                  </div>
-                )}
-              </dl>
-            </div>
-          </div>
+          <NaturalMovementDetails
+            unit={unit}
+            movement={movement}
+            showFinish={showFinish}
+            showWaitTime={showWaitTime}
+          />
           {dispatch && !["EN_PROCESO", "CONCLUIDA", "CANCELADA"].includes(unit.estado) && (
             <div className={s.assignment}>
               <UserRound size={17} aria-hidden />
@@ -696,192 +585,73 @@ export default function NaturalQueueTable({
     );
   };
   return (
-    <>
-      {followUp && (
-        <div className={s.viewToolbar}>
-          <p>
-            {layout === "summary"
-              ? "Consulta el recorrido, el estado y los responsables de cada movimiento."
-              : "Desliza horizontalmente para consultar todas las columnas."}
-          </p>
-          <div className={s.switcher} role="group" aria-label="Presentación de movimientos">
-            <button
-              type="button"
-              aria-pressed={layout === "summary"}
-              onClick={() => setLayout("summary")}
-            >
-              <LayoutList size={16} aria-hidden /> Resumen
-            </button>
-            <button
-              type="button"
-              aria-pressed={layout === "table"}
-              onClick={() => setLayout("table")}
-            >
-              <Table2 size={16} aria-hidden /> Tabla completa
-            </button>
-          </div>
-        </div>
-      )}
-      {followUp && layout === "summary" ? (
-        <div className={s.recordList} role="region" aria-label="Registro de movimientos">
-          {rows.map((row) => {
-            const { movement, unit } = row;
-            const isExpanded = expanded.includes(movement.id);
-            return (
-              <article
-                key={movement.id}
-                className={s.record}
-                data-selected={selected.includes(unit.id)}
-                aria-labelledby={`${prefix}-record-${movement.id}`}
-              >
-                <header className={s.recordHeader}>
-                  <div className={s.recordIdentity}>
-                    <span className={s.recordIcon}>
-                      <TrainFront size={22} aria-hidden />
-                    </span>
-                    <div>
-                      <div className={s.recordTitle}>
-                        <h4 id={`${prefix}-record-${movement.id}`}>
-                          Locomotora {movement.locomotiveNumber}
-                        </h4>
-                        <span className={s.recordFolio}>Folio #{movement.id}</span>
-                      </div>
-                      <p>
-                        {movement.empresaNombreSnapshot ||
-                          (movement.empresaId
-                            ? `Empresa #${movement.empresaId}`
-                            : "Empresa sin registrar")}{" "}
-                        · {movement.localidadNombreSnapshot || "Torreón"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className={s.recordStatus}>{cells.estado(row)}</div>
-                  <div className={s.recordIncidents}>{cells.incidentes(row)}</div>
-                  {cells.detalle(row)}
-                </header>
-                <div className={s.recordBody}>
-                  <section
-                    className={s.recordRoute}
-                    aria-label={`Recorrido del movimiento ${movement.id}`}
-                  >
-                    <h5>Recorrido</h5>
-                    <div className={s.recordRouteStops}>
-                      <div>
-                        <span className={s.recordLabel}>Origen · Salida</span>
-                        {renderRoute(movement, "Origen")}
-                      </div>
-                      <div>
-                        <span className={s.recordLabel}>Destino · Llegada</span>
-                        {renderRoute(movement, "Destino")}
-                      </div>
-                    </div>
-                  </section>
-                  <section
-                    className={s.recordPeople}
-                    aria-label={`Responsables del movimiento ${movement.id}`}
-                  >
-                    <h5>Responsables</h5>
-                    {cells.personal(row)}
-                  </section>
-                  <section
-                    className={s.recordDates}
-                    aria-label={`Fechas del movimiento ${movement.id}`}
-                  >
-                    <h5>Fechas y avance</h5>
-                    <dl>
-                      <div>
-                        <dt>Solicitud</dt>
-                        <dd>{cells.solicitud(row)}</dd>
-                      </div>
-                      <div>
-                        <dt>Inicio</dt>
-                        <dd>{cells.inicio(row)}</dd>
-                      </div>
-                      {showFinish && (
-                        <div>
-                          <dt>Fin</dt>
-                          <dd>
-                            {(movement.fechaFin ?? unit.fechaFin) ? (
-                              cells.fin(row)
-                            ) : (
-                              <span className={s.muted}>
-                                {movement.estado === "CANCELADO" ? "No aplica" : "Sin finalizar"}
-                              </span>
-                            )}
-                          </dd>
-                        </div>
-                      )}
-                    </dl>
-                    {showWaitTime && <div className={s.recordTiming}>{cells.tiempo(row)}</div>}
-                  </section>
-                </div>
-                <footer className={s.recordFooter}>
-                  <div className={s.recordOrder}>
-                    <span className={s.recordLabel}>Orden de atención</span>
-                    {cells.fila(row)}
-                  </div>
-                  <div className={s.recordType}>
-                    <span className={s.recordLabel}>Tipo de movimiento</span>
-                    {cells.tipo(row)}
-                  </div>
-                </footer>
-                {isExpanded && renderDetail(row)}
-              </article>
-            );
+    <div
+      role="region"
+      aria-label="Tabla de movimientos naturales"
+      className={`${s.tableScroll} ${followUp ? s.gdlTableFrame : ""}`}
+      tabIndex={0}
+    >
+      <ConfigProvider
+        theme={{
+          token: {
+            colorPrimary: "#059669",
+            borderRadius: 10,
+            fontFamily: "inherit",
+            colorBgContainer: isDarkTheme ? "#141c23" : "#ffffff",
+            colorText: isDarkTheme ? "#e8edf1" : "#17212b",
+            colorTextSecondary: isDarkTheme ? "#a3afb9" : "#5f6f7d",
+            colorBorderSecondary: isDarkTheme ? "#293640" : "#d9e1e7",
+          },
+          components: {
+            Table: {
+              headerBg: isDarkTheme ? "#182129" : "#f8fafb",
+              headerColor: isDarkTheme ? "#e8edf1" : "#5f6f7d",
+              rowHoverBg: isDarkTheme ? "#1d2932" : "#f3f6f8",
+              borderColor: isDarkTheme ? "#293640" : "#d9e1e7",
+              colorBgContainer: isDarkTheme ? "#141c23" : "#ffffff",
+            },
+          },
+        }}
+      >
+        <Table<TableRow>
+          className={`cosaif-ant-table ${followUp ? s.gdlMovementTable : ""}`}
+          rowKey={(row) => row.movement.id}
+          columns={columns}
+          dataSource={rows}
+          pagination={
+            followUp
+              ? {
+                  pageSize: 25,
+                  showSizeChanger: false,
+                  placement: ["bottomCenter"],
+                  showTotal: (count, range) => `Mostrando ${range[0]}-${range[1]} de ${count}`,
+                }
+              : false
+          }
+          size="middle"
+          scroll={{
+            x: columns.reduce((total, column) => total + Number(column.width ?? 150), 0),
+          }}
+          onRow={(row) => ({
+            onClick: (event) => {
+              if (!followUp) return;
+              const target = event.target as HTMLElement | null;
+              if (target?.closest("button,a,input,select,textarea,[role='button']")) return;
+              toggle(row.movement.id);
+            },
+            className: followUp ? "cursor-pointer" : undefined,
           })}
-        </div>
-      ) : (
-        <div
-          role="region"
-          aria-label="Tabla de movimientos naturales"
-          className={s.tableScroll}
-          tabIndex={0}
-        >
-          <ConfigProvider
-            theme={{
-              token: {
-                colorPrimary: "#059669",
-                borderRadius: 10,
-                fontFamily: "inherit",
-                colorBgContainer: isDarkTheme ? "#141c23" : "#ffffff",
-                colorText: isDarkTheme ? "#e8edf1" : "#17212b",
-                colorTextSecondary: isDarkTheme ? "#a3afb9" : "#5f6f7d",
-                colorBorderSecondary: isDarkTheme ? "#293640" : "#d9e1e7",
-              },
-              components: {
-                Table: {
-                  headerBg: isDarkTheme ? "#182129" : "#f8fafb",
-                  headerColor: isDarkTheme ? "#e8edf1" : "#5f6f7d",
-                  rowHoverBg: isDarkTheme ? "#1d2932" : "#f3f6f8",
-                  borderColor: isDarkTheme ? "#293640" : "#d9e1e7",
-                  colorBgContainer: isDarkTheme ? "#141c23" : "#ffffff",
-                },
-              },
-            }}
-          >
-            <Table<TableRow>
-              className={`cosaif-ant-table ${followUp ? s.followUpTable : ""}`}
-              rowKey={(row) => row.movement.id}
-              columns={tableColumns}
-              dataSource={rows}
-              pagination={false}
-              size="middle"
-              scroll={{
-                x: tableColumns.reduce((total, column) => total + Number(column.width ?? 150), 0),
-              }}
-              rowClassName={(row) => (selected.includes(row.unit.id) ? s.selectedTableRow : "")}
-              expandable={{
-                expandedRowKeys: expanded,
-                showExpandColumn: false,
-                expandIcon: () => null,
-                expandedRowRender: renderDetail,
-              }}
-              locale={{ emptyText: "No hay movimientos registrados" }}
-            />
-          </ConfigProvider>
-        </div>
-      )}
-    </>
+          rowClassName={(row) => (selected.includes(row.unit.id) ? s.selectedTableRow : "")}
+          expandable={{
+            expandedRowKeys: expanded,
+            showExpandColumn: false,
+            expandIcon: () => null,
+            expandedRowRender: renderDetail,
+          }}
+          locale={{ emptyText: "No hay movimientos registrados" }}
+        />
+      </ConfigProvider>
+    </div>
   );
 }
 function PhotoLinks({ photos, movement = false }: { photos: QueuePhoto[]; movement?: boolean }) {

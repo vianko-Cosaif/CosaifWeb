@@ -76,9 +76,25 @@ const base = {
   onHistory: vi.fn(),
 };
 
-it("keeps route, section, independent poles and all participants readable in the summary", () => {
+it("uses the Guadalajara column order and opens the movement details from its row", () => {
   render(<NaturalQueueTable {...base} />);
-  const record = within(screen.getByRole("article", { name: "Locomotora 7601" }));
+  const record = within(screen.getByText("7601").closest("tr")!);
+  const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
+  expect(headers.slice(0, 12)).toEqual([
+    "Fila",
+    "Folio",
+    "Locomotora",
+    "Tipo",
+    "Localidad",
+    "Empresa",
+    "Personal",
+    "Origen",
+    "Destino",
+    "Solicitud",
+    "Inicio",
+    "Fin",
+  ]);
+  expect(screen.queryByRole("group", { name: "Presentación de movimientos" })).toBeNull();
   for (const text of [
     "Vía 29",
     "Vía 3",
@@ -92,13 +108,13 @@ it("keeps route, section, independent poles and all participants readable in the
   ])
     expect(record.getByText(text)).toBeTruthy();
   expect(screen.getAllByRole("checkbox", { name: "Seleccionar unidad 20" })).toHaveLength(1);
-  fireEvent.click(record.getByRole("button", { name: "Ver detalle del movimiento 101" }));
-  expect(record.getByText("Indicación de prueba")).toBeTruthy();
-  fireEvent.click(record.getByRole("button", { name: "Ver historial de operación" }));
+  fireEvent.click(record.getByText("7601"));
+  expect(screen.getByText("Indicación de prueba")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Ver historial de operación" }));
   expect(base.onHistory).toHaveBeenCalledWith(20);
 });
 
-it("retains group selection and an unfinished assignment when changing presentation", () => {
+it("keeps group selection separate from row expansion and preserves an assignment while collapsing details", () => {
   function Harness() {
     const [selected, setSelected] = useState<number[]>([]);
     return (
@@ -113,13 +129,13 @@ it("retains group selection and an unfinished assignment when changing presentat
   fireEvent.click(screen.getByLabelText("Seleccionar unidad 20"));
   fireEvent.click(screen.getByRole("button", { name: "Ver detalle del movimiento 101" }));
   fireEvent.change(screen.getByLabelText("Asignar unidad 20"), { target: { value: "8" } });
-  fireEvent.click(screen.getByRole("button", { name: "Tabla completa" }));
-  expect(screen.getByRole("table")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Ver folio 101" }));
+  expect(screen.queryByRole("combobox", { name: "Asignar unidad 20" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Ver folio 101" }));
   expect((screen.getByLabelText("Seleccionar unidad 20") as HTMLInputElement).checked).toBe(true);
   expect((screen.getByLabelText("Asignar unidad 20") as HTMLSelectElement).value).toBe("8");
   fireEvent.click(screen.getByRole("button", { name: "Asignar" }));
   expect(base.mutate).toHaveBeenCalledWith("/cola/20/asignar", { operadorId: 8 });
-  fireEvent.click(screen.getByRole("button", { name: "Resumen" }));
   expect(
     screen
       .getByRole("button", { name: "Ocultar detalle del movimiento 101" })
@@ -128,7 +144,7 @@ it("retains group selection and an unfinished assignment when changing presentat
   expect((screen.getByLabelText("Seleccionar unidad 20") as HTMLInputElement).checked).toBe(true);
 });
 
-it("keeps incident drafts across views and respects read-only incident access", () => {
+it("preserves incident drafts when collapsing details and respects read-only access", () => {
   const stopped: QueueUnit = {
     ...unit,
     modalidad: "INDIVIDUAL",
@@ -142,7 +158,8 @@ it("keeps incident drafts across views and respects read-only incident access", 
   fireEvent.click(screen.getByRole("button", { name: "Ver incidentes del movimiento 101" }));
   const solution = screen.getByRole("textbox");
   fireEvent.change(solution, { target: { value: "Vía liberada" } });
-  fireEvent.click(screen.getByRole("button", { name: "Tabla completa" }));
+  fireEvent.click(screen.getByRole("button", { name: "Ocultar detalle del movimiento 101" }));
+  fireEvent.click(screen.getByRole("button", { name: "Ver incidentes del movimiento 101" }));
   expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("Vía liberada");
   fireEvent.click(screen.getByRole("button", { name: "Confirmar solución" }));
   expect(base.mutate).toHaveBeenCalledWith("/incidentes/90/resolver?tipo=NATURAL", {
@@ -157,11 +174,10 @@ it("keeps incident drafts across views and respects read-only incident access", 
       showWaitTime={false}
     />,
   );
-  for (const layout of ["Resumen", "Tabla completa"]) {
-    fireEvent.click(screen.getByRole("button", { name: layout }));
+  {
     expect(screen.getByText("Incidente #90")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Confirmar solución" })).toBeNull();
-    expect(screen.queryByLabelText("Asignar unidad 20")).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Asignar unidad 20" })).toBeNull();
     expect(screen.queryByText("Pausado hace")).toBeNull();
   }
 });
