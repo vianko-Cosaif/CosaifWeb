@@ -633,9 +633,11 @@ export default function TorreonNaturalQueue({
           </span>
         </div>
         <p>
-          {hasFilters
-            ? "Los conjuntos conservan sus integrantes visibles."
-            : "Selecciona el folio o la fila para consultar el detalle del movimiento."}
+          {view === "seguimiento"
+            ? "Más recientes primero · Folio de mayor a menor. Abre el folio para ver el detalle."
+            : hasFilters
+              ? "Los conjuntos conservan sus integrantes visibles."
+              : "Abre Detalle para consultar el movimiento."}
         </p>
         <span className={s.scrollHint}>Desliza la tabla para ver todas las columnas →</span>
       </div>
@@ -667,6 +669,16 @@ export default function TorreonNaturalQueue({
         <NaturalQueueTable
           units={visible}
           followUp={view === "seguimiento"}
+          paginationKey={JSON.stringify([
+            localidadId,
+            history,
+            search,
+            state,
+            coordinator,
+            dateField,
+            dateFrom,
+            dateTo,
+          ])}
           dispatch={dispatch && !history}
           canResolveIncidents={dispatch}
           showWaitTime={showWaitTime}

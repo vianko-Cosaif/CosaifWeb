@@ -187,3 +187,89 @@ it("leaves the operation screen on its existing table presentation", () => {
   expect(screen.getByRole("table")).toBeTruthy();
   expect(screen.queryByRole("group", { name: "Presentación de movimientos" })).toBeNull();
 });
+
+const visibleFolios = () =>
+  screen
+    .getAllByRole("button", { name: /^Ver folio \d+$/ })
+    .map((button) => Number(button.getAttribute("aria-label")!.replace("Ver folio ", "")));
+const manyUnits = (): QueueUnit[] =>
+  Array.from({ length: 58 }, (_, index) => ({
+    ...unit,
+    id: index + 1,
+    modalidad: "INDIVIDUAL",
+    posicion: index + 1,
+    movimientos: [{ ...unit.movimientos[0], id: index + 501 }],
+  }));
+
+it("orders all follow-up movements by descending folio before pagination, without mutating the operational queue", () => {
+  const grouped = {
+    ...unit,
+    movimientos: [unit.movimientos[0], { ...unit.movimientos[0], id: 104 }],
+  };
+  const individual = {
+    ...unit,
+    id: 21,
+    posicion: 2,
+    modalidad: "INDIVIDUAL",
+    movimientos: [unit.movimientos[1]],
+  };
+  const { rerender } = render(<NaturalQueueTable {...base} units={[individual, grouped]} />);
+  expect(visibleFolios()).toEqual([104, 102, 101]);
+  for (const [index, id] of [104, 102, 101].entries()) {
+    const row = screen.getByRole("button", { name: `Ver folio ${id}` }).closest("tr")!;
+    expect(within(row).getAllByRole("cell")[0].textContent).toContain(
+      String(index + 1).padStart(2, "0"),
+    );
+  }
+  expect(grouped.movimientos.map((movement) => movement.id)).toEqual([101, 104]);
+  rerender(<NaturalQueueTable {...base} units={[individual, grouped]} followUp={false} />);
+  expect(visibleFolios()).toEqual([102, 101, 104]);
+});
+
+it("paginates the full descending result with continuous row numbers and returns to page one when filters change", () => {
+  const units = manyUnits();
+  const { rerender } = render(<NaturalQueueTable {...base} units={units} paginationKey="all" />);
+  expect(visibleFolios()).toEqual(Array.from({ length: 25 }, (_, i) => 558 - i));
+  expect(screen.getAllByText("1–25 de 58 movimientos · Página 1 de 3")).toHaveLength(2);
+  fireEvent.click(screen.getAllByTitle("Página siguiente")[0]);
+  expect(visibleFolios()).toEqual(Array.from({ length: 25 }, (_, i) => 533 - i));
+  const row = screen.getByRole("button", { name: "Ver folio 533" }).closest("tr")!;
+  expect(within(row).getAllByRole("cell")[0].textContent).toBe("26");
+  rerender(<NaturalQueueTable {...base} units={[...units].reverse()} paginationKey="all" />);
+  expect(visibleFolios()[0]).toBe(533);
+  fireEvent.click(screen.getAllByTitle("Página siguiente")[1]);
+  expect(visibleFolios()).toEqual([508, 507, 506, 505, 504, 503, 502, 501]);
+  expect(screen.getAllByText("51–58 de 58 movimientos · Página 3 de 3")).toHaveLength(2);
+  rerender(<NaturalQueueTable {...base} units={units.slice(0, 51)} paginationKey="filtered" />);
+  expect(visibleFolios()[0]).toBe(551);
+  expect(screen.getAllByText("1–25 de 51 movimientos · Página 1 de 3")).toHaveLength(2);
+});
+
+it("keeps selection available for a group across pages and preserves its assignment draft", () => {
+  const group = {
+    ...unit,
+    movimientos: manyUnits()
+      .slice(0, 30)
+      .map((item) => item.movimientos[0]),
+  };
+  render(<NaturalQueueTable {...base} units={[group]} />);
+  expect(screen.getAllByRole("checkbox", { name: "Seleccionar unidad 20" })).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Ver folio 530" }));
+  fireEvent.change(screen.getByLabelText("Asignar unidad 20"), { target: { value: "8" } });
+  fireEvent.click(screen.getAllByTitle("Página siguiente")[0]);
+  expect(screen.getAllByRole("checkbox", { name: "Seleccionar unidad 20" })).toHaveLength(1);
+  fireEvent.click(screen.getByLabelText("Seleccionar unidad 20"));
+  expect(base.onSelect).toHaveBeenCalledWith(20, true);
+  fireEvent.click(screen.getAllByTitle("Página anterior")[0]);
+  expect((screen.getByLabelText("Asignar unidad 20") as HTMLSelectElement).value).toBe("8");
+});
+
+it("clamps the current page when movements disappear during refresh", () => {
+  const units = manyUnits();
+  const { rerender } = render(<NaturalQueueTable {...base} units={units} />);
+  fireEvent.click(screen.getAllByTitle("Página siguiente")[0]);
+  fireEvent.click(screen.getAllByTitle("Página siguiente")[0]);
+  rerender(<NaturalQueueTable {...base} units={units.slice(0, 28)} />);
+  expect(visibleFolios()).toEqual([503, 502, 501]);
+  expect(screen.getAllByText("26–28 de 28 movimientos · Página 2 de 2")).toHaveLength(2);
+});

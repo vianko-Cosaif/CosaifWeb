@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   Camera,
@@ -13,6 +13,7 @@ import {
   UserRound,
 } from "lucide-react";
 import ConfigProvider from "antd/es/config-provider";
+import esES from "antd/es/locale/es_ES";
 import Table from "antd/es/table";
 import type { ColumnsType } from "antd/es/table";
 import NaturalMovementDetails from "./NaturalMovementDetails";
@@ -43,6 +44,7 @@ type Props = {
   showImages: boolean;
   showFinish: boolean;
   followUp?: boolean;
+  paginationKey?: string;
   selected: number[];
   onSelect: (id: number, checked: boolean) => void;
   operators: { id: number; nombre: string }[];
@@ -50,7 +52,13 @@ type Props = {
   mutate: (path: string, body: unknown) => Promise<void>;
   onHistory: (id: number) => void;
 };
-type TableRow = { unit: QueueUnit; movement: QueueMovement; index: number; unitIndex: number };
+type TableRow = {
+  unit: QueueUnit;
+  movement: QueueMovement;
+  index: number;
+  unitIndex: number;
+  displayPosition: number;
+};
 export default function NaturalQueueTable({
   units,
   dispatch,
@@ -59,6 +67,7 @@ export default function NaturalQueueTable({
   showImages,
   showFinish,
   followUp = false,
+  paginationKey = "",
   selected,
   onSelect,
   operators,
@@ -66,6 +75,9 @@ export default function NaturalQueueTable({
   mutate,
   onHistory,
 }: Props) {
+  const tableRef = useRef<HTMLDivElement>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [expanded, setExpanded] = useState<number[]>([]);
   const [assignment, setAssignment] = useState<Record<number, string>>({});
   const [solution, setSolution] = useState<Record<number, string>>({});
@@ -83,9 +95,28 @@ export default function NaturalQueueTable({
     setExpanded((prev) =>
       prev.includes(id) ? prev.filter((value) => value !== id) : [...prev, id],
     );
-  const rows = units.flatMap((unit, unitIndex) =>
-    unit.movimientos.map((movement, index) => ({ unit, movement, index, unitIndex })),
-  );
+  const rows = useMemo(() => {
+    const records = units.flatMap((unit, unitIndex) =>
+      unit.movimientos.map((movement, index) => ({ unit, movement, index, unitIndex })),
+    );
+    if (followUp) records.sort((a, b) => b.movement.id - a.movement.id);
+    return records.map((row, index) => ({ ...row, displayPosition: index + 1 }));
+  }, [units, followUp]);
+  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  useEffect(() => {
+    setPage(1);
+  }, [paginationKey]);
+  useEffect(() => {
+    setPage((previous) => Math.min(previous, pageCount));
+  }, [pageCount]);
+  // Group actions still apply to the whole unit, even when its rows span pages.
+  const firstMovementOnPage = new Map<number, number>();
+  for (const row of rows.slice((currentPage - 1) * pageSize, currentPage * pageSize)) {
+    if (!firstMovementOnPage.has(row.unit.id)) {
+      firstMovementOnPage.set(row.unit.id, row.movement.id);
+    }
+  }
   const section = (movement: QueueMovement, side: "Origen" | "Destino") =>
     sectionPositionLabel(
       movement[`seccion${side}Numero`],
@@ -120,23 +151,25 @@ export default function NaturalQueueTable({
     </div>
   );
   const cells: Record<string, (row: TableRow) => ReactNode> = {
-    fila: ({ unit, index, unitIndex }) => (
+    fila: ({ unit, movement, index, unitIndex, displayPosition }) => (
       <div className={s.orderCell}>
         <div className={s.orderTop}>
-          {index === 0 && dispatch && unit.estado === "PENDIENTE" && (
-            <input
-              type="checkbox"
-              aria-label={`Seleccionar unidad ${unit.id}`}
-              checked={selected.includes(unit.id)}
-              disabled={busy}
-              onChange={(e) => onSelect(unit.id, e.target.checked)}
-            />
-          )}
+          {(followUp ? firstMovementOnPage.get(unit.id) === movement.id : index === 0) &&
+            dispatch &&
+            unit.estado === "PENDIENTE" && (
+              <input
+                type="checkbox"
+                aria-label={`Seleccionar unidad ${unit.id}`}
+                checked={selected.includes(unit.id)}
+                disabled={busy}
+                onChange={(e) => onSelect(unit.id, e.target.checked)}
+              />
+            )}
           <strong className={followUp ? s.rowNumber : undefined}>
-            {String(unit.posicion ?? unitIndex + 1).padStart(2, "0")}
+            {String(followUp ? displayPosition : (unit.posicion ?? unitIndex + 1)).padStart(2, "0")}
           </strong>
         </div>
-        <span className={s.orderHint}>{unitPriority(unit)}</span>
+        {!followUp && <span className={s.orderHint}>{unitPriority(unit)}</span>}
         {unit.modalidad === "CONJUNTO" && (
           <span className={s.groupTag}>
             <Link2 size={13} aria-hidden /> Conjunto #{unit.id}
@@ -586,12 +619,14 @@ export default function NaturalQueueTable({
   };
   return (
     <div
+      ref={tableRef}
       role="region"
       aria-label="Tabla de movimientos naturales"
       className={`${s.tableScroll} ${followUp ? s.gdlTableFrame : ""}`}
       tabIndex={0}
     >
       <ConfigProvider
+        locale={esES}
         theme={{
           token: {
             colorPrimary: "#059669",
@@ -621,10 +656,19 @@ export default function NaturalQueueTable({
           pagination={
             followUp
               ? {
-                  pageSize: 25,
-                  showSizeChanger: false,
-                  placement: ["bottomCenter"],
-                  showTotal: (count, range) => `Mostrando ${range[0]}-${range[1]} de ${count}`,
+                  current: currentPage,
+                  pageSize,
+                  total: rows.length,
+                  showSizeChanger: { "aria-label": "Movimientos por página" },
+                  pageSizeOptions: [10, 25, 50, 100],
+                  placement: ["topEnd", "bottomEnd"],
+                  showTotal: (count, range) =>
+                    `${range[0]}–${range[1]} de ${count} movimientos · Página ${currentPage} de ${pageCount}`,
+                  onChange: (nextPage, nextSize) => {
+                    setPage(nextSize === pageSize ? nextPage : 1);
+                    setPageSize(nextSize);
+                    tableRef.current?.scrollIntoView?.({ block: "start" });
+                  },
                 }
               : false
           }

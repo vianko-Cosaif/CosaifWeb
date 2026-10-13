@@ -1514,6 +1514,7 @@ tbody[data-group="true"] .orderCell {
 
 .gdlTableFrame {
   max-height: none;
+  scroll-margin-top: 100px;
 }
 .board[data-view="seguimiento"] .gdlTableFrame {
   margin: 16px 0 0;
@@ -1521,6 +1522,15 @@ tbody[data-group="true"] .orderCell {
   border-radius: 0;
 }
 .gdlMovementTable {
+  :global(.ant-pagination) {
+    padding: 0 16px;
+    row-gap: 10px;
+  }
+  :global(.ant-pagination-total-text) {
+    margin-right: auto;
+    color: var(--app-text-muted);
+    font-size: 12px;
+  }
   .orderTop .rowNumber {
     display: inline-flex;
     min-width: 40px;
