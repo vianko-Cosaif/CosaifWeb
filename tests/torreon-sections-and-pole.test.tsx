@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { sectionPositionLabel } from "@/features/torreon/naturales/queueView";
+import { poleLabel, sectionPositionLabel } from "@/features/torreon/naturales/queueView";
 import TorreonNaturalEdit from "@/features/movimientos/editar/TorreonNaturalEdit";
 
 const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
@@ -15,6 +15,7 @@ afterEach(() => {
 });
 
 it("prefers verified section numbers, keeps explicit legacy numbers and never turns a database id into a section number", () => {
+  expect(poleLabel("CENTRO")).toBe("Centro");
   expect(sectionPositionLabel(1, "Salida sur", true)).toBe("Sección 1 · Salida sur");
   expect(sectionPositionLabel(2, "Sección 2", true)).toBe("Sección 2");
   expect(sectionPositionLabel(3, "Sección 91 · Taller", true)).toBe("Sección 3 · Taller");
@@ -48,24 +49,27 @@ const movement = {
   viaDestinoNombreSnapshot: "Vía 3",
 };
 
-it("shows real sections and asymmetric poles, sending only the edited destination pole", async () => {
-  const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
-    json(options?.method === "PATCH" ? { ok: true } : movement),
-  );
-  vi.stubGlobal("fetch", fetcher);
-  render(<TorreonNaturalEdit movimientoId={501} />);
-  const origin = await screen.findByLabelText("Polo de salida");
-  expect(origin).toHaveProperty("value", "NORTE");
-  expect(screen.getByLabelText("Polo de llegada")).toHaveProperty("value", "SUR");
-  expect(screen.getByText("Sección 1 · Salida sur")).toBeTruthy();
-  expect(screen.getByText("Sección 3")).toBeTruthy();
-  expect(screen.queryByLabelText(/chimenea|cabina/i)).toBeNull();
-  fireEvent.change(screen.getByLabelText("Polo de llegada"), { target: { value: "NORTE" } });
-  fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
-  await waitFor(() => expect(router.push).toHaveBeenCalledWith("/cliente/movimientos"));
-  const patch = fetcher.mock.calls.find(([, options]) => options?.method === "PATCH")!;
-  expect(JSON.parse(patch[1]!.body as string)).toEqual({ poloDestino: "NORTE" });
-});
+it.each(["NORTE", "CENTRO"])(
+  "shows real sections and asymmetric poles, sending only the edited destination pole %s",
+  async (destination) => {
+    const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
+      json(options?.method === "PATCH" ? { ok: true } : movement),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    render(<TorreonNaturalEdit movimientoId={501} />);
+    const origin = await screen.findByLabelText("Polo de salida");
+    expect(origin).toHaveProperty("value", "NORTE");
+    expect(screen.getByLabelText("Polo de llegada")).toHaveProperty("value", "SUR");
+    expect(screen.getByText("Sección 1 · Salida sur")).toBeTruthy();
+    expect(screen.getByText("Sección 3")).toBeTruthy();
+    expect(screen.queryByLabelText(/chimenea|cabina/i)).toBeNull();
+    fireEvent.change(screen.getByLabelText("Polo de llegada"), { target: { value: destination } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/cliente/movimientos"));
+    const patch = fetcher.mock.calls.find(([, options]) => options?.method === "PATCH")!;
+    expect(JSON.parse(patch[1]!.body as string)).toEqual({ poloDestino: destination });
+  },
+);
 it("opens legacy data with no inferred poles and edits instructions without overwriting them", async () => {
   const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
     json(
@@ -88,7 +92,7 @@ it("opens legacy data with no inferred poles and edits instructions without over
   const patch = fetcher.mock.calls.find(([, options]) => options?.method === "PATCH")!;
   expect(JSON.parse(patch[1]!.body as string)).toEqual({ instrucciones: "Confirmar posición" });
 });
-it("can explicitly complete both missing legacy poles as Norte to Sur", async () => {
+it("can explicitly complete both missing legacy poles as Centro to Centro", async () => {
   const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
     json(
       options?.method === "PATCH"
@@ -98,12 +102,15 @@ it("can explicitly complete both missing legacy poles as Norte to Sur", async ()
   );
   vi.stubGlobal("fetch", fetcher);
   render(<TorreonNaturalEdit movimientoId={501} />);
-  fireEvent.change(await screen.findByLabelText("Polo de salida"), { target: { value: "NORTE" } });
-  fireEvent.change(screen.getByLabelText("Polo de llegada"), { target: { value: "SUR" } });
+  fireEvent.change(await screen.findByLabelText("Polo de salida"), { target: { value: "CENTRO" } });
+  fireEvent.change(screen.getByLabelText("Polo de llegada"), { target: { value: "CENTRO" } });
   fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
   await waitFor(() => expect(router.push).toHaveBeenCalled());
   const patch = fetcher.mock.calls.find(([, options]) => options?.method === "PATCH")!;
-  expect(JSON.parse(patch[1]!.body as string)).toEqual({ poloOrigen: "NORTE", poloDestino: "SUR" });
+  expect(JSON.parse(patch[1]!.body as string)).toEqual({
+    poloOrigen: "CENTRO",
+    poloDestino: "CENTRO",
+  });
 });
 it("rejects clearing an existing pole while preserving the other value", async () => {
   const fetcher = vi.fn(async () => json(movement));

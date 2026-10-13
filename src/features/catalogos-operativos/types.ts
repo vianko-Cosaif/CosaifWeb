@@ -47,8 +47,14 @@ export type TrackDraft = {
   numero: number;
   nombre: string;
   secciones: number;
+  seccionesDetalle?: SectionDraft[];
   minimumSections?: number;
   occupiedSections?: number;
+};
+
+export type SectionDraft = {
+  numero: number;
+  nombre: string;
 };
 
 export type LocationPayload = {

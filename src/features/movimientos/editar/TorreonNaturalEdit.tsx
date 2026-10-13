@@ -13,8 +13,8 @@ type Movement = {
   prioridad: "BAJA" | "ALTA";
   tipoMovimiento: "MD_TRABAJANDO" | "REMOLCADA" | null;
   instrucciones: string | null;
-  poloOrigen?: "NORTE" | "SUR" | null;
-  poloDestino?: "NORTE" | "SUR" | null;
+  poloOrigen?: "NORTE" | "CENTRO" | "SUR" | null;
+  poloDestino?: "NORTE" | "CENTRO" | "SUR" | null;
   seccionOrigenId?: number | null;
   seccionDestinoId?: number | null;
   seccionOrigenNumero?: number | null;
@@ -92,7 +92,7 @@ export default function TorreonNaturalEdit({ movimientoId }: { movimientoId: num
     );
     for (const side of ["Origen", "Destino"] as const) {
       const key = `polo${side}`;
-      if (key in payload && !["NORTE", "SUR"].includes(String(payload[key]))) {
+      if (key in payload && !["NORTE", "CENTRO", "SUR"].includes(String(payload[key]))) {
         setError(`Selecciona el polo de ${side === "Origen" ? "salida" : "llegada"}.`);
         return;
       }
@@ -279,6 +279,7 @@ export default function TorreonNaturalEdit({ movimientoId }: { movimientoId: num
                     >
                       <option value="">No registrado</option>
                       <option value="NORTE">Norte</option>
+                      <option value="CENTRO">Centro</option>
                       <option value="SUR">Sur</option>
                     </select>
                   </label>

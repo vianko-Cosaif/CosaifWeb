@@ -142,7 +142,7 @@ export default function TorreonBatchCapture({
         };
     }
     for (const side of ["Origen", "Destino"] as const) {
-      if (!["NORTE", "SUR"].includes(r[`polo${side}`]))
+      if (!["NORTE", "CENTRO", "SUR"].includes(r[`polo${side}`]))
         return {
           field: `polo${side}`,
           message: `selecciona el polo de ${side === "Origen" ? "salida" : "llegada"}.`,
@@ -618,6 +618,7 @@ export default function TorreonBatchCapture({
                             [
                               { value: "", label: "Seleccionar polo" },
                               { value: "NORTE", label: "Norte" },
+                              { value: "CENTRO", label: "Centro" },
                               { value: "SUR", label: "Sur" },
                             ],
                             side === "Origen"

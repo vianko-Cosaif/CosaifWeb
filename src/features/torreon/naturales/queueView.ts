@@ -97,7 +97,13 @@ export type QueueAudit = {
 
 /** Section numbers come from the catalog/API, never from database identifiers. */
 export function poleLabel(value?: string | null) {
-  return value === "NORTE" ? "Norte" : value === "SUR" ? "Sur" : "No registrado";
+  return value === "NORTE"
+    ? "Norte"
+    : value === "CENTRO"
+      ? "Centro"
+      : value === "SUR"
+        ? "Sur"
+        : "No registrado";
 }
 
 export function sectionPositionLabel(
