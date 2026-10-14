@@ -7,26 +7,55 @@ import { useCoordinatorQueueData } from "@/features/rail-queue/coordinador/useCo
 
 function Fixture(props: { localidadId?: number; onChanged?: () => void; autoRefresh?: boolean }) {
   const queue = useCoordinatorQueueData({ localidadId: 1, ...props });
-  return <><output data-testid="items">{queue.items.map((item) => item.id).join(",")}</output><output data-testid="loading">{String(queue.loading)}</output>{queue.error && <p role="alert">{queue.error}</p>}<button onClick={() => queue.load(true)}>Actualizar</button><button onClick={() => queue.load(false)}>Conectado</button></>;
+  return (
+    <>
+      <output data-testid="items">{queue.items.map((item) => item.id).join(",")}</output>
+      <output data-testid="loading">{String(queue.loading)}</output>
+      {queue.error && <p role="alert">{queue.error}</p>}
+      <button onClick={() => queue.load(true)}>Actualizar</button>
+      <button onClick={() => queue.load(false)}>Conectado</button>
+    </>
+  );
 }
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
   return { promise, resolve };
 }
-const json = (value: unknown) => new Response(JSON.stringify(value), { headers: { "content-type": "application/json" } });
-const row = (id: number, localidadId = 1) => ({ id, localidadId, rondaNumero: 1, orden: id, concluido: false, movimiento: { id, estado: "SOLICITADO" } });
+const json = (value: unknown) =>
+  new Response(JSON.stringify(value), { headers: { "content-type": "application/json" } });
+const row = (id: number, localidadId = 1) => ({
+  id,
+  localidadId,
+  rondaNumero: 1,
+  orden: id,
+  concluido: false,
+  movimiento: { id, estado: "SOLICITADO" },
+});
 function visibility(value: "visible" | "hidden") {
   Object.defineProperty(document, "visibilityState", { configurable: true, value });
   document.dispatchEvent(new Event("visibilitychange"));
 }
-beforeEach(() => { invalidateCachedJson(); visibility("visible"); });
-afterEach(() => { cleanup(); invalidateCachedJson(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+beforeEach(() => {
+  invalidateCachedJson();
+  visibility("visible");
+});
+afterEach(() => {
+  cleanup();
+  invalidateCachedJson();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("coordinator queue request lifecycle", () => {
   it("joins connection readiness to the initial request and groups movement updates into one subsequent read", async () => {
     const pending = deferred<Response>();
-    const fetch = vi.fn().mockImplementationOnce(() => pending.promise).mockResolvedValue(json([row(20)]));
+    const fetch = vi
+      .fn()
+      .mockImplementationOnce(() => pending.promise)
+      .mockResolvedValue(json([row(20)]));
     vi.stubGlobal("fetch", fetch);
     render(<Fixture />);
     fireEvent.click(screen.getByRole("button", { name: "Conectado" }));
@@ -52,7 +81,10 @@ describe("coordinator queue request lifecycle", () => {
     const old = deferred<Response>();
     const fresh = deferred<Response>();
     const notify = vi.fn();
-    vi.stubGlobal("fetch", vi.fn((url: string) => url.includes("localidadId=2") ? fresh.promise : old.promise));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => (url.includes("localidadId=2") ? fresh.promise : old.promise)),
+    );
     const view = render(<Fixture onChanged={notify} />);
     view.rerender(<Fixture localidadId={2} onChanged={notify} />);
     expect(screen.getByTestId("items").textContent).toBe("");
@@ -64,7 +96,14 @@ describe("coordinator queue request lifecycle", () => {
   });
 
   it("keeps the last successful queue visible when refresh fails and recovers on retry", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(json([row(10)])).mockResolvedValueOnce(new Response("Unavailable", { status: 503 })).mockResolvedValueOnce(json([row(30)])));
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(json([row(10)]))
+        .mockResolvedValueOnce(new Response("Unavailable", { status: 503 }))
+        .mockResolvedValueOnce(json([row(30)])),
+    );
     render(<Fixture />);
     await waitFor(() => expect(screen.getByTestId("items").textContent).toBe("10"));
     fireEvent.click(screen.getByRole("button", { name: "Actualizar" }));
@@ -75,11 +114,36 @@ describe("coordinator queue request lifecycle", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("empties the active GDL queue after refresh reports finalized or terminal movements, before cache expiry", async () => {
+    const active = [10, 20, 30].map((id) => ({ ...row(id), source: "cosaif" }));
+    const finished = [
+      { ...active[0], movimiento: { id: 10, estado: "DETENIDO", finalizado: true } },
+      { ...active[1], movimiento: { id: 20, estado: "CANCELADO", finalizado: false } },
+      { ...active[2], movimiento: { id: 30, estado: "CONCLUIDO", finalizado: false } },
+    ];
+    const fetch = vi.fn().mockResolvedValueOnce(json(active)).mockResolvedValueOnce(json(finished));
+    const onChanged = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    render(<Fixture onChanged={onChanged} />);
+    await waitFor(() => expect(screen.getByTestId("items").textContent).toBe("10,20,30"));
+    fireEvent.click(screen.getByRole("button", { name: "Actualizar" }));
+    await waitFor(() => expect(screen.getByTestId("items").textContent).toBe(""));
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(onChanged).toHaveBeenLastCalledWith([], active);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("aborts pending reads on navigation and never notifies after unmount", async () => {
     const pending = deferred<Response>();
     let signal: AbortSignal | null = null;
     const notify = vi.fn();
-    vi.stubGlobal("fetch", vi.fn((_url: string, init: RequestInit) => { signal = init.signal as AbortSignal; return pending.promise; }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: string, init: RequestInit) => {
+        signal = init.signal as AbortSignal;
+        return pending.promise;
+      }),
+    );
     const view = render(<Fixture onChanged={notify} />);
     view.unmount();
     expect(signal).toHaveProperty("aborted", true);
@@ -88,7 +152,10 @@ describe("coordinator queue request lifecycle", () => {
   });
 
   it("waits while hidden and coalesces missed changes into a single refresh on return", async () => {
-    const fetch = vi.fn().mockResolvedValueOnce(json([row(10)])).mockResolvedValueOnce(json([row(20)]));
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(json([row(10)]))
+      .mockResolvedValueOnce(json([row(20)]));
     vi.stubGlobal("fetch", fetch);
     render(<Fixture />);
     await waitFor(() => expect(screen.getByTestId("items").textContent).toBe("10"));

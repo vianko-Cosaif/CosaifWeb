@@ -12,7 +12,12 @@ import {
   User as UserIcon,
 } from "lucide-react";
 import { Button, SelectField, cn } from "@/components/ui";
-import { ROLE_LABELS, isCompanyAllowedForRole, isRoleAllowedForCompany, roleAccent } from "../constants";
+import {
+  ROLE_LABELS,
+  isCompanyAllowedForRole,
+  isRoleAllowedForCompany,
+  roleAccent,
+} from "../constants";
 import type { Empresa, Localidad, Rol, UserData, UserFormValues } from "../types";
 import { passwordScore } from "../utils";
 
@@ -37,6 +42,32 @@ type FormState = {
   confirm: string;
 };
 
+function reconcileAssignment(
+  current: FormState,
+  empresas: Empresa[],
+  localidades: Localidad[],
+  roleOptions: Rol[],
+): FormState {
+  const rol = roleOptions.includes(current.rol) ? current.rol : (roleOptions[0] ?? current.rol);
+  const compatibleEmpresas = empresas.filter((empresa) =>
+    isCompanyAllowedForRole(empresa.nombre, rol),
+  );
+  const empresaId =
+    !empresas.length || compatibleEmpresas.some((empresa) => empresa.id === current.empresaId)
+      ? current.empresaId
+      : (compatibleEmpresas[0]?.id ?? "");
+  const localidadId = current.localidadId || (localidades[0]?.id ?? "");
+
+  if (
+    rol === current.rol &&
+    empresaId === current.empresaId &&
+    localidadId === current.localidadId
+  ) {
+    return current;
+  }
+  return { ...current, rol, empresaId, localidadId };
+}
+
 export default function UserForm({
   mode,
   empresas,
@@ -47,15 +78,22 @@ export default function UserForm({
   onSubmit,
   onCancel,
 }: UserFormProps) {
-  const [form, setForm] = useState<FormState>(() => ({
-    nombre: initial?.nombre ?? "",
-    email: initial?.email ?? "",
-    rol: initial?.rol ?? "CLIENTE",
-    empresaId: initial?.empresaId ?? (empresas[0]?.id ?? ""),
-    localidadId: initial?.localidad?.id ?? initial?.localidadId ?? (localidades[0]?.id ?? ""),
-    password: "",
-    confirm: "",
-  }));
+  const [form, setForm] = useState<FormState>(() =>
+    reconcileAssignment(
+      {
+        nombre: initial?.nombre ?? "",
+        email: initial?.email ?? "",
+        rol: initial?.rol ?? "CLIENTE",
+        empresaId: initial?.empresaId ?? empresas[0]?.id ?? "",
+        localidadId: initial?.localidad?.id ?? initial?.localidadId ?? localidades[0]?.id ?? "",
+        password: "",
+        confirm: "",
+      },
+      empresas,
+      localidades,
+      roleOptions,
+    ),
+  );
   const [saving, setSaving] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -68,23 +106,21 @@ export default function UserForm({
 
   const passwordDraft = form.password || "";
   const confirmDraft = form.confirm || "";
-  const wantsPasswordChange = mode === "edit" && (passwordDraft.length > 0 || confirmDraft.length > 0);
+  const wantsPasswordChange =
+    mode === "edit" && (passwordDraft.length > 0 || confirmDraft.length > 0);
   const passwordRequired = mode === "create";
   const shouldValidatePassword = passwordRequired || wantsPasswordChange;
-  const passwordReady = !shouldValidatePassword || (passwordDraft.length >= 8 && passwordDraft === confirmDraft);
+  const passwordReady =
+    !shouldValidatePassword || (passwordDraft.length >= 8 && passwordDraft === confirmDraft);
   const pScore = useMemo(() => passwordScore(passwordDraft), [passwordDraft]);
   const accent = roleAccent(form.rol);
   const selectedEmpresa = useMemo(
     () => empresas.find((empresa) => Number(empresa.id) === Number(form.empresaId)),
-    [empresas, form.empresaId]
-  );
-  const compatibleRoleOptions = useMemo(
-    () => roleOptions.filter((role) => isRoleAllowedForCompany(role, selectedEmpresa?.nombre)),
-    [roleOptions, selectedEmpresa?.nombre]
+    [empresas, form.empresaId],
   );
   const compatibleEmpresas = useMemo(
     () => empresas.filter((empresa) => isCompanyAllowedForRole(empresa.nombre, form.rol)),
-    [empresas, form.rol]
+    [empresas, form.rol],
   );
   const businessRuleMessage = !selectedEmpresa
     ? ""
@@ -93,24 +129,17 @@ export default function UserForm({
       : "";
 
   useEffect(() => {
-    if (compatibleRoleOptions.length && !compatibleRoleOptions.includes(form.rol)) {
-      setForm((current) => ({ ...current, rol: compatibleRoleOptions[0] }));
-    }
-  }, [compatibleRoleOptions, form.rol]);
-
-  useEffect(() => {
-    if (!compatibleEmpresas.length) return;
-    if (!compatibleEmpresas.some((empresa) => Number(empresa.id) === Number(form.empresaId))) {
-      setForm((current) => ({ ...current, empresaId: compatibleEmpresas[0].id }));
-    }
-  }, [compatibleEmpresas, form.empresaId]);
+    // The selected role determines the company; update both together so they
+    // cannot trigger competing effects when catalogs load or change.
+    setForm((current) => reconcileAssignment(current, empresas, localidades, roleOptions));
+  }, [empresas, localidades, roleOptions]);
 
   const passwordStatusMessage =
     shouldValidatePassword && passwordDraft.length > 0 && passwordDraft.length < 8
       ? "La contraseña debe tener minimo 8 caracteres."
       : shouldValidatePassword && passwordDraft.length >= 8 && passwordDraft !== confirmDraft
-      ? "Confirma la misma contraseña para poder guardar."
-      : "";
+        ? "Confirma la misma contraseña para poder guardar."
+        : "";
 
   const errors = {
     nombre: touched.nombre && !form.nombre.trim() ? "El nombre es obligatorio" : "",
@@ -119,8 +148,8 @@ export default function UserForm({
       touched.password && passwordRequired && !passwordDraft.trim()
         ? "La contraseña es obligatoria"
         : touched.password && shouldValidatePassword && passwordDraft.length < 8
-        ? "Minimo 8 caracteres"
-        : "",
+          ? "Minimo 8 caracteres"
+          : "",
     confirm:
       touched.confirm && shouldValidatePassword && passwordDraft !== confirmDraft
         ? "Las contraseñas no coinciden"
@@ -134,6 +163,8 @@ export default function UserForm({
     form.email.trim() &&
     !!form.empresaId &&
     !!form.localidadId &&
+    !!selectedEmpresa &&
+    roleOptions.includes(form.rol) &&
     !businessRuleMessage &&
     passwordReady &&
     !saving;
@@ -162,11 +193,16 @@ export default function UserForm({
 
   return (
     <div className="space-y-5">
-      <div className={cn("rounded-2xl border p-4 shadow-sm dark:border-slate-700", `ring-2 ${accent.ring}`)}>
+      <div
+        className={cn(
+          "rounded-2xl border p-4 shadow-sm dark:border-slate-700",
+          `ring-2 ${accent.ring}`,
+        )}
+      >
         <div
           className={cn(
             "inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-black dark:bg-slate-800",
-            accent.text
+            accent.text,
           )}
         >
           <UserIcon className="h-4 w-4" aria-hidden />
@@ -191,7 +227,9 @@ export default function UserForm({
           placeholder="Usuario / nombre de acceso"
           autoComplete="username"
         />
-        {errors.nombre ? <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.nombre}</p> : null}
+        {errors.nombre ? (
+          <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.nombre}</p>
+        ) : null}
       </div>
 
       <div className="relative">
@@ -206,7 +244,9 @@ export default function UserForm({
           placeholder="correo@empresa.com"
           autoComplete="email"
         />
-        {errors.email ? <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.email}</p> : null}
+        {errors.email ? (
+          <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.email}</p>
+        ) : null}
       </div>
 
       {mode === "edit" ? (
@@ -229,10 +269,14 @@ export default function UserForm({
           <input
             type={showPass ? "text" : "password"}
             value={form.password}
-            onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, password: event.target.value }))
+            }
             onBlur={() => setTouched((current) => ({ ...current, password: true }))}
             className={cn(baseInput, errors.password ? errCls : okCls, "pr-12")}
-            placeholder={mode === "create" ? "Contraseña (minimo 8)" : "Nueva contraseña (opcional)"}
+            placeholder={
+              mode === "create" ? "Contraseña (minimo 8)" : "Nueva contraseña (opcional)"
+            }
             autoComplete={mode === "create" ? "new-password" : "off"}
           />
           <button
@@ -241,9 +285,15 @@ export default function UserForm({
             className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
             aria-label={showPass ? "Ocultar contraseña" : "Mostrar contraseña"}
           >
-            {showPass ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
+            {showPass ? (
+              <EyeOff className="h-4 w-4" aria-hidden />
+            ) : (
+              <Eye className="h-4 w-4" aria-hidden />
+            )}
           </button>
-          {errors.password ? <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.password}</p> : null}
+          {errors.password ? (
+            <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.password}</p>
+          ) : null}
         </div>
 
         <div className="relative">
@@ -251,7 +301,9 @@ export default function UserForm({
           <input
             type={showConfirm ? "text" : "password"}
             value={form.confirm}
-            onChange={(event) => setForm((current) => ({ ...current, confirm: event.target.value }))}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, confirm: event.target.value }))
+            }
             onBlur={() => setTouched((current) => ({ ...current, confirm: true }))}
             className={cn(baseInput, errors.confirm ? errCls : okCls, "pr-12")}
             placeholder="Confirmar contraseña"
@@ -263,26 +315,41 @@ export default function UserForm({
             className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
             aria-label={showConfirm ? "Ocultar confirmacion" : "Mostrar confirmacion"}
           >
-            {showConfirm ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
+            {showConfirm ? (
+              <EyeOff className="h-4 w-4" aria-hidden />
+            ) : (
+              <Eye className="h-4 w-4" aria-hidden />
+            )}
           </button>
-          {errors.confirm ? <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.confirm}</p> : null}
+          {errors.confirm ? (
+            <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{errors.confirm}</p>
+          ) : null}
         </div>
       </div>
 
       {mode === "create" || wantsPasswordChange ? (
         <>
           {passwordStatusMessage ? (
-            <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">{passwordStatusMessage}</p>
+            <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+              {passwordStatusMessage}
+            </p>
           ) : null}
           <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
             <span>Seguridad de la contraseña</span>
-            <span className={cn(pScore < 40 ? "text-rose-600" : pScore < 70 ? "text-amber-600" : "text-emerald-600")}>
+            <span
+              className={cn(
+                pScore < 40 ? "text-rose-600" : pScore < 70 ? "text-amber-600" : "text-emerald-600",
+              )}
+            >
               {pScore}%
             </span>
           </div>
           <div className="h-2 w-full rounded bg-slate-200 dark:bg-slate-800">
             <div
-              className={cn("h-2 rounded", pScore < 40 ? "bg-rose-500" : pScore < 70 ? "bg-amber-500" : "bg-emerald-500")}
+              className={cn(
+                "h-2 rounded",
+                pScore < 40 ? "bg-rose-500" : pScore < 70 ? "bg-amber-500" : "bg-emerald-500",
+              )}
               style={{ width: `${pScore}%` }}
             />
           </div>
@@ -290,18 +357,30 @@ export default function UserForm({
       ) : null}
 
       <div>
-        <label className="mb-1.5 block text-sm font-black text-slate-700 dark:text-slate-300">Rol</label>
+        <label className="mb-1.5 block text-sm font-black text-slate-700 dark:text-slate-300">
+          Rol
+        </label>
         <div className="grid grid-cols-2 gap-2">
-          {compatibleRoleOptions.map((role) => (
+          {roleOptions.map((role) => (
             <button
               key={role}
               type="button"
-              onClick={() => setForm((current) => ({ ...current, rol: role }))}
+              aria-pressed={form.rol === role}
+              onClick={() =>
+                setForm((current) =>
+                  reconcileAssignment(
+                    { ...current, rol: role },
+                    empresas,
+                    localidades,
+                    roleOptions,
+                  ),
+                )
+              }
               className={cn(
                 "rounded-xl border px-3 py-2.5 text-sm font-black transition",
                 form.rol === role
                   ? "border-sky-500 bg-sky-50 text-sky-700 shadow-sm ring-2 ring-sky-500/20 dark:bg-sky-950/50 dark:text-sky-300"
-                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700",
               )}
             >
               {ROLE_LABELS[role] ?? role}
@@ -328,7 +407,10 @@ export default function UserForm({
           error={!form.empresaId ? errors.empresa : undefined}
           className="h-[46px] rounded-xl"
           onChange={(event) =>
-            setForm((current) => ({ ...current, empresaId: event.target.value ? Number(event.target.value) : "" }))
+            setForm((current) => ({
+              ...current,
+              empresaId: event.target.value ? Number(event.target.value) : "",
+            }))
           }
         >
           <option value="">Selecciona una empresa</option>
@@ -347,7 +429,10 @@ export default function UserForm({
           className="h-[46px] rounded-xl"
           disabled={lockLocalidad}
           onChange={(event) =>
-            setForm((current) => ({ ...current, localidadId: event.target.value ? Number(event.target.value) : "" }))
+            setForm((current) => ({
+              ...current,
+              localidadId: event.target.value ? Number(event.target.value) : "",
+            }))
           }
         >
           <option value="">Selecciona una localidad</option>
@@ -369,7 +454,10 @@ export default function UserForm({
           onClick={submit}
           disabled={!canSubmit}
           size="lg"
-          className={cn("flex-1 border-0 bg-gradient-to-r text-white shadow-lg hover:shadow-xl", accent.grad)}
+          className={cn(
+            "flex-1 border-0 bg-gradient-to-r text-white shadow-lg hover:shadow-xl",
+            accent.grad,
+          )}
         >
           {saving ? (
             <span className="flex items-center justify-center gap-2">

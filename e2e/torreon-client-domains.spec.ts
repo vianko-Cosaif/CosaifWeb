@@ -25,18 +25,22 @@ test("cliente natural de Torreón conserva su inicio y crea sólo para su empres
   await page.getByLabel("Contraseña", { exact: true }).fill("Prueba-COSAIF-2026");
   await page.getByRole("button", { name: /ingresar a la plataforma/i }).click();
   await expect(page).toHaveURL(/\/cliente$/);
-  await expect(page.getByRole("link", { name: "Crear movimiento", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Solicitar movimientos", exact: true }),
+  ).toBeVisible();
   await expect(page.getByText("Solicitar arrastre", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Mis arrastres", { exact: true })).toHaveCount(0);
   await page.goto("/cliente/torreon");
   await expect(page).toHaveURL(/\/cliente$/);
-  await page.getByRole("link", { name: "Crear movimiento", exact: true }).click();
-  await expect(page).toHaveURL(/\/movimientos\/crear$/);
-  await expect(page.getByRole("textbox", { name: "Empresa", exact: true })).toHaveValue(
-    "Empresa de prueba",
-  );
-  await expect(page.getByRole("textbox", { name: "Empresa", exact: true })).toBeDisabled();
-  await expect(page.getByRole("textbox", { name: "Localidad", exact: true })).toBeDisabled();
+  await page.getByRole("link", { name: "Solicitar movimientos", exact: true }).click();
+  await expect(page).toHaveURL(/\/movimientos\/crear(?:\?tipo=NATURAL)?$/);
+  await expect(
+    page.getByRole("heading", { name: "Solicitar movimientos", exact: true }),
+  ).toBeVisible();
+  for (const label of ["Empresa", "Localidad"]) {
+    await expect(page.getByRole("textbox", { name: label, exact: true })).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: label, exact: true })).toHaveCount(0);
+  }
   await expect(page.getByText(/application error/i)).toHaveCount(0);
 
   const response = await request(page, "/bff/torreon/movimientos", "POST", {
@@ -56,7 +60,7 @@ test("cliente natural de Torreón conserva su inicio y crea sólo para su empres
   expect((await request(page, "/api/cliente/torreon/arrastres?localidadId=2")).status).toBe(403);
   expect((await request(page, "/bff/torreon/arrastres", "POST", {})).status).toBe(403);
   await page.goto("/cliente/torreon/crear");
-  await expect(page).toHaveURL(/\/movimientos\/crear$/);
+  await expect(page).toHaveURL(/\/movimientos\/crear(?:\?tipo=NATURAL)?$/);
   await page.goto("/cliente/torreon/movimientos");
   await expect(page).toHaveURL(/\/cliente\/movimientos$/);
   await page.goto("/cliente/torreon/incidentes");
@@ -73,7 +77,9 @@ test("cliente arrastre sólo accede a arrastres y no puede iniciar ni finalizar 
   await page.getByRole("button", { name: /ingresar a la plataforma/i }).click();
   await expect(page).toHaveURL(/\/cliente\/torreon$/);
   await expect(page.getByRole("button", { name: "Solicitar arrastre", exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Crear movimiento", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Solicitar movimientos", exact: true })).toHaveCount(
+    0,
+  );
   expect((await request(page, "/bff/torreon/movimientos", "POST", {})).status).toBe(403);
   expect((await request(page, "/api/cliente/rondas?localidadId=2")).status).toBe(403);
   for (const operation of ["iniciar", "finalizar"])

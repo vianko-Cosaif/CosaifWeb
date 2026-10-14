@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { API_BASE, SECC_BASE, type Empresa, type Localidad, type Seccion, type Via } from "../movimientos.shared";
+import {
+  API_BASE,
+  SECC_BASE,
+  type Empresa,
+  type Localidad,
+  type Seccion,
+  type Via,
+} from "../movimientos.shared";
 import { cachedFetchJson } from "@/lib/http/client";
+import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 
 /**
  * MODULO: useCrearMovimientoCatalogos
@@ -61,9 +69,7 @@ function viasLoadError(error: unknown): string {
   return "No se pudieron cargar las vías de la localidad.";
 }
 
-const TRAINING_EMPRESAS: Empresa[] = [
-  { id: 91_001, nombre: "Empresa de capacitación" },
-];
+const TRAINING_EMPRESAS: Empresa[] = [{ id: 91_001, nombre: "Empresa de capacitación" }];
 const TRAINING_LOCALIDADES: Localidad[] = [
   { id: 1, nombre: "Localidad de capacitación", estado: "ACTIVA" },
 ];
@@ -104,6 +110,8 @@ export function useCrearMovimientoCatalogos(
   const [viasError, setViasError] = useState<string | null>(null);
   const [sectionsByVia, setSectionsByVia] = useState<Record<number, Seccion[]>>({});
   const [secLoading, setSecLoading] = useState<Record<number, boolean>>({});
+  const [secErrors, setSecErrors] = useState<Record<number, string>>({});
+  const torreon = isTorreonLocalidadId(selectedLocalityId);
   const viaRequestRef = useRef(0);
 
   /** Carga catalogos de empresas y localidades. */
@@ -115,7 +123,9 @@ export function useCrearMovimientoCatalogos(
     }
     const [e, l] = await Promise.all([
       cachedFetchJson<unknown>(`${API_BASE}/empresas`, {}, { ttlMs: 5 * 60_000 }).catch(() => []),
-      cachedFetchJson<unknown>(`${API_BASE}/localidades`, {}, { ttlMs: 5 * 60_000 }).catch(() => []),
+      cachedFetchJson<unknown>(`${API_BASE}/localidades`, {}, { ttlMs: 5 * 60_000 }).catch(
+        () => [],
+      ),
     ]);
 
     const eList: Empresa[] = Array.isArray(e) ? e : [];
@@ -133,43 +143,46 @@ export function useCrearMovimientoCatalogos(
    * El endpoint completo incluye relaciones e historiales y en producción puede
    * superar varios MB. El formulario sólo necesita id/nombre, por eso usa /lite.
    */
-  const loadVias = useCallback(async (force = false) => {
-    const requestId = ++viaRequestRef.current;
-    const localidadId = Number(selectedLocalityId);
+  const loadVias = useCallback(
+    async (force = false) => {
+      const requestId = ++viaRequestRef.current;
+      const localidadId = Number(selectedLocalityId);
 
-    if (sandbox) {
-      setVias(selectedLocalityId ? TRAINING_VIAS : []);
-      setViasLoading(false);
-      setViasError(null);
-      return;
-    }
-    if (!Number.isInteger(localidadId) || localidadId <= 0) {
+      if (sandbox) {
+        setVias(selectedLocalityId ? TRAINING_VIAS : []);
+        setViasLoading(false);
+        setViasError(null);
+        return;
+      }
+      if (!Number.isInteger(localidadId) || localidadId <= 0) {
+        setVias([]);
+        setViasLoading(false);
+        setViasError(null);
+        return;
+      }
+
       setVias([]);
-      setViasLoading(false);
+      setViasLoading(true);
       setViasError(null);
-      return;
-    }
 
-    setVias([]);
-    setViasLoading(true);
-    setViasError(null);
-
-    try {
-      const data = await cachedFetchJson<unknown>(
-        `${API_BASE}/vias/localidad/${localidadId}/lite`,
-        { credentials: "include" },
-        { ttlMs: 5 * 60_000, force, timeoutMs: 12_000 }
-      );
-      if (requestId !== viaRequestRef.current) return;
-      setVias(normalizeVias(data));
-    } catch (error) {
-      if (requestId !== viaRequestRef.current) return;
-      setVias([]);
-      setViasError(viasLoadError(error));
-    } finally {
-      if (requestId === viaRequestRef.current) setViasLoading(false);
-    }
-  }, [sandbox, selectedLocalityId]);
+      try {
+        const data = await cachedFetchJson<unknown>(
+          `${API_BASE}/vias/localidad/${localidadId}/lite`,
+          { credentials: "include" },
+          { ttlMs: 5 * 60_000, force, timeoutMs: 12_000 },
+        );
+        if (requestId !== viaRequestRef.current) return;
+        setVias(normalizeVias(data));
+      } catch (error) {
+        if (requestId !== viaRequestRef.current) return;
+        setVias([]);
+        setViasError(viasLoadError(error));
+      } finally {
+        if (requestId === viaRequestRef.current) setViasLoading(false);
+      }
+    },
+    [sandbox, selectedLocalityId],
+  );
 
   useEffect(() => {
     void loadVias();
@@ -183,36 +196,62 @@ export function useCrearMovimientoCatalogos(
   const secLoadingRef = useRef<Record<number, boolean>>({});
 
   /** Carga secciones por via con cache en memoria. */
-  const ensureSections = useCallback(async (viaId: number) => {
-    if (!viaId) return;
-    if (sandbox) {
-      setSectionsByVia((current) => (
-        current[viaId] ? current : { ...current, [viaId]: trainingSections(viaId) }
-      ));
-      return;
-    }
-    if (secLoadingRef.current[viaId]) return;
-    if (Array.isArray(sectionsByVia[viaId])) return;
+  const ensureSections = useCallback(
+    async (viaId: number) => {
+      if (!viaId) return;
+      if (sandbox) {
+        setSectionsByVia((current) =>
+          current[viaId] ? current : { ...current, [viaId]: trainingSections(viaId) },
+        );
+        return;
+      }
+      if (secLoadingRef.current[viaId]) return;
+      if (Array.isArray(sectionsByVia[viaId])) return;
 
-    secLoadingRef.current[viaId] = true;
-    setSecLoading((s) => ({ ...s, [viaId]: true }));
+      secLoadingRef.current[viaId] = true;
+      setSecLoading((s) => ({ ...s, [viaId]: true }));
+      if (torreon)
+        setSecErrors((errors) => {
+          const next = { ...errors };
+          delete next[viaId];
+          return next;
+        });
 
-    try {
-      const raw = await cachedFetchJson<{ secciones?: Seccion[] } | Seccion[]>(
-        `${SECC_BASE}/via/${viaId}`,
-        {},
-        { ttlMs: 60_000 }
-      );
-      const arr: Seccion[] = Array.isArray(raw) ? raw : raw?.secciones ?? [];
-      const ordered = arr.slice().sort((a, b) => a.numero - b.numero);
-      setSectionsByVia((m) => ({ ...m, [viaId]: ordered }));
-    } catch {
-      setSectionsByVia((m) => ({ ...m, [viaId]: [] }));
-    } finally {
-      secLoadingRef.current[viaId] = false;
-      setSecLoading((s) => ({ ...s, [viaId]: false }));
-    }
-  }, [sandbox, sectionsByVia]);
+      try {
+        const raw = await cachedFetchJson<{ secciones?: Seccion[] } | Seccion[]>(
+          `${SECC_BASE}/via/${viaId}`,
+          {},
+          { ttlMs: 60_000 },
+        );
+        const arr: Seccion[] = Array.isArray(raw) ? raw : (raw?.secciones ?? []);
+        const ordered = arr.slice().sort((a, b) => a.numero - b.numero);
+        setSectionsByVia((m) => ({ ...m, [viaId]: ordered }));
+      } catch {
+        if (torreon) {
+          // A failed catalog is unknown, not an empty track; allow an explicit retry.
+          setSecErrors((errors) => ({
+            ...errors,
+            [viaId]: "No se pudieron cargar las posiciones de esta vía. Vuelve a intentarlo.",
+          }));
+        } else {
+          setSectionsByVia((m) => ({ ...m, [viaId]: [] }));
+        }
+      } finally {
+        secLoadingRef.current[viaId] = false;
+        setSecLoading((s) => ({ ...s, [viaId]: false }));
+      }
+    },
+    [sandbox, sectionsByVia, torreon],
+  );
+
+  // The Torreón form requests its initial tracks in an effect. Keep this callback
+  // stable when a catalog resolves/fails so that only the retry button retries.
+  const ensureSectionsRef = useRef(ensureSections);
+  ensureSectionsRef.current = ensureSections;
+  const ensureTorreonSections = useCallback(
+    (viaId: number) => ensureSectionsRef.current(viaId),
+    [],
+  );
 
   return {
     empresas,
@@ -222,8 +261,9 @@ export function useCrearMovimientoCatalogos(
     viasError,
     sectionsByVia,
     secLoading,
+    secErrors,
     loadCatalogos,
     reloadVias,
-    ensureSections,
+    ensureSections: torreon ? ensureTorreonSections : ensureSections,
   };
 }

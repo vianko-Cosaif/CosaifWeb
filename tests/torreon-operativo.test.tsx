@@ -1,0 +1,529 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import TorreonBatchCapture from "@/features/torreon/naturales/components/TorreonBatchCapture";
+import TorreonNaturalQueue from "@/features/torreon/naturales/components/TorreonNaturalQueue";
+vi.mock("@/features/rail-queue/useRealtimeBoardRefresh", () => ({ useRealtimeBoardRefresh() {} }));
+const json = (data: unknown) =>
+  new Response(JSON.stringify(data), { headers: { "content-type": "application/json" } });
+beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({
+      matches: false,
+      addListener() {},
+      removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+    })),
+  );
+});
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+const unit = (id: number) => ({
+  id,
+  modalidad: "INDIVIDUAL",
+  estado: "PENDIENTE",
+  ordenManual: null,
+  incidentes: [],
+  movimientos: [
+    {
+      id: 100 + id,
+      locomotiveNumber: 120 + id,
+      estado: "SOLICITADO",
+      tipoMovimiento: "MD_TRABAJANDO",
+      poloOrigen: "NORTE",
+      poloDestino: "SUR",
+    },
+  ],
+});
+it("client can review 1–5 independent rows, including the distinct towing locomotive, before submitting", async () => {
+  const fetcher = vi.fn(async () => json([{ id: 101 }]));
+  vi.stubGlobal("fetch", fetcher);
+  const finish = vi.fn();
+  render(
+    <TorreonBatchCapture
+      localidadId={2}
+      empresaId={3}
+      creadoPorId={7}
+      vias={[
+        { id: 8, nombre: "Vía A" },
+        { id: 9, nombre: "Vía B" },
+      ]}
+      sectionsByVia={{ 8: [], 9: [] }}
+      ensureSections={() => {}}
+      onFinish={finish}
+      onCancel={() => {}}
+    />,
+  );
+  for (let i = 1; i < 5; i++)
+    fireEvent.click(screen.getByRole("button", { name: /Agregar solicitud/ }));
+  expect(screen.getByRole("button", { name: /Agregar solicitud/ }).hasAttribute("disabled")).toBe(
+    true,
+  );
+  const rows = screen.getAllByRole("article");
+  expect(rows).toHaveLength(5);
+  for (let i = 0; i < rows.length; i++) {
+    const row = within(rows[i]);
+    const disclosure = row.getByRole("button", { name: `Editar solicitud ${i + 1}` });
+    if (disclosure.getAttribute("aria-expanded") !== "true") fireEvent.click(disclosure);
+    fireEvent.change(row.getByLabelText("Locomotora solicitada"), {
+      target: { value: String(120 + i) },
+    });
+    fireEvent.change(row.getByLabelText("Vía de origen"), { target: { value: "8" } });
+    fireEvent.change(row.getByLabelText("Vía de destino"), { target: { value: "9" } });
+    fireEvent.change(row.getByLabelText("Polo de salida"), { target: { value: "NORTE" } });
+    fireEvent.change(row.getByLabelText("Polo de llegada"), { target: { value: "SUR" } });
+  }
+  const first = within(rows[0]);
+  fireEvent.click(first.getByRole("button", { name: "Editar solicitud 1" }));
+  fireEvent.change(first.getByLabelText("Tipo de movimiento"), { target: { value: "REMOLCADA" } });
+  fireEvent.change(first.getByLabelText("Locomotora que remolca"), { target: { value: "800" } });
+  fireEvent.change(first.getByLabelText("Dirección"), { target: { value: "JALAR" } });
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  expect(screen.getByText("Remolca: 800 · Jalar")).toBeTruthy();
+  expect(fetcher).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Enviar 5 solicitudes" }));
+  await waitFor(() => expect(finish).toHaveBeenCalledOnce());
+  const [url, options] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+  expect(url).toBe("/bff/torreon/movimientos/lote");
+  const sent = JSON.parse(options.body as string);
+  expect(sent.movimientos).toHaveLength(5);
+  expect(sent.movimientos[0]).toMatchObject({
+    locomotiveNumber: 120,
+    locomotoraRemolque: 800,
+    direccionEmpuje: "JALAR",
+    viaOrigenId: 8,
+    viaDestinoId: 9,
+    poloOrigen: "NORTE",
+    poloDestino: "SUR",
+  });
+  expect(sent.enConjunto).toBeUndefined();
+  expect(sent.movimientos[0].operadorId).toBeUndefined();
+  expect(
+    sent.movimientos.every(
+      (movement: Record<string, unknown>) =>
+        !("polo" in movement) &&
+        !("posicionChimenea" in movement) &&
+        !("posicionCabina" in movement),
+    ),
+  ).toBe(true);
+});
+it("raising several units keeps separate attention unless En conjunto is explicitly checked", async () => {
+  const fetcher = vi.fn<(url: string, options?: RequestInit) => Promise<Response>>(async (url) =>
+    json(url.includes("/cola/maquinistas") ? [] : [unit(1), unit(2)]),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(<TorreonNaturalQueue localidadId={2} rol="SUPERVISOR" />);
+  await screen.findByLabelText("Seleccionar unidad 1");
+  for (const id of [2, 1]) fireEvent.click(screen.getByLabelText(`Seleccionar unidad ${id}`));
+  fireEvent.click(screen.getByRole("button", { name: "Subir (2)" }));
+  await waitFor(() =>
+    expect(fetcher.mock.calls.some((call) => call[1]?.method === "PATCH")).toBe(true),
+  );
+  const patch = fetcher.mock.calls.find((call) => call[1]?.method === "PATCH")!;
+  expect(JSON.parse(patch[1]!.body as string)).toEqual({ unidadIds: [2, 1], enConjunto: false });
+  await waitFor(() =>
+    expect((screen.getByLabelText("Seleccionar unidad 1") as HTMLInputElement).checked).toBe(false),
+  );
+  fireEvent.click(screen.getByLabelText("En conjunto"));
+  for (const id of [1, 2]) fireEvent.click(screen.getByLabelText(`Seleccionar unidad ${id}`));
+  fireEvent.click(screen.getByRole("button", { name: "Subir (2)" }));
+  await waitFor(() =>
+    expect(fetcher.mock.calls.filter((call) => call[1]?.method === "PATCH")).toHaveLength(2),
+  );
+  const grouped = fetcher.mock.calls.filter((call) => call[1]?.method === "PATCH")[1]!;
+  expect(JSON.parse(grouped[1]!.body as string)).toEqual({ unidadIds: [1, 2], enConjunto: true });
+});
+it("client queue shows incidents while leaving resolution to authorized operational roles", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      json([
+        {
+          ...unit(1),
+          estado: "DETENIDA",
+          incidentes: [
+            { id: 90, estado: "ABIERTO", motivo: "Falla", fechaInicio: "2026-01-01", fotos: [] },
+          ],
+        },
+      ]),
+    ),
+  );
+  render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Ver incidentes del movimiento 101" }));
+  await screen.findByText(/Incidente #90/);
+  expect(screen.queryByRole("button", { name: "Confirmar solución" })).toBeNull();
+  expect(screen.queryByLabelText("En conjunto")).toBeNull();
+  expect(screen.queryByText(/Tiempo vencido|Cerrar sin resolver/)).toBeNull();
+});
+
+it("keeps the first locomotive and route already captured by the existing form", () => {
+  render(
+    <TorreonBatchCapture
+      initialMovement={{
+        locomotiveNumber: "121",
+        viaOrigenId: "8",
+        viaDestinoId: "9",
+        poloOrigen: "NORTE",
+        poloDestino: "SUR",
+      }}
+      localidadId={2}
+      empresaId={3}
+      creadoPorId={7}
+      vias={[
+        { id: 8, nombre: "Vía A" },
+        { id: 9, nombre: "Vía B" },
+      ]}
+      sectionsByVia={{ 8: [], 9: [] }}
+      ensureSections={() => {}}
+      onFinish={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+  expect((screen.getByLabelText("Locomotora solicitada") as HTMLInputElement).value).toBe("121");
+  expect((screen.getByLabelText("Vía de origen") as HTMLSelectElement).value).toBe("8");
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  expect(screen.getByText("Solicitud 1 · Locomotora 121")).toBeTruthy();
+});
+
+it("clarifies patio and route positions, clears only the changed route section and reviews section names", () => {
+  const ensureSections = vi.fn();
+  const fetcher = vi.fn();
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <TorreonBatchCapture
+      initialMovement={{
+        locomotiveNumber: "121",
+        viaOrigenId: "8",
+        viaDestinoId: "9",
+        seccionOrigenId: "81",
+        seccionDestinoId: "91",
+        poloOrigen: "NORTE",
+        poloDestino: "SUR",
+      }}
+      localidadId={2}
+      empresaId={3}
+      creadoPorId={7}
+      vias={[
+        { id: 8, nombre: "Vía A" },
+        { id: 9, nombre: "Vía B" },
+        { id: 10, nombre: "Vía C" },
+      ]}
+      sectionsByVia={{
+        8: [{ id: 81, numero: 1, nombre: "Salida sur" }],
+        9: [{ id: 91, numero: 2, nombre: "Taller 2" }],
+        10: [{ id: 101, numero: 3, nombre: "Patio 3" }],
+      }}
+      ensureSections={ensureSections}
+      onFinish={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+  expect(screen.getByRole("option", { name: "Sección 1 · Salida sur" })).toHaveProperty(
+    "value",
+    "81",
+  );
+  expect(screen.getByRole("option", { name: "Sección 2 · Taller 2" })).toHaveProperty(
+    "value",
+    "91",
+  );
+  expect(screen.queryByLabelText(/chimenea|cabina/i)).toBeNull();
+  expect(screen.getByText("De dónde se saca")).toBeTruthy();
+  expect(screen.getByText("Dónde se va a colocar")).toBeTruthy();
+  expect((screen.getByLabelText("Polo de salida") as HTMLSelectElement).value).toBe("NORTE");
+  expect(ensureSections).toHaveBeenCalledWith(8);
+  expect(ensureSections).toHaveBeenCalledWith(9);
+  fireEvent.change(screen.getByLabelText("Vía de origen"), { target: { value: "10" } });
+  expect(ensureSections).toHaveBeenCalledWith(10);
+  expect((screen.getByLabelText("Posición de origen") as HTMLSelectElement).value).toBe("");
+  expect((screen.getByLabelText("Posición de destino") as HTMLSelectElement).value).toBe("91");
+  fireEvent.change(screen.getByLabelText("Polo de salida"), { target: { value: "CENTRO" } });
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  expect(screen.getByRole("alert").textContent).toContain("selecciona la sección de origen");
+  expect(fetcher).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText("Posición de origen"), { target: { value: "101" } });
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  expect(screen.getByText("Sección 3 · Patio 3")).toBeTruthy();
+  expect(screen.getByText("Sección 2 · Taller 2")).toBeTruthy();
+  expect(screen.getByText("Centro")).toBeTruthy();
+  expect(screen.getByText("MD trabajando")).toBeTruthy();
+  expect(screen.queryByText(/chimenea|cabina/i)).toBeNull();
+  expect(screen.queryByText("MD_TRABAJANDO")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Editar datos" }));
+  expect((screen.getByLabelText("Locomotora solicitada") as HTMLInputElement).value).toBe("121");
+  expect((screen.getByLabelText("Posición de origen") as HTMLSelectElement).value).toBe("101");
+});
+
+it("keeps one request id for retries and issues another id only after editing the capture", async () => {
+  const fetcher = vi
+    .fn<(url: string, options?: RequestInit) => Promise<Response>>()
+    .mockImplementationOnce(
+      async () => new Response(JSON.stringify({ message: "Error temporal" }), { status: 503 }),
+    )
+    .mockImplementationOnce(
+      async () => new Response(JSON.stringify({ message: "Error temporal" }), { status: 503 }),
+    )
+    .mockImplementationOnce(async () => json([{ id: 101 }]));
+  vi.stubGlobal("fetch", fetcher);
+  const finish = vi.fn();
+  render(
+    <TorreonBatchCapture
+      initialMovement={{
+        locomotiveNumber: "121",
+        viaOrigenId: "8",
+        viaDestinoId: "9",
+        seccionOrigenId: "81",
+        seccionDestinoId: "91",
+        poloOrigen: "NORTE",
+        poloDestino: "SUR",
+      }}
+      localidadId={2}
+      empresaId={3}
+      creadoPorId={7}
+      vias={[
+        { id: 8, nombre: "Vía A" },
+        { id: 9, nombre: "Vía B" },
+      ]}
+      sectionsByVia={{
+        8: [{ id: 81, numero: 1, nombre: "Salida sur" }],
+        9: [{ id: 91, numero: 2, nombre: "Taller 2" }],
+      }}
+      ensureSections={() => {}}
+      onFinish={finish}
+      onCancel={() => {}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  fireEvent.click(screen.getByRole("button", { name: "Enviar 1 solicitud" }));
+  await screen.findByText("Error temporal");
+  fireEvent.click(screen.getByRole("button", { name: "Enviar 1 solicitud" }));
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("button", { name: "Editar datos" }) as HTMLButtonElement).disabled,
+    ).toBe(false),
+  );
+  const first = JSON.parse(fetcher.mock.calls[0][1]!.body as string);
+  const retry = JSON.parse(fetcher.mock.calls[1][1]!.body as string);
+  expect(first.clientRequestId).toBeTruthy();
+  expect(retry.clientRequestId).toBe(first.clientRequestId);
+  expect(first.movimientos[0]).toMatchObject({
+    locomotiveNumber: 121,
+    viaOrigenId: 8,
+    viaDestinoId: 9,
+    seccionOrigenId: 81,
+    seccionDestinoId: 91,
+    poloOrigen: "NORTE",
+    poloDestino: "SUR",
+    localidadId: 2,
+    empresaId: 3,
+    creadoPorId: 7,
+    seccionOrigenNombreSnapshot: "Sección 1 · Salida sur",
+    seccionDestinoNombreSnapshot: "Sección 2 · Taller 2",
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Editar datos" }));
+  fireEvent.change(screen.getByLabelText("Indicaciones adicionales"), {
+    target: { value: "Entrar lentamente" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  fireEvent.click(screen.getByRole("button", { name: "Enviar 1 solicitud" }));
+  await waitFor(() => expect(finish).toHaveBeenCalledOnce());
+  const edited = JSON.parse(fetcher.mock.calls[2][1]!.body as string);
+  expect(edited.clientRequestId).not.toBe(first.clientRequestId);
+  expect(edited.movimientos[0].instrucciones).toBe("Entrar lentamente");
+});
+
+it("opens the first incomplete request and focuses its invalid field", () => {
+  render(
+    <TorreonBatchCapture
+      localidadId={2}
+      empresaId={3}
+      creadoPorId={7}
+      vias={[{ id: 8, nombre: "Vía A" }]}
+      sectionsByVia={{ 8: [] }}
+      ensureSections={() => {}}
+      onFinish={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: /Agregar solicitud/ }));
+  expect(
+    screen.getByRole("button", { name: "Editar solicitud 2" }).getAttribute("aria-expanded"),
+  ).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  const locomotive = screen.getByLabelText("Locomotora solicitada", { selector: "input" });
+  expect(
+    screen.getByRole("button", { name: "Editar solicitud 1" }).getAttribute("aria-expanded"),
+  ).toBe("true");
+  expect(document.activeElement).toBe(locomotive);
+  expect(locomotive.getAttribute("aria-invalid")).toBe("true");
+  expect(
+    document.getElementById(locomotive.getAttribute("aria-describedby")!)?.textContent,
+  ).toContain("número de la locomotora");
+});
+
+it("distinguishes pending, failed and genuinely empty position catalogs before review", () => {
+  const retry = vi.fn();
+  const props = {
+    localidadId: 2,
+    empresaId: 3,
+    creadoPorId: 7,
+    initialMovement: {
+      locomotiveNumber: "121",
+      viaOrigenId: "8",
+      viaDestinoId: "9",
+      poloOrigen: "CENTRO",
+      poloDestino: "SUR",
+    },
+    vias: [
+      { id: 8, nombre: "Vía A" },
+      { id: 9, nombre: "Vía B" },
+    ],
+    ensureSections: retry,
+    onFinish() {},
+    onCancel() {},
+  };
+  const { rerender } = render(<TorreonBatchCapture {...props} sectionsByVia={{ 9: [] }} />);
+  expect(screen.getByText("Cargando posiciones…")).toBeTruthy();
+  expect(screen.getAllByText("Esta vía no tiene secciones registradas.")).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  expect(screen.getByRole("alert").textContent).toContain("espera a que carguen");
+  expect(screen.queryByRole("button", { name: "Enviar 1 solicitud" })).toBeNull();
+  rerender(
+    <TorreonBatchCapture
+      {...props}
+      sectionsByVia={{ 9: [] }}
+      sectionsError={{ 8: "Error de red" }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Reintentar posiciones de origen" }));
+  expect(retry).toHaveBeenCalledWith(8);
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  expect(screen.getByRole("alert").textContent).toContain("reintenta la carga");
+  rerender(
+    <TorreonBatchCapture
+      {...props}
+      initialMovement={props.initialMovement}
+      sectionsByVia={{ 8: [{ id: 81, numero: 1 }], 9: [] }}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Posición de origen"), { target: { value: "81" } });
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  expect(screen.getByRole("button", { name: "Enviar 1 solicitud" })).toBeTruthy();
+  expect(document.activeElement?.textContent).toContain("Revisa tu envío");
+});
+
+it("requires independent departure and arrival poles despite legacy single pole and obsolete fields", async () => {
+  const finish = vi.fn();
+  const fetcher = vi.fn(async () => json([{ id: 101 }]));
+  vi.stubGlobal("fetch", fetcher);
+  const legacyDraft = {
+    locomotiveNumber: "121",
+    viaOrigenId: "8",
+    viaDestinoId: "9",
+    polo: "NORTE",
+    posicionChimenea: "DENTRO",
+    posicionCabina: "AFUERA",
+  };
+  render(
+    <TorreonBatchCapture
+      initialMovement={legacyDraft}
+      localidadId={2}
+      empresaId={3}
+      creadoPorId={7}
+      vias={[
+        { id: 8, nombre: "Vía A" },
+        { id: 9, nombre: "Vía B" },
+      ]}
+      sectionsByVia={{ 8: [{ id: 81, numero: 1 }], 9: [{ id: 91, numero: 2 }] }}
+      ensureSections={() => {}}
+      onFinish={finish}
+      onCancel={() => {}}
+    />,
+  );
+  expect(screen.queryByLabelText(/chimenea|cabina/i)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  expect(screen.getByRole("alert").textContent).toContain("selecciona el polo de salida");
+  expect(document.activeElement).toBe(screen.getByLabelText("Polo de salida"));
+  expect(fetcher).not.toHaveBeenCalled();
+  expect((screen.getByLabelText("Polo de salida") as HTMLSelectElement).value).toBe("");
+  expect((screen.getByLabelText("Polo de llegada") as HTMLSelectElement).value).toBe("");
+  fireEvent.change(screen.getByLabelText("Polo de salida"), { target: { value: "CENTRO" } });
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  expect(screen.getByRole("alert").textContent).toContain("selecciona el polo de llegada");
+  expect(document.activeElement).toBe(screen.getByLabelText("Polo de llegada"));
+  fireEvent.change(screen.getByLabelText("Polo de llegada"), { target: { value: "CENTRO" } });
+  fireEvent.change(screen.getByLabelText("Posición de origen"), { target: { value: "81" } });
+  fireEvent.change(screen.getByLabelText("Posición de destino"), { target: { value: "91" } });
+  fireEvent.click(screen.getByRole("button", { name: "Revisar envío" }));
+  expect(screen.queryByText(/chimenea|cabina/i)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Enviar 1 solicitud" }));
+  await waitFor(() => expect(finish).toHaveBeenCalledOnce());
+  const [, options] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+  const payload = JSON.parse(options.body as string).movimientos[0];
+  expect(payload).toMatchObject({ poloOrigen: "CENTRO", poloDestino: "CENTRO" });
+  expect(payload).not.toHaveProperty("polo");
+  expect(payload).not.toHaveProperty("posicionChimenea");
+  expect(payload).not.toHaveProperty("posicionCabina");
+});
+
+it.each(["SUPERVISOR", "COORDINADOR"])(
+  "%s can reassign a stopped movement and confirm its incident from the same operational view",
+  async (rol) => {
+    const stopped = {
+      ...unit(1),
+      estado: "DETENIDA",
+      movimientos: [{ ...unit(1).movimientos[0], estado: "DETENIDO" }],
+      incidentes: [
+        { id: 7, estado: "ABIERTO", motivo: "Impedimento", fechaInicio: "2026-10-14T12:00:00Z" },
+      ],
+    };
+    const fetcher = vi.fn<(url: string, options?: RequestInit) => Promise<Response>>(async (url) =>
+      json(
+        url.includes("/cola/maquinistas") ? [{ id: 8, nombre: "Maquinista de prueba" }] : [stopped],
+      ),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    render(<TorreonNaturalQueue localidadId={2} rol={rol} view="seguimiento" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Ver folio 101" }));
+    await screen.findByRole("option", { name: "Maquinista de prueba" });
+    fireEvent.change(screen.getByLabelText("Asignar unidad 1"), { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: "Asignar" }));
+    await waitFor(() =>
+      expect(fetcher).toHaveBeenCalledWith(
+        "/bff/torreon/cola/1/asignar",
+        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ operadorId: 8 }) }),
+      ),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Solución del incidente 7" }), {
+      target: { value: "Impedimento atendido" },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Confirmar solución" }).hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar solución" }));
+    await waitFor(() =>
+      expect(fetcher).toHaveBeenCalledWith(
+        "/bff/torreon/incidentes/7/resolver?tipo=NATURAL",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ solucion: "Impedimento atendido" }),
+        }),
+      ),
+    );
+    expect(fetcher.mock.calls.some(([url]) => String(url).startsWith("/bff/usuarios"))).toBe(false);
+  },
+);

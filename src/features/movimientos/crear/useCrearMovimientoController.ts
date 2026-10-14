@@ -1,19 +1,36 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Movimiento } from "../Movimiento";
-import { API_BASE, DOUBLE_TAP_MS, baseInitialForm, roleBase, type MovementFormData, type Seccion } from "../movimientos.shared";
-import type { CrearMovimientoController, CrearMovimientoStep, LocomotoraBloqueada } from "./controller.types";
-import { applyCatalogDefaults, resolveIds, validateStep1Data, validateStep2Data } from "./crearMovimiento.domain";
-import { getRoleClient, readNumericCookieClient, readStoredUserClient, useCrearMovimientoSession } from "./useCrearMovimientoSession";
+import {
+  API_BASE,
+  DOUBLE_TAP_MS,
+  baseInitialForm,
+  roleBase,
+  type MovementFormData,
+  type Seccion,
+} from "../movimientos.shared";
+import type {
+  CrearMovimientoController,
+  CrearMovimientoStep,
+  LocomotoraBloqueada,
+} from "./controller.types";
+import {
+  applyCatalogDefaults,
+  resolveIds,
+  validateStep1Data,
+  validateStep2Data,
+} from "./crearMovimiento.domain";
+import {
+  getRoleClient,
+  readNumericCookieClient,
+  readStoredUserClient,
+  useCrearMovimientoSession,
+} from "./useCrearMovimientoSession";
 import { useCrearMovimientoCatalogos } from "./useCrearMovimientoCatalogos";
 import { useCrearMovimientoDraft } from "./useCrearMovimientoDraft";
 import { useCrearMovimientoOutbox } from "./useCrearMovimientoOutbox";
 import { useCrearMovimientoSubmit } from "./useCrearMovimientoSubmit";
-import {
-  resolveTornoProfile,
-  TORNO_PROFILE_FIELDS,
-  TORNO_PROFILE_META,
-} from "./tornoProfiles";
+import { resolveTornoProfile, TORNO_PROFILE_FIELDS, TORNO_PROFILE_META } from "./tornoProfiles";
 import { downloadTornoPdf } from "./tornoPdf";
 import { parseTornoMedicionFromApi } from "../torno/tornoMeasureParser";
 import type { ScheduledTornoMovement } from "./components/ScheduledTornoActivationModal";
@@ -87,12 +104,13 @@ function readRequestedLocalidadIdClient(): number | null {
  * Regla de diseno:
  * - Este archivo coordina; no concentra reglas puras complejas.
  */
-export function useCrearMovimientoController(
-  { sandbox = false }: { sandbox?: boolean } = {}
-): CrearMovimientoController {
+export function useCrearMovimientoController({
+  sandbox = false,
+}: { sandbox?: boolean } = {}): CrearMovimientoController {
   const router = useRouter();
   const [requestedLocalidadId] = useState<number | null>(() => readRequestedLocalidadIdClient());
   const [step, setStep] = useState<CrearMovimientoStep>(1);
+  const [contextReady, setContextReady] = useState(false);
   const [form, setForm] = useState<MovementFormData>(baseInitialForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -113,11 +131,14 @@ export function useCrearMovimientoController(
   const [activatingScheduledTorno, setActivatingScheduledTorno] = useState(false);
   const [scheduledActivationId, setScheduledActivationId] = useState<number | null>(null);
   const [recoveredCancelledTornoId, setRecoveredCancelledTornoId] = useState<number | null>(null);
-  const [scheduledTornoMovements, setScheduledTornoMovements] = useState<ScheduledTornoMovement[]>([]);
+  const [scheduledTornoMovements, setScheduledTornoMovements] = useState<ScheduledTornoMovement[]>(
+    [],
+  );
   const [scheduledTornoLoading, setScheduledTornoLoading] = useState(false);
   const requestedScheduledTornoRef = useRef(false);
   const isService = !!form.service;
-  const hasTornoPdfStep = isTornoModuleEnabled && form.service === "Torno" && selectionMode === "de_via";
+  const hasTornoPdfStep =
+    isTornoModuleEnabled && form.service === "Torno" && selectionMode === "de_via";
   const maxStep: CrearMovimientoStep = hasTornoPdfStep ? 4 : 3;
 
   /** Capa 1: sesion/permisos. */
@@ -142,6 +163,7 @@ export function useCrearMovimientoController(
     viasError,
     sectionsByVia,
     secLoading,
+    secErrors,
     loadCatalogos,
     reloadVias,
     ensureSections,
@@ -215,6 +237,7 @@ export function useCrearMovimientoController(
     didBootstrapRef.current = true;
 
     let alive = true;
+    let completed = false;
 
     initFormLocked();
 
@@ -258,12 +281,15 @@ export function useCrearMovimientoController(
 
           return withDefaults;
         });
-      } catch { }
+      } catch {}
 
       if (!alive) return;
       hydrateDraft();
       enforceLockedLocality();
-      if (requestedLocalidadId && localityAdminRoles.includes(String(getRoleClient()).toUpperCase())) {
+      if (
+        requestedLocalidadId &&
+        localityAdminRoles.includes(String(getRoleClient()).toUpperCase())
+      ) {
         setForm((prev) => ({
           ...prev,
           selectedLocalityId: requestedLocalidadId,
@@ -272,10 +298,13 @@ export function useCrearMovimientoController(
         }));
       }
       hydratePendingCount();
+      completed = true;
+      setContextReady(true);
     })();
 
     return () => {
       alive = false;
+      if (!completed) didBootstrapRef.current = false;
     };
   }, [
     initFormLocked,
@@ -338,21 +367,23 @@ export function useCrearMovimientoController(
   const tapToggle = useCallback((key: string, onSingle: () => void, onDouble: () => void) => {
     const now = Date.now();
     const last = lastTap.current[key] || 0;
-    if (now - last < DOUBLE_TAP_MS) onDouble(); else onSingle();
+    if (now - last < DOUBLE_TAP_MS) onDouble();
+    else onSingle();
     lastTap.current[key] = now;
   }, []);
 
   const viaName = useCallback(
     (id?: number | null) => (id ? vias.find((v) => v.id === id)?.nombre || "" : ""),
-    [vias]
+    [vias],
   );
   const selectedCompanyName = useMemo(
-    () => empresas.find((empresa) => empresa.id === form.empresaId)?.nombre || userCompanyName || "",
-    [empresas, form.empresaId, userCompanyName]
+    () =>
+      empresas.find((empresa) => empresa.id === form.empresaId)?.nombre || userCompanyName || "",
+    [empresas, form.empresaId, userCompanyName],
   );
   const selectedLocalityName = useMemo(
     () => localidades.find((localidad) => localidad.id === form.selectedLocalityId)?.nombre || "",
-    [localidades, form.selectedLocalityId]
+    [localidades, form.selectedLocalityId],
   );
 
   const normalizeScheduledTornoList = useCallback((payload: unknown): ScheduledTornoMovement[] => {
@@ -371,11 +402,14 @@ export function useCrearMovimientoController(
     }
     try {
       setScheduledTornoLoading(true);
-      const response = await Movimiento.fetchWithTimeout(`${API_BASE}/movimientos/torno/agendados`, {
-        method: "GET",
-        credentials: "include",
-        headers: { Accept: "application/json", ...Movimiento.tokenHeader() },
-      });
+      const response = await Movimiento.fetchWithTimeout(
+        `${API_BASE}/movimientos/torno/agendados`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: { Accept: "application/json", ...Movimiento.tokenHeader() },
+        },
+      );
       const text = await response.text();
       const data = text ? Movimiento.safeJSON(text) : {};
       if (!response.ok) throw new Error("No se pudieron cargar movimientos de torno agendados.");
@@ -390,7 +424,13 @@ export function useCrearMovimientoController(
   }, [normalizeScheduledTornoList, sandbox]);
 
   useEffect(() => {
-    if (!isTornoModuleEnabled || sandbox || form.service !== "Torno" || requestedScheduledTornoRef.current) return;
+    if (
+      !isTornoModuleEnabled ||
+      sandbox ||
+      form.service !== "Torno" ||
+      requestedScheduledTornoRef.current
+    )
+      return;
     void refreshScheduledTornoMovements();
   }, [form.service, refreshScheduledTornoMovements, sandbox]);
 
@@ -398,34 +438,49 @@ export function useCrearMovimientoController(
    * Seleccion de seccion origen.
    * Si la seccion esta ocupada, intenta propagar locomotora para evitar inconsistencias.
    */
-  const selectFromSection = useCallback(async (s: Seccion) => {
-    const willSelect = fromSection !== s.numero;
-    const newVal = willSelect ? s.numero : undefined;
-    setFromSection(newVal);
+  const selectFromSection = useCallback(
+    async (s: Seccion) => {
+      const willSelect = fromSection !== s.numero;
+      const newVal = willSelect ? s.numero : undefined;
+      setFromSection(newVal);
 
-    if (willSelect && s.ocupada && s.movimientoId) {
-      const locoIn = Number(s.movimiento?.locomotiveNumber ?? 0);
-      if (locoIn > 0) {
-        setForm((p) => ({ ...p, locomotiveNumber: String(locoIn) }));
-        setLocoLockedBy({ movimientoId: s.movimientoId, viaId: form.fromTrack!, numero: s.numero });
-        return;
-      }
-
-      if (sandbox) return;
-      try {
-        const mov = await Movimiento.fetchJSON(`${API_BASE}/movimientos/${s.movimientoId}`);
-        const loco = readLocomotiveNumber(mov);
-        if (loco > 0) {
-          setForm((p) => ({ ...p, locomotiveNumber: String(loco) }));
-          setLocoLockedBy({ movimientoId: s.movimientoId, viaId: form.fromTrack!, numero: s.numero });
+      if (willSelect && s.ocupada && s.movimientoId) {
+        const locoIn = Number(s.movimiento?.locomotiveNumber ?? 0);
+        if (locoIn > 0) {
+          setForm((p) => ({ ...p, locomotiveNumber: String(locoIn) }));
+          setLocoLockedBy({
+            movimientoId: s.movimientoId,
+            viaId: form.fromTrack!,
+            numero: s.numero,
+          });
+          return;
         }
-      } catch { }
-    } else {
-      if (locoLockedBy && locoLockedBy.viaId === form.fromTrack && locoLockedBy.numero === s.numero) {
-        setLocoLockedBy(null);
+
+        if (sandbox) return;
+        try {
+          const mov = await Movimiento.fetchJSON(`${API_BASE}/movimientos/${s.movimientoId}`);
+          const loco = readLocomotiveNumber(mov);
+          if (loco > 0) {
+            setForm((p) => ({ ...p, locomotiveNumber: String(loco) }));
+            setLocoLockedBy({
+              movimientoId: s.movimientoId,
+              viaId: form.fromTrack!,
+              numero: s.numero,
+            });
+          }
+        } catch {}
+      } else {
+        if (
+          locoLockedBy &&
+          locoLockedBy.viaId === form.fromTrack &&
+          locoLockedBy.numero === s.numero
+        ) {
+          setLocoLockedBy(null);
+        }
       }
-    }
-  }, [fromSection, form.fromTrack, locoLockedBy, sandbox]);
+    },
+    [fromSection, form.fromTrack, locoLockedBy, sandbox],
+  );
 
   /** Valida step 1 delegando a dominio puro. */
   const validate1 = useCallback(() => {
@@ -458,7 +513,7 @@ export function useCrearMovimientoController(
       position: TornoWheelPosition,
       field: TornoMeasurementField,
       part: TornoMeasurementPart,
-      value: string
+      value: string,
     ) => {
       const cleanPartValue = sanitizeTornoMeasurePart(part, value);
 
@@ -489,7 +544,7 @@ export function useCrearMovimientoController(
         };
       });
     },
-    []
+    [],
   );
 
   /** Reinicia mediciones Torno en memoria local. */
@@ -506,81 +561,98 @@ export function useCrearMovimientoController(
     clearTornoMedicion();
   }, [clearTornoMedicion, form.service]);
 
-  const activateScheduledTornoMovement = useCallback(async (scheduledMovement: ScheduledTornoMovement) => {
-    const id = Number(scheduledMovement?.id);
-    if (!Number.isInteger(id) || id <= 0 || activatingScheduledTorno) return;
-    const isRecovery =
-      scheduledMovement.temporaryRecovery === true ||
-      scheduledMovement.recovery === true ||
-      String(scheduledMovement.tipo ?? "").toUpperCase() === "TORNO_RECUPERACION";
+  const activateScheduledTornoMovement = useCallback(
+    async (scheduledMovement: ScheduledTornoMovement) => {
+      const id = Number(scheduledMovement?.id);
+      if (!Number.isInteger(id) || id <= 0 || activatingScheduledTorno) return;
+      const isRecovery =
+        scheduledMovement.temporaryRecovery === true ||
+        scheduledMovement.recovery === true ||
+        String(scheduledMovement.tipo ?? "").toUpperCase() === "TORNO_RECUPERACION";
 
-    setActivatingScheduledTorno(true);
-    try {
-      const parsedMedicion = parseTornoMedicionFromApi({ medidasTorno: scheduledMovement.medidasTorno });
-      const movementType = asMovementType(scheduledMovement.tipoMovimiento);
-      const direction = asDirection(scheduledMovement.direccionEmpuje);
-      const cabinPosition = asPosition(scheduledMovement.posicionCabina);
-      const chimneyPosition = asPosition(scheduledMovement.posicionChimenea);
-      const polo = asPolo(scheduledMovement.polo);
+      setActivatingScheduledTorno(true);
+      try {
+        const parsedMedicion = parseTornoMedicionFromApi({
+          medidasTorno: scheduledMovement.medidasTorno,
+        });
+        const movementType = asMovementType(scheduledMovement.tipoMovimiento);
+        const direction = asDirection(scheduledMovement.direccionEmpuje);
+        const cabinPosition = asPosition(scheduledMovement.posicionCabina);
+        const chimneyPosition = asPosition(scheduledMovement.posicionChimenea);
+        const polo = asPolo(scheduledMovement.polo);
 
-      const extractComments = (instr?: string | null) => {
-        if (!instr) return "";
-        // Quitamos los tags [META ...] y [TORNO_AGENDADO:...]
-        let clean = instr.replace(/\[[A-Z0-9_]+:[^\]]*\]/g, "").trim();
-        // Quitamos la parte descriptiva "De la via ... para la via ... | Posicion: ... |"
-        // que agrega buildInstrucciones
-        clean = clean.replace(/De la via.*?para la via.*?\|/g, "");
-        clean = clean.replace(/De la via.*?\|/g, "");
-        clean = clean.replace(/para la via.*?\|/g, "");
-        clean = clean.replace(/Posicion:.*?\|/g, "");
-        return clean.trim();
-      };
+        const extractComments = (instr?: string | null) => {
+          if (!instr) return "";
+          // Quitamos los tags [META ...] y [TORNO_AGENDADO:...]
+          let clean = instr.replace(/\[[A-Z0-9_]+:[^\]]*\]/g, "").trim();
+          // Quitamos la parte descriptiva "De la via ... para la via ... | Posicion: ... |"
+          // que agrega buildInstrucciones
+          clean = clean.replace(/De la via.*?para la via.*?\|/g, "");
+          clean = clean.replace(/De la via.*?\|/g, "");
+          clean = clean.replace(/para la via.*?\|/g, "");
+          clean = clean.replace(/Posicion:.*?\|/g, "");
+          return clean.trim();
+        };
 
-      setForm((prev) => ({
-        ...prev,
-        empresaId: Number(scheduledMovement.empresaId) || prev.empresaId,
-        selectedLocalityId: canChooseLocality
-          ? Number(scheduledMovement.localidadId) || prev.selectedLocalityId
-          : prev.selectedLocalityId,
-        fromTrack: Number(scheduledMovement.viaOrigenId) || prev.fromTrack,
-        toTrack: Number(scheduledMovement.viaDestinoId) || prev.toTrack,
-        service: "Torno",
-        locomotiveNumber: String(scheduledMovement.locomotiveNumber ?? prev.locomotiveNumber ?? ""),
-        movementType: movementType || prev.movementType,
-        priority: scheduledMovement.prioridad === "ALTA",
-        direccionEmpuje: direction || prev.direccionEmpuje,
-        pushPull: direction === "Sin_Solicitar" ? "" : direction || prev.pushPull,
-        cabinPosition: cabinPosition || prev.cabinPosition,
-        chimneyPosition: chimneyPosition || prev.chimneyPosition,
-        posicionChimenea: chimneyPosition || prev.posicionChimenea,
-        polo: polo || prev.polo,
-        comments: extractComments(scheduledMovement.instrucciones) || prev.comments,
-        agendado: false,
-        fechaProgramada: "",
-      }));
-      setSelectionMode("de_via");
-      setTornoMedicion(parsedMedicion);
-      setScheduledActivationId(isRecovery ? null : id);
-      setRecoveredCancelledTornoId(isRecovery ? id : null);
-      setTornoStep2Completed(false);
-      setTornoMovimientoId(null);
-      setTornoPdfStatus(
-        isRecovery
-          ? "Medidas recuperadas. Revisa la informacion y confirma para crear un movimiento nuevo."
-          : "Solicitud agendada precargada. Revisa las medidas y confirma para activarla."
-      );
-      setStep(2);
-    } catch (error) {
-      alert(error instanceof Error ? error.message : "No se pudo precargar el movimiento agendado.");
-      setTornoPdfStatus(null);
-    } finally {
-      setActivatingScheduledTorno(false);
-    }
-  }, [activatingScheduledTorno, canChooseLocality]);
+        setForm((prev) => ({
+          ...prev,
+          empresaId: Number(scheduledMovement.empresaId) || prev.empresaId,
+          selectedLocalityId: canChooseLocality
+            ? Number(scheduledMovement.localidadId) || prev.selectedLocalityId
+            : prev.selectedLocalityId,
+          fromTrack: Number(scheduledMovement.viaOrigenId) || prev.fromTrack,
+          toTrack: Number(scheduledMovement.viaDestinoId) || prev.toTrack,
+          service: "Torno",
+          locomotiveNumber: String(
+            scheduledMovement.locomotiveNumber ?? prev.locomotiveNumber ?? "",
+          ),
+          movementType: movementType || prev.movementType,
+          priority: scheduledMovement.prioridad === "ALTA",
+          direccionEmpuje: direction || prev.direccionEmpuje,
+          pushPull: direction === "Sin_Solicitar" ? "" : direction || prev.pushPull,
+          cabinPosition: cabinPosition || prev.cabinPosition,
+          chimneyPosition: chimneyPosition || prev.chimneyPosition,
+          posicionChimenea: chimneyPosition || prev.posicionChimenea,
+          polo: polo || prev.polo,
+          comments: extractComments(scheduledMovement.instrucciones) || prev.comments,
+          agendado: false,
+          fechaProgramada: "",
+        }));
+        setSelectionMode("de_via");
+        setTornoMedicion(parsedMedicion);
+        setScheduledActivationId(isRecovery ? null : id);
+        setRecoveredCancelledTornoId(isRecovery ? id : null);
+        setTornoStep2Completed(false);
+        setTornoMovimientoId(null);
+        setTornoPdfStatus(
+          isRecovery
+            ? "Medidas recuperadas. Revisa la informacion y confirma para crear un movimiento nuevo."
+            : "Solicitud agendada precargada. Revisa las medidas y confirma para activarla.",
+        );
+        setStep(2);
+      } catch (error) {
+        alert(
+          error instanceof Error ? error.message : "No se pudo precargar el movimiento agendado.",
+        );
+        setTornoPdfStatus(null);
+      } finally {
+        setActivatingScheduledTorno(false);
+      }
+    },
+    [activatingScheduledTorno, canChooseLocality],
+  );
 
   /** Limpieza post-submit exitoso (estado temporal del wizard). */
   const onSubmitSuccess = useCallback(
-    ({ movimientoId, agendado, activatedScheduled }: { movimientoId: number; agendado?: boolean; activatedScheduled?: boolean }) => {
+    ({
+      movimientoId,
+      agendado,
+      activatedScheduled,
+    }: {
+      movimientoId: number;
+      agendado?: boolean;
+      activatedScheduled?: boolean;
+    }) => {
       if (agendado) {
         alert("Movimiento de torno agendado correctamente.");
         clearDraft();
@@ -595,7 +667,9 @@ export function useCrearMovimientoController(
         setScheduledActivationId(null);
         setRecoveredCancelledTornoId(null);
         const consumedId = scheduledActivationId ?? recoveredCancelledTornoId;
-        setScheduledTornoMovements((prev) => prev.filter((item) => Number(item.id) !== Number(consumedId)));
+        setScheduledTornoMovements((prev) =>
+          prev.filter((item) => Number(item.id) !== Number(consumedId)),
+        );
         requestedScheduledTornoRef.current = true;
         setStep(1);
         router.push(`${roleBase(rol)}/movimientos`);
@@ -606,13 +680,17 @@ export function useCrearMovimientoController(
         if (activatedScheduled) {
           alert("La solicitud agendada de torno fue activada y colocada en ronda.");
           const consumedId = scheduledActivationId ?? recoveredCancelledTornoId;
-          setScheduledTornoMovements((prev) => prev.filter((item) => Number(item.id) !== Number(consumedId)));
+          setScheduledTornoMovements((prev) =>
+            prev.filter((item) => Number(item.id) !== Number(consumedId)),
+          );
           requestedScheduledTornoRef.current = true;
           setScheduledActivationId(null);
           setRecoveredCancelledTornoId(null);
         } else if (recoveredCancelledTornoId) {
           alert("Las medidas recuperadas se usaron para crear un movimiento nuevo.");
-          setScheduledTornoMovements((prev) => prev.filter((item) => Number(item.id) !== Number(recoveredCancelledTornoId)));
+          setScheduledTornoMovements((prev) =>
+            prev.filter((item) => Number(item.id) !== Number(recoveredCancelledTornoId)),
+          );
           requestedScheduledTornoRef.current = true;
           setRecoveredCancelledTornoId(null);
         }
@@ -636,7 +714,14 @@ export function useCrearMovimientoController(
       setRecoveredCancelledTornoId(null);
       setStep(1);
     },
-    [clearDraft, clearTornoMedicion, hasTornoPdfStep, recoveredCancelledTornoId, rol, scheduledActivationId]
+    [
+      clearDraft,
+      clearTornoMedicion,
+      hasTornoPdfStep,
+      recoveredCancelledTornoId,
+      rol,
+      scheduledActivationId,
+    ],
   );
 
   /** Capa 6: envio final. */
@@ -673,7 +758,8 @@ export function useCrearMovimientoController(
     ? (["Paso 1 de 4", "Paso 2 de 4", "Paso 3 de 4", "Paso 4 de 4"] as const)[step - 1]
     : (["Paso 1 de 3", "Paso 2 de 3", "Paso 3 de 3"] as const)[Math.min(step, 3) - 1];
 
-  const lockedClienteMissingData = !canChooseLocality && !Number.isFinite(readNumericCookieClient("locId", "localidadId"));
+  const lockedClienteMissingData =
+    !canChooseLocality && !Number.isFinite(readNumericCookieClient("locId", "localidadId"));
 
   /** Shortcut de envio en step final. */
   useEffect(() => {
@@ -740,7 +826,15 @@ export function useCrearMovimientoController(
     } finally {
       setTornoPdfSending(false);
     }
-  }, [hasTornoPdfStep, tornoPdfSending, selectedCompanyName, form.locomotiveNumber, form.comments, tornoMovimientoId, tornoMedicion]);
+  }, [
+    hasTornoPdfStep,
+    tornoPdfSending,
+    selectedCompanyName,
+    form.locomotiveNumber,
+    form.comments,
+    tornoMovimientoId,
+    tornoMedicion,
+  ]);
 
   const clearForm = useCallback(() => {
     clearDraft();
@@ -772,6 +866,7 @@ export function useCrearMovimientoController(
 
   return {
     step,
+    contextReady,
     setStep,
     form,
     setForm,
@@ -788,6 +883,7 @@ export function useCrearMovimientoController(
     reloadVias,
     sectionsByVia,
     secLoading,
+    secErrors,
     rol,
     canManageAll,
     canChooseLocality,

@@ -38,7 +38,7 @@
     "maximumSingleFileBytes": 590000
   },
   "clientCss": {
-    "maximumTotalBytes": 300000,
+    "maximumTotalBytes": 350000,
     "maximumSingleFileBytes": 205000
   }
 }

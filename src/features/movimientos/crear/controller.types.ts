@@ -67,6 +67,7 @@ export type ResolvedIds = {
 export interface CrearMovimientoController {
   /* Estado principal del wizard */
   step: CrearMovimientoStep;
+  contextReady: boolean;
   setStep: Dispatch<SetStateAction<CrearMovimientoStep>>;
   form: MovementFormData;
   setForm: Dispatch<SetStateAction<MovementFormData>>;
@@ -83,6 +84,7 @@ export interface CrearMovimientoController {
   reloadVias: () => Promise<void>;
   sectionsByVia: Record<number, Seccion[]>;
   secLoading: Record<number, boolean>;
+  secErrors: Record<number, string>;
 
   /* Sesion y permisos */
   rol: Rol;
@@ -108,7 +110,7 @@ export interface CrearMovimientoController {
     position: TornoWheelPosition,
     field: TornoMeasurementField,
     part: TornoMeasurementPart,
-    value: string
+    value: string,
   ) => void;
   clearTornoMedicion: () => void;
   hasTornoPdfStep: boolean;

@@ -15,6 +15,7 @@ type AdaptiveAppShellProps = {
   gridClassName?: string;
   footerClassName?: string;
   contentClassName?: string;
+  hideBanner?: boolean;
 };
 
 function cn(...classes: Array<string | undefined | false | null>) {
@@ -31,15 +32,25 @@ export default function AdaptiveAppShell({
   gridClassName = defaultGrid,
   footerClassName = "text-slate-500",
   contentClassName,
+  hideBanner = false,
 }: AdaptiveAppShellProps) {
   const pathname = usePathname();
-  const showBanner = /^\/(administrador|coordinador|supervisor|cliente|comercial)\/?$/.test(pathname);
+  const showBanner =
+    !hideBanner && /^\/(administrador|coordinador|supervisor|cliente|comercial)\/?$/.test(pathname);
   return (
-    <div data-app-shell="true" className={cn("relative flex min-h-svh w-full overflow-x-hidden", backgroundClassName)}>
+    <div
+      data-app-shell="true"
+      className={cn("relative flex min-h-svh w-full overflow-x-hidden", backgroundClassName)}
+    >
       <SidebarMenu />
       <RealtimeActivityCenter />
 
-      {gridClassName ? <div aria-hidden className={cn("pointer-events-none absolute inset-0 z-0", gridClassName)} /> : null}
+      {gridClassName ? (
+        <div
+          aria-hidden
+          className={cn("pointer-events-none absolute inset-0 z-0", gridClassName)}
+        />
+      ) : null}
 
       <div className="relative z-10 flex min-h-svh min-w-0 flex-1 flex-col overflow-x-hidden">
         {beforeMain}
@@ -51,7 +62,7 @@ export default function AdaptiveAppShell({
             "relative z-10 mx-auto w-full max-w-full flex-1 overflow-x-hidden px-3 py-4",
             "pt-[calc(env(safe-area-inset-top)+4.5rem)] pb-[calc(env(safe-area-inset-bottom)+6rem)]",
             "sm:px-5 md:max-w-screen-2xl md:p-8 md:pt-[calc(env(safe-area-inset-top)+4.5rem)] md:pb-8",
-            contentClassName
+            contentClassName,
           )}
         >
           {showBanner ? <DynamicBanner className="mb-5 sm:mb-6" /> : null}
@@ -61,7 +72,7 @@ export default function AdaptiveAppShell({
         <footer
           className={cn(
             "mx-auto w-full max-w-screen-2xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-xs",
-            footerClassName
+            footerClassName,
           )}
         >
           COSAIF · Operación ferroviaria

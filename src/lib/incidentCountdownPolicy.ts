@@ -8,7 +8,7 @@ export type IncidentCountdownContext = {
 };
 
 function asRecord(value: unknown): UnknownRecord | null {
-  return value != null && typeof value === "object" ? value as UnknownRecord : null;
+  return value != null && typeof value === "object" ? (value as UnknownRecord) : null;
 }
 
 function normalizeText(value: unknown) {
@@ -57,12 +57,9 @@ export function isTorreonIncidentContext(
     );
     if (localityName.includes("TORREON")) return true;
 
-    return [
-      record.localidadId,
-      record.localidad_id,
-      record.idLocalidad,
-      locality?.id,
-    ].some((value) => isTorreonLocalidadId(value as string | number | null));
+    return [record.localidadId, record.localidad_id, record.idLocalidad, locality?.id].some(
+      (value) => isTorreonLocalidadId(value as string | number | null),
+    );
   });
 }
 
@@ -70,9 +67,17 @@ export function shouldUseIncidentCountdown(
   incident: unknown,
   context: IncidentCountdownContext = {},
 ) {
-  if (!isTorreonIncidentContext(incident, context)) return true;
-  if (normalizeText(context.role).includes('ARRASTRE')) return false;
-  return !collectIncidentRecords(incident).some(record =>
-    normalizeText(record._torreonTipo || record.tipoIncidente || record.tipo).includes('ARRASTRE') || Number(record.arrastreId) > 0
+  return !isTorreonIncidentContext(incident, context);
+}
+
+export function isPersistentTorreonNaturalIncident(incident: unknown) {
+  return (
+    isTorreonIncidentContext(incident) &&
+    !collectIncidentRecords(incident).some(
+      (record) =>
+        normalizeText(record._torreonTipo || record.tipoIncidente || record.tipo).includes(
+          "ARRASTRE",
+        ) || Number(record.arrastreId) > 0,
+    )
   );
 }

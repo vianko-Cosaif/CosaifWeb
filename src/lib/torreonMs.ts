@@ -22,7 +22,10 @@ type ServiceCredentials = {
 };
 
 export class TorreonMsError extends Error {
-  constructor(message: string, public readonly status: number) {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
     super(message);
     this.name = "TorreonMsError";
   }
@@ -33,14 +36,16 @@ function cleanBaseUrl(value?: string) {
 }
 
 function cleanOptionalBaseUrl(value?: string) {
-  const cleaned = String(value || "").trim().replace(/\/+$/, "");
+  const cleaned = String(value || "")
+    .trim()
+    .replace(/\/+$/, "");
   return cleaned || "";
 }
 
 function parseEnvValue(value: string) {
   const trimmed = value.trim();
   if (
-    (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
     (trimmed.startsWith("'") && trimmed.endsWith("'"))
   ) {
     return trimmed.slice(1, -1);
@@ -90,7 +95,7 @@ function parseSecretMap() {
       Object.entries(parsed).filter((entry): entry is [string, string] => {
         const [serviceId, secret] = entry;
         return Boolean(serviceId?.trim() && secret?.trim());
-      })
+      }),
     );
   } catch {
     return new Map<string, string>();
@@ -106,7 +111,7 @@ function resolveServiceCredentials(): ServiceCredentials {
 
   if (!serviceId || !secret) {
     throw new Error(
-      "Falta configurar TORREON_SERVICE_AUTH_SECRETS o TORREON_SERVICE_ID/TORREON_SERVICE_SECRET"
+      "Falta configurar TORREON_SERVICE_AUTH_SECRETS o TORREON_SERVICE_ID/TORREON_SERVICE_SECRET",
     );
   }
 
@@ -124,13 +129,17 @@ function bodyToBuffer(body?: BodyInit) {
     return Buffer.from(rawBody.buffer, rawBody.byteOffset, rawBody.byteLength);
   }
 
-  throw new Error("El cliente de ms_torreon solo soporta bodies string, URLSearchParams o ArrayBuffer");
+  throw new Error(
+    "El cliente de ms_torreon solo soporta bodies string, URLSearchParams o ArrayBuffer",
+  );
 }
 
 async function readRequestToken() {
   try {
     const store = await cookies();
-    return store.get(process.env.JWT_COOKIE_NAME || "token")?.value || store.get("token")?.value || "";
+    return (
+      store.get(process.env.JWT_COOKIE_NAME || "token")?.value || store.get("token")?.value || ""
+    );
   } catch {
     return "";
   }
@@ -148,28 +157,32 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
   }
 
   if (!response.ok) {
-    const record = data && typeof data === "object" ? data as Record<string, unknown> : {};
+    const record = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
     const rawMessage = String(record.error || record.message || "")
       .replace(/[\u0000-\u001F\u007F]/g, " ")
       .replace(/\s+/g, " ")
       .trim()
       .slice(0, 180);
-    const message = response.status >= 500
-      ? "El servicio de Torreon no esta disponible temporalmente"
-      : response.status === 401
-        ? "La sesion con Torreon termino"
-        : response.status === 403
-          ? "La operacion no esta autorizada"
-          : rawMessage || `No se pudo completar la operacion (${response.status})`;
+    const message =
+      response.status >= 500
+        ? "El servicio de Torreon no esta disponible temporalmente"
+        : response.status === 401
+          ? "La sesion con Torreon termino"
+          : response.status === 403
+            ? "La operacion no esta autorizada"
+            : rawMessage || `No se pudo completar la operacion (${response.status})`;
     throw new TorreonMsError(message, response.status);
   }
 
   return data as T;
 }
 
-async function fetchTorreonViaBackProxy<T>(pathWithQuery: string, init: RequestInit, body?: BodyInit) {
+async function fetchTorreonViaBackProxy<T>(
+  pathWithQuery: string,
+  init: RequestInit,
+  body?: BodyInit,
+) {
   const method = String(init.method || "GET").toUpperCase();
-  if (method === "GET" || method === "HEAD") return undefined;
 
   const token = await readRequestToken();
   const apiOrigin = cleanOptionalBaseUrl(process.env.API_ORIGIN);
@@ -226,14 +239,20 @@ export function isTorreonLocalidad(localidadId?: string | number) {
   const target = Number(localidadId);
   if (!Number.isFinite(target) || target <= 0) return false;
 
-  const configured = process.env.TORREON_LOCALIDAD_IDS || process.env.TORREON_LOCALIDAD_ID || DEFAULT_TORREON_LOCALIDAD_ID;
+  const configured =
+    process.env.TORREON_LOCALIDAD_IDS ||
+    process.env.TORREON_LOCALIDAD_ID ||
+    DEFAULT_TORREON_LOCALIDAD_ID;
   return configured
     .split(",")
     .map((item) => Number(item.trim()))
     .some((item) => Number.isFinite(item) && item === target);
 }
 
-export async function fetchTorreonMsJson<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
+export async function fetchTorreonMsJson<T = unknown>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
   const method = String(init.method || "GET").toUpperCase();
   const body = init.body ?? undefined;
 
