@@ -38,51 +38,77 @@ const envelope = (data, pageSize = 25) => ({
   data,
   meta: { total: data.length, page: 1, pageSize, totalPages: 1 },
 });
+const naturalMovements = Array.from({ length: 4 }, (_, index) => ({
+  id: 700 + index,
+  empresaId: 3,
+  localidadId: 2,
+  empresaNombreSnapshot: "Ferrocarriles de prueba",
+  locomotiveNumber: `480${index}`,
+  estado: index === 0 ? "EN_PROCESO" : "SOLICITADO",
+  prioridad: index === 2 ? "ALTA" : "BAJA",
+  viaOrigenNombreSnapshot: "Recepción 01",
+  viaDestinoNombreSnapshot: "Salida 04",
+  fechaSolicitud: "2026-09-17T12:00:00Z",
+  fechaInicio: index === 0 ? "2026-09-17T12:30:00Z" : null,
+  instrucciones: "Traslado autorizado al patio de salida.",
+  rondas: [{ orden: index + 1, ronda: { numeroRonda: 8 } }],
+  fotos: [],
+  incidentes: [],
+}));
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", "http://127.0.0.1:3911");
+  const key = String(request.headers.authorization || "").replace(/^Bearer e2e-/, "");
+  const proxiedTorreonRead =
+    request.method === "GET" &&
+    url.pathname.startsWith("/torreon/") &&
+    Object.hasOwn(profiles, key);
+  const torreonRead = request.headers["x-service-id"] === "e2e" || proxiedTorreonRead;
+  const torreonPath = proxiedTorreonRead ? url.pathname.slice("/torreon".length) : url.pathname;
   if (
     request.method === "GET" &&
-    request.headers["x-service-id"] === "e2e" &&
-    ["/incidentes", "/arrastres/incidentes"].includes(url.pathname)
+    torreonRead &&
+    ["/incidentes", "/arrastres/incidentes", "/catalogos/arrastre"].includes(torreonPath)
   )
     return json(response, 200, []);
   if (url.pathname === "/health") return json(response, 200, { ok: true });
-  // Dedicated empty Torreón contract for the admin's optional locality summary.
-  if (
-    url.pathname === "/rondas" &&
-    request.method === "GET" &&
-    request.headers["x-service-id"] === "e2e"
-  )
-    return json(response, 200, []);
-  if (
-    url.pathname === "/arrastres" &&
-    request.method === "GET" &&
-    request.headers["x-service-id"] === "e2e"
-  )
-    return json(response, 200, arrastresPage(url.searchParams));
-  if (
-    request.method === "GET" &&
-    request.headers["x-service-id"] === "e2e" &&
-    url.pathname === "/movimientos"
-  ) {
-    return json(response, 200, {
-      data: Array.from({ length: 4 }, (_, index) => ({
-        id: 700 + index,
-        empresaId: 3,
+  if (request.method === "GET" && torreonRead && torreonPath === "/cola") {
+    const history = url.searchParams.get("historial") === "true";
+    return json(
+      response,
+      200,
+      naturalMovements.map((movement, index) => ({
+        id: 100 + index,
         localidadId: 2,
-        empresaNombreSnapshot: "Ferrocarriles de prueba",
-        locomotiveNumber: `480${index}`,
-        estado: index === 0 ? "EN_PROCESO" : "SOLICITADO",
-        prioridad: index === 2 ? "ALTA" : "BAJA",
-        viaOrigenNombreSnapshot: "Recepción 01",
-        viaDestinoNombreSnapshot: "Salida 04",
-        fechaSolicitud: "2026-09-17T12:00:00Z",
-        fechaInicio: index === 0 ? "2026-09-17T12:30:00Z" : null,
-        instrucciones: "Traslado autorizado al patio de salida.",
-        rondas: [{ orden: index + 1, ronda: { numeroRonda: 8 } }],
-        fotos: [],
+        modalidad: "INDIVIDUAL",
+        posicion: index + 1,
+        estado: history ? "CONCLUIDA" : index === 0 ? "EN_PROCESO" : "PENDIENTE",
+        operadorId: index === 0 ? 17 : null,
+        disponible: true,
+        ordenManual: null,
+        fechaRecepcion: movement.fechaSolicitud,
         incidentes: [],
+        movimientos: [
+          {
+            ...movement,
+            estado: history ? "CONCLUIDO" : movement.estado,
+            fechaFin: history ? "2026-09-17T13:00:00Z" : null,
+          },
+        ],
       })),
+    );
+  }
+  if (request.method === "GET" && torreonRead && torreonPath === "/cola/maquinistas")
+    return json(response, 200, [{ id: 17, nombre: "Maquinista de prueba" }]);
+  if (request.method === "GET" && torreonRead && /^\/cola\/\d+\/historial$/.test(torreonPath))
+    return json(response, 200, []);
+  // Dedicated empty Torreón contract for the admin's optional locality summary.
+  if (torreonPath === "/rondas" && request.method === "GET" && torreonRead)
+    return json(response, 200, []);
+  if (torreonPath === "/arrastres" && request.method === "GET" && torreonRead)
+    return json(response, 200, arrastresPage(url.searchParams));
+  if (request.method === "GET" && torreonRead && torreonPath === "/movimientos") {
+    return json(response, 200, {
+      data: naturalMovements,
     });
   }
   if (url.pathname === "/usuarios/login" && request.method === "POST") {
@@ -103,7 +129,6 @@ const server = createServer(async (request, response) => {
       return json(response, 400, { error: "Solicitud de prueba inválida" });
     }
   }
-  const key = String(request.headers.authorization || "").replace(/^Bearer e2e-/, "");
   if (!Object.hasOwn(profiles, key))
     return json(response, 401, { error: "Sesión de prueba inválida" });
   // One explicit synthetic write exercises the natural client creation boundary.

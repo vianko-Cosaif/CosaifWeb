@@ -5,13 +5,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invalidateCachedJson } from "@/lib/http/client";
 import RailQueueBoardAdmin from "@/features/rail-queue/administrador/RailQueueBoardAdmin";
 
-vi.mock("@/features/rail-queue/useRealtimeBoardRefresh", () => ({ useRealtimeBoardRefresh: () => "connected" }));
-vi.mock("@/lib/torreonLocalidad", () => ({ isTorreonLocalidadId: () => false }));
+vi.mock("@/features/rail-queue/useRealtimeBoardRefresh", () => ({
+  useRealtimeBoardRefresh: () => "connected",
+}));
+vi.mock("@/lib/torreonLocalidad", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/torreonLocalidad")>()),
+  isTorreonLocalidadId: () => false,
+}));
 vi.mock("next/dynamic", () => ({ default: () => () => null }));
 
 const originalFullscreenElement = Object.getOwnPropertyDescriptor(document, "fullscreenElement");
 const originalExitFullscreen = Object.getOwnPropertyDescriptor(document, "exitFullscreen");
-const originalRequestFullscreen = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "requestFullscreen");
+const originalRequestFullscreen = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  "requestFullscreen",
+);
 let fullscreenElement: Element | null = null;
 
 function updateFullscreen(element: Element | null) {
@@ -24,7 +32,8 @@ function restoreProperty(target: object, property: string, descriptor?: Property
   else Reflect.deleteProperty(target, property);
 }
 
-const json = (value: unknown) => new Response(JSON.stringify(value), { headers: { "content-type": "application/json" } });
+const json = (value: unknown) =>
+  new Response(JSON.stringify(value), { headers: { "content-type": "application/json" } });
 
 beforeEach(() => {
   invalidateCachedJson();
@@ -32,15 +41,37 @@ beforeEach(() => {
   localStorage.setItem("rail-queue:polling", "0");
   document.cookie = "locId=2; path=/";
   fullscreenElement = null;
-  Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => fullscreenElement });
-  Object.defineProperty(document, "exitFullscreen", { configurable: true, value: vi.fn(async () => updateFullscreen(null)) });
+  Object.defineProperty(document, "fullscreenElement", {
+    configurable: true,
+    get: () => fullscreenElement,
+  });
+  Object.defineProperty(document, "exitFullscreen", {
+    configurable: true,
+    value: vi.fn(async () => updateFullscreen(null)),
+  });
   Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
     configurable: true,
-    value: vi.fn(async function (this: HTMLElement) { updateFullscreen(this); }),
+    value: vi.fn(async function (this: HTMLElement) {
+      updateFullscreen(this);
+    }),
   });
-  vi.stubGlobal("fetch", vi.fn(async (url: string) => url.endsWith("/localidades")
-    ? json([{ id: 2, nombre: "Guadalajara" }])
-    : json([{ id: 12, localidadId: 2, rondaNumero: 1, orden: 1, concluido: false, movimiento: { id: 33, locomotiveNumber: 33, estado: "SOLICITADO" } }])));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      url.endsWith("/localidades")
+        ? json([{ id: 2, nombre: "Guadalajara" }])
+        : json([
+            {
+              id: 12,
+              localidadId: 2,
+              rondaNumero: 1,
+              orden: 1,
+              concluido: false,
+              movimiento: { id: 33, locomotiveNumber: 33, estado: "SOLICITADO" },
+            },
+          ]),
+    ),
+  );
 });
 
 afterEach(() => {
@@ -75,7 +106,11 @@ describe("administrator dashboard fullscreen", () => {
     expect((selector as HTMLSelectElement).value).toBe("2");
     fireEvent.click(exit);
     await waitFor(() => expect(document.fullscreenElement).toBeNull());
-    expect((await screen.findByRole("button", { name: "Pantalla completa" })).getAttribute("aria-pressed")).toBe("false");
+    expect(
+      (await screen.findByRole("button", { name: "Pantalla completa" })).getAttribute(
+        "aria-pressed",
+      ),
+    ).toBe("false");
     expect(document.exitFullscreen).toHaveBeenCalledOnce();
     expect(screen.getAllByText("0033").length).toBeGreaterThan(0);
   });
@@ -85,13 +120,17 @@ describe("administrator dashboard fullscreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Pantalla completa" }));
     await screen.findByRole("button", { name: "Salir de pantalla completa" });
     act(() => updateFullscreen(null));
-    expect(screen.getByRole("button", { name: "Pantalla completa" }).getAttribute("aria-pressed")).toBe("false");
+    expect(
+      screen.getByRole("button", { name: "Pantalla completa" }).getAttribute("aria-pressed"),
+    ).toBe("false");
     expect(document.exitFullscreen).not.toHaveBeenCalled();
   });
 
   it("reports a rejected fullscreen request and leaves the control available to retry", async () => {
     const board = await renderDashboard();
-    vi.mocked(HTMLElement.prototype.requestFullscreen).mockRejectedValueOnce(new DOMException("Denied", "NotAllowedError"));
+    vi.mocked(HTMLElement.prototype.requestFullscreen).mockRejectedValueOnce(
+      new DOMException("Denied", "NotAllowedError"),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Pantalla completa" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toMatch(/pantalla completa/i);
@@ -109,7 +148,9 @@ describe("administrator dashboard fullscreen", () => {
     await renderDashboard();
     const otherElement = document.createElement("video");
     act(() => updateFullscreen(otherElement));
-    expect(screen.getByRole("button", { name: "Pantalla completa" }).getAttribute("aria-pressed")).toBe("false");
+    expect(
+      screen.getByRole("button", { name: "Pantalla completa" }).getAttribute("aria-pressed"),
+    ).toBe("false");
     expect(screen.queryByRole("button", { name: "Salir de pantalla completa" })).toBeNull();
     expect(document.exitFullscreen).not.toHaveBeenCalled();
   });

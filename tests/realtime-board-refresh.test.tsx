@@ -5,7 +5,9 @@ import { useRealtimeBoardRefresh } from "@/features/rail-queue/useRealtimeBoardR
 import type { RealtimeMovementEvent } from "@/features/movimientos/useRealtimeMovimientos";
 
 type Options = Parameters<typeof useRealtimeBoardRefresh>[0];
-const realtime = vi.hoisted(() => ({ onEvent: null as ((event: RealtimeMovementEvent) => void) | null }));
+const realtime = vi.hoisted(() => ({
+  onEvent: null as ((event: RealtimeMovementEvent) => void) | null,
+}));
 vi.mock("@/features/movimientos/useRealtimeMovimientos", () => ({
   useRealtimeMovimientos: (options: { onEvent: (event: RealtimeMovementEvent) => void }) => {
     realtime.onEvent = options.onEvent;
@@ -25,19 +27,29 @@ function emit(value: RealtimeMovementEvent) {
   act(() => realtime.onEvent?.(value));
 }
 async function tick(ms = 100) {
-  await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
 }
 function deferred() {
   let resolve!: () => void;
   let reject!: (error: unknown) => void;
-  const promise = new Promise<void>((done, fail) => { resolve = done; reject = fail; });
+  const promise = new Promise<void>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
   return { promise, resolve, reject };
 }
 function setup(overrides: Partial<Options> = {}) {
   const onRefresh = vi.fn<Options["onRefresh"]>();
   const initialProps: Options = {
-    enabled: true, realtimeLocalidadId: 1, scopeLocalidadId: 1,
-    minDelayMs: 100, maxDelayMs: 100, onRefresh, ...overrides,
+    enabled: true,
+    realtimeLocalidadId: 1,
+    scopeLocalidadId: 1,
+    minDelayMs: 100,
+    maxDelayMs: 100,
+    onRefresh,
+    ...overrides,
   };
   const view = renderHook((props: Options) => useRealtimeBoardRefresh(props), { initialProps });
   return { ...view, onRefresh, props: initialProps };
@@ -53,7 +65,8 @@ afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
   vi.restoreAllMocks();
-  if (visibilityDescriptor) Object.defineProperty(document, "visibilityState", visibilityDescriptor);
+  if (visibilityDescriptor)
+    Object.defineProperty(document, "visibilityState", visibilityDescriptor);
   else Reflect.deleteProperty(document, "visibilityState");
 });
 
@@ -77,7 +90,11 @@ describe("realtime board refresh lifecycle", () => {
     view.rerender(view.props);
     emit(event("resumed"));
     await tick();
-    expect(view.onRefresh).toHaveBeenCalledExactlyOnceWith({ event: event("resumed"), forced: false });
+    expect(view.onRefresh).toHaveBeenCalledExactlyOnceWith({
+      event: event("resumed"),
+      events: [event("resumed")],
+      forced: false,
+    });
   });
 
   it("discards the old locality's timer and accepts only events in the new locality", async () => {
@@ -89,7 +106,11 @@ describe("realtime board refresh lifecycle", () => {
     expect(view.onRefresh).not.toHaveBeenCalled();
     emit(event("new", 2));
     await tick();
-    expect(view.onRefresh).toHaveBeenCalledExactlyOnceWith({ event: event("new", 2), forced: false });
+    expect(view.onRefresh).toHaveBeenCalledExactlyOnceWith({
+      event: event("new", 2),
+      events: [event("new", 2)],
+      forced: false,
+    });
   });
 
   it("groups events arriving during a request into one follow-up with the latest event", async () => {
@@ -105,7 +126,11 @@ describe("realtime board refresh lifecycle", () => {
     await act(async () => pending.resolve());
     await tick();
     expect(refresh).toHaveBeenCalledTimes(2);
-    expect(refresh).toHaveBeenLastCalledWith({ event: event("third"), forced: true });
+    expect(refresh).toHaveBeenLastCalledWith({
+      event: event("third"),
+      events: [event("third")],
+      forced: true,
+    });
     await tick(2_000);
     expect(refresh).toHaveBeenCalledTimes(2);
   });
@@ -113,7 +138,10 @@ describe("realtime board refresh lifecycle", () => {
   it("does not let an older promise clear the current locality's in-flight request", async () => {
     const old = deferred();
     const current = deferred();
-    const refresh = vi.fn<Options["onRefresh"]>().mockReturnValueOnce(old.promise).mockReturnValueOnce(current.promise);
+    const refresh = vi
+      .fn<Options["onRefresh"]>()
+      .mockReturnValueOnce(old.promise)
+      .mockReturnValueOnce(current.promise);
     const view = setup({ onRefresh: refresh });
     emit(event("old"));
     await tick();
@@ -128,7 +156,11 @@ describe("realtime board refresh lifecycle", () => {
     await act(async () => current.resolve());
     await tick();
     expect(refresh).toHaveBeenCalledTimes(3);
-    expect(refresh).toHaveBeenLastCalledWith({ event: event("newer", 2), forced: true });
+    expect(refresh).toHaveBeenLastCalledWith({
+      event: event("newer", 2),
+      events: [event("newer", 2)],
+      forced: true,
+    });
   });
 
   it("does not restart queued work when an old request settles after pausing", async () => {
@@ -168,7 +200,11 @@ describe("realtime board refresh lifecycle", () => {
     expect(view.onRefresh).not.toHaveBeenCalled();
     act(() => visibility("visible"));
     await tick();
-    expect(view.onRefresh).toHaveBeenCalledExactlyOnceWith({ event: { type: "realtime.resume" }, forced: false });
+    expect(view.onRefresh).toHaveBeenCalledExactlyOnceWith({
+      event: { type: "realtime.resume" },
+      events: [{ type: "realtime.resume" }],
+      forced: false,
+    });
   });
 
   it("does not refresh on visibility changes while updates are disabled", async () => {
@@ -182,7 +218,9 @@ describe("realtime board refresh lifecycle", () => {
   it("catches synchronous refresh failures and remains available for subsequent updates", async () => {
     const failure = new Error("Synchronous refresh failed");
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    const refresh = vi.fn<Options["onRefresh"]>().mockImplementationOnce(() => { throw failure; });
+    const refresh = vi.fn<Options["onRefresh"]>().mockImplementationOnce(() => {
+      throw failure;
+    });
     setup({ onRefresh: refresh });
     emit(event("first"));
     await tick();
@@ -199,7 +237,11 @@ describe("realtime board refresh lifecycle", () => {
     view.rerender({ ...view.props, onRefresh: latest });
     await tick();
     expect(view.onRefresh).not.toHaveBeenCalled();
-    expect(latest).toHaveBeenCalledExactlyOnceWith({ event: event("queued"), forced: false });
+    expect(latest).toHaveBeenCalledExactlyOnceWith({
+      event: event("queued"),
+      events: [event("queued")],
+      forced: false,
+    });
   });
 
   it("ignores heartbeat noise and repeated copies of the same movement event", async () => {

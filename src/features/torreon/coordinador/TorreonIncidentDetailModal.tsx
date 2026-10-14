@@ -1,7 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, Ban, CalendarClock, Camera, CheckCircle2, ExternalLink, Hash, ImageOff, Loader2, MapPin, X, type LucideIcon } from "lucide-react";
+import {
+  AlertTriangle,
+  Ban,
+  CalendarClock,
+  Camera,
+  CheckCircle2,
+  ExternalLink,
+  Hash,
+  ImageOff,
+  Loader2,
+  MapPin,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 
 export type TorreonIncidentImage = {
   id?: number | string | null;
@@ -24,6 +37,8 @@ export type TorreonIncidentDetail = {
   viaBloqueadaId?: number | null;
   seccionBloqueadaId?: number | null;
   vagonId?: number | null;
+  tipoIncidente?: string | null;
+  arrastreId?: number | null;
   fotosCount?: number | null;
   fotos?: TorreonIncidentImage[] | null;
   imagenes?: string[] | null;
@@ -42,7 +57,11 @@ type Props = {
 };
 
 function normalizeStatus(value?: string | null) {
-  return String(value || "").trim().toUpperCase() || "SIN ESTADO";
+  return (
+    String(value || "")
+      .trim()
+      .toUpperCase() || "SIN ESTADO"
+  );
 }
 
 function formatDate(value?: string | null) {
@@ -56,9 +75,12 @@ function formatDate(value?: string | null) {
 }
 
 function statusClass(status: string) {
-  if (status === "ABIERTO") return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300";
-  if (status === "RESUELTO" || status === "CERRADO") return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300";
-  if (status === "CANCELADO") return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300";
+  if (status === "ABIERTO")
+    return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300";
+  if (status === "RESUELTO" || status === "CERRADO")
+    return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300";
+  if (status === "CANCELADO")
+    return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300";
   return "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300";
 }
 
@@ -70,22 +92,39 @@ function incidentImages(incident: TorreonIncidentDetail) {
     .map<TorreonIncidentImage>((url, index) => ({ url, orden: index + 1 }));
 }
 
-export default function TorreonIncidentDetailModal({ incident, title, subtitle, resolving = false, loadingEvidence = false, evidenceError, onResolve, onCancel, onClose }: Props) {
+export default function TorreonIncidentDetailModal({
+  incident,
+  title,
+  subtitle,
+  resolving = false,
+  loadingEvidence = false,
+  evidenceError,
+  onResolve,
+  onCancel,
+  onClose,
+}: Props) {
   const status = normalizeStatus(incident.estado);
   const fotos = incidentImages(incident);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
-    if (status !== 'ABIERTO') return;
+    if (status !== "ABIERTO") return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [incident.id, status]);
-  const start = new Date(incident.fechaInicio ?? '').getTime();
-  const end = status === 'ABIERTO' ? now : new Date(incident.fechaResolucion ?? '').getTime();
-  const seconds = Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, Math.floor((end - start) / 1000)) : null;
-  const elapsedLabel = seconds == null ? '--' : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  const start = new Date(incident.fechaInicio ?? "").getTime();
+  const end = status === "ABIERTO" ? now : new Date(incident.fechaResolucion ?? "").getTime();
+  const seconds =
+    Number.isFinite(start) && Number.isFinite(end)
+      ? Math.max(0, Math.floor((end - start) / 1000))
+      : null;
+  const elapsedLabel =
+    seconds == null ? "--" : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
   const canResolve = status === "ABIERTO" && Boolean(onResolve);
-  const canCancel = status === "ABIERTO" && Boolean(onCancel);
+  const canCancel =
+    status === "ABIERTO" &&
+    Boolean(onCancel) &&
+    (incident.tipoIncidente === "ARRASTRE" || !!incident.arrastreId || !!incident.vagonId);
   const [solucion, setSolucion] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<"resolve" | "cancel" | null>(null);
@@ -110,7 +149,11 @@ export default function TorreonIncidentDetailModal({ incident, title, subtitle, 
   const submitAction = async (action: "resolve" | "cancel") => {
     const value = solucion.trim();
     if (value.length < 3) {
-      setError(action === "resolve" ? "Describe la solución del incidente." : "Indica el motivo de la cancelación.");
+      setError(
+        action === "resolve"
+          ? "Describe la solución del incidente."
+          : "Indica el motivo de la cancelación.",
+      );
       return;
     }
 
@@ -131,9 +174,15 @@ export default function TorreonIncidentDetailModal({ incident, title, subtitle, 
       <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-900">
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-4 dark:border-slate-800">
           <div>
-            <p className="text-xs font-black uppercase tracking-wide text-amber-700 dark:text-amber-300">Incidente Torreon</p>
+            <p className="text-xs font-black uppercase tracking-wide text-amber-700 dark:text-amber-300">
+              Incidente Torreon
+            </p>
             <h3 className="mt-1 text-xl font-black text-slate-950 dark:text-white">{title}</h3>
-            {subtitle ? <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">{subtitle}</p> : null}
+            {subtitle ? (
+              <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">
+                {subtitle}
+              </p>
+            ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button
@@ -151,17 +200,39 @@ export default function TorreonIncidentDetailModal({ incident, title, subtitle, 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <div className="grid gap-3 md:grid-cols-4">
             <InfoTile icon={CalendarClock} label="Tiempo del incidente" value={elapsedLabel} />
-            <InfoTile icon={Hash} label="Incidente" value={incident.id ? `#${incident.id}` : "--"} />
-            <InfoTile icon={CalendarClock} label="Inicio" value={formatDate(incident.fechaInicio)} />
-            <InfoTile icon={CheckCircle2} label="Resuelto en" value={formatDate(incident.fechaResolucion)} />
-            <InfoTile icon={Hash} label="Resuelto por" value={incident.resueltoPorId ? `Usuario ${incident.resueltoPorId}` : "--"} />
+            <InfoTile
+              icon={Hash}
+              label="Incidente"
+              value={incident.id ? `#${incident.id}` : "--"}
+            />
+            <InfoTile
+              icon={CalendarClock}
+              label="Inicio"
+              value={formatDate(incident.fechaInicio)}
+            />
+            <InfoTile
+              icon={CheckCircle2}
+              label="Resuelto en"
+              value={formatDate(incident.fechaResolucion)}
+            />
+            <InfoTile
+              icon={Hash}
+              label="Resuelto por"
+              value={incident.resueltoPorId ? `Usuario ${incident.resueltoPorId}` : "--"}
+            />
           </div>
 
           <div className="mt-3 grid gap-3 md:grid-cols-4">
-            <InfoTile icon={Hash} label="Creado por" value={incident.creadoPorId ? `Usuario ${incident.creadoPorId}` : "--"} />
+            <InfoTile
+              icon={Hash}
+              label="Creado por"
+              value={incident.creadoPorId ? `Usuario ${incident.creadoPorId}` : "--"}
+            />
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40">
               <p className="text-xs font-black uppercase tracking-wide text-slate-400">Estado</p>
-              <span className={`mt-2 inline-flex rounded-lg border px-2.5 py-1 text-xs font-black ${statusClass(status)}`}>
+              <span
+                className={`mt-2 inline-flex rounded-lg border px-2.5 py-1 text-xs font-black ${statusClass(status)}`}
+              >
                 {status.replace(/_/g, " ")}
               </span>
             </div>
@@ -195,9 +266,21 @@ export default function TorreonIncidentDetailModal({ incident, title, subtitle, 
                 Bloqueo
               </div>
               <div className="mt-3 flex flex-wrap gap-2 text-xs font-black text-slate-600 dark:text-slate-300">
-                {incident.viaBloqueadaId ? <span className="rounded-lg bg-white px-3 py-1.5 dark:bg-slate-900">Via {incident.viaBloqueadaId}</span> : null}
-                {incident.seccionBloqueadaId ? <span className="rounded-lg bg-white px-3 py-1.5 dark:bg-slate-900">Seccion {incident.seccionBloqueadaId}</span> : null}
-                {incident.vagonId ? <span className="rounded-lg bg-white px-3 py-1.5 dark:bg-slate-900">Vagon #{incident.vagonId}</span> : null}
+                {incident.viaBloqueadaId ? (
+                  <span className="rounded-lg bg-white px-3 py-1.5 dark:bg-slate-900">
+                    Via {incident.viaBloqueadaId}
+                  </span>
+                ) : null}
+                {incident.seccionBloqueadaId ? (
+                  <span className="rounded-lg bg-white px-3 py-1.5 dark:bg-slate-900">
+                    Seccion {incident.seccionBloqueadaId}
+                  </span>
+                ) : null}
+                {incident.vagonId ? (
+                  <span className="rounded-lg bg-white px-3 py-1.5 dark:bg-slate-900">
+                    Vagon #{incident.vagonId}
+                  </span>
+                ) : null}
               </div>
             </div>
           )}
@@ -209,7 +292,8 @@ export default function TorreonIncidentDetailModal({ incident, title, subtitle, 
                 Resolución del incidente
               </div>
               <p className="mt-2 text-xs font-bold text-emerald-800/80 dark:text-emerald-200/80">
-                Resolver libera el bloqueo, regresa el movimiento a SOLICITADO y lo coloca primero en la cola. Cerrar el incidente cancela el movimiento o arrastre ligado.
+                Confirmar la solución habilita el mismo movimiento o conjunto para reanudar cuando
+                no queden impedimentos abiertos. El maquinista registra la reanudación.
               </p>
               <textarea
                 value={solucion}
@@ -217,7 +301,9 @@ export default function TorreonIncidentDetailModal({ incident, title, subtitle, 
                 className="mt-3 min-h-24 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 dark:border-emerald-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:ring-emerald-950"
                 placeholder="Describe la solución o, si se cancelará, el motivo del cierre..."
               />
-              {error ? <p className="mt-2 text-sm font-bold text-rose-600 dark:text-rose-300">{error}</p> : null}
+              {error ? (
+                <p className="mt-2 text-sm font-bold text-rose-600 dark:text-rose-300">{error}</p>
+              ) : null}
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
                 {canCancel && !confirmCancel ? (
                   <button
@@ -226,7 +312,11 @@ export default function TorreonIncidentDetailModal({ incident, title, subtitle, 
                     disabled={resolving}
                     className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-rose-300 bg-white px-4 text-sm font-black text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-800 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/30"
                   >
-                    {resolving && pendingAction === "cancel" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+                    {resolving && pendingAction === "cancel" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Ban className="h-4 w-4" />
+                    )}
                     Cerrar y cancelar movimiento
                   </button>
                 ) : null}
@@ -237,7 +327,11 @@ export default function TorreonIncidentDetailModal({ incident, title, subtitle, 
                     disabled={resolving}
                     className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {resolving && pendingAction === "resolve" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                    {resolving && pendingAction === "resolve" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4" />
+                    )}
                     Resolver y reencolar primero
                   </button>
                 ) : null}
@@ -262,7 +356,11 @@ export default function TorreonIncidentDetailModal({ incident, title, subtitle, 
                       disabled={resolving}
                       className="inline-flex h-9 items-center gap-2 rounded-lg bg-rose-600 px-3 text-sm font-black text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {resolving && pendingAction === "cancel" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+                      {resolving && pendingAction === "cancel" ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Ban className="h-4 w-4" />
+                      )}
                       Confirmar cancelación
                     </button>
                   </div>
@@ -277,10 +375,15 @@ export default function TorreonIncidentDetailModal({ incident, title, subtitle, 
                 <Camera className="h-4 w-4 text-slate-500" />
                 Evidencias
               </div>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300">{loadingEvidence ? incident.fotosCount ?? fotos.length : fotos.length}</span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                {loadingEvidence ? (incident.fotosCount ?? fotos.length) : fotos.length}
+              </span>
             </div>
             {evidenceError ? (
-              <div role="alert" className="mb-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-center text-sm font-semibold text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300">
+              <div
+                role="alert"
+                className="mb-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-center text-sm font-semibold text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300"
+              >
                 {evidenceError}
               </div>
             ) : null}
@@ -306,14 +409,21 @@ export default function TorreonIncidentDetailModal({ incident, title, subtitle, 
               </div>
             ) : null}
           </section>
-
         </div>
       </div>
     </div>
   );
 }
 
-function EvidenceFigure({ foto, incidentId, index }: { foto: TorreonIncidentImage; incidentId?: number | string | null; index: number }) {
+function EvidenceFigure({
+  foto,
+  incidentId,
+  index,
+}: {
+  foto: TorreonIncidentImage;
+  incidentId?: number | string | null;
+  index: number;
+}) {
   const [failed, setFailed] = useState(false);
   const url = String(foto.url || "");
 
@@ -341,7 +451,9 @@ function EvidenceFigure({ foto, incidentId, index }: { foto: TorreonIncidentImag
       </div>
       <figcaption className="space-y-2 p-3 text-xs text-slate-500 dark:text-slate-400">
         <div className="flex items-center justify-between gap-2">
-          <p className="font-bold text-slate-700 dark:text-slate-200">Captura {foto.orden ?? index + 1}</p>
+          <p className="font-bold text-slate-700 dark:text-slate-200">
+            Captura {foto.orden ?? index + 1}
+          </p>
           {url ? (
             <a
               href={url}
@@ -360,7 +472,15 @@ function EvidenceFigure({ foto, incidentId, index }: { foto: TorreonIncidentImag
   );
 }
 
-function InfoTile({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
+function InfoTile({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+}) {
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40">
       <div className="flex items-center justify-between gap-2">

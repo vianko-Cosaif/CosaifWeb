@@ -3,7 +3,11 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
 import { createPortal } from "react-dom";
-import { shouldUseIncidentCountdown, isTorreonIncidentContext } from "@/lib/incidentCountdownPolicy";
+import {
+  shouldUseIncidentCountdown,
+  isTorreonIncidentContext,
+  isPersistentTorreonNaturalIncident,
+} from "@/lib/incidentCountdownPolicy";
 import { isTrainingIncidentId } from "@/lib/routePolicy";
 import { GuidedTarget } from "@/features/capacitacion";
 import { useTrainingTour } from "@/features/capacitacion/TrainingTourContext";
@@ -95,7 +99,8 @@ function sourceQuery(incident?: Incident | null) {
   const source = String(incident?._source || incident?._detalle?._source || "").toLowerCase();
   if (source !== "torreon") return "";
   const params = new URLSearchParams({ source: "torreon" });
-  const localidadId = incident?.localidadId || incident?._detalle?.localidadId || incident?.movimiento?.localidadId;
+  const localidadId =
+    incident?.localidadId || incident?._detalle?.localidadId || incident?.movimiento?.localidadId;
   if (localidadId) params.set("localidadId", String(localidadId));
   return `?${params.toString()}`;
 }
@@ -104,10 +109,15 @@ function normalizeImageUrl(raw: string, incident?: Incident | null) {
   if (raw.startsWith("/api/torreon/imagenes/")) return raw;
   const source = String(incident?._source || incident?._detalle?._source || "").toLowerCase();
   if (source === "torreon" && !/^https?:\/\//i.test(raw) && !raw.startsWith("data:")) {
-    const cleaned = raw.replace(/^\/+/, "").replace(/^uploads\/incidentes\/+/i, "").replace(/^incidentes\/+/i, "");
+    const cleaned = raw
+      .replace(/^\/+/, "")
+      .replace(/^uploads\/incidentes\/+/i, "")
+      .replace(/^incidentes\/+/i, "");
     return `/api/torreon/imagenes/${cleaned.split("/").map(encodeURIComponent).join("/")}`;
   }
-  return /^https?:\/\//i.test(raw) ? viaProxy(raw) : viaProxy(`/incidentes/imagen/${encodeURIComponent(raw)}`);
+  return /^https?:\/\//i.test(raw)
+    ? viaProxy(raw)
+    : viaProxy(`/incidentes/imagen/${encodeURIComponent(raw)}`);
 }
 function formatTime(ms: number) {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -192,7 +202,10 @@ const ImageWithAuth = React.memo(function ImageWithAuth({
         className={cn("block h-full w-full select-none", imgClassName)}
       />
       {isLoading && (
-        <div className="absolute inset-0 grid place-items-center bg-slate-100 dark:bg-slate-800/60" aria-busy>
+        <div
+          className="absolute inset-0 grid place-items-center bg-slate-100 dark:bg-slate-800/60"
+          aria-busy
+        >
           <div className="h-7 w-7 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent" />
         </div>
       )}
@@ -212,12 +225,24 @@ const TimerBar = React.memo(function TimerBar({ leftMs, pct }: { leftMs: number;
     <div className="mt-3 sm:mt-4">
       <div className="flex items-center gap-2 text-white">
         <TimerReset className="h-4 w-4" />
-        <span className={cn("text-3xl sm:text-4xl font-bold tabular-nums", u.color)}>{formatTime(leftMs)}</span>
+        <span className={cn("text-3xl sm:text-4xl font-bold tabular-nums", u.color)}>
+          {formatTime(leftMs)}
+        </span>
         <span className="text-[10px] sm:text-xs opacity-90">para atender</span>
         <span className="ml-3 text-[10px] sm:text-xs font-semibold">{u.label}</span>
       </div>
-      <div role="progressbar" aria-label="Tiempo transcurrido del incidente" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/30 dark:bg-white/20">
-        <div className={cn("h-2 rounded-full transition-[width] duration-300", u.bar)} style={{ width: `${pct}%` }} />
+      <div
+        role="progressbar"
+        aria-label="Tiempo transcurrido del incidente"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+        className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/30 dark:bg-white/20"
+      >
+        <div
+          className={cn("h-2 rounded-full transition-[width] duration-300", u.bar)}
+          style={{ width: `${pct}%` }}
+        />
       </div>
     </div>
   );
@@ -260,7 +285,7 @@ const ImageGallery = React.memo(function ImageGallery({
           "touch-pan-y touch-pinch-zoom",
           fullscreen
             ? "h-[min(78vh,720px)] sm:h-[min(80vh,820px)]"
-            : "h-[clamp(240px,45vh,520px)] sm:h-[clamp(320px,42vh,560px)] md:h-[clamp(360px,46vh,620px)] lg:h-[clamp(420px,50vh,720px)]"
+            : "h-[clamp(240px,45vh,520px)] sm:h-[clamp(320px,42vh,560px)] md:h-[clamp(360px,46vh,620px)] lg:h-[clamp(420px,50vh,720px)]",
         )}
       >
         {total ? (
@@ -279,7 +304,10 @@ const ImageGallery = React.memo(function ImageGallery({
           <button
             onClick={prev}
             disabled={i === 0}
-            className={cn("rounded p-1 focus:outline-none focus:ring-2 focus:ring-white/50", i === 0 ? "opacity-50 cursor-not-allowed" : "hover:bg-white/20")}
+            className={cn(
+              "rounded p-1 focus:outline-none focus:ring-2 focus:ring-white/50",
+              i === 0 ? "opacity-50 cursor-not-allowed" : "hover:bg-white/20",
+            )}
             aria-label="Anterior"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -292,7 +320,7 @@ const ImageGallery = React.memo(function ImageGallery({
             disabled={i === total - 1}
             className={cn(
               "rounded p-1 focus:outline-none focus:ring-2 focus:ring-white/50",
-              i === total - 1 ? "opacity-50 cursor-not-allowed" : "hover:bg-white/20"
+              i === total - 1 ? "opacity-50 cursor-not-allowed" : "hover:bg-white/20",
             )}
             aria-label="Siguiente"
           >
@@ -322,8 +350,12 @@ const ImageGallery = React.memo(function ImageGallery({
                 disabled={!src}
                 className={cn(
                   "relative aspect-square overflow-hidden rounded-xl border focus:outline-none focus:ring-2 focus:ring-emerald-600/40",
-                  src ? "hover:border-slate-300 dark:hover:border-slate-500" : "opacity-50 cursor-not-allowed",
-                  active ? "border-emerald-600 ring-2 ring-emerald-600/20" : "border-white/60 dark:border-slate-700/60"
+                  src
+                    ? "hover:border-slate-300 dark:hover:border-slate-500"
+                    : "opacity-50 cursor-not-allowed",
+                  active
+                    ? "border-emerald-600 ring-2 ring-emerald-600/20"
+                    : "border-white/60 dark:border-slate-700/60",
                 )}
                 aria-label={src ? `Ver imagen ${idx + 1}` : "Miniatura no disponible"}
               >
@@ -414,9 +446,13 @@ export default function SmartIncidentBlocker({
     if (!countdownAllowed) return;
     const refresh = () => setNow(Date.now());
     const id = setInterval(refresh, 1000);
-    window.addEventListener('focus', refresh);
-    document.addEventListener('visibilitychange', refresh);
-    return () => { clearInterval(id); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [countdownAllowed]);
 
   /* Derived */
@@ -430,12 +466,16 @@ export default function SmartIncidentBlocker({
 
   const startMs = useMemo(
     () => new Date(fetched?.fechaInicio ?? incident?.fechaInicio ?? Date.now()).getTime(),
-    [fetched, incident]
+    [fetched, incident],
   );
-  const leftMs = Number.isFinite(startMs) ? Math.max(0, Math.min(WINDOW_DURATION_MS, WINDOW_DURATION_MS - (now - startMs))) : 0;
+  const leftMs = Number.isFinite(startMs)
+    ? Math.max(0, Math.min(WINDOW_DURATION_MS, WINDOW_DURATION_MS - (now - startMs)))
+    : 0;
   const pct = Math.round(((WINDOW_DURATION_MS - leftMs) / WINDOW_DURATION_MS) * 100);
   const estado = (fetched?.estado || incident?.estado || "ABIERTO") as keyof typeof ESTADO_COLORS;
   const canActOnIncident = estado === "ABIERTO" && (!countdownAllowed || leftMs > 0);
+  const persistentNatural =
+    isPersistentTorreonNaturalIncident(incident) || isPersistentTorreonNaturalIncident(fetched);
   const showTimer = countdownAllowed && estado === "ABIERTO";
 
   /* Actions */
@@ -445,7 +485,9 @@ export default function SmartIncidentBlocker({
     actionLockRef.current = true;
     try {
       if ((trainingTour.active || sandboxAtOpenRef.current) && !isTrainingIncident) {
-        alert("En capacitación sólo puedes resolver SIM-INC-041. No se modificó ningún incidente real.");
+        alert(
+          "En capacitación sólo puedes resolver SIM-INC-041. No se modificó ningún incidente real.",
+        );
         return;
       }
       // El controlador padre es el único dueño de la mutación. Antes este
@@ -464,13 +506,15 @@ export default function SmartIncidentBlocker({
     actionLockRef.current = true;
     try {
       if ((trainingTour.active || sandboxAtOpenRef.current) && !isTrainingIncident) {
-        alert("En capacitación sólo puedes omitir SIM-INC-041. No se modificó ningún incidente real.");
+        alert(
+          "En capacitación sólo puedes omitir SIM-INC-041. No se modificó ningún incidente real.",
+        );
         return;
       }
       const confirmed = window.confirm(
         isTrainingIncident
           ? "¿Confirmas omitir el incidente SIM? Sólo cambiará el escenario ficticio de capacitación."
-          : "¿Confirmas cerrar el incidente sin resolver? Esta decisión queda registrada y puede cancelar el movimiento relacionado."
+          : "¿Confirmas cerrar el incidente sin resolver? Esta decisión queda registrada y puede cancelar el movimiento relacionado.",
       );
       if (!confirmed) return;
       await onSkip();
@@ -510,277 +554,313 @@ export default function SmartIncidentBlocker({
             aria-labelledby={headingId}
             aria-modal="true"
           >
-          {/* Header */}
-          <div className="relative overflow-hidden bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-950 px-4 sm:px-6 py-4 sm:py-6">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.35),transparent_55%)] opacity-70" />
-            <div className="relative flex items-start justify-between gap-4">
-              <div className="flex min-w-0 items-start gap-3 sm:gap-4">
-                <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-400/10 ring-1 ring-emerald-300/30">
-                  <AlertTriangle className="h-5 w-5 text-emerald-200" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-emerald-200/70">
-                    Incidente
-                    {(current?.incidenteId || current?.id) && (
-                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/80">
-                        #{current?.incidenteId ?? current?.id}
-                      </span>
-                    )}
+            {/* Header */}
+            <div className="relative overflow-hidden bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-950 px-4 sm:px-6 py-4 sm:py-6">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.35),transparent_55%)] opacity-70" />
+              <div className="relative flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+                  <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-400/10 ring-1 ring-emerald-300/30">
+                    <AlertTriangle className="h-5 w-5 text-emerald-200" />
                   </div>
-                  <h1 id={headingId} className="mt-1 truncate text-base sm:text-lg font-bold text-white">
-                    {truncate(current?.descripcion || "Incidente", 200)}
-                  </h1>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/70">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-1">
-                      <Building className="h-3.5 w-3.5" />
-                      {current?.movimiento?.empresa?.nombre || "Empresa no especificada"}
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-1">
-                      <Train className="h-3.5 w-3.5" />
-                      {current?.movimiento?.locomotiveNumber ? `#${current.movimiento.locomotiveNumber}` : "Locomotora N/D"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <button
-                onClick={close}
-                className="rounded-md p-2 text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-white/50"
-                aria-label="Cerrar ventana sin modificar el incidente"
-                title="Cerrar ventana sin modificar el incidente"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            {showTimer && <TimerBar leftMs={leftMs} pct={pct} />}
-            {showTimer && leftMs === 0 && isTorreonIncidentContext(incident) && <p role="status" className="text-sm font-semibold text-amber-600">Tiempo vencido. El servidor está cerrando el incidente y actualizando la ronda…</p>}
-          </div>
-
-          {/* Status */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-white/70 px-4 sm:px-6 py-3 text-xs dark:bg-slate-900/70 dark:border-slate-800">
-            <div
-              className={cn(
-                "inline-flex items-center gap-2 rounded-full border border-white/40 bg-white/70 px-3 py-1 font-semibold uppercase tracking-wide dark:border-slate-700/60 dark:bg-slate-900/60",
-                ESTADO_COLORS[estado]
-              )}
-            >
-              <Info className="h-4 w-4" />
-              <span>{estado}</span>
-            </div>
-            {showTimer && (
-              <div className={cn("text-[10px] sm:text-xs font-semibold", urgencyFor(pct).color)}>
-                {urgencyFor(pct).label}
-              </div>
-            )}
-          </div>
-
-          {/* Tabs (mobile only) */}
-          <div className="border-b border-white/10 bg-white/80 px-4 py-3 dark:bg-slate-900/80 dark:border-slate-800 md:hidden">
-            <div className="relative mx-auto flex w-full max-w-md items-center rounded-full bg-slate-100/90 p-1 shadow-inner dark:bg-slate-800/80">
-              <div
-                className="absolute inset-y-1 left-1 w-1/2 rounded-full bg-white shadow transition-transform duration-300 dark:bg-slate-900"
-                style={{ transform: tab === 0 ? "translateX(0)" : "translateX(100%)" }}
-                aria-hidden
-              />
-              <button
-                onClick={() => setTab(0)}
-                className={cn(
-                  "relative z-10 flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition-colors",
-                  tab === 0 ? "text-emerald-700 dark:text-emerald-300" : "text-slate-500 dark:text-slate-400"
-                )}
-                role="tab"
-                aria-selected={tab === 0}
-              >
-                <Info className="h-4 w-4 inline-block" />
-                Detalles
-              </button>
-              <button
-                onClick={() => setTab(1)}
-                className={cn(
-                  "relative z-10 flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition-colors",
-                  tab === 1 ? "text-emerald-700 dark:text-emerald-300" : "text-slate-500 dark:text-slate-400"
-                )}
-                role="tab"
-                aria-selected={tab === 1}
-              >
-                <ImageIcon className="h-4 w-4 inline-block" />
-                Imágenes {imgs.length ? `(${imgs.length})` : ""}
-              </button>
-            </div>
-          </div>
-
-        {/* Body */}
-        <div className="flex-1 min-h-0 overflow-y-auto bg-slate-50 dark:bg-slate-900">
-          {loading ? (
-            <div className="py-10 text-center">
-              <div className="inline-flex items-center gap-3 text-slate-500 dark:text-slate-400">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent" />
-                Cargando detalles del incidente...
-              </div>
-            </div>
-          ) : err ? (
-            <div className="p-4 sm:p-6">
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 shadow-sm dark:border-rose-800 dark:bg-rose-900/20">
-                <div className="flex items-center gap-2 text-rose-800 dark:text-rose-300">
-                  <AlertTriangle className="h-5 w-5" />
-                  <span className="font-semibold">Error</span>
-                </div>
-                <p className="mt-2 text-rose-700 dark:text-rose-200">{err}</p>
-              </div>
-            </div>
-          ) : (
-            <div className="grid gap-4 sm:gap-6 p-4 sm:p-6 md:grid-cols-[1.1fr_0.9fr]">
-              <div className={cn(tab === 0 ? "block" : "hidden", "md:block")} role="tabpanel">
-                <div className="space-y-4 sm:space-y-5">
-                  <section className="rounded-2xl border border-white/60 bg-white/85 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/80">
-                    <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-800 dark:text-slate-100">
-                      <Info className="h-5 w-5 text-emerald-600" />
-                      Descripción
-                    </h2>
-                    <p className="text-slate-700 leading-relaxed dark:text-slate-200">
-                      {current?.descripcion || "Sin descripción disponible"}
-                    </p>
-                  </section>
-
-                  <section className="rounded-2xl border border-white/60 bg-white/85 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/80">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                      <div>
-                        <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider dark:text-slate-400">Reportado</div>
-                        <div className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">
-                          {new Date(startMs).toLocaleString("es-ES", {
-                            year: "numeric",
-                            month: "long",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider dark:text-slate-400">Empresa</div>
-                        <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-                          <Building className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                          {current?.movimiento?.empresa?.nombre || "No especificada"}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider dark:text-slate-400">Locomotora</div>
-                        <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-                          <Train className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                          {current?.movimiento?.locomotiveNumber ? `#${current.movimiento.locomotiveNumber}` : "No especificada"}
-                        </div>
-                      </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-emerald-200/70">
+                      Incidente
+                      {(current?.incidenteId || current?.id) && (
+                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/80">
+                          #{current?.incidenteId ?? current?.id}
+                        </span>
+                      )}
                     </div>
-                  </section>
-
-                  {operatorComment && (
-                    <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm dark:border-amber-800 dark:bg-amber-900/20">
-                      <h2 className="mb-3 text-base font-semibold text-amber-800 dark:text-amber-200">Comentario del operador</h2>
-                      <p className="text-amber-700 leading-relaxed dark:text-amber-200/90">{operatorComment}</p>
-                    </section>
-                  )}
-
-                  {estado === "ABIERTO" && (
-                    <GuidedTarget
-                      id="incident-resolution-panel"
-                      as="section"
-                      className="rounded-2xl border border-white/60 bg-white/85 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/80"
+                    <h1
+                      id={headingId}
+                      className="mt-1 truncate text-base sm:text-lg font-bold text-white"
                     >
-                      <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-100">Resolución del incidente</h2>
-                      <p className="mb-3 text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
-                        Resolver cambia el incidente a RESUELTO. Cerrar sin resolver lo deja como cierre operativo sin registrar solución.
-                      </p>
-                      <textarea
-                        data-guide-id="incident-resolution-input"
-                        value={resolution}
-                        onChange={(e) => setResolution(e.target.value)}
-                        rows={5}
-                        className="w-full resize-none rounded-xl border border-slate-300 bg-slate-50 p-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                        placeholder="Describe las acciones tomadas..."
-                        maxLength={1000}
-                      />
-                      <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">{resolution.length}/1000</div>
-                      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                        <button
-                          onClick={() => setResolution("")}
-                          disabled={!resolution}
-                          className={cn(
-                            "rounded-xl px-4 py-2 text-sm font-semibold transition-colors sm:flex-1",
-                            resolution
-                              ? "bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
-                              : "bg-slate-100 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-600"
-                          )}
-                        >
-                          Limpiar
-                        </button>
-                        <button
-                          onClick={doResolve}
-                          disabled={!resolution.trim()}
-                          className={cn(
-                            "rounded-xl px-4 py-2 text-sm font-semibold text-white transition-colors sm:flex-[2]",
-                            resolution.trim()
-                              ? "bg-emerald-600 hover:bg-emerald-700"
-                              : "bg-slate-300 cursor-not-allowed dark:bg-slate-700"
-                          )}
-                        >
-                          Confirmar resolución
-                        </button>
-                      </div>
-                    </GuidedTarget>
-                  )}
+                      {truncate(current?.descripcion || "Incidente", 200)}
+                    </h1>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/70">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-1">
+                        <Building className="h-3.5 w-3.5" />
+                        {current?.movimiento?.empresa?.nombre || "Empresa no especificada"}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-1">
+                        <Train className="h-3.5 w-3.5" />
+                        {current?.movimiento?.locomotiveNumber
+                          ? `#${current.movimiento.locomotiveNumber}`
+                          : "Locomotora N/D"}
+                      </span>
+                    </div>
+                  </div>
                 </div>
+                <button
+                  onClick={close}
+                  className="rounded-md p-2 text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-white/50"
+                  aria-label="Cerrar ventana sin modificar el incidente"
+                  title="Cerrar ventana sin modificar el incidente"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
+              {showTimer && <TimerBar leftMs={leftMs} pct={pct} />}
+              {showTimer && leftMs === 0 && isTorreonIncidentContext(incident) && (
+                <p role="status" className="text-sm font-semibold text-amber-600">
+                  Tiempo vencido. El servidor está cerrando el incidente y actualizando la ronda…
+                </p>
+              )}
+            </div>
 
-              <div className={cn(tab === 1 ? "block" : "hidden", "md:block")} role="tabpanel">
-                <ImageGallery
-                  images={imgs}
-                  index={idx}
-                  onChange={setIdx}
-                  fullscreen={fullscreen}
-                  onToggleFullscreen={() => setFullscreen((v) => !v)}
+            {/* Status */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-white/70 px-4 sm:px-6 py-3 text-xs dark:bg-slate-900/70 dark:border-slate-800">
+              <div
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-full border border-white/40 bg-white/70 px-3 py-1 font-semibold uppercase tracking-wide dark:border-slate-700/60 dark:bg-slate-900/60",
+                  ESTADO_COLORS[estado],
+                )}
+              >
+                <Info className="h-4 w-4" />
+                <span>{estado}</span>
+              </div>
+              {showTimer && (
+                <div className={cn("text-[10px] sm:text-xs font-semibold", urgencyFor(pct).color)}>
+                  {urgencyFor(pct).label}
+                </div>
+              )}
+            </div>
+
+            {/* Tabs (mobile only) */}
+            <div className="border-b border-white/10 bg-white/80 px-4 py-3 dark:bg-slate-900/80 dark:border-slate-800 md:hidden">
+              <div className="relative mx-auto flex w-full max-w-md items-center rounded-full bg-slate-100/90 p-1 shadow-inner dark:bg-slate-800/80">
+                <div
+                  className="absolute inset-y-1 left-1 w-1/2 rounded-full bg-white shadow transition-transform duration-300 dark:bg-slate-900"
+                  style={{ transform: tab === 0 ? "translateX(0)" : "translateX(100%)" }}
+                  aria-hidden
                 />
+                <button
+                  onClick={() => setTab(0)}
+                  className={cn(
+                    "relative z-10 flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition-colors",
+                    tab === 0
+                      ? "text-emerald-700 dark:text-emerald-300"
+                      : "text-slate-500 dark:text-slate-400",
+                  )}
+                  role="tab"
+                  aria-selected={tab === 0}
+                >
+                  <Info className="h-4 w-4 inline-block" />
+                  Detalles
+                </button>
+                <button
+                  onClick={() => setTab(1)}
+                  className={cn(
+                    "relative z-10 flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition-colors",
+                    tab === 1
+                      ? "text-emerald-700 dark:text-emerald-300"
+                      : "text-slate-500 dark:text-slate-400",
+                  )}
+                  role="tab"
+                  aria-selected={tab === 1}
+                >
+                  <ImageIcon className="h-4 w-4 inline-block" />
+                  Imágenes {imgs.length ? `(${imgs.length})` : ""}
+                </button>
               </div>
             </div>
-          )}
-        </div>
 
-        {/* Footer */}
-        <GuidedTarget id="incident-actions" className="flex flex-col gap-2 border-t border-white/10 bg-white/80 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80 sm:flex-row sm:px-6 sm:py-4">
-          {canActOnIncident ? (
-            <>
-              <button
-                data-guide-id="incident-resolve-action"
-                data-training-incident-resolve={isTrainingIncident ? "true" : undefined}
-                onClick={doResolve}
-                disabled={!resolution.trim()}
-                className={cn(
-                  "flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 font-semibold text-white shadow-lg transition-all",
-                  resolution.trim()
-                    ? "bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700"
-                    : "bg-slate-300 cursor-not-allowed dark:bg-slate-700"
-                )}
-                      >
-                        <CheckCircle2 className="h-5 w-5" />
-                Resolver incidente
-                      </button>
-                      <button
-                        data-guide-id="incident-close-action"
-                        onClick={doSkip}
-                        className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-3 font-semibold text-white shadow-lg hover:from-amber-500 hover:to-amber-700 transition-all"
-                      >
-                        <FastForward className="h-5 w-5" />
-                Cerrar sin resolver
-                      </button>
-            </>
-          ) : (
-            <button
-              data-guide-id="incident-continue-action"
-              onClick={continueFn}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-3 font-semibold text-white shadow-lg hover:from-emerald-600 hover:to-emerald-800 transition-all"
+            {/* Body */}
+            <div className="flex-1 min-h-0 overflow-y-auto bg-slate-50 dark:bg-slate-900">
+              {loading ? (
+                <div className="py-10 text-center">
+                  <div className="inline-flex items-center gap-3 text-slate-500 dark:text-slate-400">
+                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent" />
+                    Cargando detalles del incidente...
+                  </div>
+                </div>
+              ) : err ? (
+                <div className="p-4 sm:p-6">
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 shadow-sm dark:border-rose-800 dark:bg-rose-900/20">
+                    <div className="flex items-center gap-2 text-rose-800 dark:text-rose-300">
+                      <AlertTriangle className="h-5 w-5" />
+                      <span className="font-semibold">Error</span>
+                    </div>
+                    <p className="mt-2 text-rose-700 dark:text-rose-200">{err}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:gap-6 p-4 sm:p-6 md:grid-cols-[1.1fr_0.9fr]">
+                  <div className={cn(tab === 0 ? "block" : "hidden", "md:block")} role="tabpanel">
+                    <div className="space-y-4 sm:space-y-5">
+                      <section className="rounded-2xl border border-white/60 bg-white/85 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/80">
+                        <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-800 dark:text-slate-100">
+                          <Info className="h-5 w-5 text-emerald-600" />
+                          Descripción
+                        </h2>
+                        <p className="text-slate-700 leading-relaxed dark:text-slate-200">
+                          {current?.descripcion || "Sin descripción disponible"}
+                        </p>
+                      </section>
+
+                      <section className="rounded-2xl border border-white/60 bg-white/85 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/80">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                          <div>
+                            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider dark:text-slate-400">
+                              Reportado
+                            </div>
+                            <div className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">
+                              {new Date(startMs).toLocaleString("es-ES", {
+                                year: "numeric",
+                                month: "long",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider dark:text-slate-400">
+                              Empresa
+                            </div>
+                            <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                              <Building className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                              {current?.movimiento?.empresa?.nombre || "No especificada"}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider dark:text-slate-400">
+                              Locomotora
+                            </div>
+                            <div className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                              <Train className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                              {current?.movimiento?.locomotiveNumber
+                                ? `#${current.movimiento.locomotiveNumber}`
+                                : "No especificada"}
+                            </div>
+                          </div>
+                        </div>
+                      </section>
+
+                      {operatorComment && (
+                        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm dark:border-amber-800 dark:bg-amber-900/20">
+                          <h2 className="mb-3 text-base font-semibold text-amber-800 dark:text-amber-200">
+                            Comentario del operador
+                          </h2>
+                          <p className="text-amber-700 leading-relaxed dark:text-amber-200/90">
+                            {operatorComment}
+                          </p>
+                        </section>
+                      )}
+
+                      {estado === "ABIERTO" && (
+                        <GuidedTarget
+                          id="incident-resolution-panel"
+                          as="section"
+                          className="rounded-2xl border border-white/60 bg-white/85 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/80"
+                        >
+                          <h2 className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-100">
+                            Resolución del incidente
+                          </h2>
+                          <p className="mb-3 text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
+                            {persistentNatural
+                              ? "Confirmar la solución habilita la reanudación cuando no queda otro impedimento. El maquinista registra la continuación."
+                              : "Resolver cambia el incidente a RESUELTO. Cerrar sin resolver lo deja como cierre operativo sin registrar solución."}
+                          </p>
+                          <textarea
+                            data-guide-id="incident-resolution-input"
+                            value={resolution}
+                            onChange={(e) => setResolution(e.target.value)}
+                            rows={5}
+                            className="w-full resize-none rounded-xl border border-slate-300 bg-slate-50 p-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                            placeholder="Describe las acciones tomadas..."
+                            maxLength={1000}
+                          />
+                          <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                            {resolution.length}/1000
+                          </div>
+                          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                            <button
+                              onClick={() => setResolution("")}
+                              disabled={!resolution}
+                              className={cn(
+                                "rounded-xl px-4 py-2 text-sm font-semibold transition-colors sm:flex-1",
+                                resolution
+                                  ? "bg-slate-200 text-slate-700 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
+                                  : "bg-slate-100 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-600",
+                              )}
+                            >
+                              Limpiar
+                            </button>
+                            <button
+                              onClick={doResolve}
+                              disabled={!resolution.trim()}
+                              className={cn(
+                                "rounded-xl px-4 py-2 text-sm font-semibold text-white transition-colors sm:flex-[2]",
+                                resolution.trim()
+                                  ? "bg-emerald-600 hover:bg-emerald-700"
+                                  : "bg-slate-300 cursor-not-allowed dark:bg-slate-700",
+                              )}
+                            >
+                              Confirmar resolución
+                            </button>
+                          </div>
+                        </GuidedTarget>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className={cn(tab === 1 ? "block" : "hidden", "md:block")} role="tabpanel">
+                    <ImageGallery
+                      images={imgs}
+                      index={idx}
+                      onChange={setIdx}
+                      fullscreen={fullscreen}
+                      onToggleFullscreen={() => setFullscreen((v) => !v)}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <GuidedTarget
+              id="incident-actions"
+              className="flex flex-col gap-2 border-t border-white/10 bg-white/80 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80 sm:flex-row sm:px-6 sm:py-4"
             >
-              Continuar
-            </button>
-          )}
-        </GuidedTarget>
+              {canActOnIncident ? (
+                <>
+                  <button
+                    data-guide-id="incident-resolve-action"
+                    data-training-incident-resolve={isTrainingIncident ? "true" : undefined}
+                    onClick={doResolve}
+                    disabled={!resolution.trim()}
+                    className={cn(
+                      "flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 font-semibold text-white shadow-lg transition-all",
+                      resolution.trim()
+                        ? "bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700"
+                        : "bg-slate-300 cursor-not-allowed dark:bg-slate-700",
+                    )}
+                  >
+                    <CheckCircle2 className="h-5 w-5" />
+                    Resolver incidente
+                  </button>
+                  {!persistentNatural && (
+                    <button
+                      data-guide-id="incident-close-action"
+                      onClick={doSkip}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-3 font-semibold text-white shadow-lg hover:from-amber-500 hover:to-amber-700 transition-all"
+                    >
+                      <FastForward className="h-5 w-5" />
+                      Cerrar sin resolver
+                    </button>
+                  )}
+                </>
+              ) : (
+                <button
+                  data-guide-id="incident-continue-action"
+                  onClick={continueFn}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-3 font-semibold text-white shadow-lg hover:from-emerald-600 hover:to-emerald-800 transition-all"
+                >
+                  Continuar
+                </button>
+              )}
+            </GuidedTarget>
           </div>
         </GuidedTarget>
       </div>

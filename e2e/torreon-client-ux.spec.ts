@@ -4,8 +4,8 @@ import AxeBuilder from "@axe-core/playwright";
 const roles = [
   {
     user: "cliente_torreon",
-    heading: "Rondas naturales",
-    action: "Editar mis rondas",
+    heading: "Movimientos naturales",
+    action: "Solicitar movimientos",
     flow: "naturales",
   },
   {
@@ -35,7 +35,9 @@ for (const role of roles) {
         await page.reload();
 
         await expect(page.getByRole("heading", { name: role.heading, exact: true })).toBeVisible();
-        await expect(page.getByRole("button", { name: role.action })).toBeVisible();
+        await expect(
+          page.getByRole(role.flow === "naturales" ? "link" : "button", { name: role.action }),
+        ).toBeVisible();
         await expect(page.getByText("Una locomotora por ronda")).toHaveCount(0);
         expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(
           false,

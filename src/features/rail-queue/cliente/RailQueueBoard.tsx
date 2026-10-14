@@ -1,4 +1,5 @@
 "use client";
+import TorreonNaturalQueue from "@/features/torreon/naturales/components/TorreonNaturalQueue";
 import TornoMeasuresDialog from "@/features/torno-measures/TornoMeasuresDialog";
 
 import { hasRealtimeNotificationConnection } from "@/lib/notificationDelivery";
@@ -111,6 +112,7 @@ export default function RailQueueBoard({
     empresaId ? "/api/cliente" : API_XAPI_BASE,
   );
   const { items, loading, refreshing, error, updatedAt, load } = useClientQueueData({
+    enabled: !naturalTorreon || trainingTour.active,
     localidadId,
     empresaId,
     entity: activeEntity,
@@ -279,6 +281,15 @@ export default function RailQueueBoard({
       ? "No hay torneados pendientes o en movimiento en esta localidad."
       : "No hay movimientos pendientes o en curso en esta localidad.";
 
+  if (naturalTorreon && !trainingTour.active)
+    return (
+      <TorreonNaturalQueue
+        localidadId={Number(localidadId)}
+        rol={role ?? "CLIENTE"}
+        canCreateMovements={canCreateMovements}
+      />
+    );
+
   return (
     <GuidedTarget id="dashboard-rounds-board" className={S.Layout.root}>
       {trainingTour.active ? (
@@ -361,7 +372,9 @@ export default function RailQueueBoard({
           >
             <RefreshCw className={refreshing ? "w-4 h-4 animate-spin" : "w-4 h-4"} />
           </button>
-          {activeEntity === "movimientos" && empresaId && ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"].includes(String(role)) ? (
+          {activeEntity === "movimientos" &&
+          empresaId &&
+          ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"].includes(String(role)) ? (
             <GuidedTarget id="dashboard-edit-rounds" className="inline-flex">
               <button
                 onClick={() => setOpenEditor(true)}

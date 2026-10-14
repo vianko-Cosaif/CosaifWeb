@@ -12,7 +12,7 @@ for (const width of [1440, 390]) {
       await page.getByLabel("Contraseña", { exact: true }).fill("Prueba-COSAIF-2026");
       await page.getByRole("button", { name: /ingresar a la plataforma/i }).click();
       await expect(page.getByRole("heading", { name: "Operación de Torreón" })).toBeVisible();
-      await expect(page.getByRole("heading", { name: "Locomotora en movimiento" })).toBeVisible();
+      await expect(page.getByRole("table")).toBeVisible();
       await expect(page.getByText("Una locomotora por ronda")).toHaveCount(0);
       await page.screenshot({
         path: testInfo.outputPath(`torreon-naturales-${theme}-${width}.png`),
@@ -38,7 +38,7 @@ for (const width of [1440, 390]) {
         .getByRole("group", { name: "Tipo de operación en Torreón" })
         .getByRole("button", { name: /Rondas naturales/ })
         .click();
-      await expect(page.getByRole("heading", { name: "Rondas naturales" })).toBeVisible();
+      await expect(page.locator("#torreon-natural-title")).toHaveText("Seguimiento de movimientos");
       expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(
         false,
       );

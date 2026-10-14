@@ -1,5 +1,10 @@
 export type RondaMovement = {
-  incidenteActivo?: { id: number; fechaInicio: string | null; estado: string; source: "torreon" | "cosaif" } | null;
+  incidenteActivo?: {
+    id: number;
+    fechaInicio: string | null;
+    estado: string;
+    source: "torreon" | "cosaif";
+  } | null;
   id?: number;
   idTecnico?: number | string | null;
   folioLocalidad?: number | null;
@@ -9,6 +14,7 @@ export type RondaMovement = {
   lavado?: boolean;
   torno?: boolean;
   estado?: string | null;
+  finalizado?: boolean | null;
   prioridad?: "BAJA" | "ALTA" | null;
   locomotiveNumber?: number | string | null;
   locomotora?: string | null;
