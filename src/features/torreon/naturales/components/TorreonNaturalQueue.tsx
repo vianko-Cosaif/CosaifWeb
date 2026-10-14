@@ -130,7 +130,7 @@ export default function TorreonNaturalQueue({
   useEffect(() => {
     if (!dispatch) return;
     let active = true;
-    void fetch(`/bff/usuarios?localidadId=${localidadId}`, {
+    void fetch(`/bff/torreon/cola/maquinistas?localidadId=${localidadId}`, {
       credentials: "include",
     })
       .then((r) => {
@@ -141,17 +141,14 @@ export default function TorreonNaturalQueue({
         const rows = Array.isArray(data) ? data : (data.data ?? data.usuarios ?? []);
         if (active)
           setOperators(
-            rows.filter(
-              (u: {
-                rol: string;
-                activo?: boolean;
-                localidadId?: number;
-                localidad?: { id: number };
-              }) =>
-                u.rol === "MAQUINISTA" &&
-                u.activo !== false &&
-                Number(u.localidadId ?? u.localidad?.id) === localidadId,
-            ),
+            rows
+              .filter(
+                (u: { id?: number; nombre?: string }) =>
+                  Number.isSafeInteger(Number(u.id)) &&
+                  Number(u.id) > 0 &&
+                  typeof u.nombre === "string",
+              )
+              .map((u: { id: number; nombre: string }) => ({ id: Number(u.id), nombre: u.nombre })),
           );
       })
       .catch(() => {

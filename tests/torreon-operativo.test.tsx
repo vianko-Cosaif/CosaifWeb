@@ -121,7 +121,7 @@ it("client can review 1–5 independent rows, including the distinct towing loco
 });
 it("raising several units keeps separate attention unless En conjunto is explicitly checked", async () => {
   const fetcher = vi.fn<(url: string, options?: RequestInit) => Promise<Response>>(async (url) =>
-    json(url.includes("/usuarios") ? [] : [unit(1), unit(2)]),
+    json(url.includes("/cola/maquinistas") ? [] : [unit(1), unit(2)]),
   );
   vi.stubGlobal("fetch", fetcher);
   render(<TorreonNaturalQueue localidadId={2} rol="SUPERVISOR" />);
@@ -477,3 +477,53 @@ it("requires independent departure and arrival poles despite legacy single pole 
   expect(payload).not.toHaveProperty("posicionChimenea");
   expect(payload).not.toHaveProperty("posicionCabina");
 });
+
+it.each(["SUPERVISOR", "COORDINADOR"])(
+  "%s can reassign a stopped movement and confirm its incident from the same operational view",
+  async (rol) => {
+    const stopped = {
+      ...unit(1),
+      estado: "DETENIDA",
+      movimientos: [{ ...unit(1).movimientos[0], estado: "DETENIDO" }],
+      incidentes: [
+        { id: 7, estado: "ABIERTO", motivo: "Impedimento", fechaInicio: "2026-10-14T12:00:00Z" },
+      ],
+    };
+    const fetcher = vi.fn<(url: string, options?: RequestInit) => Promise<Response>>(async (url) =>
+      json(
+        url.includes("/cola/maquinistas") ? [{ id: 8, nombre: "Maquinista de prueba" }] : [stopped],
+      ),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    render(<TorreonNaturalQueue localidadId={2} rol={rol} view="seguimiento" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Ver folio 101" }));
+    await screen.findByRole("option", { name: "Maquinista de prueba" });
+    fireEvent.change(screen.getByLabelText("Asignar unidad 1"), { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: "Asignar" }));
+    await waitFor(() =>
+      expect(fetcher).toHaveBeenCalledWith(
+        "/bff/torreon/cola/1/asignar",
+        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ operadorId: 8 }) }),
+      ),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Solución del incidente 7" }), {
+      target: { value: "Impedimento atendido" },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Confirmar solución" }).hasAttribute("disabled"),
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar solución" }));
+    await waitFor(() =>
+      expect(fetcher).toHaveBeenCalledWith(
+        "/bff/torreon/incidentes/7/resolver?tipo=NATURAL",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ solucion: "Impedimento atendido" }),
+        }),
+      ),
+    );
+    expect(fetcher.mock.calls.some(([url]) => String(url).startsWith("/bff/usuarios"))).toBe(false);
+  },
+);
