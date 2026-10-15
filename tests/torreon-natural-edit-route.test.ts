@@ -18,6 +18,8 @@ const movement = {
   id: 500,
   empresaId: 3,
   localidadId: 2,
+  clienteId: 7,
+  creadoPorId: 8,
   estado: "SOLICITADO",
   poloOrigen: "NORTE",
   poloDestino: "SUR",
@@ -187,3 +189,41 @@ it.each([null, 93])(
     expect(JSON.parse(mock.fetch.mock.calls.at(-1)![1].body)).toEqual(body);
   },
 );
+
+it("forwards allowed route and towing changes without derived scope fields", async () => {
+  const body = {
+    viaOrigenId: 8,
+    viaDestinoId: 10,
+    seccionDestinoId: null,
+    locomotoraRemolque: 9900,
+    tipoMovimiento: "REMOLCADA",
+    direccionEmpuje: "JALAR",
+  };
+  expect((await PATCH(request(body), context())).status).toBe(200);
+  expect(JSON.parse(mock.fetch.mock.calls.at(-1)![1].body)).toEqual(body);
+});
+it.each([{ fechaInicio: "2026-10-15T12:00:00Z" }, { unidad: { estado: "EN_PROCESO" } }])(
+  "rejects stale pending data after the unit started: %j",
+  async (patch) => {
+    mock.fetch.mockResolvedValue(Response.json({ ...movement, ...patch }));
+    expect((await PATCH(request({ instrucciones: "Cambio" }), context())).status).toBe(409);
+    expect(mock.fetch).toHaveBeenCalledTimes(1);
+  },
+);
+
+it("rejects editing or opening another client request in the same company", async () => {
+  mock.fetch.mockImplementation(async () =>
+    Response.json({ ...movement, clienteId: 9, creadoPorId: 10 }),
+  );
+  expect((await GET(request(), context())).status).toBe(403);
+  expect((await PATCH(request({ instrucciones: "Cambio ajeno" }), context())).status).toBe(403);
+  expect(mock.fetch.mock.calls.every(([, init]) => init.method === "GET")).toBe(true);
+});
+it("allows editing a request created by the signed user for another client", async () => {
+  mock.fetch.mockImplementation(async () =>
+    Response.json({ ...movement, clienteId: 9, creadoPorId: 7 }),
+  );
+  expect((await PATCH(request({ instrucciones: "Corregir mi solicitud" }), context())).status).toBe(
+    200,
+  );
+});

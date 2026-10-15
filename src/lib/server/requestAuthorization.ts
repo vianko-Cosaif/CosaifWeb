@@ -42,7 +42,8 @@ function requiredPermissions(pathname: string, method: string): Permission[] | n
   }
   if (path.includes("/rondas") || path.startsWith("/rondas")) {
     if (read) return [PERMISSIONS.ROUNDS_READ];
-    if (/\/(?:orden|intercambiar-movimientos|intercambiar-movimiento)$/.test(path)) return [PERMISSIONS.ROUNDS_EDIT];
+    if (/\/(?:orden|intercambiar-movimientos|intercambiar-movimiento)$/.test(path))
+      return [PERMISSIONS.ROUNDS_EDIT];
     if (method === "POST") return [PERMISSIONS.ROUNDS_CREATE, PERMISSIONS.ROUNDS_OPERATE];
     if (method === "DELETE") return [PERMISSIONS.ROUNDS_DELETE];
     return [PERMISSIONS.ROUNDS_EDIT, PERMISSIONS.ROUNDS_OPERATE];
@@ -65,7 +66,10 @@ function requiredPermissions(pathname: string, method: string): Permission[] | n
   }
   if (path.startsWith("/torno")) return [read ? PERMISSIONS.TORNO_READ : PERMISSIONS.TORNO_OPERATE];
   if (path.startsWith("/torreon")) {
-    if (!read && /^\/torreon\/movimientos\/\d+(?:\/edicion)?$/.test(path)) return [PERMISSIONS.MOVEMENTS_EDIT];
+    if (!read && /^\/torreon\/movimientos\/\d+\/cancelar$/.test(path))
+      return [PERMISSIONS.MOVEMENTS_CANCEL];
+    if (!read && /^\/torreon\/movimientos\/\d+(?:\/edicion)?$/.test(path))
+      return [PERMISSIONS.MOVEMENTS_EDIT];
     return read
       ? [PERMISSIONS.TORREON_READ]
       : [PERMISSIONS.TORREON_CREATE, PERMISSIONS.TORREON_OPERATE];

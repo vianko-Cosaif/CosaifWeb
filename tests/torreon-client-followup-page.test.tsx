@@ -3,6 +3,7 @@ import Page from "@/app/cliente/movimientos/page";
 import MovimientosPanel from "@/features/movimientos/list/MovimientosPanel";
 import TorreonNaturalQueue from "@/features/torreon/naturales/components/TorreonNaturalQueue";
 import { loginProfile } from "./fixtures/authorization";
+import { PERMISSIONS } from "@/lib/accessControl";
 
 const session = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/server/session", () => ({ getVerifiedSession: session }));
@@ -21,6 +22,7 @@ vi.mock("next/navigation", () => ({
 beforeEach(() => {
   session.mockResolvedValue({
     role: "CLIENTE",
+    userId: 7,
     empresaId: 3,
     localidadId: 2,
     authorization: loginProfile(),
@@ -35,6 +37,7 @@ it("opens current and past natural units for the Torreón client's Seguimiento",
     rol: "CLIENTE",
     view: "seguimiento",
     canCreateMovements: true,
+    clientActions: { userId: 7, empresaId: 3, canEdit: true, canCancel: true },
   });
 });
 
@@ -92,4 +95,25 @@ it("preserves the Arrastre route", async () => {
   await expect(Page({ searchParams: Promise.resolve({}) })).rejects.toThrow(
     "redirect:/cliente/torreon/movimientos",
   );
+});
+
+it("derives edit and cancel independently from the signed permission set", async () => {
+  const authorization = loginProfile();
+  authorization.permissions = authorization.permissions.filter(
+    (permission) => permission !== PERMISSIONS.MOVEMENTS_EDIT,
+  );
+  session.mockResolvedValue({
+    role: "CLIENTE",
+    userId: 7,
+    empresaId: 3,
+    localidadId: 2,
+    authorization,
+  });
+  const page = await Page({ searchParams: Promise.resolve({}) });
+  expect(page.props.clientActions).toEqual({
+    userId: 7,
+    empresaId: 3,
+    canEdit: false,
+    canCancel: true,
+  });
 });

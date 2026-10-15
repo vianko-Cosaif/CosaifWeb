@@ -1,4 +1,5 @@
 "use client";
+import type { NaturalClientActions } from "@/features/torreon/naturales/clientActions";
 import TorreonNaturalQueue from "@/features/torreon/naturales/components/TorreonNaturalQueue";
 import TornoMeasuresDialog from "@/features/torno-measures/TornoMeasuresDialog";
 
@@ -91,12 +92,14 @@ export default function RailQueueBoard({
   empresaId,
   role,
   canCreateMovements = false,
+  naturalClientActions,
   autoMs = 120_000,
 }: {
   localidadId: number;
   empresaId?: number | null;
   role?: string | null;
   canCreateMovements?: boolean;
+  naturalClientActions?: NaturalClientActions;
   autoMs?: number;
 }) {
   const sharedLocality = role === "CLIENTE";
@@ -286,6 +289,7 @@ export default function RailQueueBoard({
       <TorreonNaturalQueue
         localidadId={Number(localidadId)}
         rol={role ?? "CLIENTE"}
+        clientActions={naturalClientActions}
         canCreateMovements={canCreateMovements}
       />
     );

@@ -1,4 +1,6 @@
 "use client";
+import Link from "next/link";
+import { naturalClientActions, type NaturalClientActions } from "../clientActions";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
@@ -51,6 +53,8 @@ type Props = {
   busy: boolean;
   mutate: (path: string, body: unknown) => Promise<void>;
   onHistory: (id: number) => void;
+  clientActions?: NaturalClientActions;
+  onCancel?: (unit: QueueUnit, movement: QueueMovement) => void;
 };
 type TableRow = {
   unit: QueueUnit;
@@ -74,6 +78,8 @@ export default function NaturalQueueTable({
   busy,
   mutate,
   onHistory,
+  clientActions,
+  onCancel,
 }: Props) {
   const tableRef = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState(1);
@@ -503,6 +509,43 @@ export default function NaturalQueueTable({
       render: (_, row) => cells.detalle(row),
     },
   );
+  if (clientActions && (clientActions.canEdit || clientActions.canCancel))
+    columns.push({
+      title: "Acciones",
+      key: "acciones",
+      width: 170,
+      fixed: "right",
+      render: (_, { unit, movement }) => {
+        const actions = naturalClientActions(unit, movement, clientActions);
+        return (
+          <div className="flex flex-col items-start gap-2">
+            {actions.canEdit && (
+              <Link
+                href={`/cliente/editar?id=${movement.id}&source=torreon`}
+                aria-label={`Editar movimiento ${movement.id}`}
+                className={s.textButton}
+              >
+                Editar
+              </Link>
+            )}
+            {actions.canCancel && onCancel && (
+              <button
+                type="button"
+                disabled={busy}
+                aria-label={`Cancelar movimiento ${movement.id}`}
+                onClick={() => onCancel(unit, movement)}
+                className="rounded-lg px-2 py-1 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50 dark:text-rose-300 dark:hover:bg-rose-950/30"
+              >
+                Cancelar
+              </button>
+            )}
+            {!actions.canEdit && !actions.canCancel && (
+              <span className={s.muted}>Sólo lectura</span>
+            )}
+          </div>
+        );
+      },
+    });
   const renderDetail = ({ unit, movement }: TableRow) => {
     const incidents = movementIncidents(unit, movement);
     return (

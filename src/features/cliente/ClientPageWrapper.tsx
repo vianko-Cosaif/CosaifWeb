@@ -1,4 +1,5 @@
 "use client";
+import type { NaturalClientActions } from "@/features/torreon/naturales/clientActions";
 import React, { Suspense, lazy } from "react";
 import SelectLocalidad from "@/features/cliente/components/SelectLocalidad";
 import { getRoleCapabilities } from "@/lib/accessControl";
@@ -8,6 +9,7 @@ interface ClientPageWrapperProps {
   empresaId: number | null;
   role?: string | null;
   canCreateMovements?: boolean;
+  naturalClientActions?: NaturalClientActions;
 }
 
 /* ================= Componentes de UI ================= */
@@ -89,6 +91,7 @@ export default function ClientPageWrapper({
   empresaId,
   role,
   canCreateMovements = false,
+  naturalClientActions,
 }: ClientPageWrapperProps) {
   const capabilities = React.useMemo(() => getRoleCapabilities(role), [role]);
   // Preload del componente cuando el wrapper se monta
@@ -108,6 +111,7 @@ export default function ClientPageWrapper({
                 localidadId={localidadId}
                 empresaId={empresaId}
                 role={role}
+                naturalClientActions={naturalClientActions}
                 canCreateMovements={canCreateMovements}
               />
             </Suspense>

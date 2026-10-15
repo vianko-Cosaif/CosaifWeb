@@ -39,6 +39,21 @@ for (const width of [1440, 390]) {
         .getByRole("button", { name: /Rondas naturales/ })
         .click();
       await expect(page.locator("#torreon-natural-title")).toHaveText("Seguimiento de movimientos");
+      await expect(page.locator("tr[data-row-key='700']")).toBeVisible();
+      const pageSizeControls = page.locator(".ant-pagination-options-size-changer");
+      if (width >= 768) await expect(pageSizeControls.getByRole("combobox").first()).toBeVisible();
+      // Ant Design synchronizes its theme after mounting the pagination control.
+      // Audit the final colors after the real CSS transition, not an intermediate frame.
+      await pageSizeControls.evaluateAll(async (controls) => {
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
+        await Promise.allSettled(
+          controls.flatMap((control) =>
+            control.getAnimations({ subtree: true }).map((animation) => animation.finished),
+          ),
+        );
+      });
       expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(
         false,
       );

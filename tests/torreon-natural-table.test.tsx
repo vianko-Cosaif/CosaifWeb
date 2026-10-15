@@ -768,3 +768,173 @@ it("does not infer either route pole from the legacy single value", async () => 
   expect(within(table).queryByText("Norte")).toBeNull();
   expect(within(table).queryByText("Sur")).toBeNull();
 });
+
+const clientActions = { userId: 89, empresaId: 3, canEdit: true, canCancel: true };
+it("shows edit and cancel per owned pending member, preserving other-company and started rows", async () => {
+  const own = movement(501, 7620);
+  const colleague = { ...movement(502, 7621), clienteId: 90, creadoPorId: 91 };
+  const foreign = { ...movement(503, 7622), empresaId: 4 };
+  const started = { ...movement(504, 7623), estado: "EN_PROCESO", fechaInicio: requestedAt };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      json([
+        unit(71, 1, [own, colleague, foreign]),
+        { ...unit(72, 2, [started]), estado: "EN_PROCESO" },
+      ]),
+    ),
+  );
+  render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" clientActions={clientActions} />);
+  expect(
+    (await screen.findByRole("link", { name: "Editar movimiento 501" })).getAttribute("href"),
+  ).toBe("/cliente/editar?id=501&source=torreon");
+  expect(screen.queryByRole("link", { name: "Editar movimiento 502" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Cancelar movimiento 501" })).toBeTruthy();
+  for (const id of [503, 504])
+    expect(screen.queryByRole("link", { name: `Editar movimiento ${id}` })).toBeNull();
+  for (const id of [502, 503, 504])
+    expect(screen.queryByRole("button", { name: `Cancelar movimiento ${id}` })).toBeNull();
+});
+it("cancels only one group member after a reason and refreshes the remaining queue", async () => {
+  const first = movement(501, 7620),
+    second = movement(502, 7621);
+  let cancelled = false;
+  const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+    if (init?.method === "PATCH") {
+      cancelled = true;
+      return json({ id: 501, estado: "CANCELADO" });
+    }
+    return json([
+      unit(71, 1, cancelled ? [{ ...first, estado: "CANCELADO" }, second] : [first, second]),
+    ]);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" clientActions={clientActions} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Cancelar movimiento 501" }));
+  const dialog = screen.getByRole("dialog", { name: "Cancelar solicitud #501" });
+  expect(within(dialog).getByText(/únicamente esta solicitud/)).toBeTruthy();
+  expect(within(dialog).getByRole("button", { name: "Confirmar cancelación" })).toHaveProperty(
+    "disabled",
+    true,
+  );
+  fireEvent.change(within(dialog).getByLabelText("Motivo de cancelación"), {
+    target: { value: "  Solicitud duplicada  " },
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Confirmar cancelación" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(fetcher).toHaveBeenCalledWith(
+    "/api/cliente/torreon/movimientos/501/cancelar",
+    expect.objectContaining({
+      method: "PATCH",
+      body: JSON.stringify({ razon: "Solicitud duplicada" }),
+    }),
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Cancelar movimiento 501" })).toBeNull(),
+  );
+  expect(screen.queryByRole("link", { name: "Editar movimiento 501" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Ver folio 501" })).toBeNull();
+  expect(screen.queryByText("Cancelado")).toBeNull();
+  expect(screen.getByRole("button", { name: "Ver folio 502" })).toBeTruthy();
+  expect(screen.getByRole("status").textContent).toContain("Solicitud #501 cancelada");
+});
+it("keeps a failed cancellation open and preserves the movement when the server rejects stale state", async () => {
+  const fetcher = vi.fn(async (_url: string, init?: RequestInit) =>
+    init?.method === "PATCH"
+      ? new Response(JSON.stringify({ message: "La operación ya inició." }), {
+          status: 409,
+          headers: { "content-type": "application/json" },
+        })
+      : json([unit(71, 1, [movement(501, 7620)])]),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" clientActions={clientActions} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Cancelar movimiento 501" }));
+  fireEvent.change(screen.getByLabelText("Motivo de cancelación"), {
+    target: { value: "Cambio de programación" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar cancelación" }));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "La operación ya inició.");
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Conservar solicitud" }));
+  expect(screen.getByRole("button", { name: "Ver folio 501" })).toBeTruthy();
+});
+it.each([
+  ["CLIENTE", { ...clientActions, canEdit: false, canCancel: false }],
+  ["COORDINADOR", clientActions],
+  ["CLIENTE", undefined],
+] as const)(
+  "does not introduce client actions without signed authorization for %s",
+  async (role, actions) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => json([unit(71, 1, [movement(501, 7620)])])),
+    );
+    render(<TorreonNaturalQueue localidadId={2} rol={role} clientActions={actions} />);
+    await screen.findByRole("table");
+    expect(screen.queryByRole("link", { name: "Editar movimiento 501" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancelar movimiento 501" })).toBeNull();
+  },
+);
+
+it("hides cancelled members only from the active client projection while retaining the original audit target", async () => {
+  const cancelled = { ...movement(501, 7620), estado: "CANCELADO" };
+  const sibling = movement(502, 7621);
+  const original = unit(71, 1, [cancelled, sibling]);
+  const fetcher = vi.fn(async (url: string) =>
+    url.endsWith("/71/historial")
+      ? json([
+          {
+            id: 91,
+            unidadId: 71,
+            movimientoId: 501,
+            accion: "CANCELAR_SOLICITUD",
+            usuarioId: 89,
+            rol: "CLIENTE",
+            fecha: requestedAt,
+          },
+        ])
+      : json([original]),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" clientActions={clientActions} />);
+  await screen.findByRole("button", { name: "Ver folio 502" });
+  expect(screen.queryByRole("button", { name: "Ver folio 501" })).toBeNull();
+  expect(movementRows()).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Ver detalle del movimiento 502" }));
+  fireEvent.click(screen.getByRole("button", { name: "Ver historial de operación" }));
+  const audit = await screen.findByRole("dialog", {
+    name: "Historial de operación · Conjunto #71",
+  });
+  expect(await within(audit).findByText("Locomotora 7620 · Solicitud #501")).toBeTruthy();
+  expect(original.movimientos).toEqual([cancelled, sibling]);
+  expect(fetcher).toHaveBeenCalledWith("/bff/torreon/cola/71/historial", expect.anything());
+});
+it("removes a successfully cancelled request immediately even if reloading the queue fails", async () => {
+  let cancelled = false;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "PATCH") {
+        cancelled = true;
+        return json({ id: 501, estado: "CANCELADO" });
+      }
+      if (cancelled)
+        return new Response(JSON.stringify({ message: "No se pudo actualizar la lista." }), {
+          status: 503,
+        });
+      return json([unit(71, 1, [movement(501, 7620), movement(502, 7621)])]);
+    }),
+  );
+  render(<TorreonNaturalQueue localidadId={2} rol="CLIENTE" clientActions={clientActions} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Cancelar movimiento 501" }));
+  fireEvent.change(screen.getByLabelText("Motivo de cancelación"), {
+    target: { value: "Solicitud duplicada" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar cancelación" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(screen.queryByRole("button", { name: "Ver folio 501" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Ver folio 502" })).toBeTruthy();
+  await screen.findByRole("alert");
+  expect(screen.getByRole("alert").textContent).toContain("No se pudo actualizar la lista.");
+});

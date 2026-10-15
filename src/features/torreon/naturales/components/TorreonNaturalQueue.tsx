@@ -19,6 +19,8 @@ import {
 import Modal from "@/components/ui/Modal";
 import { useRealtimeBoardRefresh } from "@/features/rail-queue/useRealtimeBoardRefresh";
 import { isTorreonNaturalEvent } from "@/features/torreon/realtime";
+import CancelNaturalMovementModal from "./CancelNaturalMovementModal";
+import { naturalClientActions, type NaturalClientActions } from "../clientActions";
 import NaturalQueueTable from "./NaturalQueueTable";
 import {
   dateLabel,
@@ -26,6 +28,7 @@ import {
   queueUnitLabel,
   type QueueAudit,
   type QueueUnit,
+  type QueueMovement,
 } from "../queueView";
 import { auditEventView, uniqueAuditEvents } from "../auditView";
 import s from "./naturalQueue.module.scss";
@@ -48,11 +51,13 @@ export default function TorreonNaturalQueue({
   rol = "CLIENTE",
   view = "inicio",
   canCreateMovements = false,
+  clientActions,
 }: {
   localidadId: number;
   rol?: string;
   view?: "inicio" | "seguimiento";
   canCreateMovements?: boolean;
+  clientActions?: NaturalClientActions;
 }) {
   const dispatch = ["COORDINADOR", "SUPERVISOR", "ADMINISTRADOR"].includes(rol);
   const isClient = ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"].includes(rol);
@@ -70,6 +75,11 @@ export default function TorreonNaturalQueue({
   const [dateTo, setDateTo] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [canceling, setCanceling] = useState<{ unit: QueueUnit; movement: QueueMovement } | null>(
+    null,
+  );
+  const [cancelError, setCancelError] = useState("");
+  const [confirmation, setConfirmation] = useState("");
   const [loading, setLoading] = useState(true);
   const [operators, setOperators] = useState<{ id: number; nombre: string }[]>([]);
   const [audit, setAudit] = useState<{
@@ -171,6 +181,52 @@ export default function TorreonNaturalQueue({
       setBusy(false);
     }
   };
+  const confirmCancel = async (razon: string) => {
+    if (!canceling || busy) return;
+    const unit = units.find((item) => item.id === canceling.unit.id);
+    const movement = unit?.movimientos.find((item) => item.id === canceling.movement.id);
+    if (!unit || !movement || !naturalClientActions(unit, movement, clientActions).canCancel) {
+      setCancelError("La solicitud cambió de estado y ya no puede cancelarse. Actualiza la lista.");
+      return;
+    }
+    setBusy(true);
+    setCancelError("");
+    try {
+      const response = await fetch(`/api/cliente/torreon/movimientos/${movement.id}/cancelar`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ razon }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok)
+        throw new Error(data.message ?? data.error ?? "No se pudo cancelar la solicitud.");
+      setUnits((current) =>
+        current.map((item) =>
+          item.id === unit.id
+            ? {
+                ...item,
+                movimientos: item.movimientos.map((member) =>
+                  member.id === movement.id ? { ...member, estado: "CANCELADO" } : member,
+                ),
+              }
+            : item,
+        ),
+      );
+      setCanceling(null);
+      setConfirmation(
+        `Solicitud #${movement.id} cancelada. No se ejecutará y se retiró de la fila activa.`,
+      );
+      await load();
+    } catch (reason) {
+      setCancelError(
+        reason instanceof Error ? reason.message : "No se pudo cancelar la solicitud.",
+      );
+      void load();
+    } finally {
+      setBusy(false);
+    }
+  };
   const openAudit = async (unitId: number) => {
     const sequence = ++auditSequence.current;
     setAudit({ unitId, entries: [], loading: true, error: "" });
@@ -193,28 +249,39 @@ export default function TorreonNaturalQueue({
         });
     }
   };
+  // Keep the original units for history/audit while excluding cancelled requests from the client's active queue.
+  const displayUnits = useMemo(() => {
+    if (!isClient || history) return units;
+    return units
+      .map((unit) => ({
+        ...unit,
+        totalIntegrantes: unit.totalIntegrantes ?? unit.movimientos.length,
+        movimientos: unit.movimientos.filter((movement) => movement.estado !== "CANCELADO"),
+      }))
+      .filter((unit) => unit.movimientos.length > 0);
+  }, [units, isClient, history]);
   const visible = useMemo(
     () =>
       filterQueue(
-        units,
+        displayUnits,
         search,
         state,
         coordinator,
         view === "seguimiento" ? { field: dateField, from: dateFrom, to: dateTo } : undefined,
       ),
-    [units, search, state, coordinator, view, dateField, dateFrom, dateTo],
+    [displayUnits, search, state, coordinator, view, dateField, dateFrom, dateTo],
   );
-  const movementsCount = units.reduce((total, unit) => total + unit.movimientos.length, 0);
+  const movementsCount = displayUnits.reduce((total, unit) => total + unit.movimientos.length, 0);
   const visibleCount = visible.reduce((total, unit) => total + unit.movimientos.length, 0);
   const coordinatorOptions = useMemo(() => {
     const options = new Map<number, string>();
-    for (const unit of units)
+    for (const unit of displayUnits)
       for (const movement of unit.movimientos) {
         const id = movement.coordinadorId ?? movement.coordinador?.id;
         if (id) options.set(id, movement.coordinador?.nombre ?? `Coordinador #${id}`);
       }
     return [...options].sort((a, b) => a[1].localeCompare(b[1], "es"));
-  }, [units]);
+  }, [displayUnits]);
   const names = useMemo(() => {
     const result = new Map<number, string>();
     for (const unit of units)
@@ -251,7 +318,7 @@ export default function TorreonNaturalQueue({
     setSelected([]);
   };
   const countMovements = (status: string) =>
-    units.reduce(
+    displayUnits.reduce(
       (total, unit) => total + (unit.estado === status ? unit.movimientos.length : 0),
       0,
     );
@@ -557,6 +624,27 @@ export default function TorreonNaturalQueue({
           </div>
         )}
       </div>
+      {confirmation && (
+        <p
+          role="status"
+          className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200"
+        >
+          {confirmation}
+        </p>
+      )}
+      {canceling && (
+        <CancelNaturalMovementModal
+          key={canceling.movement.id}
+          movement={canceling.movement}
+          grouped={canceling.unit.modalidad === "CONJUNTO"}
+          busy={busy}
+          error={cancelError}
+          onClose={() => {
+            if (!busy) setCanceling(null);
+          }}
+          onConfirm={(reason) => void confirmCancel(reason)}
+        />
+      )}
       {dateError && (
         <p role="alert" className={s.error} id="torreon-date-error">
           {dateError}
@@ -665,6 +753,12 @@ export default function TorreonNaturalQueue({
       ) : (
         <NaturalQueueTable
           units={visible}
+          clientActions={isClient ? clientActions : undefined}
+          onCancel={(unit, movement) => {
+            setCancelError("");
+            setConfirmation("");
+            setCanceling({ unit, movement });
+          }}
           followUp={view === "seguimiento"}
           paginationKey={JSON.stringify([
             localidadId,

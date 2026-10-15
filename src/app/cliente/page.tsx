@@ -40,6 +40,16 @@ export default async function Page({ searchParams }: { searchParams: Promise<SP>
           localidadId={effectiveLocalidadId}
           empresaId={empresaId}
           role={role}
+          naturalClientActions={
+            session.empresaId
+              ? {
+                  userId: session.userId,
+                  empresaId: session.empresaId,
+                  canEdit: hasPermission(session.authorization, PERMISSIONS.MOVEMENTS_EDIT),
+                  canCancel: hasPermission(session.authorization, PERMISSIONS.MOVEMENTS_CANCEL),
+                }
+              : undefined
+          }
           canCreateMovements={hasPermission(session.authorization, PERMISSIONS.MOVEMENTS_CREATE)}
         />
       </Suspense>
