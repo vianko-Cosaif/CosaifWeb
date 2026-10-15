@@ -14,15 +14,7 @@ export async function PATCH(request: NextRequest, context: Context) {
   try {
     const result = await scopedMovement(context, PERMISSIONS.MOVEMENTS_CANCEL);
     if (result.error) return result.error;
-    const { movement, session } = result;
-    if (
-      Number(movement.clienteId) !== session.userId &&
-      Number(movement.creadoPorId) !== session.userId
-    )
-      return NextResponse.json(
-        { message: "Sólo puedes cancelar las solicitudes que creaste o solicitaste." },
-        { status: 403 },
-      );
+    const { movement } = result;
     const body = record(await request.json().catch(() => null));
     const razon = typeof body.razon === "string" ? body.razon.trim() : "";
     if (Object.keys(body).some((key) => key !== "razon") || !razon || razon.length > 1000)
@@ -31,13 +23,12 @@ export async function PATCH(request: NextRequest, context: Context) {
         { status: 400 },
       );
     if (
-      movement.estado !== "CANCELADO" &&
-      (!["SOLICITADO", "ASIGNADO"].includes(String(movement.estado)) ||
-        movement.fechaInicio ||
-        (record(movement.unidad).estado && record(movement.unidad).estado !== "PENDIENTE"))
+      !["SOLICITADO", "ASIGNADO"].includes(String(movement.estado)) ||
+      movement.fechaInicio ||
+      (record(movement.unidad).estado && record(movement.unidad).estado !== "PENDIENTE")
     )
       return NextResponse.json(
-        { message: "Este movimiento ya inició y no se puede cancelar." },
+        { message: "Este movimiento ya no admite cancelación." },
         { status: 409 },
       );
     const data = await gatewayMovement(result.id, result.gateway, { razon }, "/cancelar");

@@ -133,9 +133,10 @@ it("requires both the verified session and its JWT", async () => {
   expect((await PATCH(request(), context())).status).toBe(401);
   expect(mock.fetch).not.toHaveBeenCalled();
 });
-it("allows safe idempotent cancellation through the backend", async () => {
+it("rejects already-cancelled requests without sending another write", async () => {
   mock.fetch.mockImplementation(async () =>
     Response.json({ ...movement, estado: "CANCELADO", unidad: { estado: "CANCELADA" } }),
   );
-  expect((await PATCH(request(), context())).status).toBe(200);
+  expect((await PATCH(request(), context())).status).toBe(409);
+  expect(mock.fetch).toHaveBeenCalledTimes(1);
 });

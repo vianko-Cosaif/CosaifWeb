@@ -12,6 +12,11 @@ export function naturalClientActions(
   movement: QueueMovement,
   client?: NaturalClientActions,
 ) {
+  const ownsRequest = Boolean(
+    client &&
+    client.userId > 0 &&
+    (movement.clienteId === client.userId || movement.creadoPorId === client.userId),
+  );
   const pending = Boolean(
     client &&
     client.empresaId === movement.empresaId &&
@@ -21,10 +26,7 @@ export function naturalClientActions(
     !unit.fechaInicio,
   );
   return {
-    canEdit: pending && Boolean(client?.canEdit),
-    canCancel:
-      pending &&
-      Boolean(client?.canCancel) &&
-      (movement.clienteId === client?.userId || movement.creadoPorId === client?.userId),
+    canEdit: pending && ownsRequest && Boolean(client?.canEdit),
+    canCancel: pending && Boolean(client?.canCancel) && ownsRequest,
   };
 }

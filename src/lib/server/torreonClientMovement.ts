@@ -111,6 +111,17 @@ export async function scopedMovement(context: Context, permission: Permission) {
       ),
     };
   }
+  if (
+    Number(movement.clienteId) !== session.userId &&
+    Number(movement.creadoPorId) !== session.userId
+  ) {
+    return {
+      error: NextResponse.json(
+        { message: "Sólo puedes modificar las solicitudes que creaste o solicitaste." },
+        { status: 403 },
+      ),
+    };
+  }
   return { id, movement, gateway, session };
 }
 

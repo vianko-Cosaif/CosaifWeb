@@ -18,6 +18,7 @@ const profiles = {
   },
   // Append profiles so existing synthetic session IDs remain stable.
   cliente_torreon_acciones: structuredClone(fixtureProfiles.cliente_torreon),
+  cliente_gdl_regresion: structuredClone(fixtureProfiles.cliente),
 };
 
 const json = (response, status, body) => {
@@ -85,7 +86,7 @@ const clientActionsFields = new Set([
   "locomotoraRemolque",
 ]);
 function initialClientActionMovements() {
-  return [1700, 1701, 1702, 1703, 1704].map((id) => ({
+  return [1700, 1701, 1702, 1703, 1704, 1705, 1706, 1707].map((id) => ({
     ...naturalMovements[1],
     id,
     empresaId: id === 1704 ? 4 : 3,
@@ -93,10 +94,17 @@ function initialClientActionMovements() {
     clienteId: id === 1703 ? 999 : user(clientActionsKey).id,
     creadoPorId: id === 1703 ? 999 : user(clientActionsKey).id,
     locomotiveNumber: id + 4000,
-    estado: id === 1700 ? "EN_PROCESO" : id === 1702 ? "ASIGNADO" : "SOLICITADO",
-    fechaInicio: id === 1700 ? "2026-10-15T12:30:00Z" : null,
+    estado:
+      {
+        1700: "EN_PROCESO",
+        1702: "ASIGNADO",
+        1705: "DETENIDO",
+        1706: "CONCLUIDO",
+        1707: "CANCELADO",
+      }[id] ?? "SOLICITADO",
+    fechaInicio: [1700, 1705, 1706].includes(id) ? "2026-10-15T12:30:00Z" : null,
     fechaSolicitud: "2026-10-15T12:00:00Z",
-    fechaFin: null,
+    fechaFin: [1706, 1707].includes(id) ? "2026-10-15T13:00:00Z" : null,
     viaOrigenId: 21,
     viaDestinoId: 22,
     seccionOrigenId: 2101,
@@ -115,7 +123,7 @@ function initialClientActionMovements() {
 }
 let clientActionMovements = initialClientActionMovements();
 function clientActionUnits() {
-  return [[1700], [1701, 1702], [1703], [1704]].map((ids, index) => {
+  return [[1700], [1701, 1702], [1703], [1704], [1705], [1706], [1707]].map((ids, index) => {
     const members = clientActionMovements.filter((movement) => ids.includes(movement.id));
     const terminal = members.every((movement) =>
       ["CANCELADO", "CONCLUIDO"].includes(movement.estado),
@@ -125,16 +133,25 @@ function clientActionUnits() {
       localidadId: 2,
       modalidad: ids.length > 1 ? "CONJUNTO" : "INDIVIDUAL",
       posicion: index + 1,
-      estado: terminal ? "CANCELADA" : index === 0 ? "EN_PROCESO" : "PENDIENTE",
+      estado: terminal
+        ? members.every((movement) => movement.estado === "CANCELADO")
+          ? "CANCELADA"
+          : "CONCLUIDA"
+        : members.some((movement) => movement.estado === "DETENIDO")
+          ? "DETENIDA"
+          : members.some((movement) => movement.estado === "EN_PROCESO")
+            ? "EN_PROCESO"
+            : "PENDIENTE",
       operadorId: 17,
       operador: { id: 17, nombre: "Maquinista de prueba" },
       disponible: !terminal,
       ordenManual: index,
       fechaRecepcion: "2026-10-15T12:00:00Z",
-      fechaInicio: index === 0 ? "2026-10-15T12:30:00Z" : null,
+      fechaInicio: members.find((movement) => movement.fechaInicio)?.fechaInicio ?? null,
       fechaFin: terminal ? "2026-10-15T13:00:00Z" : null,
       incidentes: [],
-      // Match production: cancelled members stay visible until their unit closes.
+      // Production retains members for audit even while their group is pending.
+      // The client UI must hide cancelled members from its active queue.
       movimientos: members,
     };
   });
@@ -194,11 +211,11 @@ const server = createServer(async (request, response) => {
         const input = await inputJson(request);
         if (movement.empresaId !== 3)
           return json(response, 403, { message: "Solicitud fuera de la empresa" });
+        if (![movement.clienteId, movement.creadoPorId].includes(user(key).id))
+          return json(response, 403, { message: "Sólo puedes modificar solicitudes propias" });
         if (!["SOLICITADO", "ASIGNADO"].includes(movement.estado) || movement.fechaInicio)
           return json(response, 409, { message: "El movimiento ya inició" });
         if (match[2]) {
-          if (![movement.clienteId, movement.creadoPorId].includes(user(key).id))
-            return json(response, 403, { message: "Sólo puedes cancelar solicitudes propias" });
           if (
             Object.keys(input).some((key) => key !== "razon") ||
             typeof input.razon !== "string" ||

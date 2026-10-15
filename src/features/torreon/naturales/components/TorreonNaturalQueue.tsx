@@ -201,9 +201,21 @@ export default function TorreonNaturalQueue({
       const data = await response.json().catch(() => ({}));
       if (!response.ok)
         throw new Error(data.message ?? data.error ?? "No se pudo cancelar la solicitud.");
+      setUnits((current) =>
+        current.map((item) =>
+          item.id === unit.id
+            ? {
+                ...item,
+                movimientos: item.movimientos.map((member) =>
+                  member.id === movement.id ? { ...member, estado: "CANCELADO" } : member,
+                ),
+              }
+            : item,
+        ),
+      );
       setCanceling(null);
       setConfirmation(
-        `Solicitud #${movement.id} cancelada. No se ejecutará.${unit.modalidad === "CONJUNTO" ? " Seguirá visible en el conjunto hasta su cierre." : " Puedes consultarla en el historial."}`,
+        `Solicitud #${movement.id} cancelada. No se ejecutará y se retiró de la fila activa.`,
       );
       await load();
     } catch (reason) {
@@ -237,28 +249,39 @@ export default function TorreonNaturalQueue({
         });
     }
   };
+  // Keep the original units for history/audit while excluding cancelled requests from the client's active queue.
+  const displayUnits = useMemo(() => {
+    if (!isClient || history) return units;
+    return units
+      .map((unit) => ({
+        ...unit,
+        totalIntegrantes: unit.totalIntegrantes ?? unit.movimientos.length,
+        movimientos: unit.movimientos.filter((movement) => movement.estado !== "CANCELADO"),
+      }))
+      .filter((unit) => unit.movimientos.length > 0);
+  }, [units, isClient, history]);
   const visible = useMemo(
     () =>
       filterQueue(
-        units,
+        displayUnits,
         search,
         state,
         coordinator,
         view === "seguimiento" ? { field: dateField, from: dateFrom, to: dateTo } : undefined,
       ),
-    [units, search, state, coordinator, view, dateField, dateFrom, dateTo],
+    [displayUnits, search, state, coordinator, view, dateField, dateFrom, dateTo],
   );
-  const movementsCount = units.reduce((total, unit) => total + unit.movimientos.length, 0);
+  const movementsCount = displayUnits.reduce((total, unit) => total + unit.movimientos.length, 0);
   const visibleCount = visible.reduce((total, unit) => total + unit.movimientos.length, 0);
   const coordinatorOptions = useMemo(() => {
     const options = new Map<number, string>();
-    for (const unit of units)
+    for (const unit of displayUnits)
       for (const movement of unit.movimientos) {
         const id = movement.coordinadorId ?? movement.coordinador?.id;
         if (id) options.set(id, movement.coordinador?.nombre ?? `Coordinador #${id}`);
       }
     return [...options].sort((a, b) => a[1].localeCompare(b[1], "es"));
-  }, [units]);
+  }, [displayUnits]);
   const names = useMemo(() => {
     const result = new Map<number, string>();
     for (const unit of units)
@@ -295,7 +318,7 @@ export default function TorreonNaturalQueue({
     setSelected([]);
   };
   const countMovements = (status: string) =>
-    units.reduce(
+    displayUnits.reduce(
       (total, unit) => total + (unit.estado === status ? unit.movimientos.length : 0),
       0,
     );
