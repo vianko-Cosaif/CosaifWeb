@@ -8,7 +8,7 @@
     "cert:lan": "node scripts/create-lan-cert.mjs",
     "pwa:urls": "node scripts/print-pwa-urls.mjs",
     "dev:https:lan": "npm run cert:lan && next dev -p 3012 -H 0.0.0.0 --experimental-https --experimental-https-key certificates/cosaif-lan-key.pem --experimental-https-cert certificates/cosaif-lan.pem",
-    "build": "node scripts/check-production-styles.mjs --config-only && next build --webpack && node scripts/check-production-styles.mjs",
+    "build": "node scripts/check-firebase-config.mjs && node scripts/check-production-styles.mjs --config-only && next build --webpack && node scripts/check-production-styles.mjs",
     "build:quality": "node scripts/build-quality.mjs",
     "start": "next start -p 3012",
     "start:local": "node scripts/start-local.mjs",
