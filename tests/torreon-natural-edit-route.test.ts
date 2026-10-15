@@ -187,3 +187,24 @@ it.each([null, 93])(
     expect(JSON.parse(mock.fetch.mock.calls.at(-1)![1].body)).toEqual(body);
   },
 );
+
+it("forwards allowed route and towing changes without derived scope fields", async () => {
+  const body = {
+    viaOrigenId: 8,
+    viaDestinoId: 10,
+    seccionDestinoId: null,
+    locomotoraRemolque: 9900,
+    tipoMovimiento: "REMOLCADA",
+    direccionEmpuje: "JALAR",
+  };
+  expect((await PATCH(request(body), context())).status).toBe(200);
+  expect(JSON.parse(mock.fetch.mock.calls.at(-1)![1].body)).toEqual(body);
+});
+it.each([{ fechaInicio: "2026-10-15T12:00:00Z" }, { unidad: { estado: "EN_PROCESO" } }])(
+  "rejects stale pending data after the unit started: %j",
+  async (patch) => {
+    mock.fetch.mockResolvedValue(Response.json({ ...movement, ...patch }));
+    expect((await PATCH(request({ instrucciones: "Cambio" }), context())).status).toBe(409);
+    expect(mock.fetch).toHaveBeenCalledTimes(1);
+  },
+);

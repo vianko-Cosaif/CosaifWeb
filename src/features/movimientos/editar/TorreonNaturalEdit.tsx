@@ -4,12 +4,16 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, TrainFront } from "lucide-react";
-import { SECC_BASE } from "@/features/movimientos/movimientos.shared";
+import { API_BASE, SECC_BASE } from "@/features/movimientos/movimientos.shared";
 import { sectionPositionLabel } from "@/features/torreon/naturales/queueView";
 
 type Movement = {
   id: number;
   estado: string;
+  localidadId?: number;
+  fechaInicio?: string | null;
+  unidad?: { estado: string; fechaInicio?: string | null } | null;
+  locomotoraRemolque?: number | null;
   locomotiveNumber: number;
   prioridad: "BAJA" | "ALTA";
   tipoMovimiento: "MD_TRABAJANDO" | "REMOLCADA" | null;
@@ -40,6 +44,10 @@ function editFields(movement: Movement) {
   return {
     locomotiveNumber: Number(movement.locomotiveNumber),
     prioridad: movement.prioridad,
+    viaOrigenId: movement.viaOrigenId || null,
+    viaDestinoId: movement.viaDestinoId || null,
+    locomotoraRemolque:
+      movement.tipoMovimiento === "REMOLCADA" ? movement.locomotoraRemolque || null : null,
     tipoMovimiento: movement.tipoMovimiento || "MD_TRABAJANDO",
     instrucciones: movement.instrucciones?.trim() || null,
     poloOrigen: movement.poloOrigen || null,
@@ -64,6 +72,10 @@ export default function TorreonNaturalEdit({ movimientoId }: { movimientoId: num
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [vias, setVias] = useState<{ id: number; nombre: string }[]>([]);
+  const [viasError, setViasError] = useState("");
+  const [viasLoading, setViasLoading] = useState(false);
+  const [catalogRetry, setCatalogRetry] = useState(0);
   const [sections, setSections] = useState<
     Record<number, { id: number; numero: number; nombre?: string | null }[]>
   >({});
@@ -88,10 +100,37 @@ export default function TorreonNaturalEdit({ movimientoId }: { movimientoId: num
   }, []);
   useEffect(() => {
     const controller = new AbortController();
-    for (const viaId of new Set([initialMovement?.viaOrigenId, initialMovement?.viaDestinoId]))
+    for (const viaId of new Set([movement?.viaOrigenId, movement?.viaDestinoId]))
       if (viaId) void loadSections(viaId, controller.signal);
     return () => controller.abort();
-  }, [initialMovement?.viaOrigenId, initialMovement?.viaDestinoId, loadSections]);
+  }, [movement?.viaOrigenId, movement?.viaDestinoId, loadSections]);
+
+  useEffect(() => {
+    if (!initialMovement?.localidadId) return;
+    const controller = new AbortController();
+    setViasLoading(true);
+    setViasError("");
+    fetch(`${API_BASE}/vias/localidad/${initialMovement.localidadId}/lite`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(readJson)
+      .then((payload) => {
+        const rows = Array.isArray(payload) ? payload : (payload.data ?? payload.vias);
+        if (!Array.isArray(rows)) throw new Error("No se pudieron cargar las vías.");
+        if (!controller.signal.aborted) setVias(rows);
+      })
+      .catch((reason) => {
+        if (!controller.signal.aborted)
+          setViasError(
+            reason instanceof Error ? reason.message : "No se pudieron cargar las vías.",
+          );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setViasLoading(false);
+      });
+    return () => controller.abort();
+  }, [initialMovement?.localidadId, catalogRetry]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -116,13 +155,60 @@ export default function TorreonNaturalEdit({ movimientoId }: { movimientoId: num
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!movement || !initialMovement || saving) return;
+    if (!movement || !initialMovement || saving || !editable) return;
     const original = editFields(initialMovement);
     const payload = Object.fromEntries(
       Object.entries(editFields(movement)).filter(
         ([key, value]) => value !== original[key as keyof typeof original],
       ),
     );
+    if (
+      "locomotiveNumber" in payload &&
+      (!Number.isSafeInteger(movement.locomotiveNumber) || movement.locomotiveNumber <= 0)
+    ) {
+      setError("Indica un número de locomotora válido.");
+      return;
+    }
+    for (const side of ["Origen", "Destino"] as const) {
+      const viaKey = `via${side}Id` as const;
+      const sectionKey = `seccion${side}Id` as const;
+      if (viaKey in payload) {
+        if (!vias.some((via) => via.id === movement[viaKey])) {
+          setError(`Selecciona una vía de ${side.toLowerCase()} del catálogo de Torreón.`);
+          return;
+        }
+        payload[sectionKey] = movement[sectionKey] || null;
+      }
+      if (
+        sectionKey in payload &&
+        movement[sectionKey] &&
+        !(sections[movement[viaKey] ?? 0] ?? []).some(
+          (section) => section.id === movement[sectionKey],
+        )
+      ) {
+        setError(`Selecciona una sección de ${side.toLowerCase()} de la vía elegida.`);
+        return;
+      }
+    }
+    if (
+      ["tipoMovimiento", "locomotoraRemolque", "direccionEmpuje", "locomotiveNumber"].some(
+        (key) => key in payload,
+      ) &&
+      movement.tipoMovimiento === "REMOLCADA"
+    ) {
+      if (
+        !Number.isSafeInteger(movement.locomotoraRemolque) ||
+        Number(movement.locomotoraRemolque) <= 0 ||
+        movement.locomotoraRemolque === movement.locomotiveNumber
+      ) {
+        setError("Indica otra locomotora que remolca, distinta a la solicitada.");
+        return;
+      }
+      if (!["EMPUJAR", "JALAR"].includes(movement.direccionEmpuje ?? "")) {
+        setError("Selecciona Empujar o Jalar para el movimiento remolcado.");
+        return;
+      }
+    }
     for (const side of ["Origen", "Destino"] as const) {
       const key = `polo${side}`;
       if (key in payload && !["NORTE", "CENTRO", "SUR"].includes(String(payload[key]))) {
@@ -131,7 +217,11 @@ export default function TorreonNaturalEdit({ movimientoId }: { movimientoId: num
       }
     }
     for (const side of ["Origen", "Destino"] as const) {
-      if (movement[`polo${side}`] === "CENTRO" && !movement[`seccion${side}Id`]) {
+      if (
+        [`polo${side}`, `via${side}Id`, `seccion${side}Id`].some((key) => key in payload) &&
+        movement[`polo${side}`] === "CENTRO" &&
+        !movement[`seccion${side}Id`]
+      ) {
         setError(`Selecciona la sección de ${side.toLowerCase()} para el polo Centro.`);
         return;
       }
@@ -150,7 +240,7 @@ export default function TorreonNaturalEdit({ movimientoId }: { movimientoId: num
           body: JSON.stringify(payload),
         }),
       );
-      router.push("/cliente/movimientos");
+      router.push(backHref);
       router.refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "No se pudo guardar el movimiento.");
@@ -159,11 +249,20 @@ export default function TorreonNaturalEdit({ movimientoId }: { movimientoId: num
     }
   }
 
-  const editable = movement && ["SOLICITADO", "ASIGNADO"].includes(movement.estado);
+  const backHref = movement?.localidadId
+    ? `/cliente/movimientos?loc=${movement.localidadId}`
+    : "/cliente/movimientos";
+  const editable = Boolean(
+    movement &&
+    ["SOLICITADO", "ASIGNADO"].includes(movement.estado) &&
+    !movement.fechaInicio &&
+    !movement.unidad?.fechaInicio &&
+    (!movement.unidad || movement.unidad.estado === "PENDIENTE"),
+  );
   return (
     <div className="space-y-5">
       <Link
-        href="/cliente/movimientos"
+        href={backHref}
         className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-emerald-700 dark:text-slate-300"
       >
         <ArrowLeft size={16} /> Volver a movimientos
@@ -257,6 +356,24 @@ export default function TorreonNaturalEdit({ movimientoId }: { movimientoId: num
             </label>
             {movement.tipoMovimiento === "REMOLCADA" && (
               <label className={label}>
+                Locomotora que remolca
+                <input
+                  className={field}
+                  type="number"
+                  min="1"
+                  disabled={!editable || saving}
+                  value={movement.locomotoraRemolque ?? ""}
+                  onChange={(event) =>
+                    setMovement({
+                      ...movement,
+                      locomotoraRemolque: Number(event.target.value) || null,
+                    })
+                  }
+                />
+              </label>
+            )}
+            {movement.tipoMovimiento === "REMOLCADA" && (
+              <label className={label}>
                 Dirección de empuje
                 <select
                   className={field}
@@ -290,15 +407,66 @@ export default function TorreonNaturalEdit({ movimientoId }: { movimientoId: num
             <legend className="px-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
               Recorrido y polos
             </legend>
+            {viasError && (
+              <div role="alert" className="mb-3 text-sm text-amber-700">
+                <p>{viasError}</p>
+                <button
+                  type="button"
+                  onClick={() => setCatalogRetry((count) => count + 1)}
+                  disabled={saving}
+                  className="underline"
+                >
+                  Reintentar vías
+                </button>
+              </div>
+            )}
+            {viasLoading && (
+              <p role="status" className="text-sm">
+                Cargando vías de Torreón…
+              </p>
+            )}
             <div className="grid gap-5 sm:grid-cols-2">
               {(["Origen", "Destino"] as const).map((side) => (
                 <div key={side} className="min-w-0 rounded-lg bg-slate-50 p-4 dark:bg-slate-900">
                   <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
                     {side === "Origen" ? "Origen · De dónde se saca" : "Destino · Dónde se coloca"}
                   </p>
-                  <p className="mt-2 text-base font-bold text-slate-900 dark:text-white">
-                    {movement[`via${side}NombreSnapshot`] || "Vía sin registrar"}
-                  </p>
+                  <label className={`${label} mt-4`}>
+                    Vía de {side.toLowerCase()}
+                    <select
+                      className={field}
+                      value={movement[`via${side}Id`] ?? ""}
+                      disabled={!editable || saving || viasLoading || !vias.length}
+                      onChange={(event) =>
+                        setMovement({
+                          ...movement,
+                          [`via${side}Id`]: Number(event.target.value) || null,
+                          [`seccion${side}Id`]: null,
+                          [`seccion${side}Numero`]: null,
+                          [`seccion${side}NombreSnapshot`]: null,
+                        })
+                      }
+                    >
+                      <option value="">Seleccionar vía</option>
+                      {movement[`via${side}Id`] &&
+                        !vias.some((via) => via.id === movement[`via${side}Id`]) && (
+                          <option value={movement[`via${side}Id`] ?? ""}>
+                            {movement[`via${side}NombreSnapshot`] ||
+                              `Vía #${movement[`via${side}Id`]}`}
+                          </option>
+                        )}
+                      {vias.map((via) => (
+                        <option key={via.id} value={via.id}>
+                          {via.nombre}
+                        </option>
+                      ))}
+                    </select>
+                    {!movement[`via${side}Id`] && movement[`via${side}NombreSnapshot`] && (
+                      <span className="mt-1 block text-xs font-normal">
+                        {movement[`via${side}NombreSnapshot`]}
+                      </span>
+                    )}
+                  </label>
                   <label className={`${label} mt-4`}>
                     Polo de {side === "Origen" ? "salida" : "llegada"}
                     <select

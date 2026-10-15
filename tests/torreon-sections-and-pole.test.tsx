@@ -168,3 +168,129 @@ it("requires a section when editing a destination to Centro and sends the select
     seccionDestinoId: 91,
   });
 });
+
+it("edits real routes, sections and towing details without changing the signed scope", async () => {
+  const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options?.method === "PATCH") return json({ ok: true });
+    if (url.includes("/vias/localidad/2/lite"))
+      return json([
+        { id: 8, nombre: "Vía 29" },
+        { id: 9, nombre: "Vía 3" },
+        { id: 10, nombre: "Vía nueva" },
+      ]);
+    if (url.includes("/secciones/secciones/via/"))
+      return json(
+        url.endsWith("/10")
+          ? [{ id: 101, numero: 4, nombre: "Acceso" }]
+          : [
+              { id: 81, numero: 1, nombre: "Patio" },
+              { id: 91, numero: 3, nombre: "Taller" },
+            ],
+      );
+    return json({ ...movement, localidadId: 2, empresaId: 3, viaOrigenId: 8, viaDestinoId: 9 });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(<TorreonNaturalEdit movimientoId={501} />);
+  await waitFor(() => expect(screen.getAllByRole("option", { name: "Vía nueva" })).toHaveLength(2));
+  expect(screen.getByRole("link", { name: "Volver a movimientos" }).getAttribute("href")).toBe(
+    "/cliente/movimientos?loc=2",
+  );
+  fireEvent.change(screen.getByLabelText("Vía de destino"), { target: { value: "10" } });
+  expect(screen.getByLabelText("Sección de destino")).toHaveProperty("value", "");
+  fireEvent.change(screen.getByLabelText("Polo de llegada"), { target: { value: "CENTRO" } });
+  await screen.findByRole("option", { name: "Sección 4 · Acceso" });
+  fireEvent.change(screen.getByLabelText("Sección de destino"), { target: { value: "101" } });
+  fireEvent.change(screen.getByLabelText("Tipo de movimiento"), { target: { value: "REMOLCADA" } });
+  fireEvent.change(screen.getByLabelText("Locomotora que remolca"), { target: { value: "9900" } });
+  fireEvent.change(screen.getByLabelText("Dirección de empuje"), { target: { value: "JALAR" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+  await waitFor(() => expect(router.push).toHaveBeenCalledWith("/cliente/movimientos?loc=2"));
+  const patch = fetcher.mock.calls.find(([, options]) => options?.method === "PATCH")!;
+  expect(JSON.parse(patch[1]!.body as string)).toEqual({
+    viaDestinoId: 10,
+    seccionDestinoId: 101,
+    poloDestino: "CENTRO",
+    tipoMovimiento: "REMOLCADA",
+    locomotoraRemolque: 9900,
+    direccionEmpuje: "JALAR",
+  });
+});
+it("requires a different towing locomotive and a direction when changing to remolcada", async () => {
+  const fetcher = vi.fn(async () => json(movement));
+  vi.stubGlobal("fetch", fetcher);
+  render(<TorreonNaturalEdit movimientoId={501} />);
+  fireEvent.change(await screen.findByLabelText("Tipo de movimiento"), {
+    target: { value: "REMOLCADA" },
+  });
+  fireEvent.change(screen.getByLabelText("Locomotora que remolca"), { target: { value: "7620" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+  expect(screen.getByRole("alert").textContent).toContain("distinta a la solicitada");
+  fireEvent.change(screen.getByLabelText("Locomotora que remolca"), { target: { value: "9900" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+  expect(screen.getByRole("alert").textContent).toContain("Empujar o Jalar");
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+it("clears towing data explicitly when changing back to its own means", async () => {
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
+    json(
+      options?.method === "PATCH"
+        ? { ok: true }
+        : {
+            ...movement,
+            tipoMovimiento: "REMOLCADA",
+            locomotoraRemolque: 9900,
+            direccionEmpuje: "JALAR",
+          },
+    ),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(<TorreonNaturalEdit movimientoId={501} />);
+  fireEvent.change(await screen.findByLabelText("Tipo de movimiento"), {
+    target: { value: "MD_TRABAJANDO" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+  await waitFor(() => expect(router.push).toHaveBeenCalled());
+  const patch = fetcher.mock.calls.find(([, options]) => options?.method === "PATCH")!;
+  expect(JSON.parse(patch[1]!.body as string)).toEqual({
+    tipoMovimiento: "MD_TRABAJANDO",
+    locomotoraRemolque: null,
+    direccionEmpuje: "Sin_Solicitar",
+  });
+});
+it("keeps legacy towing and section values unchanged when only instructions are corrected", async () => {
+  const fetcher = vi.fn(async (_url: string, options?: RequestInit) =>
+    json(
+      options?.method === "PATCH"
+        ? { ok: true }
+        : {
+            ...movement,
+            tipoMovimiento: "REMOLCADA",
+            locomotoraRemolque: null,
+            poloDestino: "CENTRO",
+            seccionDestinoId: null,
+          },
+    ),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  render(<TorreonNaturalEdit movimientoId={501} />);
+  fireEvent.change(await screen.findByLabelText("Instrucciones"), {
+    target: { value: "Nueva indicación" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+  await waitFor(() => expect(router.push).toHaveBeenCalled());
+  const patch = fetcher.mock.calls.find(([, options]) => options?.method === "PATCH")!;
+  expect(JSON.parse(patch[1]!.body as string)).toEqual({ instrucciones: "Nueva indicación" });
+});
+it.each([
+  { estado: "EN_PROCESO" },
+  { fechaInicio: "2026-10-15T12:00:00Z" },
+  { unidad: { estado: "DETENIDA" } },
+])("opens stale or started movement data read-only: %j", async (patch) => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => json({ ...movement, ...patch })),
+  );
+  render(<TorreonNaturalEdit movimientoId={501} />);
+  expect(await screen.findByLabelText("Locomotora")).toHaveProperty("disabled", true);
+  expect(screen.queryByRole("button", { name: "Guardar cambios" })).toBeNull();
+});

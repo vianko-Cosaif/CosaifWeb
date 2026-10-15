@@ -19,6 +19,8 @@ import {
 import Modal from "@/components/ui/Modal";
 import { useRealtimeBoardRefresh } from "@/features/rail-queue/useRealtimeBoardRefresh";
 import { isTorreonNaturalEvent } from "@/features/torreon/realtime";
+import CancelNaturalMovementModal from "./CancelNaturalMovementModal";
+import { naturalClientActions, type NaturalClientActions } from "../clientActions";
 import NaturalQueueTable from "./NaturalQueueTable";
 import {
   dateLabel,
@@ -26,6 +28,7 @@ import {
   queueUnitLabel,
   type QueueAudit,
   type QueueUnit,
+  type QueueMovement,
 } from "../queueView";
 import { auditEventView, uniqueAuditEvents } from "../auditView";
 import s from "./naturalQueue.module.scss";
@@ -48,11 +51,13 @@ export default function TorreonNaturalQueue({
   rol = "CLIENTE",
   view = "inicio",
   canCreateMovements = false,
+  clientActions,
 }: {
   localidadId: number;
   rol?: string;
   view?: "inicio" | "seguimiento";
   canCreateMovements?: boolean;
+  clientActions?: NaturalClientActions;
 }) {
   const dispatch = ["COORDINADOR", "SUPERVISOR", "ADMINISTRADOR"].includes(rol);
   const isClient = ["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"].includes(rol);
@@ -70,6 +75,11 @@ export default function TorreonNaturalQueue({
   const [dateTo, setDateTo] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [canceling, setCanceling] = useState<{ unit: QueueUnit; movement: QueueMovement } | null>(
+    null,
+  );
+  const [cancelError, setCancelError] = useState("");
+  const [confirmation, setConfirmation] = useState("");
   const [loading, setLoading] = useState(true);
   const [operators, setOperators] = useState<{ id: number; nombre: string }[]>([]);
   const [audit, setAudit] = useState<{
@@ -167,6 +177,40 @@ export default function TorreonNaturalQueue({
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const confirmCancel = async (razon: string) => {
+    if (!canceling || busy) return;
+    const unit = units.find((item) => item.id === canceling.unit.id);
+    const movement = unit?.movimientos.find((item) => item.id === canceling.movement.id);
+    if (!unit || !movement || !naturalClientActions(unit, movement, clientActions).canCancel) {
+      setCancelError("La solicitud cambió de estado y ya no puede cancelarse. Actualiza la lista.");
+      return;
+    }
+    setBusy(true);
+    setCancelError("");
+    try {
+      const response = await fetch(`/api/cliente/torreon/movimientos/${movement.id}/cancelar`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ razon }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok)
+        throw new Error(data.message ?? data.error ?? "No se pudo cancelar la solicitud.");
+      setCanceling(null);
+      setConfirmation(
+        `Solicitud #${movement.id} cancelada. No se ejecutará.${unit.modalidad === "CONJUNTO" ? " Seguirá visible en el conjunto hasta su cierre." : " Puedes consultarla en el historial."}`,
+      );
+      await load();
+    } catch (reason) {
+      setCancelError(
+        reason instanceof Error ? reason.message : "No se pudo cancelar la solicitud.",
+      );
+      void load();
     } finally {
       setBusy(false);
     }
@@ -557,6 +601,27 @@ export default function TorreonNaturalQueue({
           </div>
         )}
       </div>
+      {confirmation && (
+        <p
+          role="status"
+          className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200"
+        >
+          {confirmation}
+        </p>
+      )}
+      {canceling && (
+        <CancelNaturalMovementModal
+          key={canceling.movement.id}
+          movement={canceling.movement}
+          grouped={canceling.unit.modalidad === "CONJUNTO"}
+          busy={busy}
+          error={cancelError}
+          onClose={() => {
+            if (!busy) setCanceling(null);
+          }}
+          onConfirm={(reason) => void confirmCancel(reason)}
+        />
+      )}
       {dateError && (
         <p role="alert" className={s.error} id="torreon-date-error">
           {dateError}
@@ -665,6 +730,12 @@ export default function TorreonNaturalQueue({
       ) : (
         <NaturalQueueTable
           units={visible}
+          clientActions={isClient ? clientActions : undefined}
+          onCancel={(unit, movement) => {
+            setCancelError("");
+            setConfirmation("");
+            setCanceling({ unit, movement });
+          }}
           followUp={view === "seguimiento"}
           paginationKey={JSON.stringify([
             localidadId,

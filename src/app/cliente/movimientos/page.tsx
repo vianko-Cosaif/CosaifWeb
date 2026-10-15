@@ -3,6 +3,7 @@ import MovimientosPanel from "@/features/movimientos/list/MovimientosPanel";
 import TorreonNaturalQueue from "@/features/torreon/naturales/components/TorreonNaturalQueue";
 import { redirect } from "next/navigation";
 import { getVerifiedSession } from "@/lib/server/session";
+import { hasPermission, PERMISSIONS } from "@/lib/accessControl";
 import { isTorreonLocalidadId } from "@/lib/torreonLocalidad";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,14 @@ export default async function Page({
   const session = await getVerifiedSession();
   if (!session) redirect("/login");
   const role = session.role;
+  const naturalClientActions = session.empresaId
+    ? {
+        userId: session.userId,
+        empresaId: session.empresaId,
+        canEdit: hasPermission(session.authorization, PERMISSIONS.MOVEMENTS_EDIT),
+        canCancel: hasPermission(session.authorization, PERMISSIONS.MOVEMENTS_CANCEL),
+      }
+    : undefined;
   const capabilities = session.authorization.capabilities;
   if (role === "ARRASTRE_TORREON") {
     redirect("/cliente/torreon/movimientos");
@@ -40,6 +49,7 @@ export default async function Page({
       <TorreonNaturalQueue
         localidadId={selectedLocalidadId}
         rol={role}
+        clientActions={naturalClientActions}
         view="seguimiento"
         canCreateMovements={capabilities.canCreateMovements}
       />
@@ -66,6 +76,7 @@ export default async function Page({
           <TorreonNaturalQueue
             localidadId={torreonLocalidadId}
             rol={role}
+            clientActions={naturalClientActions}
             view="seguimiento"
             canCreateMovements={capabilities.canCreateMovements}
           />
