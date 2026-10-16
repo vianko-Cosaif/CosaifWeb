@@ -939,3 +939,76 @@ it("removes a successfully cancelled request immediately even if reloading the q
   await screen.findByRole("alert");
   expect(screen.getByRole("alert").textContent).toContain("No se pudo actualizar la lista.");
 });
+
+it.each(["LISTA_REANUDAR", "DETENIDA"])(
+  "cancels a %s member with a historical start while preserving its sibling and incident",
+  async (estado) => {
+    const historical = "2026-10-15T17:35:00-06:00";
+    const first = { ...movement(501, 7620), estado: "DETENIDO", fechaInicio: historical };
+    const second = {
+      ...movement(502, 7621),
+      estado: "DETENIDO",
+      fechaInicio: "2026-10-15T14:16:00-06:00",
+    };
+    const incident = {
+      id: 90,
+      movimientoId: 501,
+      estado: estado === "DETENIDA" ? "ABIERTO" : "RESUELTO",
+      motivo: "Inspección",
+      fechaInicio: historical,
+    };
+    const original = {
+      ...unit(71, 1, [first, second]),
+      estado,
+      fechaInicio: historical,
+      incidentes: [incident],
+    };
+    let cancelled = false;
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "PATCH") {
+        cancelled = true;
+        return json({ id: 501, estado: "CANCELADO" });
+      }
+      return json([
+        {
+          ...original,
+          movimientos: cancelled ? [{ ...first, estado: "CANCELADO" }, second] : [first, second],
+        },
+      ]);
+    });
+    vi.stubGlobal("fetch", fetcher);
+    render(
+      <TorreonNaturalQueue
+        localidadId={2}
+        rol="CLIENTE"
+        view="seguimiento"
+        clientActions={clientActions}
+      />,
+    );
+    await screen.findByRole("button", { name: "Cancelar movimiento 501" });
+    expect(screen.getByRole("button", { name: "Cancelar movimiento 502" })).toBeTruthy();
+    if (estado === "LISTA_REANUDAR")
+      expect(screen.getAllByText("Listo para continuar")).toHaveLength(2);
+    for (const id of [501, 502])
+      expect(screen.queryByRole("link", { name: `Editar movimiento ${id}` })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar movimiento 501" }));
+    expect(screen.getByText(/Cancelar no resuelve los incidentes pendientes/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Motivo de cancelación"), {
+      target: { value: "No continuará la solicitud" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar cancelación" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByRole("button", { name: "Ver folio 501" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Cancelar movimiento 502" })).toBeTruthy();
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/cliente/torreon/movimientos/501/cancelar",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ razon: "No continuará la solicitud" }),
+      }),
+    );
+    expect(original.movimientos).toEqual([first, second]);
+    expect(original.incidentes).toEqual([incident]);
+    expect(original.fechaInicio).toBe(historical);
+  },
+);

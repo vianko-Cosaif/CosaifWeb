@@ -166,7 +166,7 @@ test("Torreón: cancela solicitudes de su empresa y conserva autoría para edita
   page,
 }) => {
   await login(page);
-  for (const id of [1700, 1704, 1705]) {
+  for (const id of [1700, 1704]) {
     await expect(row(page, id)).toBeVisible();
     await expect(
       page.getByRole("link", { name: `Editar movimiento ${id}`, exact: true }),
@@ -197,6 +197,8 @@ test("Torreón: cancela solicitudes de su empresa y conserva autoría para edita
       (await request(page, movementPath(id), "PATCH", { instrucciones: "Estado protegido" }))
         .status,
     ).toBe(409);
+  }
+  for (const id of [1700, 1706, 1707]) {
     expect(
       (await request(page, movementPath(id, "cancelar"), "PATCH", { razon: "Estado protegido" }))
         .status,
@@ -225,4 +227,55 @@ test("Guadalajara conserva su seguimiento y no solicita las nuevas acciones de T
   await expect(page.getByText("FXE-2101", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("FXE-2102", { exact: true })).toHaveCount(0);
   expect(torreonRequests).toEqual([]);
+});
+
+test("Torreón: cancela Listo para continuar con inicio histórico sin editar ni borrar incidentes", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await login(page);
+  await page.getByRole("combobox", { name: "Filtrar por estado" }).selectOption("LISTA_REANUDAR");
+  for (const id of [1708, 1709]) {
+    await expect(row(page, id)).toContainText("Listo para continuar");
+    await expect(
+      page.getByRole("button", { name: `Cancelar movimiento ${id}`, exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: `Editar movimiento ${id}`, exact: true }),
+    ).toHaveCount(0);
+    expect(
+      (
+        await request(page, movementPath(id), "PATCH", {
+          instrucciones: "No editar operación iniciada",
+        })
+      ).status,
+    ).toBe(409);
+  }
+  const siblingPath = "/bff/torreon/movimientos/1709";
+  const sibling = (await request(page, siblingPath)).data;
+  const before = (await request(page, "/bff/torreon/movimientos/1708")).data;
+  await page.screenshot({
+    path: testInfo.outputPath("torreon-listo-continuar-cancelar.png"),
+    fullPage: true,
+  });
+  await cancel(page, 1708, "No continuará esta locomotora");
+  await expect(row(page, 1708)).toHaveCount(0);
+  await expect(row(page, 1709)).toContainText("Listo para continuar");
+  expect((await request(page, siblingPath)).data).toEqual(sibling);
+  const after = (await request(page, "/bff/torreon/movimientos/1708")).data;
+  expect(after.fechaInicio).toBe(before.fechaInicio);
+  expect(after.incidentes).toEqual(before.incidentes);
+  expect(after.unidad.id).toBe(before.unidad.id);
+  expect(
+    (await request(page, movementPath(1708, "cancelar"), "PATCH", { razon: "Repetido" })).status,
+  ).toBe(409);
+
+  await page.getByRole("combobox", { name: "Filtrar por estado" }).selectOption("");
+  const stoppedBefore = (await request(page, "/bff/torreon/movimientos/1705")).data;
+  expect(stoppedBefore.incidentes[0].estado).toBe("ABIERTO");
+  await cancel(page, 1705, "Cancelar solicitud, conservar atención del incidente");
+  await expect(row(page, 1705)).toHaveCount(0);
+  const stoppedAfter = (await request(page, "/bff/torreon/movimientos/1705")).data;
+  expect(stoppedAfter.estado).toBe("CANCELADO");
+  expect(stoppedAfter.incidentes).toEqual(stoppedBefore.incidentes);
 });

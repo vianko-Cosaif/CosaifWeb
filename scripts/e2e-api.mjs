@@ -86,7 +86,7 @@ const clientActionsFields = new Set([
   "locomotoraRemolque",
 ]);
 function initialClientActionMovements() {
-  return [1700, 1701, 1702, 1703, 1704, 1705, 1706, 1707].map((id) => ({
+  return [1700, 1701, 1702, 1703, 1704, 1705, 1706, 1707, 1708, 1709].map((id) => ({
     ...naturalMovements[1],
     id,
     empresaId: id === 1704 ? 4 : 3,
@@ -101,8 +101,29 @@ function initialClientActionMovements() {
         1705: "DETENIDO",
         1706: "CONCLUIDO",
         1707: "CANCELADO",
+        1708: "DETENIDO",
+        1709: "DETENIDO",
       }[id] ?? "SOLICITADO",
-    fechaInicio: [1700, 1705, 1706].includes(id) ? "2026-10-15T12:30:00Z" : null,
+    fechaInicio:
+      id === 1708
+        ? "2026-10-15T17:35:00-06:00"
+        : id === 1709
+          ? "2026-10-15T14:16:00-06:00"
+          : [1700, 1705, 1706].includes(id)
+            ? "2026-10-15T12:30:00Z"
+            : null,
+    incidentes: [1705, 1708].includes(id)
+      ? [
+          {
+            id: 9000 + id,
+            movimientoId: id,
+            estado: id === 1705 ? "ABIERTO" : "RESUELTO",
+            motivo: "Inspección de locomotora",
+            fechaInicio: "2026-10-15T18:00:00Z",
+            fotos: [],
+          },
+        ]
+      : [],
     fechaSolicitud: "2026-10-15T12:00:00Z",
     fechaFin: [1706, 1707].includes(id) ? "2026-10-15T13:00:00Z" : null,
     viaOrigenId: 21,
@@ -123,38 +144,42 @@ function initialClientActionMovements() {
 }
 let clientActionMovements = initialClientActionMovements();
 function clientActionUnits() {
-  return [[1700], [1701, 1702], [1703], [1704], [1705], [1706], [1707]].map((ids, index) => {
-    const members = clientActionMovements.filter((movement) => ids.includes(movement.id));
-    const terminal = members.every((movement) =>
-      ["CANCELADO", "CONCLUIDO"].includes(movement.estado),
-    );
-    return {
-      id: 2700 + index,
-      localidadId: 2,
-      modalidad: ids.length > 1 ? "CONJUNTO" : "INDIVIDUAL",
-      posicion: index + 1,
-      estado: terminal
-        ? members.every((movement) => movement.estado === "CANCELADO")
-          ? "CANCELADA"
-          : "CONCLUIDA"
-        : members.some((movement) => movement.estado === "DETENIDO")
-          ? "DETENIDA"
+  return [[1700], [1701, 1702], [1703], [1704], [1705], [1706], [1707], [1708, 1709]].map(
+    (ids, index) => {
+      const members = clientActionMovements.filter((movement) => ids.includes(movement.id));
+      const terminal = members.every((movement) =>
+        ["CANCELADO", "CONCLUIDO"].includes(movement.estado),
+      );
+      return {
+        id: 2700 + index,
+        localidadId: 2,
+        modalidad: ids.length > 1 ? "CONJUNTO" : "INDIVIDUAL",
+        posicion: index + 1,
+        estado: terminal
+          ? members.every((movement) => movement.estado === "CANCELADO")
+            ? "CANCELADA"
+            : "CONCLUIDA"
           : members.some((movement) => movement.estado === "EN_PROCESO")
             ? "EN_PROCESO"
-            : "PENDIENTE",
-      operadorId: 17,
-      operador: { id: 17, nombre: "Maquinista de prueba" },
-      disponible: !terminal,
-      ordenManual: index,
-      fechaRecepcion: "2026-10-15T12:00:00Z",
-      fechaInicio: members.find((movement) => movement.fechaInicio)?.fechaInicio ?? null,
-      fechaFin: terminal ? "2026-10-15T13:00:00Z" : null,
-      incidentes: [],
-      // Production retains members for audit even while their group is pending.
-      // The client UI must hide cancelled members from its active queue.
-      movimientos: members,
-    };
-  });
+            : ids.includes(1708)
+              ? "LISTA_REANUDAR"
+              : members.some((movement) => movement.estado === "DETENIDO")
+                ? "DETENIDA"
+                : "PENDIENTE",
+        operadorId: 17,
+        operador: { id: 17, nombre: "Maquinista de prueba" },
+        disponible: !terminal,
+        ordenManual: index,
+        fechaRecepcion: "2026-10-15T12:00:00Z",
+        fechaInicio: members.find((movement) => movement.fechaInicio)?.fechaInicio ?? null,
+        fechaFin: terminal ? "2026-10-15T13:00:00Z" : null,
+        incidentes: members.flatMap((movement) => movement.incidentes),
+        // Production retains members for audit even while their group is pending.
+        // The client UI must hide cancelled members from its active queue.
+        movimientos: members,
+      };
+    },
+  );
 }
 function clientActionDetail(id) {
   const movement = clientActionMovements.find((item) => item.id === id);
@@ -213,8 +238,18 @@ const server = createServer(async (request, response) => {
           return json(response, 403, { message: "Solicitud fuera de la empresa" });
         if (!match[2] && ![movement.clienteId, movement.creadoPorId].includes(user(key).id))
           return json(response, 403, { message: "Sólo puedes modificar solicitudes propias" });
-        if (!["SOLICITADO", "ASIGNADO"].includes(movement.estado) || movement.fechaInicio)
-          return json(response, 409, { message: "El movimiento ya inició" });
+        const fullUnit = clientActionUnits().find((unit) => unit.id === movement.unidad.id);
+        const cancellable =
+          ["SOLICITADO", "ASIGNADO", "DETENIDO"].includes(movement.estado) &&
+          ["PENDIENTE", "DETENIDA", "LISTA_REANUDAR"].includes(fullUnit.estado) &&
+          !fullUnit.movimientos.some((member) => member.estado === "EN_PROCESO");
+        const editable =
+          ["SOLICITADO", "ASIGNADO"].includes(movement.estado) &&
+          !movement.fechaInicio &&
+          fullUnit.estado === "PENDIENTE" &&
+          !fullUnit.fechaInicio;
+        if (match[2] ? !cancellable : !editable)
+          return json(response, 409, { message: "El movimiento ya no admite esta acción" });
         if (match[2]) {
           if (
             Object.keys(input).some((key) => key !== "razon") ||

@@ -28,7 +28,10 @@ export default function CancelNaturalMovementModal({
       <form onSubmit={submit} className="space-y-4">
         <p className="text-sm text-slate-700 dark:text-slate-200">
           La solicitud de la locomotora <strong>{movement.locomotiveNumber}</strong> quedará
-          registrada como cancelada, saldrá de la fila activa y no se ejecutará.
+          registrada como cancelada, saldrá de la fila activa y no continuará.
+        </p>
+        <p className="text-sm text-slate-700 dark:text-slate-200">
+          Su historial se conservará. Cancelar no resuelve los incidentes pendientes.
         </p>
         {grouped && (
           <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
