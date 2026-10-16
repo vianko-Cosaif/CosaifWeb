@@ -211,7 +211,7 @@ const server = createServer(async (request, response) => {
         const input = await inputJson(request);
         if (movement.empresaId !== 3)
           return json(response, 403, { message: "Solicitud fuera de la empresa" });
-        if (![movement.clienteId, movement.creadoPorId].includes(user(key).id))
+        if (!match[2] && ![movement.clienteId, movement.creadoPorId].includes(user(key).id))
           return json(response, 403, { message: "Sólo puedes modificar solicitudes propias" });
         if (!["SOLICITADO", "ASIGNADO"].includes(movement.estado) || movement.fechaInicio)
           return json(response, 409, { message: "El movimiento ya inició" });

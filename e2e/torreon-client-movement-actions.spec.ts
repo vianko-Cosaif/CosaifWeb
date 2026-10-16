@@ -162,11 +162,11 @@ test("Torreón en pantalla pequeña: motivo y confirmación, conserva solicitud 
   expect(writes).toHaveLength(3);
 });
 
-test("Torreón: respeta empresa, autoría y estado en pantalla y rutas protegidas", async ({
+test("Torreón: cancela solicitudes de su empresa y conserva autoría para editar", async ({
   page,
 }) => {
   await login(page);
-  for (const id of [1700, 1703, 1704, 1705]) {
+  for (const id of [1700, 1704, 1705]) {
     await expect(row(page, id)).toBeVisible();
     await expect(
       page.getByRole("link", { name: `Editar movimiento ${id}`, exact: true }),
@@ -180,14 +180,18 @@ test("Torreón: respeta empresa, autoría y estado en pantalla y rutas protegida
     (await request(page, movementPath(1704), "PATCH", { instrucciones: "Fuera de empresa" }))
       .status,
   ).toBe(403);
-  expect(
-    (await request(page, movementPath(1703, "cancelar"), "PATCH", { razon: "Otro creador" }))
-      .status,
-  ).toBe(403);
+  await expect(page.getByRole("link", { name: "Editar movimiento 1703", exact: true })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("button", { name: "Cancelar movimiento 1703", exact: true }),
+  ).toBeVisible();
   expect((await request(page, movementPath(1703))).status).toBe(403);
   expect(
     (await request(page, movementPath(1703), "PATCH", { instrucciones: "Otro creador" })).status,
   ).toBe(403);
+  await cancel(page, 1703, "Solicitud duplicada de mi empresa");
+  await expect(row(page, 1703)).toHaveCount(0);
   for (const id of [1700, 1705, 1706, 1707]) {
     expect(
       (await request(page, movementPath(id), "PATCH", { instrucciones: "Estado protegido" }))
