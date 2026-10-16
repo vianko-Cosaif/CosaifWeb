@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { normalizeHttpOrigin } from "@/lib/serverOrigin";
 import { fetchUpstream } from "@/lib/server/upstream";
-import { hasPermission, type Permission } from "@/lib/accessControl";
+import { hasPermission, PERMISSIONS, type Permission } from "@/lib/accessControl";
 import { getVerifiedSession } from "@/lib/server/session";
 import { isTorreonLocalidad, TorreonMsError } from "@/lib/torreonMs";
 
@@ -112,6 +112,7 @@ export async function scopedMovement(context: Context, permission: Permission) {
     };
   }
   if (
+    permission !== PERMISSIONS.MOVEMENTS_CANCEL &&
     Number(movement.clienteId) !== session.userId &&
     Number(movement.creadoPorId) !== session.userId
   ) {

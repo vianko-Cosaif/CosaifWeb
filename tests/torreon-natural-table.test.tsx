@@ -770,7 +770,7 @@ it("does not infer either route pole from the legacy single value", async () => 
 });
 
 const clientActions = { userId: 89, empresaId: 3, canEdit: true, canCancel: true };
-it("shows edit and cancel per owned pending member, preserving other-company and started rows", async () => {
+it("allows company cancellation but keeps editing owned pending members only", async () => {
   const own = movement(501, 7620);
   const colleague = { ...movement(502, 7621), clienteId: 90, creadoPorId: 91 };
   const foreign = { ...movement(503, 7622), empresaId: 4 };
@@ -790,9 +790,10 @@ it("shows edit and cancel per owned pending member, preserving other-company and
   ).toBe("/cliente/editar?id=501&source=torreon");
   expect(screen.queryByRole("link", { name: "Editar movimiento 502" })).toBeNull();
   expect(screen.getByRole("button", { name: "Cancelar movimiento 501" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Cancelar movimiento 502" })).toBeTruthy();
   for (const id of [503, 504])
     expect(screen.queryByRole("link", { name: `Editar movimiento ${id}` })).toBeNull();
-  for (const id of [502, 503, 504])
+  for (const id of [503, 504])
     expect(screen.queryByRole("button", { name: `Cancelar movimiento ${id}` })).toBeNull();
 });
 it("cancels only one group member after a reason and refreshes the remaining queue", async () => {

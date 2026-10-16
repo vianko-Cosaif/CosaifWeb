@@ -25,6 +25,7 @@ export async function PATCH(request: NextRequest, context: Context) {
     if (
       !["SOLICITADO", "ASIGNADO"].includes(String(movement.estado)) ||
       movement.fechaInicio ||
+      record(movement.unidad).fechaInicio ||
       (record(movement.unidad).estado && record(movement.unidad).estado !== "PENDIENTE")
     )
       return NextResponse.json(

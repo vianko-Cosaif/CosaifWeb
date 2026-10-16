@@ -19,6 +19,8 @@ export function naturalClientActions(
   );
   const pending = Boolean(
     client &&
+    client.userId > 0 &&
+    client.empresaId > 0 &&
     client.empresaId === movement.empresaId &&
     unit.estado === "PENDIENTE" &&
     ["SOLICITADO", "ASIGNADO"].includes(movement.estado) &&
@@ -27,6 +29,6 @@ export function naturalClientActions(
   );
   return {
     canEdit: pending && ownsRequest && Boolean(client?.canEdit),
-    canCancel: pending && Boolean(client?.canCancel) && ownsRequest,
+    canCancel: pending && Boolean(client?.canCancel),
   };
 }

@@ -63,8 +63,19 @@ it("allows the creator to cancel a request made on behalf of another client", as
   );
   expect((await PATCH(request(), context())).status).toBe(200);
 });
-it.each([{ empresaId: 999 }, { localidadId: 1 }, { clienteId: 8, creadoPorId: 9 }])(
-  "rejects requests outside ownership or company/locality: %j",
+it.each(["CLIENTE", "CLIENTE_ADMIN", "CLIENTE_COOR"] as const)(
+  "allows %s to cancel a colleague's pending request in the same company",
+  async (role) => {
+    mock.session.mockResolvedValue(session(role));
+    mock.fetch.mockImplementation(async () =>
+      Response.json({ ...movement, clienteId: 8, creadoPorId: 9 }),
+    );
+    expect((await PATCH(request(), context())).status).toBe(200);
+    expect(mock.fetch).toHaveBeenCalledTimes(2);
+  },
+);
+it.each([{ empresaId: 999 }, { localidadId: 1 }])(
+  "rejects requests outside company/locality: %j",
   async (patch) => {
     mock.fetch.mockResolvedValue(Response.json({ ...movement, ...patch }));
     expect((await PATCH(request(), context())).status).toBe(403);
@@ -79,14 +90,16 @@ it.each(["EN_PROCESO", "DETENIDO", "CONCLUIDO"])(
     expect(mock.fetch).toHaveBeenCalledTimes(1);
   },
 );
-it.each([{ fechaInicio: "2026-10-15T12:00:00Z" }, { unidad: { estado: "EN_PROCESO" } }])(
-  "rejects stale pending movement data after the group started: %j",
-  async (patch) => {
-    mock.fetch.mockResolvedValue(Response.json({ ...movement, ...patch }));
-    expect((await PATCH(request(), context())).status).toBe(409);
-    expect(mock.fetch).toHaveBeenCalledTimes(1);
-  },
-);
+it.each([
+  { fechaInicio: "2026-10-15T12:00:00Z" },
+  { unidad: { estado: "EN_PROCESO" } },
+  { unidad: { estado: "LISTA_REANUDAR" } },
+  { unidad: { estado: "PENDIENTE", fechaInicio: "2026-10-15T12:00:00Z" } },
+])("rejects stale pending movement data after the group started: %j", async (patch) => {
+  mock.fetch.mockResolvedValue(Response.json({ ...movement, ...patch }));
+  expect((await PATCH(request(), context())).status).toBe(409);
+  expect(mock.fetch).toHaveBeenCalledTimes(1);
+});
 it("preserves a conflict if operation starts between the read and cancellation", async () => {
   mock.fetch
     .mockResolvedValueOnce(Response.json(movement))
