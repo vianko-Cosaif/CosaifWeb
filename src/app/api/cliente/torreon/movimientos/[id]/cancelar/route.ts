@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PERMISSIONS } from "@/lib/accessControl";
+import { canCancelNaturalState } from "@/features/torreon/naturales/cancellationPolicy";
 import {
   failure,
   gatewayMovement,
@@ -22,12 +23,8 @@ export async function PATCH(request: NextRequest, context: Context) {
         { message: "Escribe un motivo de cancelación de 1 a 1000 caracteres." },
         { status: 400 },
       );
-    if (
-      !["SOLICITADO", "ASIGNADO"].includes(String(movement.estado)) ||
-      movement.fechaInicio ||
-      record(movement.unidad).fechaInicio ||
-      (record(movement.unidad).estado && record(movement.unidad).estado !== "PENDIENTE")
-    )
+    const unit = record(movement.unidad);
+    if (!canCancelNaturalState(movement, Object.keys(unit).length ? unit : null))
       return NextResponse.json(
         { message: "Este movimiento ya no admite cancelación." },
         { status: 409 },

@@ -82,7 +82,7 @@ it.each([{ empresaId: 999 }, { localidadId: 1 }])(
     expect(mock.fetch).toHaveBeenCalledTimes(1);
   },
 );
-it.each(["EN_PROCESO", "DETENIDO", "CONCLUIDO"])(
+it.each(["EN_PROCESO", "CONCLUIDO", "CANCELADO"])(
   "rejects cancellation of %s without a write",
   async (estado) => {
     mock.fetch.mockResolvedValue(Response.json({ ...movement, estado }));
@@ -90,13 +90,46 @@ it.each(["EN_PROCESO", "DETENIDO", "CONCLUIDO"])(
     expect(mock.fetch).toHaveBeenCalledTimes(1);
   },
 );
+it.each(["PENDIENTE", "DETENIDA", "LISTA_REANUDAR"])(
+  "allows a stopped request in %s despite historical start dates and preserves its incident",
+  async (estado) => {
+    const historical = "2026-10-15T17:35:00-06:00";
+    mock.fetch.mockImplementation(async () =>
+      Response.json({
+        ...movement,
+        estado: "DETENIDO",
+        fechaInicio: historical,
+        unidad: {
+          ...movement.unidad,
+          estado,
+          fechaInicio: historical,
+          incidentes: [{ id: 90, estado: "ABIERTO" }],
+        },
+      }),
+    );
+    expect((await PATCH(request(), context())).status).toBe(200);
+    expect(mock.fetch).toHaveBeenLastCalledWith(
+      "http://synthetic-backend.invalid/torreon/movimientos/500/cancelar",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ razon: "Cambio de programación" }),
+      }),
+    );
+  },
+);
 it.each([
-  { fechaInicio: "2026-10-15T12:00:00Z" },
-  { unidad: { estado: "EN_PROCESO" } },
-  { unidad: { estado: "LISTA_REANUDAR" } },
-  { unidad: { estado: "PENDIENTE", fechaInicio: "2026-10-15T12:00:00Z" } },
-])("rejects stale pending movement data after the group started: %j", async (patch) => {
-  mock.fetch.mockResolvedValue(Response.json({ ...movement, ...patch }));
+  { estado: "EN_PROCESO" },
+  { estado: "CONCLUIDA" },
+  { estado: "CANCELADA" },
+  {
+    estado: "LISTA_REANUDAR",
+    movimientos: [
+      { id: 500, estado: "DETENIDO" },
+      { id: 501, estado: "EN_PROCESO" },
+    ],
+  },
+])("rejects a running or terminal unit, including an active sibling: %j", async (unidad) => {
+  mock.fetch.mockResolvedValue(Response.json({ ...movement, estado: "DETENIDO", unidad }));
   expect((await PATCH(request(), context())).status).toBe(409);
   expect(mock.fetch).toHaveBeenCalledTimes(1);
 });

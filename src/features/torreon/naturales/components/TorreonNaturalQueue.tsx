@@ -215,7 +215,7 @@ export default function TorreonNaturalQueue({
       );
       setCanceling(null);
       setConfirmation(
-        `Solicitud #${movement.id} cancelada. No se ejecutará y se retiró de la fila activa.`,
+        `Solicitud #${movement.id} cancelada. No continuará y se retiró de la fila activa.`,
       );
       await load();
     } catch (reason) {
